@@ -1,4 +1,4 @@
-//! HEXACO 성격 모델
+﻿//! HEXACO 성격 모델
 //!
 //! 6개 차원(Dimension) × 각 4개 facet = 24개 facet으로
 //! NPC의 성격을 정의한다.
