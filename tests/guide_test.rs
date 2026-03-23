@@ -1,0 +1,227 @@
+//! LLM 연기 가이드 생성 테스트
+//!
+//! 4인 캐릭터의 같은 상황에서 다른 연기 가이드가 생성되는지 검증
+
+use npc_mind::domain::personality::*;
+use npc_mind::domain::emotion::*;
+use npc_mind::domain::guide::*;
+
+fn score(v: f32) -> Score {
+    Score::new(v, "").unwrap()
+}
+
+fn make_무백() -> Npc {
+    let s = score;
+    NpcBuilder::new("mu_baek", "무백")
+        .description("정의로운 검객. 의리와 절제를 중시한다.")
+        .honesty_humility(|h| {
+            h.sincerity = s(0.8); h.fairness = s(0.7);
+            h.greed_avoidance = s(0.6); h.modesty = s(0.5);
+        })
+        .emotionality(|e| {
+            e.fearfulness = s(-0.6); e.anxiety = s(-0.4);
+            e.dependence = s(-0.7); e.sentimentality = s(0.2);
+        })
+        .agreeableness(|a| {
+            a.forgiveness = s(0.6); a.gentleness = s(0.7);
+            a.flexibility = s(0.2); a.patience = s(0.8);
+        })
+        .conscientiousness(|c| {
+            c.organization = s(0.4); c.diligence = s(0.8);
+            c.perfectionism = s(0.6); c.prudence = s(0.7);
+        })
+        .build()
+}
+
+fn make_교룡() -> Npc {
+    let s = score;
+    NpcBuilder::new("gyo_ryong", "교룡")
+        .description("야심적인 여검객. 자유를 갈망하며 관습을 거부한다.")
+        .honesty_humility(|h| {
+            h.sincerity = s(-0.4); h.fairness = s(-0.5);
+            h.greed_avoidance = s(-0.6); h.modesty = s(-0.7);
+        })
+        .extraversion(|x| {
+            x.social_self_esteem = s(0.7); x.social_boldness = s(0.8);
+            x.sociability = s(0.0); x.liveliness = s(0.6);
+        })
+        .agreeableness(|a| {
+            a.forgiveness = s(-0.6); a.gentleness = s(-0.5);
+            a.flexibility = s(-0.4); a.patience = s(-0.7);
+        })
+        .openness(|o| {
+            o.aesthetic_appreciation = s(0.6); o.inquisitiveness = s(0.8);
+            o.creativity = s(0.7); o.unconventionality = s(0.9);
+        })
+        .build()
+}
+
+// ---------------------------------------------------------------------------
+// 성격 요약 테스트
+// ---------------------------------------------------------------------------
+
+#[test]
+fn 무백_성격_요약_정직_관용() {
+    let li = make_무백();
+    let summary = PersonalitySummary::from_profile(&li.personality);
+
+    assert!(summary.traits.contains("진실"),
+        "무백의 성격에 '진실' 포함: {}", summary.traits);
+    assert!(summary.traits.contains("관용") || summary.traits.contains("온화"),
+        "무백의 성격에 관용/온화 포함: {}", summary.traits);
+    assert!(summary.speech_style.contains("솔직") || summary.speech_style.contains("부드러"),
+        "무백의 말투에 솔직/부드러운: {}", summary.speech_style);
+}
+
+#[test]
+fn 교룡_성격_요약_교활_비판적() {
+    let yu = make_교룡();
+    let summary = PersonalitySummary::from_profile(&yu.personality);
+
+    assert!(summary.traits.contains("교활") || summary.traits.contains("야심"),
+        "교룡의 성격에 교활/야심 포함: {}", summary.traits);
+    assert!(summary.traits.contains("참을성") || summary.traits.contains("비판"),
+        "교룡의 성격에 비판적 포함: {}", summary.traits);
+    assert!(summary.traits.contains("호기심") || summary.traits.contains("관습"),
+        "교룡의 성격에 개방성 포함: {}", summary.traits);
+}
+
+// ---------------------------------------------------------------------------
+// 같은 상황 → 다른 연기 가이드 테스트
+// ---------------------------------------------------------------------------
+
+#[test]
+fn 배신_무백_가이드_절제된_분노() {
+    let li = make_무백();
+    let situation = Situation {
+        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    };
+    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
+    let prompt = guide.to_prompt();
+
+    // 절제된 분노 관련 키워드
+    assert!(prompt.contains("억누") || prompt.contains("절제") || prompt.contains("차가운"),
+        "무백 가이드에 절제 관련 표현: {}", prompt);
+    // 금지 사항: 호의적 대하지 않음
+    assert!(prompt.contains("호의적") || prompt.contains("금지"),
+        "무백 가이드에 금지 사항 포함: {}", prompt);
+
+    println!("=== 무백의 배신 가이드 ===\n{}", prompt);
+}
+
+#[test]
+fn 배신_교룡_가이드_폭발적_분노() {
+    let yu = make_교룡();
+    let situation = Situation {
+        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    };
+    let state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()));
+    let prompt = guide.to_prompt();
+
+    // 공격적 분노 관련 키워드
+    assert!(prompt.contains("거칠") || prompt.contains("공격"),
+        "교룡 가이드에 공격적 표현: {}", prompt);
+    // 적대적 태도
+    assert!(prompt.contains("적대") || prompt.contains("공격적인 태도"),
+        "교룡 가이드에 적대적 태도: {}", prompt);
+
+    println!("=== 교룡의 배신 가이드 ===\n{}", prompt);
+}
+
+// ---------------------------------------------------------------------------
+// 프롬프트 포맷 검증
+// ---------------------------------------------------------------------------
+
+#[test]
+fn 가이드_프롬프트_구조_검증() {
+    let li = make_무백();
+    let situation = Situation {
+        description: "좋은 소식을 들었다".into(),
+        focus: SituationFocus::Event {
+            desirability_for_self: 0.6,
+            desirability_for_other: None,
+            is_prospective: false,
+            prior_expectation: None,
+        },
+    };
+    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
+    let prompt = guide.to_prompt();
+
+    // 필수 섹션 존재 확인
+    assert!(prompt.contains("[NPC: 무백]"), "NPC 이름 섹션");
+    assert!(prompt.contains("[성격]"), "성격 섹션");
+    assert!(prompt.contains("[현재 감정]"), "감정 섹션");
+    assert!(prompt.contains("[상황]"), "상황 섹션");
+    assert!(prompt.contains("[연기 지시]"), "연기 지시 섹션");
+    assert!(prompt.contains("[말투]"), "말투 섹션");
+}
+
+#[test]
+fn 가이드_json_출력() {
+    let yu = make_교룡();
+    let state = AppraisalEngine::appraise(&yu.personality, &Situation {
+        description: "배신".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    });
+    let guide = ActingGuide::build(&yu, &state, Some("배신".into()));
+    let json = guide.to_json().unwrap();
+
+    // JSON 파싱 가능 확인
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(parsed["npc_name"].as_str() == Some("교룡"));
+    assert!(parsed["directive"]["tone"].is_string());
+    assert!(parsed["emotion"]["mood"].is_f64());
+
+    println!("=== 교룡 JSON ===\n{}", json);
+}
+
+// ---------------------------------------------------------------------------
+// 같은 상황, 다른 어조 비교
+// ---------------------------------------------------------------------------
+
+#[test]
+fn 같은_상황_무백과_교룡_어조가_다름() {
+    let li = make_무백();
+    let yu = make_교룡();
+    let situation = Situation {
+        description: "동료의 배신".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    };
+
+    let li_state = AppraisalEngine::appraise(&li.personality, &situation);
+    let yu_state = AppraisalEngine::appraise(&yu.personality, &situation);
+
+    let li_guide = ActingGuide::build(&li, &li_state, None);
+    let yu_guide = ActingGuide::build(&yu, &yu_state, None);
+
+    // 어조가 달라야 함
+    assert_ne!(li_guide.directive.tone, yu_guide.directive.tone,
+        "무백('{}')과 교룡('{}')의 어조가 달라야 함",
+        li_guide.directive.tone, yu_guide.directive.tone);
+
+    // 태도도 달라야 함
+    assert_ne!(li_guide.directive.attitude, yu_guide.directive.attitude,
+        "무백('{}')과 교룡('{}')의 태도가 달라야 함",
+        li_guide.directive.attitude, yu_guide.directive.attitude);
+}
