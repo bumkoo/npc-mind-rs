@@ -269,10 +269,72 @@ pub struct Situation {
 /// HEXACO 성격을 가중치로 사용하여 상황에서 OCC 감정을 생성
 pub struct AppraisalEngine;
 
+/// 현재 감정 상태가 새 평가에 미치는 영향 계수
+struct EmotionalMomentum {
+    /// 기존 부정 감정이 새 부정 감정을 증폭 (0.0 ~ 0.5)
+    negative_bias: f32,
+    /// 기존 긍정 감정이 새 긍정 감정을 증폭 (0.0 ~ 0.3)
+    positive_bias: f32,
+    /// 기존 Anger가 patience 브레이크를 약화 (0.0 ~ 0.5)
+    anger_erosion: f32,
+    /// 기존 Fear/Distress가 감정 민감도를 높임 (0.0 ~ 0.3)
+    sensitivity_boost: f32,
+}
+
+impl EmotionalMomentum {
+    fn from_state(state: &EmotionState) -> Self {
+        let anger_intensity = state.emotions.iter()
+            .find(|e| e.emotion_type == EmotionType::Anger)
+            .map_or(0.0, |e| e.intensity);
+
+        let distress_intensity = state.emotions.iter()
+            .find(|e| e.emotion_type == EmotionType::Distress)
+            .map_or(0.0, |e| e.intensity);
+
+        let fear_intensity = state.emotions.iter()
+            .find(|e| e.emotion_type == EmotionType::Fear)
+            .map_or(0.0, |e| e.intensity);
+
+        let _joy_intensity = state.emotions.iter()
+            .find(|e| e.emotion_type == EmotionType::Joy)
+            .map_or(0.0, |e| e.intensity);
+
+        let valence = state.overall_valence();
+
+        Self {
+            // 전체 valence가 부정적이면 새 부정 감정 증폭
+            negative_bias: valence.min(0.0).abs() * 0.5,
+            // 전체 valence가 긍정적이면 새 긍정 감정 약간 증폭
+            positive_bias: valence.max(0.0) * 0.3,
+            // 기존 Anger가 patience 효과를 갉아먹음
+            anger_erosion: anger_intensity * 0.5,
+            // 기존 Fear/Distress가 감정 민감도를 높임
+            sensitivity_boost: ((fear_intensity + distress_intensity) / 2.0) * 0.3,
+        }
+    }
+
+}
+
 impl AppraisalEngine {
-    /// 성격 + 상황 → 감정 상태 생성
+    /// 성격 + 상황 → 감정 상태 생성 (1회성, 이전 맥락 없음)
     pub fn appraise(personality: &HexacoProfile, situation: &Situation) -> EmotionState {
-        let mut state = EmotionState::new();
+        Self::appraise_with_context(personality, situation, &EmotionState::new())
+    }
+
+    /// 성격 + 상황 + 현재 감정 → 업데이트된 감정 상태
+    ///
+    /// 대화 중 감정 변화의 핵심:
+    /// - 현재 감정이 새 평가의 가중치로 작용
+    /// - 이미 화난 상태에서 추가 자극 → 분노가 더 쉽게 폭발
+    /// - 이미 기쁜 상태에서 좋은 소식 → 기쁨이 더 증폭
+    /// - 새 감정은 기존 감정 위에 누적(add)됨
+    pub fn appraise_with_context(
+        personality: &HexacoProfile,
+        situation: &Situation,
+        current_state: &EmotionState,
+    ) -> EmotionState {
+        let momentum = EmotionalMomentum::from_state(current_state);
+        let mut state = current_state.clone();
 
         match &situation.focus {
             SituationFocus::Event {
@@ -282,7 +344,7 @@ impl AppraisalEngine {
                 prior_expectation,
             } => {
                 Self::appraise_event(
-                    personality, &mut state,
+                    personality, &mut state, &momentum,
                     *desirability_for_self,
                     *desirability_for_other,
                     *is_prospective,
@@ -295,7 +357,7 @@ impl AppraisalEngine {
                 outcome_for_self,
             } => {
                 Self::appraise_action(
-                    personality, &mut state,
+                    personality, &mut state, &momentum,
                     *is_self_agent,
                     *praiseworthiness,
                     *outcome_for_self,
@@ -303,7 +365,7 @@ impl AppraisalEngine {
             }
             SituationFocus::Object { appealingness } => {
                 Self::appraise_object(
-                    personality, &mut state,
+                    personality, &mut state, &momentum,
                     *appealingness,
                 );
             }
@@ -315,6 +377,7 @@ impl AppraisalEngine {
     fn appraise_event(
         p: &HexacoProfile,
         state: &mut EmotionState,
+        m: &EmotionalMomentum,
         desirability_self: f32,
         desirability_other: Option<f32>,
         is_prospective: bool,
@@ -323,11 +386,14 @@ impl AppraisalEngine {
         let avg = p.dimension_averages();
 
         // E(정서성): 감정 반응의 전반적 증폭. 높으면 더 강하게 느낌
-        let emotional_amp = 1.0 + avg.e.abs() * 0.3;
+        // + 기존 Fear/Distress가 민감도를 높임
+        let emotional_amp = 1.0 + avg.e.abs() * 0.3 + m.sensitivity_boost;
         // X(외향성): 긍정 감정 증폭. 높으면 기쁨이 더 강함
-        let positive_amp = 1.0 + avg.x.max(0.0) * 0.3;
+        // + 기존 긍정 감정이 긍정 반응을 증폭
+        let positive_amp = 1.0 + avg.x.max(0.0) * 0.3 + m.positive_bias;
         // A(원만성): 부정 감정 완화/증폭. 높으면 부정 감정 약화
-        let anger_mod = 1.0 - avg.a * 0.4; // A 높으면 분노 약화
+        // + 기존 Anger가 patience 브레이크를 갉아먹음
+        let anger_mod = (1.0 - avg.a * 0.4) + m.anger_erosion + m.negative_bias;
         // C(성실성): prudence가 즉각 반응 억제
         let impulse_mod = 1.0 - p.conscientiousness.prudence.value().max(0.0) * 0.3;
 
@@ -420,6 +486,7 @@ impl AppraisalEngine {
     fn appraise_action(
         p: &HexacoProfile,
         state: &mut EmotionState,
+        m: &EmotionalMomentum,
         is_self_agent: bool,
         praiseworthiness: f32,
         outcome_for_self: Option<f32>,
@@ -449,8 +516,9 @@ impl AppraisalEngine {
                 state.add(Emotion::new(EmotionType::Admiration,
                     praiseworthiness * standards_amp));
             } else {
-                // A(원만성) 낮으면 비난이 강화
-                let reproach_amp = 1.0 - p.agreeableness.gentleness.value() * 0.3;
+                // A(원만성) 낮으면 비난이 강화 + 기존 부정감정이 비난 증폭
+                let reproach_amp = (1.0 - p.agreeableness.gentleness.value() * 0.3)
+                    + m.negative_bias;
                 state.add(Emotion::new(EmotionType::Reproach,
                     praiseworthiness.abs() * reproach_amp));
             }
@@ -478,8 +546,10 @@ impl AppraisalEngine {
                 } else if praiseworthiness < 0.0 && outcome < 0.0 {
                     // 타인의 나쁜 행동 + 나에게 나쁜 결과 → Anger
                     // A↓이면 분노 증폭, patience↓이면 더 강하게
-                    let anger_amp = 1.0
-                        - p.agreeableness.patience.value() * 0.4;
+                    // + 기존 Anger가 patience 브레이크를 약화시킴
+                    let anger_amp = (1.0
+                        - p.agreeableness.patience.value() * 0.4)
+                        + m.anger_erosion + m.negative_bias;
                     state.add(Emotion::new(EmotionType::Anger,
                         (praiseworthiness.abs() + outcome.abs()) / 2.0 * anger_amp));
                 }
@@ -491,6 +561,7 @@ impl AppraisalEngine {
     fn appraise_object(
         p: &HexacoProfile,
         state: &mut EmotionState,
+        _m: &EmotionalMomentum,
         appealingness: f32,
     ) {
         // O(개방성): 미적 감상력이 높으면 대상에 대한 반응 증폭

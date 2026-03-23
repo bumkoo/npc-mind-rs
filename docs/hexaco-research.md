@@ -263,6 +263,7 @@ HEXACO 성격이 OCC appraisal(평가)의 가중치 역할을 한다:
 ### TODO
 
 - [x] 2사이클: OCC 감정 모델 (`src/domain/emotion.rs`)
+- [x] 2.5사이클: 대화 중 감정 변화 (`appraise_with_context`, `EmotionalMomentum`)
 - [ ] 3사이클: 감정 → LLM 프롬프트 가이드 생성
 - [ ] 4사이클: fastembed(bge-m3) 기반 감정 분류 + aho-corasick 키워드 탐지
 - [ ] Altruism interstitial facet 추가 검토
@@ -276,3 +277,4 @@ HEXACO 성격이 OCC appraisal(평가)의 가중치 역할을 한다:
 | 0.1.0 | 2026-03-23 | 초기 작성. HEXACO 6×4 구조, 채점 방식, Big Five 비교, -1~1 범위 근거 정리 |
 | 0.1.1 | 2026-03-23 | 4인 캐릭터 프로필 추가 (무백, 수련, 교룡, 소호) |
 | 0.1.2 | 2026-03-23 | OCC 연결 설계, TODO, 버전 이력 추가 |
+| 0.2.0 | 2026-03-23 | 2.5사이클(대화 중 감정 변화) TODO 반영 |
