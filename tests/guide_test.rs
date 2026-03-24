@@ -2,61 +2,13 @@
 //!
 //! 4인 캐릭터의 같은 상황에서 다른 연기 가이드가 생성되는지 검증
 
-use npc_mind::domain::personality::*;
+mod common;
+
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
 use npc_mind::ports::GuideFormatter;
 use npc_mind::presentation::korean::KoreanFormatter;
-
-fn score(v: f32) -> Score {
-    Score::new(v, "").unwrap()
-}
-
-fn make_무백() -> Npc {
-    let s = score;
-    NpcBuilder::new("mu_baek", "무백")
-        .description("정의로운 검객. 의리와 절제를 중시한다.")
-        .honesty_humility(|h| {
-            h.sincerity = s(0.8); h.fairness = s(0.7);
-            h.greed_avoidance = s(0.6); h.modesty = s(0.5);
-        })
-        .emotionality(|e| {
-            e.fearfulness = s(-0.6); e.anxiety = s(-0.4);
-            e.dependence = s(-0.7); e.sentimentality = s(0.2);
-        })
-        .agreeableness(|a| {
-            a.forgiveness = s(0.6); a.gentleness = s(0.7);
-            a.flexibility = s(0.2); a.patience = s(0.8);
-        })
-        .conscientiousness(|c| {
-            c.organization = s(0.4); c.diligence = s(0.8);
-            c.perfectionism = s(0.6); c.prudence = s(0.7);
-        })
-        .build()
-}
-
-fn make_교룡() -> Npc {
-    let s = score;
-    NpcBuilder::new("gyo_ryong", "교룡")
-        .description("야심적인 여검객. 자유를 갈망하며 관습을 거부한다.")
-        .honesty_humility(|h| {
-            h.sincerity = s(-0.4); h.fairness = s(-0.5);
-            h.greed_avoidance = s(-0.6); h.modesty = s(-0.7);
-        })
-        .extraversion(|x| {
-            x.social_self_esteem = s(0.7); x.social_boldness = s(0.8);
-            x.sociability = s(0.0); x.liveliness = s(0.6);
-        })
-        .agreeableness(|a| {
-            a.forgiveness = s(-0.6); a.gentleness = s(-0.5);
-            a.flexibility = s(-0.4); a.patience = s(-0.7);
-        })
-        .openness(|o| {
-            o.aesthetic_appreciation = s(0.6); o.inquisitiveness = s(0.8);
-            o.creativity = s(0.7); o.unconventionality = s(0.9);
-        })
-        .build()
-}
+use common::{make_무백, make_교룡};
 
 // ---------------------------------------------------------------------------
 // 성격 스냅샷 테스트 (도메인)
