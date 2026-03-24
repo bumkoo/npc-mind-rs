@@ -12,7 +12,13 @@ use super::emotion::{EmotionState, EmotionType};
 use super::personality::{HexacoProfile, Npc};
 
 /// 감정의 유의미 판단 기준 (이 이상이면 연기에 반영)
-const EMOTION_THRESHOLD: f32 = 0.2;
+pub const EMOTION_THRESHOLD: f32 = 0.2;
+/// 성격 특성 추출 임계값 (차원 평균이 이 이상이면 두드러진 특성으로 판단)
+pub const TRAIT_THRESHOLD: f32 = 0.3;
+/// 연기 지시 분위기 판단 임계값
+const MOOD_THRESHOLD: f32 = 0.3;
+/// 정직성(H)이 높을 때 거짓말 금지 제약 발동 임계값
+const HONESTY_RESTRICTION_THRESHOLD: f32 = 0.5;
 
 // ---------------------------------------------------------------------------
 // 어조 열거형
@@ -211,59 +217,60 @@ impl PersonalitySnapshot {
     /// HEXACO 프로필에서 두드러지는 특성을 추출
     pub fn from_profile(profile: &HexacoProfile) -> Self {
         let avg = profile.dimension_averages();
+        let t = TRAIT_THRESHOLD;
         let mut traits = Vec::new();
         let mut styles = Vec::new();
 
         // H: 정직-겸손성
-        if avg.h > 0.3 {
+        if avg.h > t {
             traits.push(PersonalityTrait::HonestAndModest);
             styles.push(SpeechStyle::FrankAndUnadorned);
-        } else if avg.h < -0.3 {
+        } else if avg.h < -t {
             traits.push(PersonalityTrait::CunningAndAmbitious);
             styles.push(SpeechStyle::HidesInnerThoughts);
         }
 
         // E: 정서성
-        if avg.e > 0.3 {
+        if avg.e > t {
             traits.push(PersonalityTrait::EmotionalAndAnxious);
             styles.push(SpeechStyle::ExpressiveAndWorried);
-        } else if avg.e < -0.3 {
+        } else if avg.e < -t {
             traits.push(PersonalityTrait::BoldAndIndependent);
             styles.push(SpeechStyle::CalmAndComposed);
         }
 
         // X: 외향성
-        if avg.x > 0.3 {
+        if avg.x > t {
             traits.push(PersonalityTrait::ConfidentAndSociable);
             styles.push(SpeechStyle::ActiveAndForceful);
-        } else if avg.x < -0.3 {
+        } else if avg.x < -t {
             traits.push(PersonalityTrait::IntrovertedAndQuiet);
             styles.push(SpeechStyle::BriefAndConcise);
         }
 
         // A: 원만성
-        if avg.a > 0.3 {
+        if avg.a > t {
             traits.push(PersonalityTrait::TolerantAndGentle);
             styles.push(SpeechStyle::SoftAndConsiderate);
-        } else if avg.a < -0.3 {
+        } else if avg.a < -t {
             traits.push(PersonalityTrait::GrudgingAndCritical);
             styles.push(SpeechStyle::SharpAndDirect);
         }
 
         // C: 성실성
-        if avg.c > 0.3 {
+        if avg.c > t {
             traits.push(PersonalityTrait::SystematicAndDiligent);
             styles.push(SpeechStyle::LogicalAndRational);
-        } else if avg.c < -0.3 {
+        } else if avg.c < -t {
             traits.push(PersonalityTrait::FreeAndImpulsive);
             styles.push(SpeechStyle::UnfilteredAndSpontaneous);
         }
 
         // O: 개방성
-        if avg.o > 0.3 {
+        if avg.o > t {
             traits.push(PersonalityTrait::CuriousAndCreative);
             styles.push(SpeechStyle::MetaphoricalAndUnique);
-        } else if avg.o < -0.3 {
+        } else if avg.o < -t {
             traits.push(PersonalityTrait::TraditionalAndConservative);
             styles.push(SpeechStyle::FormalAndTraditional);
         }
@@ -339,23 +346,24 @@ impl ActingDirective {
         let significant = state.significant(EMOTION_THRESHOLD);
 
         // --- 어조 결정 ---
+        let t = TRAIT_THRESHOLD;
         let tone = match dominant.map(|e| e.emotion_type()) {
             Some(EmotionType::Anger) => {
-                if avg.c > 0.3 { Tone::SuppressedCold }
+                if avg.c > t { Tone::SuppressedCold }
                 else { Tone::RoughAggressive }
             }
             Some(EmotionType::Distress) => {
-                if avg.e > 0.3 { Tone::AnxiousTrembling }
+                if avg.e > t { Tone::AnxiousTrembling }
                 else { Tone::SomberRestrained }
             }
             Some(EmotionType::Joy) => Tone::BrightLively,
             Some(EmotionType::Fear) => {
-                if avg.e < -0.3 { Tone::VigilantCalm }
+                if avg.e < -t { Tone::VigilantCalm }
                 else { Tone::TenseAnxious }
             }
             Some(EmotionType::Shame) => Tone::ShrinkingSmall,
             Some(EmotionType::Pride) => {
-                if avg.h > 0.3 { Tone::QuietConfidence }
+                if avg.h > t { Tone::QuietConfidence }
                 else { Tone::ProudArrogant }
             }
             Some(EmotionType::Reproach) => Tone::CynicalCritical,
@@ -364,15 +372,15 @@ impl ActingDirective {
             Some(EmotionType::Resentment) => Tone::JealousBitter,
             Some(EmotionType::Pity) => Tone::CompassionateSoft,
             _ => {
-                if mood > 0.2 { Tone::RelaxedGentle }
-                else if mood < -0.2 { Tone::Heavy }
+                if mood > EMOTION_THRESHOLD { Tone::RelaxedGentle }
+                else if mood < -EMOTION_THRESHOLD { Tone::Heavy }
                 else { Tone::Calm }
             }
         };
 
         // --- 태도 결정 ---
         let attitude = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
-            if avg.a < -0.3 {
+            if avg.a < -t {
                 Attitude::HostileAggressive
             } else {
                 Attitude::SuppressedDiscomfort
@@ -381,9 +389,9 @@ impl ActingDirective {
             Attitude::Judgmental
         } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
             Attitude::GuardedDefensive
-        } else if mood > 0.3 {
+        } else if mood > MOOD_THRESHOLD {
             Attitude::FriendlyOpen
-        } else if mood < -0.3 {
+        } else if mood < -MOOD_THRESHOLD {
             Attitude::DefensiveClosed
         } else {
             Attitude::NeutralObservant
@@ -391,22 +399,22 @@ impl ActingDirective {
 
         // --- 행동 경향 결정 ---
         let behavioral_tendency = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
-            if avg.c < -0.3 {
+            if avg.c < -t {
                 BehavioralTendency::ImmediateConfrontation
-            } else if avg.c > 0.3 {
+            } else if avg.c > t {
                 BehavioralTendency::StrategicResponse
             } else {
                 BehavioralTendency::ExpressAndObserve
             }
         } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
-            if avg.e < -0.3 {
+            if avg.e < -t {
                 BehavioralTendency::BraveConfrontation
             } else {
                 BehavioralTendency::SeekSafety
             }
         } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Shame) {
             BehavioralTendency::AvoidOrDeflect
-        } else if mood > 0.3 {
+        } else if mood > MOOD_THRESHOLD {
             BehavioralTendency::ActiveCooperation
         } else {
             BehavioralTendency::ObserveAndRespond
@@ -415,7 +423,7 @@ impl ActingDirective {
         // --- 금지 사항 결정 ---
         let mut restrictions = Vec::new();
 
-        if mood < -0.3 {
+        if mood < -MOOD_THRESHOLD {
             restrictions.push(Restriction::NoHumorOrLightTone);
         }
         if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
@@ -427,7 +435,7 @@ impl ActingDirective {
         if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
             restrictions.push(Restriction::NoBravado);
         }
-        if avg.h > 0.5 {
+        if avg.h > HONESTY_RESTRICTION_THRESHOLD {
             restrictions.push(Restriction::NoLyingOrExaggeration);
         }
 
