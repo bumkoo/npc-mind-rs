@@ -1,11 +1,11 @@
-﻿//! OCC 감정 모델 (Ortony, Clore, Collins, 1988)
+//! OCC 감정 모델 (Ortony, Clore, Collins, 1988)
 //!
 //! 22개 감정 유형을 3개 분기로 분류:
 //! 1. Event-based: 사건의 결과에 대한 반응 (joy, distress, hope, fear 등)
 //! 2. Action-based: 행위자의 행동에 대한 반응 (pride, shame, admiration 등)
 //! 3. Object-based: 대상에 대한 반응 (love, hate)
 //!
-//! 각 감정은 intensity(-1.0 ~ 1.0)를 가지며,
+//! 각 감정은 intensity(0.0 ~ 1.0)를 가지며,
 //! HEXACO 성격이 appraisal 가중치로 작용하여 감정 강도를 조절한다.
 
 use serde::{Deserialize, Serialize};
@@ -137,19 +137,36 @@ pub enum EmotionBranch {
 // ---------------------------------------------------------------------------
 
 /// 하나의 감정 인스턴스: 감정 유형 + 강도
+///
+/// 필드는 캡슐화되어 있으며, getter를 통해 접근한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Emotion {
-    pub emotion_type: EmotionType,
+    emotion_type: EmotionType,
     /// 감정 강도 (0.0 ~ 1.0, 0이면 느끼지 않음)
-    pub intensity: f32,
+    intensity: f32,
 }
 
 impl Emotion {
+    /// 감정 인스턴스 생성
+    ///
+    /// 강도는 의도적으로 0.0~1.0 범위로 클램핑된다.
+    /// AppraisalEngine이 성격 가중치 곱셈 과정에서 범위를 초과하는
+    /// 중간값을 생성할 수 있으므로, 정규화를 위해 클램핑을 사용한다.
     pub fn new(emotion_type: EmotionType, intensity: f32) -> Self {
         Self {
             emotion_type,
             intensity: intensity.clamp(0.0, 1.0),
         }
+    }
+
+    /// 감정 유형
+    pub fn emotion_type(&self) -> EmotionType {
+        self.emotion_type
+    }
+
+    /// 감정 강도 (0.0 ~ 1.0)
+    pub fn intensity(&self) -> f32 {
+        self.intensity
     }
 
     /// 이 감정이 유의미한지 (강도가 threshold 이상)
@@ -161,12 +178,17 @@ impl Emotion {
 /// NPC의 현재 감정 상태: 여러 감정의 조합
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EmotionState {
-    pub emotions: Vec<Emotion>,
+    emotions: Vec<Emotion>,
 }
 
 impl EmotionState {
     pub fn new() -> Self {
         Self { emotions: Vec::new() }
+    }
+
+    /// 감정 목록 접근
+    pub fn emotions(&self) -> &[Emotion] {
+        &self.emotions
     }
 
     /// 감정 추가 (같은 유형이면 강도 합산)
@@ -295,10 +317,6 @@ impl EmotionalMomentum {
             .find(|e| e.emotion_type == EmotionType::Fear)
             .map_or(0.0, |e| e.intensity);
 
-        let _joy_intensity = state.emotions.iter()
-            .find(|e| e.emotion_type == EmotionType::Joy)
-            .map_or(0.0, |e| e.intensity);
-
         let valence = state.overall_valence();
 
         Self {
@@ -312,13 +330,12 @@ impl EmotionalMomentum {
             sensitivity_boost: ((fear_intensity + distress_intensity) / 2.0) * 0.3,
         }
     }
-
 }
 
 impl AppraisalEngine {
     /// 성격 + 상황 → 감정 상태 생성 (1회성, 이전 맥락 없음)
     pub fn appraise(personality: &HexacoProfile, situation: &Situation) -> EmotionState {
-        Self::appraise_with_context(personality, situation, &EmotionState::new())
+        Self::evaluate(personality, situation, &EmotionState::new())
     }
 
     /// 성격 + 상황 + 현재 감정 → 업데이트된 감정 상태
@@ -329,6 +346,15 @@ impl AppraisalEngine {
     /// - 이미 기쁜 상태에서 좋은 소식 → 기쁨이 더 증폭
     /// - 새 감정은 기존 감정 위에 누적(add)됨
     pub fn appraise_with_context(
+        personality: &HexacoProfile,
+        situation: &Situation,
+        current_state: &EmotionState,
+    ) -> EmotionState {
+        Self::evaluate(personality, situation, current_state)
+    }
+
+    /// 내부 평가 구현 — appraise와 appraise_with_context의 공통 로직
+    fn evaluate(
         personality: &HexacoProfile,
         situation: &Situation,
         current_state: &EmotionState,
@@ -575,5 +601,24 @@ impl AppraisalEngine {
             state.add(Emotion::new(EmotionType::Hate,
                 appealingness.abs() * aesthetic_amp));
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Appraiser 포트 구현
+// ---------------------------------------------------------------------------
+
+impl crate::ports::Appraiser for AppraisalEngine {
+    fn appraise(&self, personality: &HexacoProfile, situation: &Situation) -> EmotionState {
+        Self::evaluate(personality, situation, &EmotionState::new())
+    }
+
+    fn appraise_with_context(
+        &self,
+        personality: &HexacoProfile,
+        situation: &Situation,
+        current_state: &EmotionState,
+    ) -> EmotionState {
+        Self::evaluate(personality, situation, current_state)
     }
 }

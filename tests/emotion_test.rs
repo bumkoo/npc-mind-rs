@@ -1,4 +1,4 @@
-﻿//! OCC 감정 모델 + HEXACO 연결 테스트
+//! OCC 감정 모델 + HEXACO 연결 테스트
 //!
 //! 무협 4인 캐릭터가 같은 상황에서 다른 감정을 보이는지 검증
 
@@ -110,9 +110,9 @@ fn make_소호() -> Npc {
 // ---------------------------------------------------------------------------
 
 fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    state.emotions.iter()
-        .find(|e| e.emotion_type == etype)
-        .map(|e| e.intensity)
+    state.emotions().iter()
+        .find(|e| e.emotion_type() == etype)
+        .map(|e| e.intensity())
 }
 
 fn has_emotion(state: &EmotionState, etype: EmotionType) -> bool {
@@ -121,7 +121,6 @@ fn has_emotion(state: &EmotionState, etype: EmotionType) -> bool {
 
 // ===========================================================================
 // 시나리오 1: "동료에게 배신당함"
-// Action(타인, 비난) + Event(자신에게 나쁜 결과) → Anger 복합감정
 // ===========================================================================
 
 #[test]
@@ -131,19 +130,16 @@ fn 배신_무백은_절제된_분노() {
         description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
         focus: SituationFocus::Action {
             is_self_agent: false,
-            praiseworthiness: -0.7,      // 매우 비난받을 행동
-            outcome_for_self: Some(-0.6), // 나에게 나쁜 결과
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
         },
     };
 
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
 
-    // Anger는 있지만 patience↑ 때문에 강도가 억제됨
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.0, "무백도 분노는 느낌: {}", anger);
     assert!(anger < 0.7, "하지만 patience↑로 억제됨: {}", anger);
-
-    // Reproach도 있지만 gentleness↑로 억제
     assert!(has_emotion(&state, EmotionType::Reproach));
 }
 
@@ -159,15 +155,13 @@ fn 배신_교룡은_폭발적_분노() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation);
 
-    // Anger가 매우 강함 — patience↓(-0.7)로 증폭
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.5, "교룡의 분노는 폭발적: {}", anger);
 
-    // 무백보다 분노가 더 강해야 함
     let li = make_무백();
-    let li_state = AppraisalEngine::appraise(&li.personality, &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
     let li_anger = find_emotion(&li_state, EmotionType::Anger).unwrap();
     assert!(anger > li_anger,
         "교룡({}) > 무백({}) 분노", anger, li_anger);
@@ -185,13 +179,12 @@ fn 배신_수련은_억눌린_고통() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&shu.personality, &situation);
+    let state = AppraisalEngine::appraise(shu.personality(), &situation);
 
-    // Anger는 있지만 patience↑(0.9)로 매우 억제
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     let yu = make_교룡();
     let yu_anger = find_emotion(
-        &AppraisalEngine::appraise(&yu.personality, &situation),
+        &AppraisalEngine::appraise(yu.personality(), &situation),
         EmotionType::Anger,
     ).unwrap();
     assert!(anger < yu_anger,
@@ -200,7 +193,6 @@ fn 배신_수련은_억눌린_고통() {
 
 // ===========================================================================
 // 시나리오 2: "적의 대군이 다가오고 있다" (미래 전망)
-// Event(전망, 부정) → Fear (성격에 따라 강도 차이)
 // ===========================================================================
 
 #[test]
@@ -216,10 +208,8 @@ fn 적_대군_무백은_담담한_두려움() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
     let fear = find_emotion(&state, EmotionType::Fear).unwrap();
-    // fearfulness↓(-0.6) → 두려움이 약화되지 않고 오히려 E의 낮음이
-    // emotional_amp를 줄여서 전체적으로 담담
     assert!(fear > 0.0, "두려움은 있음: {}", fear);
 }
 
@@ -236,15 +226,13 @@ fn 적_대군_소호는_두려움_없이_행동() {
         },
     };
 
-    let na_state = AppraisalEngine::appraise(&na.personality, &situation);
+    let na_state = AppraisalEngine::appraise(na.personality(), &situation);
     let na_fear = find_emotion(&na_state, EmotionType::Fear).unwrap();
-    // fearfulness가 극도로 낮아(-0.7) 두려움 증폭이 안 됨
     assert!(na_fear > 0.0, "소호도 기본 두려움은 있음: {}", na_fear);
 }
 
 // ===========================================================================
 // 시나리오 3: "라이벌이 무림맹주에 추대됨" (타인의 운)
-// Event(타인에게 좋은 일) → HappyFor vs Resentment
 // ===========================================================================
 
 #[test]
@@ -260,11 +248,9 @@ fn 라이벌_승진_무백은_대리기쁨() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
-    // H↑ + A↑ → HappyFor
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
     assert!(has_emotion(&state, EmotionType::HappyFor),
         "무백은 대리 기쁨을 느낌");
-    // H가 높으므로 Resentment 없음
     assert!(!has_emotion(&state, EmotionType::Resentment),
         "무백은 시기하지 않음");
 }
@@ -282,14 +268,13 @@ fn 라이벌_승진_교룡은_시기() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&yu.personality, &situation);
-    // H↓ → Resentment (시기)
+    let state = AppraisalEngine::appraise(yu.personality(), &situation);
     assert!(has_emotion(&state, EmotionType::Resentment),
         "교룡은 시기를 느낌");
 }
 
 // ===========================================================================
-// 시나리오 4: "해독약 구하기 실패" (전망 확인 — 희망 미실현)
+// 시나리오 4: "해독약 구하기 실패"
 // ===========================================================================
 
 #[test]
@@ -306,13 +291,12 @@ fn 해독약_실패_실망_강도_비교() {
         },
     };
 
-    let li_state = AppraisalEngine::appraise(&li.personality, &situation);
-    let shu_state = AppraisalEngine::appraise(&shu.personality, &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
+    let shu_state = AppraisalEngine::appraise(shu.personality(), &situation);
 
     let li_disap = find_emotion(&li_state, EmotionType::Disappointment).unwrap();
     let shu_disap = find_emotion(&shu_state, EmotionType::Disappointment).unwrap();
 
-    // 둘 다 실망을 느끼지만 감정 증폭 계수가 다름
     assert!(li_disap > 0.5, "무백도 깊은 실망: {}", li_disap);
     assert!(shu_disap > 0.5, "수련도 깊은 실망: {}", shu_disap);
 }
@@ -324,7 +308,6 @@ fn 해독약_실패_실망_강도_비교() {
 #[test]
 fn 감정_상태_전체_valence() {
     let yu = make_교룡();
-    // 배신 상황 → 부정적 감정 다수
     let situation = Situation {
         description: "배신".into(),
         focus: SituationFocus::Action {
@@ -334,7 +317,7 @@ fn 감정_상태_전체_valence() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation);
     let valence = state.overall_valence();
     assert!(valence < 0.0,
         "배신당한 교룡의 전체 감정은 부정적: {}", valence);
@@ -352,13 +335,12 @@ fn 감정_상태_dominant_감정() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation);
     let dom = state.dominant().unwrap();
-    // 교룡의 가장 강한 감정은 Anger 또는 Reproach
     assert!(
-        dom.emotion_type == EmotionType::Anger
-        || dom.emotion_type == EmotionType::Reproach,
-        "교룡의 지배 감정: {:?} (강도 {})", dom.emotion_type, dom.intensity
+        dom.emotion_type() == EmotionType::Anger
+        || dom.emotion_type() == EmotionType::Reproach,
+        "교룡의 지배 감정: {:?} (강도 {})", dom.emotion_type(), dom.intensity()
     );
 }
 
@@ -374,28 +356,22 @@ fn 감정_significant_필터링() {
         },
     };
 
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
     let significant = state.significant(0.2);
-    // 유의미한 감정만 필터링, 강도 내림차순
     assert!(!significant.is_empty(), "유의미한 감정이 있어야 함");
     for w in significant.windows(2) {
-        assert!(w[0].intensity >= w[1].intensity, "강도 내림차순");
+        assert!(w[0].intensity() >= w[1].intensity(), "강도 내림차순");
     }
 }
 
 // ===========================================================================
 // 시나리오 5: 대화 중 감정 변화 (appraise_with_context)
-// 무백이 교룡에게 검을 돌려달라고 하는 3턴 대화
 // ===========================================================================
 
-/// 턴1: "그 검을 돌려주시오" → 교룡: 약간 짜증
-/// 턴2: "그건 내 사부의 유품이오" → 교룡: 죄책감 추가
-/// 턴3: "도둑질이라 부를 수밖에" → 교룡: 분노 폭발 (기존 짜증이 증폭)
 #[test]
 fn 대화_교룡_3턴_감정_누적() {
     let yu = make_교룡();
 
-    // 턴1: 약간 불쾌한 요청
     let turn1 = Situation {
         description: "그 검을 돌려주시오".into(),
         focus: SituationFocus::Event {
@@ -405,43 +381,39 @@ fn 대화_교룡_3턴_감정_누적() {
             prior_expectation: None,
         },
     };
-    let state1 = AppraisalEngine::appraise(&yu.personality, &turn1);
+    let state1 = AppraisalEngine::appraise(yu.personality(), &turn1);
     let distress1 = find_emotion(&state1, EmotionType::Distress).unwrap_or(0.0);
     assert!(distress1 > 0.0, "턴1: 약간의 짜증: {}", distress1);
 
-    // 턴2: 죄책감을 자극하는 말 (타인의 비난 행동 평가)
     let turn2 = Situation {
         description: "그건 내 사부의 유품이오".into(),
         focus: SituationFocus::Action {
-            is_self_agent: true,         // 교룡 자신의 행동(도둑질)에 대한 평가
-            praiseworthiness: -0.4,      // 스스로도 약간 나쁘다고 느낌
+            is_self_agent: true,
+            praiseworthiness: -0.4,
             outcome_for_self: None,
         },
     };
     let state2 = AppraisalEngine::appraise_with_context(
-        &yu.personality, &turn2, &state1
+        yu.personality(), &turn2, &state1
     );
-    // 기존 Distress 위에 Shame 추가
     assert!(has_emotion(&state2, EmotionType::Shame),
         "턴2: 죄책감(Shame) 추가됨");
     assert!(has_emotion(&state2, EmotionType::Distress),
         "턴2: 턴1의 짜증(Distress)도 유지됨");
 
-    // 턴3: 직접적 비난 → 기존 부정 감정이 분노를 증폭
     let turn3 = Situation {
         description: "도둑질이라 부를 수밖에".into(),
         focus: SituationFocus::Action {
-            is_self_agent: false,        // 무백의 행동(비난)
-            praiseworthiness: -0.6,      // 비난하는 말
-            outcome_for_self: Some(-0.5),// 교룡의 자존심 상함
+            is_self_agent: false,
+            praiseworthiness: -0.6,
+            outcome_for_self: Some(-0.5),
         },
     };
     let state3 = AppraisalEngine::appraise_with_context(
-        &yu.personality, &turn3, &state2
+        yu.personality(), &turn3, &state2
     );
 
-    // 핵심 검증: 턴3의 Anger가 턴1에서 바로 턴3으로 간 것보다 더 강해야 함
-    let state3_no_context = AppraisalEngine::appraise(&yu.personality, &turn3);
+    let state3_no_context = AppraisalEngine::appraise(yu.personality(), &turn3);
     let anger_with_context = find_emotion(&state3, EmotionType::Anger).unwrap_or(0.0);
     let anger_no_context = find_emotion(&state3_no_context, EmotionType::Anger).unwrap_or(0.0);
 
@@ -450,7 +422,6 @@ fn 대화_교룡_3턴_감정_누적() {
         anger_with_context, anger_no_context);
 }
 
-/// 무백은 인내심이 강해서 대화가 누적되어도 분노 증폭이 적음
 #[test]
 fn 대화_무백은_누적되어도_절제() {
     let li = make_무백();
@@ -464,7 +435,7 @@ fn 대화_무백은_누적되어도_절제() {
             prior_expectation: None,
         },
     };
-    let state1 = AppraisalEngine::appraise(&li.personality, &turn1);
+    let state1 = AppraisalEngine::appraise(li.personality(), &turn1);
 
     let turn2 = Situation {
         description: "교룡이 무례하게 거절함".into(),
@@ -475,16 +446,15 @@ fn 대화_무백은_누적되어도_절제() {
         },
     };
     let state2 = AppraisalEngine::appraise_with_context(
-        &li.personality, &turn2, &state1
+        li.personality(), &turn2, &state1
     );
 
     let li_anger = find_emotion(&state2, EmotionType::Anger).unwrap_or(0.0);
 
-    // 교룡 같은 상황의 분노와 비교
     let yu = make_교룡();
-    let yu_state1 = AppraisalEngine::appraise(&yu.personality, &turn1);
+    let yu_state1 = AppraisalEngine::appraise(yu.personality(), &turn1);
     let yu_state2 = AppraisalEngine::appraise_with_context(
-        &yu.personality, &turn2, &yu_state1
+        yu.personality(), &turn2, &yu_state1
     );
     let yu_anger = find_emotion(&yu_state2, EmotionType::Anger).unwrap_or(0.0);
 
@@ -492,12 +462,10 @@ fn 대화_무백은_누적되어도_절제() {
         "2턴 누적 후에도 무백({}) < 교룡({}) 분노", li_anger, yu_anger);
 }
 
-/// 긍정 감정 누적: 좋은 소식이 연속되면 기쁨이 더 강해짐
 #[test]
 fn 대화_긍정_감정_누적() {
     let li = make_무백();
 
-    // 턴1: 좋은 소식
     let turn1 = Situation {
         description: "옛 동료가 살아 돌아왔다".into(),
         focus: SituationFocus::Event {
@@ -507,9 +475,8 @@ fn 대화_긍정_감정_누적() {
             prior_expectation: None,
         },
     };
-    let state1 = AppraisalEngine::appraise(&li.personality, &turn1);
+    let state1 = AppraisalEngine::appraise(li.personality(), &turn1);
 
-    // 턴2: 추가 좋은 소식 (기존 기쁨 위에 누적)
     let turn2 = Situation {
         description: "그 동료가 해독약도 가져왔다".into(),
         focus: SituationFocus::Event {
@@ -520,14 +487,13 @@ fn 대화_긍정_감정_누적() {
         },
     };
     let state2_with = AppraisalEngine::appraise_with_context(
-        &li.personality, &turn2, &state1
+        li.personality(), &turn2, &state1
     );
-    let state2_without = AppraisalEngine::appraise(&li.personality, &turn2);
+    let state2_without = AppraisalEngine::appraise(li.personality(), &turn2);
 
     let joy_with = find_emotion(&state2_with, EmotionType::Joy).unwrap_or(0.0);
     let joy_without = find_emotion(&state2_without, EmotionType::Joy).unwrap_or(0.0);
 
-    // 기존 기쁨 위에 누적되므로 더 강해야 함
     assert!(joy_with > joy_without,
         "연속 좋은 소식이면 기쁨이 더 강함: with={} > without={}",
         joy_with, joy_without);
