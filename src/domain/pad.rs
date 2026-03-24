@@ -104,3 +104,65 @@ pub fn emotion_to_pad(emotion: EmotionType) -> Pad {
         EmotionType::Hate            => Pad::new(-0.60,  0.60,  0.30),
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// PAD 앵커 텍스트 (3축 × 양극단 × 변형)
+// ---------------------------------------------------------------------------
+
+/// PAD 축 하나의 양극단 앵커 텍스트
+pub struct PadAxisAnchors {
+    /// 양극단 (+1.0 방향) 텍스트 변형들
+    pub positive: &'static [&'static str],
+    /// 음극단 (-1.0 방향) 텍스트 변형들
+    pub negative: &'static [&'static str],
+}
+
+/// P축: 쾌(Pleasure) ↔ 불쾌
+pub const PLEASURE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
+    positive: &[
+        "기쁘고 흐뭇하다",
+        "마음이 따뜻하고 행복하다",
+        "감사하고 만족스럽다",
+    ],
+    negative: &[
+        "괴롭고 불쾌하다",
+        "마음이 아프고 고통스럽다",
+        "분하고 원통하다",
+    ],
+};
+
+/// A축: 각성(Arousal) ↔ 이완
+pub const AROUSAL_ANCHORS: PadAxisAnchors = PadAxisAnchors {
+    positive: &[
+        "격앙되어 흥분한다",
+        "긴장되고 심장이 빠르게 뛴다",
+        "흥분하여 가만히 있을 수 없다",
+    ],
+    negative: &[
+        "차분하고 담담하다",
+        "평온하고 고요하다",
+        "편안하고 여유롭다",
+    ],
+};
+
+/// D축: 지배(Dominance) ↔ 복종
+pub const DOMINANCE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
+    positive: &[
+        "내가 주도한다, 물러서라",
+        "상황을 장악하고 있다",
+        "당당하고 자신감에 차 있다",
+    ],
+    negative: &[
+        "어찌할 바를 모르겠다",
+        "무력하고 속수무책이다",
+        "위축되어 아무것도 할 수 없다",
+    ],
+};
+
+/// 전체 PAD 앵커 세트 (3축)
+pub const PAD_ANCHORS: [&PadAxisAnchors; 3] = [
+    &PLEASURE_ANCHORS,
+    &AROUSAL_ANCHORS,
+    &DOMINANCE_ANCHORS,
+];

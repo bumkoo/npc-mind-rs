@@ -35,6 +35,15 @@ pub trait StimulusProcessor {
     ) -> EmotionState;
 }
 
+/// 대사 감정 분석 포트 — 플레이어 자유 입력 → PAD 변환
+///
+/// 대사 텍스트를 PAD 3축 좌표로 변환.
+/// fastembed 등 외부 임베딩 모델 어댑터가 이 트레이트를 구현.
+pub trait UtteranceAnalyzer {
+    /// 대사 텍스트 → PAD (Pleasure, Arousal, Dominance)
+    fn analyze(&mut self, utterance: &str) -> Pad;
+}
+
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환
 ///
 /// 다국어 지원, 다른 LLM 포맷 등 다양한 출력 형식을 제공할 수 있다.
