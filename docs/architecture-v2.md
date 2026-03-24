@@ -439,13 +439,22 @@ PAD 앵커는 **Situation focus에 무관하게 범용**.
 
 ```
 대사 텍스트
-  ├─ Aho-Corasick: 감정 키워드 신호 빠른 탐지 (힌트)
-  ├─ bge-m3: 대사 임베딩 → 6개 앵커와 유사도 계산
+  ├─ TextEmbedder: 대사 임베딩 → Vec<f32>
+  ├─ PadAnalyzer: 6개 앵커와 유사도 비교
   └─ → PAD(P, A, D) 출력
 ```
 
-bge-reranker는 PAD 추출에는 불필요 (앵커가 6개뿐이라 top-k 재순위가 필요 없음).
-Aho-Corasick은 보조 역할 (힌트 제공, 앵커 유사도에 가산점).
+임베딩 모델(bge-m3)이 문장 전체의 의미를 벡터로 인코딩하고,
+앵커 비교로 PAD 좌표를 추출한다. 단어 단위 키워드 매칭은 사용하지 않는다.
+
+> **Aho-Corasick 키워드 사전을 제외한 이유:**
+> 1. 단어에 PAD를 고정 태깅하는 것이 불가능 — 같은 "도둑질"도 문맥에 따라
+>    비난(D+)/피해(D-)/비꼼(P+) 등 PAD가 완전히 달라짐
+> 2. 키워드 PAD 값을 사람이 수동으로 매기면 주관적이고 임베딩 스케일과 혼합됨
+> 3. 한국어 어미 변형("죽이다"→"죽여라"→"죽였다")으로 정확 매칭의 한계가 큼
+> 4. 임베딩이 이미 문장 전체의 의미를 잡으므로 키워드 보조가 불필요
+>
+> PAD 값이 약한 경우 앵커 텍스트 확장으로 해결한다 (사이클 11).
 
 ### 감정 분류 도구 적용 대상
 
@@ -1079,20 +1088,15 @@ impl TextEmbedder for MockEmbedder { ... }
 
 | 도구 | 레이어 | 역할 |
 |------|--------|------|
-| bge-m3 (fastembed 또는 ort) | adapter | 텍스트 → 벡터 변환 |
+| bge-m3 (ort) | adapter | 텍스트 → 벡터 변환 |
 | PadAnalyzer | domain | 벡터 → PAD 변환 (앵커 비교) |
-| ahocorasick_rs | adapter | 키워드 탐지 → PAD 힌트 가산 |
 
 ### 파이프라인
 
 ```
 플레이어 대사
   │
-  ├─ [1단] Aho-Corasick (adapter): 키워드 신호 탐지
-  │   "도둑질" → 비난 힌트
-  │   "은혜" → 감사 힌트
-  │
-  ├─ [2단] TextEmbedder (adapter): 텍스트 → Vec<f32>
+  ├─ TextEmbedder (adapter): 텍스트 → Vec<f32>
   │   ↓
   │   PadAnalyzer (domain): 앵커 비교 → PAD
   │   sim(대사, P+) - sim(대사, P-) → P
@@ -1106,7 +1110,7 @@ impl TextEmbedder for MockEmbedder { ... }
 
 - PAD 앵커 텍스트 세트 정의 — `domain/pad.rs` (3축 × 2극 × N개 변형)
 - 앵커 임베딩 사전 계산 — `PadAnalyzer::new(embedder)` 초기화 시 1회
-- Aho-Corasick 키워드 사전 — `adapter/` (무협 도메인 특화)
+- 앵커 텍스트 무협 도메인 튜닝 — 사이클 11에서 확장
 
 ---
 
@@ -1229,7 +1233,7 @@ impl TextEmbedder for MockEmbedder { ... }
 | 9 | 대화 후 Relationship 갱신 메커니즘 | update_after_dialogue() | 사이클 4, 7 |
 | 10 | 임베딩 포트 앤드 어댑터 리팩터링 | TextEmbedder 포트, PadAnalyzer(도메인), FastembedEmbedder(어댑터) 분리 | 사이클 6 |
 | 10.5 | ort 어댑터 교체 (bge-m3-onnx-rust) | OrtEmbedder, fastembed 의존성 제거, 크레이트 605→~80 | 사이클 10 |
-| 11 | Aho-Corasick 키워드 사전 + PAD 힌트 통합 | 무협 도메인 키워드 사전, 힌트 가산 | 사이클 10 |
+| 11 | PAD 앵커 텍스트 확장 + 도메인 튜닝 | 앵커 변형 확대(축당 3→10+), 무협 도메인 특화 앵커, PAD 강도 검증 | 사이클 10 |
 
 ### 사이클 5 상세: AppraisalEngine 단순화 + Relationship 통합
 
@@ -1295,3 +1299,4 @@ let state1 = processor.apply_stimulus(
 | 0.5.0 | 2026-03-24 | AppraisalEngine 단순화. 상수 12개→3개(PERSONALITY_WEIGHT, EMPATHY_BASE, FORTUNE_THRESHOLD). 가중치 패턴 통일(1.0 ± facet × 0.3). Momentum 파라미터 제거. appraise_event/action/object 코드 수준 설계 포함 |
 | 0.6.0 | 2026-03-25 | 감정 분류 포트 앤드 어댑터 아키텍처. TextEmbedder 인프라 포트 분리, PadAnalyzer 도메인 서비스 분리, 어댑터 교체 가능(fastembed↔ort). 사이클 10→10+10.5 분리 |
 | 0.7.0 | 2026-03-25 | RelationshipRepository 포트 추가. 관계 영속화의 도메인 계약 정의. 데이터 흐름에 find/save 반영. 어댑터 구현은 미정(InMemory/File/Sqlite) |
+| 0.8.0 | 2026-03-25 | Aho-Corasick 키워드 사전 설계 제거. 단어 단위 PAD 태깅 불가(문맥 의존), 한국어 어미 변형 한계, 임베딩과 스케일 혼합 문제. 사이클 11을 PAD 앵커 텍스트 확장+도메인 튜닝으로 방향 전환 |
