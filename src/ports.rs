@@ -63,6 +63,22 @@ pub trait UtteranceAnalyzer {
     fn analyze(&mut self, utterance: &str) -> Pad;
 }
 
+/// 관계 저장소 포트 — NPC 간 관계의 영속화
+///
+/// 대화 종료 후 갱신된 Relationship를 저장하고,
+/// 다음 대화 시작 시 로드하는 책임.
+/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정.
+pub trait RelationshipRepository {
+    /// NPC→상대 관계 조회. 없으면 None.
+    fn find(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
+
+    /// NPC→상대 관계 저장 (생성 또는 갱신)
+    fn save(&mut self, owner_id: &str, relationship: &Relationship);
+
+    /// 특정 NPC의 모든 관계 조회
+    fn find_all(&self, owner_id: &str) -> Vec<Relationship>;
+}
+
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환
 ///
 /// 다국어 지원, 다른 LLM 포맷 등 다양한 출력 형식을 제공할 수 있다.

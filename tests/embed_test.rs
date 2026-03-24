@@ -14,9 +14,9 @@ use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::ports::UtteranceAnalyzer;
 
-/// 모델 경로 상수
-const MODEL_PATH: &str = "C:\\Users\\bumko\\projects\\models\\bge-m3\\model_quantized.onnx";
-const TOKENIZER_PATH: &str = "C:\\Users\\bumko\\projects\\models\\bge-m3\\tokenizer.json";
+/// 모델 경로 — 프로젝트 루트 기준 상대 경로
+const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
+const TOKENIZER_PATH: &str = "../models/bge-m3/tokenizer.json";
 
 /// PadAnalyzer 싱글턴 (모델 초기화가 무겁기 때문에 테스트 간 공유)
 fn shared_analyzer() -> &'static Mutex<PadAnalyzer> {

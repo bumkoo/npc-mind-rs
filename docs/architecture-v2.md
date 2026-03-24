@@ -299,6 +299,56 @@ pub fn update_after_dialogue(
   Relationship 갱신 판단
 ```
 
+### 영속화: RelationshipRepository 포트
+
+Relationship은 대화를 걸쳐 누적 변화하므로 **저장/로드가 필수**다.
+도메인 모델(`Relationship`, `update_after_dialogue`)은 순수 업무 규칙이고,
+실제 저장 방식(인메모리, 파일, DB)은 인프라 관심사이므로 포트로 분리한다.
+
+```rust
+/// 관계 저장소 포트 — NPC 간 관계의 영속화
+///
+/// 대화 종료 후 갱신된 Relationship를 저장하고,
+/// 다음 대화 시작 시 로드하는 책임.
+/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정.
+pub trait RelationshipRepository {
+    /// NPC→상대 관계 조회. 없으면 None.
+    fn find(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
+
+    /// NPC→상대 관계 저장 (생성 또는 갱신)
+    fn save(&mut self, owner_id: &str, relationship: &Relationship);
+
+    /// 특정 NPC의 모든 관계 조회
+    fn find_all(&self, owner_id: &str) -> Vec<Relationship>;
+}
+```
+
+대화 흐름에서의 위치:
+
+```
+대화 시작 시:
+  repo.find("gyo_ryong", "mu_baek")  → Relationship 로드
+      │
+      ▼
+  appraise(personality, situation, relationship) → 초기 EmotionState
+      │
+  ... 대화 진행 (Relationship 고정) ...
+      │
+대화 종료 후:
+  rel.update_after_dialogue(&final_state, &situation)
+      │
+      ▼
+  repo.save("gyo_ryong", &rel)  → 갱신된 Relationship 저장
+```
+
+어댑터 구현 예시 (나중에 추가):
+
+| 어댑터 | 용도 |
+|--------|------|
+| `InMemoryRelationshipRepo` | 프로토타입/테스트용 |
+| `FileRelationshipRepo` | 게임 세이브/로드 |
+| `SqliteRelationshipRepo` | 대규모 NPC 관계 관리 |
+
 ---
 
 ## 레이어4: PAD 자극 (신규)
@@ -642,6 +692,13 @@ pub trait StimulusProcessor {
 /// 대사 감정 분석 포트 — 플레이어 자유 입력 분석
 pub trait UtteranceAnalyzer {
     fn analyze(&self, utterance: &str) -> PAD;
+}
+
+/// 관계 저장소 포트 — NPC 간 관계의 영속화
+pub trait RelationshipRepository {
+    fn find(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
+    fn save(&mut self, owner_id: &str, relationship: &Relationship);
+    fn find_all(&self, owner_id: &str) -> Vec<Relationship>;
 }
 ```
 
@@ -1061,7 +1118,7 @@ impl TextEmbedder for MockEmbedder { ... }
 게임 시스템
   ├─ Situation 생성 (세계관 기준)
   ├─ HEXACO 조회 (NPC 고정 성격)
-  └─ Relationship 조회 (상대별 관계)
+  └─ RelationshipRepository.find(npc_id, target_id)  → Relationship 로드
         │
         ▼
   AppraisalEngine.appraise(personality, situation, relationship)
@@ -1100,10 +1157,15 @@ impl TextEmbedder for MockEmbedder { ... }
   최종 EmotionState + Situation
         │
         ▼
-  Relationship 갱신
+  Relationship.update_after_dialogue(final_state, situation)
     trust: Action의 praiseworthiness 기반 (점진적)
     closeness: 대화 감정 결과 기반 (매우 점진적)
     power: 변경 없음 (서사 이벤트에서만 변경)
+        │
+        ▼
+  RelationshipRepository.save(owner_id, &relationship)
+    갱신된 관계를 저장소에 영속화
+    다음 대화 시작 시 find()로 로드
 ```
 
 ---
@@ -1232,3 +1294,4 @@ let state1 = processor.apply_stimulus(
 | 0.4.0 | 2026-03-24 | apply_stimulus 단순화. emotion_state_to_pad/compute_receptivity/코사인유사도/StimulusModifier 구조체/X긍정증폭 삭제. pad_dot(단순 내적)+stimulus_absorb_rate(덧셈뺄셈) 2함수로 통합. 함수 3개 30줄 미만 |
 | 0.5.0 | 2026-03-24 | AppraisalEngine 단순화. 상수 12개→3개(PERSONALITY_WEIGHT, EMPATHY_BASE, FORTUNE_THRESHOLD). 가중치 패턴 통일(1.0 ± facet × 0.3). Momentum 파라미터 제거. appraise_event/action/object 코드 수준 설계 포함 |
 | 0.6.0 | 2026-03-25 | 감정 분류 포트 앤드 어댑터 아키텍처. TextEmbedder 인프라 포트 분리, PadAnalyzer 도메인 서비스 분리, 어댑터 교체 가능(fastembed↔ort). 사이클 10→10+10.5 분리 |
+| 0.7.0 | 2026-03-25 | RelationshipRepository 포트 추가. 관계 영속화의 도메인 계약 정의. 데이터 흐름에 find/save 반영. 어댑터 구현은 미정(InMemory/File/Sqlite) |
