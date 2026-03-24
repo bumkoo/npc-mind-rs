@@ -6,9 +6,14 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
+use npc_mind::domain::relationship::Relationship;
 use npc_mind::ports::GuideFormatter;
 use npc_mind::presentation::korean::KoreanFormatter;
 use common::{make_무백, make_교룡};
+
+fn neutral_rel() -> Relationship {
+    Relationship::neutral("test")
+}
 
 // ---------------------------------------------------------------------------
 // 성격 스냅샷 테스트 (도메인)
@@ -56,7 +61,7 @@ fn 배신_무백_가이드_절제된_분노() {
             outcome_for_self: Some(-0.6),
         },
     };
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -80,7 +85,7 @@ fn 배신_교룡_가이드_폭발적_분노() {
             outcome_for_self: Some(-0.6),
         },
     };
-    let state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()));
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -109,7 +114,7 @@ fn 가이드_프롬프트_구조_검증() {
             prior_expectation: None,
         },
     };
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -132,7 +137,7 @@ fn 가이드_json_출력() {
             praiseworthiness: -0.7,
             outcome_for_self: Some(-0.6),
         },
-    });
+    }, &neutral_rel());
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()));
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
@@ -162,8 +167,8 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
         },
     };
 
-    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
-    let yu_state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let yu_state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
 
     let li_guide = ActingGuide::build(&li, &li_state, None);
     let yu_guide = ActingGuide::build(&yu, &yu_state, None);

@@ -5,7 +5,13 @@
 mod common;
 
 use npc_mind::domain::emotion::*;
-use common::{make_무백, make_교룡, make_수련, make_소호};
+use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
+use common::{make_무백, make_교룡, make_수련, make_소호, score as s};
+
+/// 테스트용 중립 관계
+fn neutral_rel() -> Relationship {
+    Relationship::neutral("test")
+}
 
 // ---------------------------------------------------------------------------
 // 헬퍼: 감정 상태에서 특정 감정 찾기
@@ -37,7 +43,7 @@ fn 배신_무백은_절제된_분노() {
         },
     };
 
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.0, "무백도 분노는 느낌: {}", anger);
@@ -57,13 +63,13 @@ fn 배신_교룡은_폭발적_분노() {
         },
     };
 
-    let state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.5, "교룡의 분노는 폭발적: {}", anger);
 
     let li = make_무백();
-    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let li_anger = find_emotion(&li_state, EmotionType::Anger).unwrap();
     assert!(anger > li_anger,
         "교룡({}) > 무백({}) 분노", anger, li_anger);
@@ -81,12 +87,12 @@ fn 배신_수련은_억눌린_고통() {
         },
     };
 
-    let state = AppraisalEngine::appraise(shu.personality(), &situation);
+    let state = AppraisalEngine::appraise(shu.personality(), &situation, &neutral_rel());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     let yu = make_교룡();
     let yu_anger = find_emotion(
-        &AppraisalEngine::appraise(yu.personality(), &situation),
+        &AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel()),
         EmotionType::Anger,
     ).unwrap();
     assert!(anger < yu_anger,
@@ -110,7 +116,7 @@ fn 적_대군_무백은_담담한_두려움() {
         },
     };
 
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let fear = find_emotion(&state, EmotionType::Fear).unwrap();
     assert!(fear > 0.0, "두려움은 있음: {}", fear);
 }
@@ -128,7 +134,7 @@ fn 적_대군_소호는_두려움_없이_행동() {
         },
     };
 
-    let na_state = AppraisalEngine::appraise(na.personality(), &situation);
+    let na_state = AppraisalEngine::appraise(na.personality(), &situation, &neutral_rel());
     let na_fear = find_emotion(&na_state, EmotionType::Fear).unwrap();
     assert!(na_fear > 0.0, "소호도 기본 두려움은 있음: {}", na_fear);
 }
@@ -150,7 +156,7 @@ fn 라이벌_승진_무백은_대리기쁨() {
         },
     };
 
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     assert!(has_emotion(&state, EmotionType::HappyFor),
         "무백은 대리 기쁨을 느낌");
     assert!(!has_emotion(&state, EmotionType::Resentment),
@@ -170,7 +176,7 @@ fn 라이벌_승진_교룡은_시기() {
         },
     };
 
-    let state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     assert!(has_emotion(&state, EmotionType::Resentment),
         "교룡은 시기를 느낌");
 }
@@ -193,8 +199,8 @@ fn 해독약_실패_실망_강도_비교() {
         },
     };
 
-    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
-    let shu_state = AppraisalEngine::appraise(shu.personality(), &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let shu_state = AppraisalEngine::appraise(shu.personality(), &situation, &neutral_rel());
 
     let li_disap = find_emotion(&li_state, EmotionType::Disappointment).unwrap();
     let shu_disap = find_emotion(&shu_state, EmotionType::Disappointment).unwrap();
@@ -219,7 +225,7 @@ fn 감정_상태_전체_valence() {
         },
     };
 
-    let state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     let valence = state.overall_valence();
     assert!(valence < 0.0,
         "배신당한 교룡의 전체 감정은 부정적: {}", valence);
@@ -237,7 +243,7 @@ fn 감정_상태_dominant_감정() {
         },
     };
 
-    let state = AppraisalEngine::appraise(yu.personality(), &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     let dom = state.dominant().unwrap();
     assert!(
         dom.emotion_type() == EmotionType::Anger
@@ -258,7 +264,7 @@ fn 감정_significant_필터링() {
         },
     };
 
-    let state = AppraisalEngine::appraise(li.personality(), &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let significant = state.significant(0.2);
     assert!(!significant.is_empty(), "유의미한 감정이 있어야 함");
     for w in significant.windows(2) {
@@ -267,136 +273,127 @@ fn 감정_significant_필터링() {
 }
 
 // ===========================================================================
-// 시나리오 5: 대화 중 감정 변화 (appraise_with_context)
+// 시나리오 5: 대화 중 감정 변화 → 사이클 7(apply_stimulus)에서 재작성 예정
+// 기존 appraise_with_context 테스트 3개 삭제됨
+// ===========================================================================
+
+// ===========================================================================
+// 시나리오 6: Relationship이 감정 강도에 미치는 영향
 // ===========================================================================
 
 #[test]
-fn 대화_교룡_3턴_감정_누적() {
+fn 의형제의_배신이_남의_배신보다_분노가_큼() {
     let yu = make_교룡();
-
-    let turn1 = Situation {
-        description: "그 검을 돌려주시오".into(),
-        focus: SituationFocus::Event {
-            desirability_for_self: -0.3,
-            desirability_for_other: None,
-            is_prospective: false,
-            prior_expectation: None,
-        },
-    };
-    let state1 = AppraisalEngine::appraise(yu.personality(), &turn1);
-    let distress1 = find_emotion(&state1, EmotionType::Distress).unwrap_or(0.0);
-    assert!(distress1 > 0.0, "턴1: 약간의 짜증: {}", distress1);
-
-    let turn2 = Situation {
-        description: "그건 내 사부의 유품이오".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: true,
-            praiseworthiness: -0.4,
-            outcome_for_self: None,
-        },
-    };
-    let state2 = AppraisalEngine::appraise_with_context(
-        yu.personality(), &turn2, &state1
-    );
-    assert!(has_emotion(&state2, EmotionType::Shame),
-        "턴2: 죄책감(Shame) 추가됨");
-    assert!(has_emotion(&state2, EmotionType::Distress),
-        "턴2: 턴1의 짜증(Distress)도 유지됨");
-
-    let turn3 = Situation {
-        description: "도둑질이라 부를 수밖에".into(),
+    let situation = Situation {
+        description: "배신".into(),
         focus: SituationFocus::Action {
             is_self_agent: false,
-            praiseworthiness: -0.6,
-            outcome_for_self: Some(-0.5),
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
         },
     };
-    let state3 = AppraisalEngine::appraise_with_context(
-        yu.personality(), &turn3, &state2
-    );
 
-    let state3_no_context = AppraisalEngine::appraise(yu.personality(), &turn3);
-    let anger_with_context = find_emotion(&state3, EmotionType::Anger).unwrap_or(0.0);
-    let anger_no_context = find_emotion(&state3_no_context, EmotionType::Anger).unwrap_or(0.0);
+    let brother = RelationshipBuilder::new("brother")
+        .closeness(s(0.9))
+        .trust(s(0.8))
+        .build();
+    let stranger = Relationship::neutral("stranger");
 
-    assert!(anger_with_context > anger_no_context,
-        "대화 맥락이 있으면 분노가 더 강함: with={} > without={}",
-        anger_with_context, anger_no_context);
+    let state_brother = AppraisalEngine::appraise(yu.personality(), &situation, &brother);
+    let state_stranger = AppraisalEngine::appraise(yu.personality(), &situation, &stranger);
+
+    let anger_brother = find_emotion(&state_brother, EmotionType::Anger).unwrap();
+    let anger_stranger = find_emotion(&state_stranger, EmotionType::Anger).unwrap();
+
+    assert!(anger_brother > anger_stranger,
+        "의형제 배신({}) > 남 배신({}) 분노", anger_brother, anger_stranger);
 }
 
 #[test]
-fn 대화_무백은_누적되어도_절제() {
+fn 신뢰하던_상대의_배신이_기대위반으로_더_강함() {
     let li = make_무백();
-
-    let turn1 = Situation {
-        description: "교룡이 검을 돌려주지 않겠다고 함".into(),
-        focus: SituationFocus::Event {
-            desirability_for_self: -0.4,
-            desirability_for_other: None,
-            is_prospective: false,
-            prior_expectation: None,
-        },
-    };
-    let state1 = AppraisalEngine::appraise(li.personality(), &turn1);
-
-    let turn2 = Situation {
-        description: "교룡이 무례하게 거절함".into(),
+    let situation = Situation {
+        description: "배신".into(),
         focus: SituationFocus::Action {
             is_self_agent: false,
-            praiseworthiness: -0.5,
-            outcome_for_self: Some(-0.4),
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
         },
     };
-    let state2 = AppraisalEngine::appraise_with_context(
-        li.personality(), &turn2, &state1
-    );
 
-    let li_anger = find_emotion(&state2, EmotionType::Anger).unwrap_or(0.0);
+    // trust 높았는데 배신 → 기대 위반 → 감정 증폭
+    let trusted = RelationshipBuilder::new("trusted")
+        .trust(s(0.8))
+        .build();
+    // trust 낮았는데 배신 → 기대 부합 → 감정 완화
+    let distrusted = RelationshipBuilder::new("distrusted")
+        .trust(s(-0.5))
+        .build();
 
-    let yu = make_교룡();
-    let yu_state1 = AppraisalEngine::appraise(yu.personality(), &turn1);
-    let yu_state2 = AppraisalEngine::appraise_with_context(
-        yu.personality(), &turn2, &yu_state1
-    );
-    let yu_anger = find_emotion(&yu_state2, EmotionType::Anger).unwrap_or(0.0);
+    let state_trusted = AppraisalEngine::appraise(li.personality(), &situation, &trusted);
+    let state_distrusted = AppraisalEngine::appraise(li.personality(), &situation, &distrusted);
 
-    assert!(li_anger < yu_anger,
-        "2턴 누적 후에도 무백({}) < 교룡({}) 분노", li_anger, yu_anger);
+    let anger_trusted = find_emotion(&state_trusted, EmotionType::Anger).unwrap();
+    let anger_distrusted = find_emotion(&state_distrusted, EmotionType::Anger).unwrap();
+
+    assert!(anger_trusted > anger_distrusted,
+        "신뢰 배신({}) > 불신 배신({}) — 기대 위반 효과",
+        anger_trusted, anger_distrusted);
 }
 
 #[test]
-fn 대화_긍정_감정_누적() {
+fn 가까운_사이의_좋은_일에_더_기뻐함() {
     let li = make_무백();
-
-    let turn1 = Situation {
-        description: "옛 동료가 살아 돌아왔다".into(),
+    let situation = Situation {
+        description: "동료 승진".into(),
         focus: SituationFocus::Event {
-            desirability_for_self: 0.5,
-            desirability_for_other: None,
+            desirability_for_self: 0.0,
+            desirability_for_other: Some(0.8),
             is_prospective: false,
             prior_expectation: None,
         },
     };
-    let state1 = AppraisalEngine::appraise(li.personality(), &turn1);
 
-    let turn2 = Situation {
-        description: "그 동료가 해독약도 가져왔다".into(),
+    let close = RelationshipBuilder::new("close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
+
+    let happy_close = find_emotion(&state_close, EmotionType::HappyFor).unwrap();
+    let happy_distant = find_emotion(&state_distant, EmotionType::HappyFor).unwrap();
+
+    assert!(happy_close > happy_distant,
+        "가까운 사이({}) > 먼 사이({}) 대리기쁨", happy_close, happy_distant);
+}
+
+#[test]
+fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
+    let yu = make_교룡();
+    let situation = Situation {
+        description: "라이벌 승진".into(),
         focus: SituationFocus::Event {
-            desirability_for_self: 0.5,
-            desirability_for_other: None,
+            desirability_for_self: 0.0,
+            desirability_for_other: Some(0.8),
             is_prospective: false,
             prior_expectation: None,
         },
     };
-    let state2_with = AppraisalEngine::appraise_with_context(
-        li.personality(), &turn2, &state1
-    );
-    let state2_without = AppraisalEngine::appraise(li.personality(), &turn2);
 
-    let joy_with = find_emotion(&state2_with, EmotionType::Joy).unwrap_or(0.0);
-    let joy_without = find_emotion(&state2_without, EmotionType::Joy).unwrap_or(0.0);
+    let rival = RelationshipBuilder::new("rival")
+        .closeness(s(-0.7))
+        .build();
+    let nobody = Relationship::neutral("nobody");
 
-    assert!(joy_with > joy_without,
-        "연속 좋은 소식이면 기쁨이 더 강함: with={} > without={}",
-        joy_with, joy_without);
+    let state_rival = AppraisalEngine::appraise(yu.personality(), &situation, &rival);
+    let state_nobody = AppraisalEngine::appraise(yu.personality(), &situation, &nobody);
+
+    let resent_rival = find_emotion(&state_rival, EmotionType::Resentment).unwrap();
+    let resent_nobody = find_emotion(&state_nobody, EmotionType::Resentment).unwrap();
+
+    assert!(resent_rival > resent_nobody,
+        "라이벌({}) > 남({}) 시기 — closeness 절대값 효과",
+        resent_rival, resent_nobody);
 }

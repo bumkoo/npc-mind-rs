@@ -5,21 +5,33 @@
 
 use crate::domain::emotion::{EmotionState, Situation};
 use crate::domain::guide::ActingGuide;
+use crate::domain::pad::Pad;
 use crate::domain::personality::HexacoProfile;
+use crate::domain::relationship::Relationship;
 
-/// 감정 평가 포트 — HEXACO 성격 기반 OCC 감정 생성
+/// 감정 평가 포트 — HEXACO 성격 × Relationship 기반 OCC 감정 생성
 ///
-/// 다른 심리 모델로 교체하거나 테스트용 단순 구현을 제공할 수 있다.
+/// 상황 진입 시 1회 평가. 대화 중 감정 변동은 StimulusProcessor가 담당.
 pub trait Appraiser {
-    /// 성격 + 상황 → 감정 상태 (1회성, 이전 맥락 없음)
-    fn appraise(&self, personality: &HexacoProfile, situation: &Situation) -> EmotionState;
-
-    /// 성격 + 상황 + 현재 감정 → 업데이트된 감정 상태
-    fn appraise_with_context(
+    /// 성격 + 상황 + 관계 → 감정 상태 (상황 진입 시 1회)
+    fn appraise(
         &self,
         personality: &HexacoProfile,
         situation: &Situation,
+        relationship: &Relationship,
+    ) -> EmotionState;
+}
+
+/// 대사 자극 처리 포트 — 대화 매 턴 감정 변동
+///
+/// 기존 감정의 강도만 변동. 새 감정 생성 없음.
+pub trait StimulusProcessor {
+    /// 성격 + 현재 감정 + PAD 자극 → 갱신된 감정 상태
+    fn apply_stimulus(
+        &self,
+        personality: &HexacoProfile,
         current_state: &EmotionState,
+        stimulus: &Pad,
     ) -> EmotionState;
 }
 

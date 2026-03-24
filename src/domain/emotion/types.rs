@@ -212,6 +212,20 @@ impl EmotionState {
         result
     }
 
+    /// 특정 감정의 강도를 직접 설정 (apply_stimulus용)
+    pub fn set_intensity(&mut self, emotion_type: EmotionType, intensity: f32) {
+        if let Some(existing) = self.emotions.iter_mut()
+            .find(|e| e.emotion_type() == emotion_type)
+        {
+            existing.intensity = intensity.clamp(0.0, 1.0);
+        }
+    }
+
+    /// 특정 감정 제거 (자연 소멸, apply_stimulus용)
+    pub fn remove(&mut self, emotion_type: EmotionType) {
+        self.emotions.retain(|e| e.emotion_type() != emotion_type);
+    }
+
     /// 전체 감정 valence (양수=긍정적 상태, 음수=부정적 상태)
     pub fn overall_valence(&self) -> f32 {
         if self.emotions.is_empty() { return 0.0; }

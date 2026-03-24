@@ -11,7 +11,9 @@
 mod types;
 mod situation;
 mod engine;
+mod stimulus;
 
 pub use types::*;
 pub use situation::*;
 pub use engine::*;
+pub use stimulus::*;
