@@ -6,10 +6,10 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
-use npc_mind::domain::relationship::Relationship;
+use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
 use npc_mind::ports::GuideFormatter;
 use npc_mind::presentation::korean::KoreanFormatter;
-use common::{make_무백, make_교룡};
+use common::{make_무백, make_교룡, score as s};
 
 fn neutral_rel() -> Relationship {
     Relationship::neutral("test")
@@ -62,7 +62,7 @@ fn 배신_무백_가이드_절제된_분노() {
         },
     };
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
-    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -86,7 +86,7 @@ fn 배신_교룡_가이드_폭발적_분노() {
         },
     };
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
-    let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()));
+    let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -115,7 +115,7 @@ fn 가이드_프롬프트_구조_검증() {
         },
     };
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
-    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -138,7 +138,7 @@ fn 가이드_json_출력() {
             outcome_for_self: Some(-0.6),
         },
     }, &neutral_rel());
-    let guide = ActingGuide::build(&yu, &state, Some("배신".into()));
+    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), None);
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
 
@@ -170,8 +170,8 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
     let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let yu_state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
 
-    let li_guide = ActingGuide::build(&li, &li_state, None);
-    let yu_guide = ActingGuide::build(&yu, &yu_state, None);
+    let li_guide = ActingGuide::build(&li, &li_state, None, None);
+    let yu_guide = ActingGuide::build(&yu, &yu_state, None, None);
 
     assert_ne!(li_guide.directive.tone, yu_guide.directive.tone,
         "무백({:?})과 교룡({:?})의 어조가 달라야 함",
@@ -180,4 +180,94 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
     assert_ne!(li_guide.directive.attitude, yu_guide.directive.attitude,
         "무백({:?})과 교룡({:?})의 태도가 달라야 함",
         li_guide.directive.attitude, yu_guide.directive.attitude);
+}
+
+
+// ---------------------------------------------------------------------------
+// 관계 포함 가이드 테스트
+// ---------------------------------------------------------------------------
+
+#[test]
+fn 관계_포함_가이드_프롬프트에_관계_섹션() {
+    let li = make_무백();
+    let situation = Situation {
+        description: "동료의 배신".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    };
+
+    let brother = RelationshipBuilder::new("gyo_ryong")
+        .closeness(s(0.9))
+        .trust(s(0.8))
+        .power(s(0.0))
+        .build();
+
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &brother);
+    let guide = ActingGuide::build(&li, &state, Some("동료의 배신".into()), Some(&brother));
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
+
+    assert!(prompt.contains("[상대와의 관계]"), "관계 섹션 헤더: {}", prompt);
+    assert!(prompt.contains("친밀도"), "친밀도 라벨: {}", prompt);
+    assert!(prompt.contains("신뢰도"), "신뢰도 라벨: {}", prompt);
+    assert!(prompt.contains("상하 관계"), "상하 관계 라벨: {}", prompt);
+
+    println!("=== 의형제 배신 가이드 (관계 포함) ===\n{}", prompt);
+}
+
+#[test]
+fn 관계_포함_json에_관계_데이터() {
+    let yu = make_교룡();
+    let enemy = RelationshipBuilder::new("enemy")
+        .closeness(s(-0.7))
+        .trust(s(-0.8))
+        .power(s(0.0))
+        .build();
+
+    let state = AppraisalEngine::appraise(yu.personality(), &Situation {
+        description: "배신".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    }, &enemy);
+
+    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), Some(&enemy));
+    let formatter = KoreanFormatter::new();
+    let json = formatter.format_json(&guide).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert!(parsed["relationship"].is_object(), "JSON에 관계 데이터 포함");
+    assert!(parsed["relationship"]["target_name"].as_str() == Some("enemy"));
+    assert!(parsed["relationship"]["closeness"].is_string());
+    assert!(parsed["relationship"]["trust"].is_string());
+    assert!(parsed["relationship"]["power"].is_string());
+
+    println!("=== 숙적 배신 JSON (관계 포함) ===\n{}", json);
+}
+
+#[test]
+fn 관계_없으면_json에_관계_없음() {
+    let li = make_무백();
+    let state = AppraisalEngine::appraise(li.personality(), &Situation {
+        description: "좋은 소식".into(),
+        focus: SituationFocus::Event {
+            desirability_for_self: 0.6,
+            desirability_for_other: None,
+            is_prospective: false,
+            prior_expectation: None,
+        },
+    }, &neutral_rel());
+
+    let guide = ActingGuide::build(&li, &state, None, None);
+    let formatter = KoreanFormatter::new();
+    let json = formatter.format_json(&guide).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+
+    assert!(parsed.get("relationship").is_none(),
+        "관계 없으면 JSON에서 생략");
 }

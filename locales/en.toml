@@ -170,3 +170,22 @@ directive_tone = "Tone: {tone}"                              # 어조 포맷
 directive_attitude = "Attitude: {attitude}"                   # 태도 포맷
 directive_behavior = "Behavioral tendency: {behavior}"        # 행동 경향 포맷
 restriction_item = "- {restriction}"                         # 금지 사항 항목 포맷
+section_relationship = "[Relationship]"                       # 관계 섹션 헤더
+relationship_closeness = "Closeness: {level}"                 # 친밀도 포맷
+relationship_trust = "Trust: {level}"                         # 신뢰도 포맷
+relationship_power = "Power dynamic: {level}"                 # 상하 관계 포맷
+
+# ---------------------------------------------------------------------------
+# Relationship level labels
+# ---------------------------------------------------------------------------
+[relationship_level]
+VeryHigh = "very close"
+High = "close"
+Neutral = "neutral"
+Low = "distant"
+VeryLow = "hostile"
+
+[power_level]
+Superior = "superior"
+Equal = "equal"
+Subordinate = "subordinate"

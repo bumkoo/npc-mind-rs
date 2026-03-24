@@ -63,6 +63,14 @@ impl_variant_name!(Restriction, {
     NoBravado, NoLyingOrExaggeration,
 });
 
+impl_variant_name!(RelationshipLevel, {
+    VeryHigh, High, Neutral, Low, VeryLow,
+});
+
+impl_variant_name!(PowerLevel, {
+    Superior, Equal, Subordinate,
+});
+
 impl_variant_name!(PersonalityTrait, {
     HonestAndModest, CunningAndAmbitious, EmotionalAndAnxious,
     BoldAndIndependent, ConfidentAndSociable, IntrovertedAndQuiet,
@@ -104,6 +112,10 @@ pub struct LocaleBundle {
     pub personality_trait: HashMap<String, String>,
     /// 말투 스타일 번역 (SpeechStyle variant name → 번역)
     pub speech_style: HashMap<String, String>,
+    /// 관계 수준 번역 (RelationshipLevel variant name → 번역)
+    pub relationship_level: HashMap<String, String>,
+    /// 상하 관계 수준 번역 (PowerLevel variant name → 번역)
+    pub power_level: HashMap<String, String>,
     /// 폴백 텍스트 (특성/말투가 없을 때)
     pub fallback: FallbackLabels,
     /// 프롬프트 템플릿 (섹션 헤더, 포맷 패턴)
@@ -191,6 +203,14 @@ pub struct TemplateStrings {
     pub directive_behavior: String,
     /// 금지 사항 항목: "- {restriction}"
     pub restriction_item: String,
+    /// 관계 섹션: "[상대와의 관계]"
+    pub section_relationship: String,
+    /// 친밀도: "친밀도: {level}"
+    pub relationship_closeness: String,
+    /// 신뢰도: "신뢰도: {level}"
+    pub relationship_trust: String,
+    /// 상하 관계: "상하 관계: {level}"
+    pub relationship_power: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -261,6 +281,18 @@ impl LocaleBundle {
     pub fn speech_style_label(&self, s: &SpeechStyle) -> &str {
         let key = s.variant_name();
         self.speech_style.get(key).map(|s| s.as_str()).unwrap_or(key)
+    }
+
+    /// RelationshipLevel → 번역된 설명
+    pub fn relationship_level_label(&self, level: &RelationshipLevel) -> &str {
+        let key = level.variant_name();
+        self.relationship_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+    }
+
+    /// PowerLevel → 번역된 설명
+    pub fn power_level_label(&self, level: &PowerLevel) -> &str {
+        let key = level.variant_name();
+        self.power_level.get(key).map(|s| s.as_str()).unwrap_or(key)
     }
 
     /// 성격 특성 목록을 번역된 문장으로 조합

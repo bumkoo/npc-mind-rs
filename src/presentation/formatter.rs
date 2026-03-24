@@ -107,6 +107,21 @@ impl GuideFormatter for LocaleFormatter {
                     ("restriction", l.restriction_label(r)),
                 ]));
             }
+            lines.push(String::new());
+        }
+
+        // --- 관계 ---
+        if let Some(ref rel) = guide.relationship {
+            lines.push(l.render_template(&t.section_relationship, &[]));
+            lines.push(l.render_template(&t.relationship_closeness, &[
+                ("level", l.relationship_level_label(&rel.closeness_level)),
+            ]));
+            lines.push(l.render_template(&t.relationship_trust, &[
+                ("level", l.relationship_level_label(&rel.trust_level)),
+            ]));
+            lines.push(l.render_template(&t.relationship_power, &[
+                ("level", l.power_level_label(&rel.power_level)),
+            ]));
         }
 
         lines.join("\n")
@@ -142,6 +157,12 @@ impl GuideFormatter for LocaleFormatter {
                     .collect(),
             },
             situation_description: guide.situation_description.clone(),
+            relationship: guide.relationship.as_ref().map(|rel| LocaleRelationshipOutput {
+                target_name: rel.target_name.clone(),
+                closeness: l.relationship_level_label(&rel.closeness_level).to_string(),
+                trust: l.relationship_level_label(&rel.trust_level).to_string(),
+                power: l.power_level_label(&rel.power_level).to_string(),
+            }),
         };
 
         serde_json::to_string_pretty(&output)
@@ -161,6 +182,8 @@ struct LocaleGuideOutput {
     directive: LocaleDirectiveOutput,
     #[serde(skip_serializing_if = "Option::is_none")]
     situation_description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    relationship: Option<LocaleRelationshipOutput>,
 }
 
 #[derive(Serialize)]
@@ -183,4 +206,12 @@ struct LocaleDirectiveOutput {
     attitude: String,
     behavioral_tendency: String,
     restrictions: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct LocaleRelationshipOutput {
+    target_name: String,
+    closeness: String,
+    trust: String,
+    power: String,
 }

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::personality::HexacoProfile;
+use crate::domain::relationship::Relationship;
 
 use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD};
 use super::enums::{PersonalityTrait, SpeechStyle};
@@ -137,6 +138,84 @@ impl EmotionSnapshot {
             dominant,
             active_emotions,
             mood,
+        }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// 관계 스냅샷
+// ---------------------------------------------------------------------------
+
+/// 관계의 구조화된 요약 — 도메인 데이터
+///
+/// Score 값(-1.0~1.0)을 라벨 인덱스로 변환하여
+/// presentation 레이어에서 다국어 렌더링을 가능하게 한다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipSnapshot {
+    /// 상대방 이름/ID
+    pub target_name: String,
+    /// 친밀도 라벨 인덱스
+    pub closeness_level: RelationshipLevel,
+    /// 신뢰도 라벨 인덱스
+    pub trust_level: RelationshipLevel,
+    /// 상하 관계 라벨 인덱스
+    pub power_level: PowerLevel,
+}
+
+/// 관계 강도 수준 (closeness, trust 공용)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum RelationshipLevel {
+    /// > 0.6: 매우 높음
+    VeryHigh,
+    /// > 0.2: 높음
+    High,
+    /// > -0.2: 중립
+    Neutral,
+    /// > -0.6: 낮음
+    Low,
+    /// <= -0.6: 매우 낮음
+    VeryLow,
+}
+
+/// 상하 관계 수준
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum PowerLevel {
+    /// > 0.4: 상위자 (사부, 문주 등)
+    Superior,
+    /// > -0.4: 대등
+    Equal,
+    /// <= -0.4: 하위자 (제자 등)
+    Subordinate,
+}
+
+impl RelationshipLevel {
+    pub fn from_score(value: f32) -> Self {
+        if value > 0.6 { Self::VeryHigh }
+        else if value > 0.2 { Self::High }
+        else if value > -0.2 { Self::Neutral }
+        else if value > -0.6 { Self::Low }
+        else { Self::VeryLow }
+    }
+}
+
+impl PowerLevel {
+    pub fn from_score(value: f32) -> Self {
+        if value > 0.4 { Self::Superior }
+        else if value > -0.4 { Self::Equal }
+        else { Self::Subordinate }
+    }
+}
+
+
+impl RelationshipSnapshot {
+    /// Relationship에서 스냅샷 생성
+    pub fn from_relationship(rel: &Relationship) -> Self {
+        Self {
+            target_name: rel.target_id().to_string(),
+            closeness_level: RelationshipLevel::from_score(rel.closeness().value()),
+            trust_level: RelationshipLevel::from_score(rel.trust().value()),
+            power_level: PowerLevel::from_score(rel.power().value()),
         }
     }
 }

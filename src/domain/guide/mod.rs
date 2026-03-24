@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionState;
 use super::personality::Npc;
+use super::relationship::Relationship;
 
 /// 감정의 유의미 판단 기준 (이 이상이면 연기에 반영)
 pub const EMOTION_THRESHOLD: f32 = 0.2;
@@ -49,14 +50,17 @@ pub struct ActingGuide {
     pub directive: ActingDirective,
     /// 상황 설명 (있으면)
     pub situation_description: Option<String>,
+    /// 관계 스냅샷 (있으면)
+    pub relationship: Option<RelationshipSnapshot>,
 }
 
 impl ActingGuide {
-    /// NPC + EmotionState → ActingGuide 생성
+    /// NPC + EmotionState + Relationship → ActingGuide 생성
     pub fn build(
         npc: &Npc,
         state: &EmotionState,
         situation_desc: Option<String>,
+        relationship: Option<&Relationship>,
     ) -> Self {
         Self {
             npc_name: npc.name().to_string(),
@@ -65,6 +69,7 @@ impl ActingGuide {
             emotion: EmotionSnapshot::from_state(state),
             directive: ActingDirective::from_emotion_and_personality(state, npc.personality()),
             situation_description: situation_desc,
+            relationship: relationship.map(RelationshipSnapshot::from_relationship),
         }
     }
 }
