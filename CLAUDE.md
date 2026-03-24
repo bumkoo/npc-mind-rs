@@ -26,7 +26,12 @@ src/
   ports.rs                  # 포트 트레이트 (Appraiser, GuideFormatter)
   presentation/
     mod.rs                  # 프레젠테이션 모듈
-    korean.rs               # 한국어 포맷터 (KoreanFormatter)
+    locale.rs               # 로케일 번들 (TOML 로딩, VariantName 트레이트)
+    formatter.rs            # LocaleFormatter (언어 무관 포맷터)
+    korean.rs               # 한국어 포맷터 (KoreanFormatter — ko.toml 내장 래퍼)
+locales/
+  ko.toml                   # 한국어 로케일 (감정/어조/태도/템플릿 등)
+  en.toml                   # 영어 로케일
 tests/
   personality_test.rs       # 성격 모델 테스트
   emotion_test.rs           # 감정 엔진 테스트
@@ -59,7 +64,15 @@ guide.rs의 연기 지시는 문자열이 아닌 enum으로 타입화:
 - `Tone` (18종), `Attitude` (7종), `BehavioralTendency` (8종), `Restriction` (5종)
 - `PersonalityTrait` (12종), `SpeechStyle` (12종)
 
-텍스트 변환은 `presentation/korean.rs`의 `KoreanFormatter`가 담당.
+텍스트 변환은 TOML 로케일 파일 + `LocaleFormatter`가 담당.
+`KoreanFormatter`는 `ko.toml`을 내장한 편의 래퍼.
+
+### 다국어 지원 (TOML 로케일)
+
+`locales/` 디렉토리에 언어별 TOML 파일을 두고, `LocaleFormatter`로 로드:
+- `locales/ko.toml` — 한국어 (기본)
+- `locales/en.toml` — 영어
+- 새 언어 추가: TOML 파일만 작성하면 코드 변경 없이 지원
 
 ## 코드 컨벤션
 
@@ -76,4 +89,5 @@ guide.rs의 연기 지시는 문자열이 아닌 enum으로 타입화:
 
 - `serde` + `serde_json` — 직렬화
 - `thiserror` — 에러 타입 정의
+- `toml` — TOML 로케일 파일 파싱
 - `approx` (dev) — 부동소수점 비교 테스트

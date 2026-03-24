@@ -1,0 +1,172 @@
+# NPC Mind Engine — English Locale
+# Comments describe the Korean equivalent for reference.
+
+[meta]
+language = "en"       # 언어 코드
+name = "English"      # 언어 이름
+
+# ---------------------------------------------------------------------------
+# Intensity labels (f32 → qualitative expression)
+# ---------------------------------------------------------------------------
+[intensity]
+extreme = "extremely strong"    # 극도로 강한
+strong = "strong"               # 강한
+noticeable = "noticeable"       # 뚜렷한
+weak = "weak"                   # 약한
+faint = "faint"                 # 미미한
+
+# ---------------------------------------------------------------------------
+# Overall mood labels (mood f32 → qualitative expression)
+# ---------------------------------------------------------------------------
+[mood]
+very_positive = "very positive"   # 매우 긍정적
+positive = "positive"             # 긍정적
+neutral = "neutral"               # 중립적
+negative = "negative"             # 부정적
+very_negative = "very negative"   # 매우 부정적
+
+# ---------------------------------------------------------------------------
+# Emotion types (EmotionType enum variant → English name)
+# ---------------------------------------------------------------------------
+[emotion]
+Joy = "joy"                       # 기쁨
+Distress = "distress"             # 고통
+HappyFor = "happy-for"            # 대리기쁨
+Pity = "pity"                     # 동정
+Gloating = "gloating"             # 고소함
+Resentment = "resentment"         # 시기
+Hope = "hope"                     # 희망
+Fear = "fear"                     # 두려움
+Satisfaction = "satisfaction"      # 만족
+Disappointment = "disappointment"  # 실망
+Relief = "relief"                 # 안도
+FearsConfirmed = "fears confirmed" # 공포확인
+Pride = "pride"                   # 자부심
+Shame = "shame"                   # 수치심
+Admiration = "admiration"         # 감탄
+Reproach = "reproach"             # 비난
+Gratification = "gratification"    # 뿌듯함
+Remorse = "remorse"               # 후회
+Gratitude = "gratitude"           # 감사
+Anger = "anger"                   # 분노
+Love = "love"                     # 호감
+Hate = "hate"                     # 혐오
+
+# ---------------------------------------------------------------------------
+# Tone (Tone enum variant → English description)
+# ---------------------------------------------------------------------------
+[tone]
+SuppressedCold = "a cold tone with suppressed anger"                  # 억누른 분노/차가운 어조
+RoughAggressive = "a rough, aggressive tone"                          # 거칠고 공격적인 어조
+AnxiousTrembling = "an anxious, trembling tone"                       # 불안하고 떨리는 어조
+SomberRestrained = "a somber but restrained tone"                     # 침울하지만 절제된 어조
+BrightLively = "a bright, lively tone"                                # 밝고 활기찬 어조
+VigilantCalm = "a vigilant yet calm tone"                             # 경계하지만 침착한 어조
+TenseAnxious = "a tense, anxious tone"                                # 긴장되고 불안한 어조
+ShrinkingSmall = "a shrinking, diminished tone"                       # 움츠러들고 작아진 어조
+QuietConfidence = "a tone of quiet confidence"                        # 조용한 자신감 어조
+ProudArrogant = "a proud, arrogant tone"                              # 자랑스럽고 거만한 어조
+CynicalCritical = "a cynical, critical tone"                          # 냉소적이고 비판적인 어조
+DeepSighing = "a tone heavy with deep sighs"                          # 깊은 한숨 어조
+SincerelyWarm = "a sincerely warm tone"                               # 진심 어린 따뜻한 어조
+JealousBitter = "a bitter tone tinged with jealousy"                  # 질투 섞인 씁쓸한 어조
+CompassionateSoft = "a soft, compassionate tone"                      # 안타까움 담긴 부드러운 어조
+RelaxedGentle = "a relaxed, gentle tone"                              # 편안하고 온화한 어조
+Heavy = "a heavy tone"                                                # 무거운 어조
+Calm = "a calm, composed tone"                                        # 담담한 어조
+
+# ---------------------------------------------------------------------------
+# Attitude (Attitude enum variant → English description)
+# ---------------------------------------------------------------------------
+[attitude]
+HostileAggressive = "hostile and aggressive attitude"                  # 적대적/공격적
+SuppressedDiscomfort = "suppressing complaints but showing discomfort" # 억눌린 불만
+Judgmental = "judgmental and evaluative attitude"                       # 판단/평가
+GuardedDefensive = "guarded and defensive attitude"                    # 경계/방어
+FriendlyOpen = "friendly and open attitude"                            # 호의/개방
+DefensiveClosed = "defensive and closed-off attitude"                  # 방어/폐쇄
+NeutralObservant = "neutral and observant attitude"                    # 중립/관망
+
+# ---------------------------------------------------------------------------
+# Behavioral tendency (BehavioralTendency enum variant → English description)
+# ---------------------------------------------------------------------------
+[behavioral_tendency]
+ImmediateConfrontation = "Confronts immediately and takes action."             # 즉각 대응
+StrategicResponse = "Suppresses anger and responds strategically."             # 계획적 대응
+ExpressAndObserve = "Expresses anger but observes the situation."              # 표출 후 관망
+BraveConfrontation = "Confronts despite feeling fear."                         # 용감한 맞섬
+SeekSafety = "Avoids danger and seeks safety."                                 # 안전 확보
+AvoidOrDeflect = "Deflects the topic or leaves the scene."                     # 회피/전환
+ActiveCooperation = "Actively participates and cooperates."                    # 적극 협조
+ObserveAndRespond = "Observes the situation and responds only as needed."      # 관찰 후 반응
+
+# ---------------------------------------------------------------------------
+# Restrictions (Restriction enum variant → English description)
+# ---------------------------------------------------------------------------
+[restriction]
+NoHumorOrLightTone = "Do not use humor or a light-hearted tone."               # 농담 금지
+NoFriendliness = "Do not act friendly toward the other party."                 # 호의 금지
+NoSelfJustification = "Do not justify your own actions."                       # 자기변호 금지
+NoBravado = "Do not bluff or pretend to be strong."                            # 허세 금지
+NoLyingOrExaggeration = "Do not lie or exaggerate."                            # 거짓말 금지
+
+# ---------------------------------------------------------------------------
+# Personality traits (PersonalityTrait enum variant → English description)
+# ---------------------------------------------------------------------------
+[personality_trait]
+HonestAndModest = "Honest, fair, and modest."                                  # H↑: 정직겸손
+CunningAndAmbitious = "Cunning, ambitious, and self-promoting."                # H↓: 교활야심
+EmotionalAndAnxious = "Emotionally rich and prone to anxiety."                 # E↑: 정서불안
+BoldAndIndependent = "Bold, independent, and rarely shows emotions."           # E↓: 대담독립
+ConfidentAndSociable = "Confident, sociable, and energetic."                   # X↑: 외향사교
+IntrovertedAndQuiet = "Introverted, reserved, and quiet."                      # X↓: 내향과묵
+TolerantAndGentle = "Tolerant, gentle, and patient."                           # A↑: 관용온화
+GrudgingAndCritical = "Grudge-bearing, critical, and impatient."               # A↓: 비판원한
+SystematicAndDiligent = "Systematic, diligent, and prudent."                   # C↑: 체계근면
+FreeAndImpulsive = "Free-spirited, impulsive, and spontaneous."                # C↓: 자유충동
+CuriousAndCreative = "Curious, creative, and unconventional."                  # O↑: 호기창의
+TraditionalAndConservative = "Traditional, conservative, and conventional."    # O↓: 전통보수
+
+# ---------------------------------------------------------------------------
+# Speech styles (SpeechStyle enum variant → English description)
+# ---------------------------------------------------------------------------
+[speech_style]
+FrankAndUnadorned = "Speaks frankly and without embellishment."                # H↑: 솔직담백
+HidesInnerThoughts = "Hides true thoughts and mixes in lies when needed."      # H↓: 속내감춤
+ExpressiveAndWorried = "Shows emotions openly and often expresses worry."      # E↑: 감정표현
+CalmAndComposed = "Speaks calmly and remains unshaken."                        # E↓: 차분담담
+ActiveAndForceful = "Leads conversations actively with a powerful voice."      # X↑: 적극주도
+BriefAndConcise = "Speaks little, only saying what is necessary."              # X↓: 과묵간결
+SoftAndConsiderate = "Speaks softly and with consideration."                   # A↑: 부드러운배려
+SharpAndDirect = "Sharp and direct; expresses anger without restraint."        # A↓: 날카로운직설
+LogicalAndRational = "Speaks logically, prioritizing reason over emotion."     # C↑: 논리이성
+UnfilteredAndSpontaneous = "Speaks unfiltered and acts on impulse."            # C↓: 거침없는즉흥
+MetaphoricalAndUnique = "Enjoys using metaphors and unique expressions."       # O↑: 비유독특
+FormalAndTraditional = "Uses formal and traditional expressions."              # O↓: 격식전통
+
+# ---------------------------------------------------------------------------
+# Fallback texts (when no traits/speech styles are present)
+# ---------------------------------------------------------------------------
+[fallback]
+no_traits = "An ordinary personality with no standout traits."                 # 성격 특성 없음
+no_speech_style = "Speaks in an ordinary manner."                              # 말투 특성 없음
+
+# ---------------------------------------------------------------------------
+# Prompt template (skeleton of the prompt sent to the LLM)
+# {name}, {emotion}, {intensity}, etc. are placeholders replaced at runtime
+# ---------------------------------------------------------------------------
+[template]
+section_npc = "[NPC: {name}]"                                # NPC 이름 섹션 헤더
+section_personality = "[Personality]"                         # 성격 섹션 헤더
+section_emotion = "[Current Emotion]"                        # 감정 섹션 헤더
+section_situation = "[Situation]"                             # 상황 섹션 헤더
+section_directive = "[Acting Direction]"                      # 연기 지시 섹션 헤더
+section_speech = "[Speech Style]"                            # 말투 섹션 헤더
+section_restriction = "[Restrictions]"                        # 금지 사항 섹션 헤더
+dominant_emotion = "Dominant emotion: {emotion}({intensity})" # 지배 감정 포맷
+active_emotions = "Active emotions: {list}"                   # 활성 감정 목록 포맷
+overall_mood = "Overall mood: {mood}"                        # 전체 분위기 포맷
+directive_tone = "Tone: {tone}"                              # 어조 포맷
+directive_attitude = "Attitude: {attitude}"                   # 태도 포맷
+directive_behavior = "Behavioral tendency: {behavior}"        # 행동 경향 포맷
+restriction_item = "- {restriction}"                         # 금지 사항 항목 포맷

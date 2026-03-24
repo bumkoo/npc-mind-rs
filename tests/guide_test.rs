@@ -106,7 +106,7 @@ fn 배신_무백_가이드_절제된_분노() {
     };
     let state = AppraisalEngine::appraise(li.personality(), &situation);
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
-    let formatter = KoreanFormatter;
+    let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
     assert!(prompt.contains("억누") || prompt.contains("절제") || prompt.contains("차가운"),
@@ -130,7 +130,7 @@ fn 배신_교룡_가이드_폭발적_분노() {
     };
     let state = AppraisalEngine::appraise(yu.personality(), &situation);
     let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()));
-    let formatter = KoreanFormatter;
+    let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
     assert!(prompt.contains("거칠") || prompt.contains("공격"),
@@ -159,7 +159,7 @@ fn 가이드_프롬프트_구조_검증() {
     };
     let state = AppraisalEngine::appraise(li.personality(), &situation);
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
-    let formatter = KoreanFormatter;
+    let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
     assert!(prompt.contains("[NPC: 무백]"), "NPC 이름 섹션");
@@ -182,7 +182,7 @@ fn 가이드_json_출력() {
         },
     });
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()));
-    let formatter = KoreanFormatter;
+    let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
 
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

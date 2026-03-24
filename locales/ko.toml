@@ -1,0 +1,172 @@
+# NPC Mind Engine — 한국어 로케일
+# 각 변수명 옆의 주석은 한국어 기준 설명입니다.
+
+[meta]
+language = "ko"       # 언어 코드
+name = "한국어"        # 언어 이름
+
+# ---------------------------------------------------------------------------
+# 감정 강도 라벨 (f32 → 정성적 표현)
+# ---------------------------------------------------------------------------
+[intensity]
+extreme = "극도로 강한"    # intensity >= 0.8
+strong = "강한"           # intensity >= 0.6
+noticeable = "뚜렷한"     # intensity >= 0.4
+weak = "약한"             # intensity >= 0.2
+faint = "미미한"           # intensity < 0.2
+
+# ---------------------------------------------------------------------------
+# 전체 분위기 라벨 (mood f32 → 정성적 표현)
+# ---------------------------------------------------------------------------
+[mood]
+very_positive = "매우 긍정적"   # mood > 0.5
+positive = "긍정적"            # mood > 0.2
+neutral = "중립적"             # mood > -0.2
+negative = "부정적"            # mood > -0.5
+very_negative = "매우 부정적"   # mood <= -0.5
+
+# ---------------------------------------------------------------------------
+# 감정 유형 (EmotionType enum variant → 한글 이름)
+# ---------------------------------------------------------------------------
+[emotion]
+Joy = "기쁨"                  # 기쁨
+Distress = "고통"             # 고통/괴로움
+HappyFor = "대리기쁨"         # 남의 기쁨에 함께 기뻐함
+Pity = "동정"                 # 남의 불행에 안타까워함
+Gloating = "고소함"           # 남의 불행에 통쾌해함
+Resentment = "시기"           # 남의 행운에 배아파함
+Hope = "희망"                 # 좋은 결과를 바람
+Fear = "두려움"               # 나쁜 결과를 걱정함
+Satisfaction = "만족"          # 바라던 결과가 실현됨
+Disappointment = "실망"        # 바라던 결과가 무산됨
+Relief = "안도"               # 걱정하던 일이 일어나지 않음
+FearsConfirmed = "공포확인"    # 걱정하던 일이 실현됨
+Pride = "자부심"              # 자신의 행동에 뿌듯함
+Shame = "수치심"              # 자신의 행동에 부끄러움
+Admiration = "감탄"           # 타인의 행동에 감탄함
+Reproach = "비난"             # 타인의 행동을 비난함
+Gratification = "뿌듯함"      # 자부심 + 기쁨
+Remorse = "후회"              # 수치심 + 고통
+Gratitude = "감사"            # 감탄 + 기쁨
+Anger = "분노"               # 비난 + 고통
+Love = "호감"                 # 대상에 대한 호감
+Hate = "혐오"                 # 대상에 대한 혐오
+
+# ---------------------------------------------------------------------------
+# 어조 (Tone enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[tone]
+SuppressedCold = "억누른 분노가 느껴지는 차가운 어조"         # 절제된 분노
+RoughAggressive = "거칠고 공격적인 어조"                     # 거친 분노
+AnxiousTrembling = "불안하고 떨리는 어조"                    # 불안/공포
+SomberRestrained = "침울하지만 절제된 어조"                   # 절제된 슬픔
+BrightLively = "밝고 활기찬 어조"                           # 기쁨/활기
+VigilantCalm = "경계하는 듯하지만 침착한 어조"               # 대담한 경계
+TenseAnxious = "긴장되고 불안한 어조"                        # 긴장/불안
+ShrinkingSmall = "움츠러들고 작아진 어조"                    # 수치/위축
+QuietConfidence = "조용한 자신감이 묻어나는 어조"             # 겸손한 자부심
+ProudArrogant = "자랑스럽고 거만한 어조"                     # 거만한 자부심
+CynicalCritical = "냉소적이고 비판적인 어조"                 # 냉소/비판
+DeepSighing = "깊은 한숨이 섞인 어조"                       # 실망/한탄
+SincerelyWarm = "진심 어린 따뜻한 어조"                     # 감사/따뜻함
+JealousBitter = "질투가 묻어나는 씁쓸한 어조"                # 시기/질투
+CompassionateSoft = "안타까움이 담긴 부드러운 어조"           # 동정/안타까움
+RelaxedGentle = "편안하고 온화한 어조"                       # 편안/긍정
+Heavy = "무거운 어조"                                       # 무거움/부정
+Calm = "담담한 어조"                                        # 담담/중립
+
+# ---------------------------------------------------------------------------
+# 태도 (Attitude enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[attitude]
+HostileAggressive = "적대적이고 공격적인 태도"               # 적대/공격
+SuppressedDiscomfort = "불만을 억누르지만 불편함이 드러나는 태도"  # 억눌린 불만
+Judgmental = "상대를 판단하고 평가하는 태도"                  # 판단/평가
+GuardedDefensive = "경계하며 방어적인 태도"                  # 경계/방어
+FriendlyOpen = "호의적이고 개방적인 태도"                    # 호의/개방
+DefensiveClosed = "방어적이고 닫힌 태도"                     # 방어/폐쇄
+NeutralObservant = "중립적이고 관망하는 태도"                # 중립/관망
+
+# ---------------------------------------------------------------------------
+# 행동 경향 (BehavioralTendency enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[behavioral_tendency]
+ImmediateConfrontation = "즉각적으로 맞서고 행동으로 옮기려 한다."   # 즉각 대응
+StrategicResponse = "분노를 억누르고 계획적으로 대응하려 한다."     # 계획적 대응
+ExpressAndObserve = "화를 표출하되, 상황을 지켜본다."              # 표출 후 관망
+BraveConfrontation = "두려움에도 불구하고 맞서려 한다."            # 용감한 맞섬
+SeekSafety = "위험을 피하고 안전을 확보하려 한다."                # 안전 확보
+AvoidOrDeflect = "화제를 돌리거나 자리를 피하려 한다."             # 회피/전환
+ActiveCooperation = "대화에 적극적으로 참여하고 협조한다."          # 적극 협조
+ObserveAndRespond = "상황을 관찰하며 필요한 만큼만 반응한다."       # 관찰 후 반응
+
+# ---------------------------------------------------------------------------
+# 금지 사항 (Restriction enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[restriction]
+NoHumorOrLightTone = "농담이나 가벼운 말투를 사용하지 않는다."     # 농담 금지
+NoFriendliness = "상대에게 호의적으로 대하지 않는다."              # 호의 금지
+NoSelfJustification = "자신의 행동을 정당화하지 않는다."           # 자기변호 금지
+NoBravado = "허세를 부리거나 강한 척 하지 않는다."                # 허세 금지
+NoLyingOrExaggeration = "거짓말이나 과장을 하지 않는다."           # 거짓말 금지
+
+# ---------------------------------------------------------------------------
+# 성격 특성 (PersonalityTrait enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[personality_trait]
+HonestAndModest = "진실되고 공정하며 겸손한 성격이다."             # H↑: 정직겸손
+CunningAndAmbitious = "교활하고 야심적이며 자기과시적인 성격이다."   # H↓: 교활야심
+EmotionalAndAnxious = "감정이 풍부하고 불안해하기 쉬운 성격이다."   # E↑: 정서불안
+BoldAndIndependent = "대담하고 독립적이며 감정을 잘 드러내지 않는다." # E↓: 대담독립
+ConfidentAndSociable = "자신감 있고 사교적이며 활기가 넘친다."      # X↑: 외향사교
+IntrovertedAndQuiet = "내성적이고 과묵하며 조용한 성격이다."        # X↓: 내향과묵
+TolerantAndGentle = "관용적이고 온화하며 인내심이 강하다."          # A↑: 관용온화
+GrudgingAndCritical = "원한을 품기 쉽고 비판적이며 참을성이 없다."  # A↓: 비판원한
+SystematicAndDiligent = "체계적이고 근면하며 신중하게 행동한다."     # C↑: 체계근면
+FreeAndImpulsive = "자유분방하고 충동적이며 즉흥적이다."           # C↓: 자유충동
+CuriousAndCreative = "호기심이 많고 창의적이며 관습에 얽매이지 않는다." # O↑: 호기창의
+TraditionalAndConservative = "전통을 존중하고 보수적이며 관습을 따른다." # O↓: 전통보수
+
+# ---------------------------------------------------------------------------
+# 말투 스타일 (SpeechStyle enum variant → 한글 설명)
+# ---------------------------------------------------------------------------
+[speech_style]
+FrankAndUnadorned = "솔직하고 꾸밈없이 말한다."                   # H↑: 솔직담백
+HidesInnerThoughts = "속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다." # H↓: 속내감춤
+ExpressiveAndWorried = "감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다." # E↑: 감정표현
+CalmAndComposed = "차분하고 담담하게 말하며, 동요하지 않는다."      # E↓: 차분담담
+ActiveAndForceful = "적극적으로 대화를 이끌고, 목소리에 힘이 있다."  # X↑: 적극주도
+BriefAndConcise = "말이 적고, 필요한 말만 간결하게 한다."           # X↓: 과묵간결
+SoftAndConsiderate = "부드럽고 배려 깊은 어조로 말한다."            # A↑: 부드러운배려
+SharpAndDirect = "날카롭고 직설적이며, 화가 나면 거침없이 표현한다."  # A↓: 날카로운직설
+LogicalAndRational = "논리적으로 말하고, 감정보다 이성을 앞세운다."   # C↑: 논리이성
+UnfilteredAndSpontaneous = "거침없이 말하고, 생각나는 대로 행동한다." # C↓: 거침없는즉흥
+MetaphoricalAndUnique = "비유나 독특한 표현을 즐겨 쓴다."           # O↑: 비유독특
+FormalAndTraditional = "격식을 차리고, 전통적인 표현을 쓴다."        # O↓: 격식전통
+
+# ---------------------------------------------------------------------------
+# 기본값 (특성/말투가 없을 때의 폴백 문장)
+# ---------------------------------------------------------------------------
+[fallback]
+no_traits = "평범하고 특별히 두드러지는 성격 특성이 없다."          # 성격 특성 없음
+no_speech_style = "평범한 어조로 말한다."                         # 말투 특성 없음
+
+# ---------------------------------------------------------------------------
+# 프롬프트 템플릿 (LLM에게 보내는 프롬프트의 골격)
+# {name}, {emotion}, {intensity} 등은 런타임에 치환되는 플레이스홀더
+# ---------------------------------------------------------------------------
+[template]
+section_npc = "[NPC: {name}]"                          # NPC 이름 섹션 헤더
+section_personality = "[성격]"                          # 성격 섹션 헤더
+section_emotion = "[현재 감정]"                         # 감정 섹션 헤더
+section_situation = "[상황]"                            # 상황 섹션 헤더
+section_directive = "[연기 지시]"                       # 연기 지시 섹션 헤더
+section_speech = "[말투]"                              # 말투 섹션 헤더
+section_restriction = "[금지 사항]"                     # 금지 사항 섹션 헤더
+dominant_emotion = "지배 감정: {emotion}({intensity})"  # 지배 감정 포맷
+active_emotions = "활성 감정: {list}"                   # 활성 감정 목록 포맷
+overall_mood = "전체 분위기: {mood}"                    # 전체 분위기 포맷
+directive_tone = "어조: {tone}"                        # 어조 포맷
+directive_attitude = "태도: {attitude}"                 # 태도 포맷
+directive_behavior = "행동 경향: {behavior}"            # 행동 경향 포맷
+restriction_item = "- {restriction}"                   # 금지 사항 항목 포맷
