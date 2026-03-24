@@ -1,4 +1,4 @@
-﻿//! HEXACO 성격 모델
+//! HEXACO 성격 모델
 //!
 //! 6개 차원(Dimension) × 각 4개 facet = 24개 facet으로
 //! NPC의 성격을 정의한다.
@@ -263,12 +263,14 @@ fn avg4(a: Score, b: Score, c: Score, d: Score) -> f32 {
 pub struct NpcId(pub String);
 
 /// NPC 엔티티 — 이름, 설명, 성격 프로필을 가진다
+///
+/// 생성 후 필드 직접 변경 불가 — NpcBuilder 또는 Npc::new()를 통해 생성한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Npc {
-    pub id: NpcId,
-    pub name: String,
-    pub description: String,
-    pub personality: HexacoProfile,
+    id: NpcId,
+    name: String,
+    description: String,
+    personality: HexacoProfile,
 }
 
 impl Npc {
@@ -285,6 +287,11 @@ impl Npc {
             personality,
         }
     }
+
+    pub fn id(&self) -> &NpcId { &self.id }
+    pub fn name(&self) -> &str { &self.name }
+    pub fn description(&self) -> &str { &self.description }
+    pub fn personality(&self) -> &HexacoProfile { &self.personality }
 }
 
 // ---------------------------------------------------------------------------

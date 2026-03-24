@@ -5,6 +5,8 @@
 use npc_mind::domain::personality::*;
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
+use npc_mind::ports::GuideFormatter;
+use npc_mind::presentation::korean::KoreanFormatter;
 
 fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
@@ -57,33 +59,34 @@ fn make_교룡() -> Npc {
 }
 
 // ---------------------------------------------------------------------------
-// 성격 요약 테스트
+// 성격 스냅샷 테스트 (도메인)
 // ---------------------------------------------------------------------------
 
 #[test]
-fn 무백_성격_요약_정직_관용() {
+fn 무백_성격_스냅샷_정직_관용() {
     let li = make_무백();
-    let summary = PersonalitySummary::from_profile(&li.personality);
+    let snapshot = PersonalitySnapshot::from_profile(li.personality());
 
-    assert!(summary.traits.contains("진실"),
-        "무백의 성격에 '진실' 포함: {}", summary.traits);
-    assert!(summary.traits.contains("관용") || summary.traits.contains("온화"),
-        "무백의 성격에 관용/온화 포함: {}", summary.traits);
-    assert!(summary.speech_style.contains("솔직") || summary.speech_style.contains("부드러"),
-        "무백의 말투에 솔직/부드러운: {}", summary.speech_style);
+    assert!(snapshot.traits.contains(&PersonalityTrait::HonestAndModest),
+        "무백의 성격에 '정직겸손' 포함: {:?}", snapshot.traits);
+    assert!(snapshot.traits.contains(&PersonalityTrait::TolerantAndGentle),
+        "무백의 성격에 '관용온화' 포함: {:?}", snapshot.traits);
+    assert!(snapshot.speech_styles.contains(&SpeechStyle::FrankAndUnadorned)
+        || snapshot.speech_styles.contains(&SpeechStyle::SoftAndConsiderate),
+        "무백의 말투에 솔직/부드러운: {:?}", snapshot.speech_styles);
 }
 
 #[test]
-fn 교룡_성격_요약_교활_비판적() {
+fn 교룡_성격_스냅샷_교활_비판적() {
     let yu = make_교룡();
-    let summary = PersonalitySummary::from_profile(&yu.personality);
+    let snapshot = PersonalitySnapshot::from_profile(yu.personality());
 
-    assert!(summary.traits.contains("교활") || summary.traits.contains("야심"),
-        "교룡의 성격에 교활/야심 포함: {}", summary.traits);
-    assert!(summary.traits.contains("참을성") || summary.traits.contains("비판"),
-        "교룡의 성격에 비판적 포함: {}", summary.traits);
-    assert!(summary.traits.contains("호기심") || summary.traits.contains("관습"),
-        "교룡의 성격에 개방성 포함: {}", summary.traits);
+    assert!(snapshot.traits.contains(&PersonalityTrait::CunningAndAmbitious),
+        "교룡의 성격에 '교활야심' 포함: {:?}", snapshot.traits);
+    assert!(snapshot.traits.contains(&PersonalityTrait::GrudgingAndCritical),
+        "교룡의 성격에 '비판적' 포함: {:?}", snapshot.traits);
+    assert!(snapshot.traits.contains(&PersonalityTrait::CuriousAndCreative),
+        "교룡의 성격에 '호기심' 포함: {:?}", snapshot.traits);
 }
 
 // ---------------------------------------------------------------------------
@@ -101,14 +104,13 @@ fn 배신_무백_가이드_절제된_분노() {
             outcome_for_self: Some(-0.6),
         },
     };
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
-    let prompt = guide.to_prompt();
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
 
-    // 절제된 분노 관련 키워드
     assert!(prompt.contains("억누") || prompt.contains("절제") || prompt.contains("차가운"),
         "무백 가이드에 절제 관련 표현: {}", prompt);
-    // 금지 사항: 호의적 대하지 않음
     assert!(prompt.contains("호의적") || prompt.contains("금지"),
         "무백 가이드에 금지 사항 포함: {}", prompt);
 
@@ -126,14 +128,13 @@ fn 배신_교룡_가이드_폭발적_분노() {
             outcome_for_self: Some(-0.6),
         },
     };
-    let state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let state = AppraisalEngine::appraise(yu.personality(), &situation);
     let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()));
-    let prompt = guide.to_prompt();
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
 
-    // 공격적 분노 관련 키워드
     assert!(prompt.contains("거칠") || prompt.contains("공격"),
         "교룡 가이드에 공격적 표현: {}", prompt);
-    // 적대적 태도
     assert!(prompt.contains("적대") || prompt.contains("공격적인 태도"),
         "교룡 가이드에 적대적 태도: {}", prompt);
 
@@ -156,11 +157,11 @@ fn 가이드_프롬프트_구조_검증() {
             prior_expectation: None,
         },
     };
-    let state = AppraisalEngine::appraise(&li.personality, &situation);
+    let state = AppraisalEngine::appraise(li.personality(), &situation);
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()));
-    let prompt = guide.to_prompt();
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
 
-    // 필수 섹션 존재 확인
     assert!(prompt.contains("[NPC: 무백]"), "NPC 이름 섹션");
     assert!(prompt.contains("[성격]"), "성격 섹션");
     assert!(prompt.contains("[현재 감정]"), "감정 섹션");
@@ -172,7 +173,7 @@ fn 가이드_프롬프트_구조_검증() {
 #[test]
 fn 가이드_json_출력() {
     let yu = make_교룡();
-    let state = AppraisalEngine::appraise(&yu.personality, &Situation {
+    let state = AppraisalEngine::appraise(yu.personality(), &Situation {
         description: "배신".into(),
         focus: SituationFocus::Action {
             is_self_agent: false,
@@ -181,9 +182,9 @@ fn 가이드_json_출력() {
         },
     });
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()));
-    let json = guide.to_json().unwrap();
+    let formatter = KoreanFormatter::new();
+    let json = formatter.format_json(&guide).unwrap();
 
-    // JSON 파싱 가능 확인
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert!(parsed["npc_name"].as_str() == Some("교룡"));
     assert!(parsed["directive"]["tone"].is_string());
@@ -209,19 +210,17 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
         },
     };
 
-    let li_state = AppraisalEngine::appraise(&li.personality, &situation);
-    let yu_state = AppraisalEngine::appraise(&yu.personality, &situation);
+    let li_state = AppraisalEngine::appraise(li.personality(), &situation);
+    let yu_state = AppraisalEngine::appraise(yu.personality(), &situation);
 
     let li_guide = ActingGuide::build(&li, &li_state, None);
     let yu_guide = ActingGuide::build(&yu, &yu_state, None);
 
-    // 어조가 달라야 함
     assert_ne!(li_guide.directive.tone, yu_guide.directive.tone,
-        "무백('{}')과 교룡('{}')의 어조가 달라야 함",
+        "무백({:?})과 교룡({:?})의 어조가 달라야 함",
         li_guide.directive.tone, yu_guide.directive.tone);
 
-    // 태도도 달라야 함
     assert_ne!(li_guide.directive.attitude, yu_guide.directive.attitude,
-        "무백('{}')과 교룡('{}')의 태도가 달라야 함",
+        "무백({:?})과 교룡({:?})의 태도가 달라야 함",
         li_guide.directive.attitude, yu_guide.directive.attitude);
 }
