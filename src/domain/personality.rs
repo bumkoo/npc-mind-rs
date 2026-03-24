@@ -244,7 +244,7 @@ impl HexacoProfile {
 }
 
 /// 6개 차원의 평균 점수 요약
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DimensionAverages {
     pub h: f32, pub e: f32, pub x: f32,
     pub a: f32, pub c: f32, pub o: f32,
