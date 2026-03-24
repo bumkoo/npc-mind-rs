@@ -283,16 +283,29 @@ impl PersonalitySnapshot {
 }
 
 // ---------------------------------------------------------------------------
+// 감정 항목 (감정 유형 + 강도)
+// ---------------------------------------------------------------------------
+
+/// 감정 유형과 강도의 명명된 쌍
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmotionEntry {
+    /// 감정 유형
+    pub emotion_type: EmotionType,
+    /// 감정 강도 (0.0 ~ 1.0)
+    pub intensity: f32,
+}
+
+// ---------------------------------------------------------------------------
 // 감정 스냅샷
 // ---------------------------------------------------------------------------
 
 /// 현재 감정 상태의 구조화된 요약 — 도메인 데이터
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmotionSnapshot {
-    /// 지배 감정 (가장 강한 감정의 유형과 강도)
-    pub dominant: Option<(EmotionType, f32)>,
-    /// 유의미한 감정 목록 (강도 내림차순, 유형과 강도 쌍)
-    pub active_emotions: Vec<(EmotionType, f32)>,
+    /// 지배 감정 (가장 강한 감정)
+    pub dominant: Option<EmotionEntry>,
+    /// 유의미한 감정 목록 (강도 내림차순)
+    pub active_emotions: Vec<EmotionEntry>,
     /// 전체 분위기 (-1.0=매우 부정, +1.0=매우 긍정)
     pub mood: f32,
 }
@@ -301,11 +314,11 @@ impl EmotionSnapshot {
     /// EmotionState에서 스냅샷 생성
     pub fn from_state(state: &EmotionState) -> Self {
         let dominant = state.dominant()
-            .map(|e| (e.emotion_type(), e.intensity()));
+            .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() });
 
         let active_emotions = state.significant(EMOTION_THRESHOLD)
             .iter()
-            .map(|e| (e.emotion_type(), e.intensity()))
+            .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() })
             .collect();
 
         let mood = state.overall_valence();

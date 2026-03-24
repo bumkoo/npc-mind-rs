@@ -51,9 +51,9 @@ impl GuideFormatter for LocaleFormatter {
 
         // --- 현재 감정 ---
         lines.push(t.section_emotion.clone());
-        if let Some((ref etype, intensity)) = guide.emotion.dominant {
-            let emotion = l.emotion_name(etype);
-            let intensity_str = l.intensity_label(intensity);
+        if let Some(ref entry) = guide.emotion.dominant {
+            let emotion = l.emotion_name(&entry.emotion_type);
+            let intensity_str = l.intensity_label(entry.intensity);
             lines.push(l.render_template(&t.dominant_emotion, &[
                 ("emotion", emotion),
                 ("intensity", intensity_str),
@@ -61,9 +61,9 @@ impl GuideFormatter for LocaleFormatter {
         }
         if !guide.emotion.active_emotions.is_empty() {
             let emotions_str: Vec<String> = guide.emotion.active_emotions.iter()
-                .map(|(etype, intensity)| {
-                    let emotion = l.emotion_name(etype);
-                    let intensity_str = l.intensity_label(*intensity);
+                .map(|entry| {
+                    let emotion = l.emotion_name(&entry.emotion_type);
+                    let intensity_str = l.intensity_label(entry.intensity);
                     format!("{}({})", emotion, intensity_str)
                 })
                 .collect();
@@ -123,11 +123,11 @@ impl GuideFormatter for LocaleFormatter {
                 speech_style: l.format_speech_styles(&guide.personality),
             },
             emotion: LocaleEmotionOutput {
-                dominant: guide.emotion.dominant.as_ref().map(|(etype, intensity)|
-                    format!("{}({})", l.emotion_name(etype), l.intensity_label(*intensity))),
+                dominant: guide.emotion.dominant.as_ref().map(|entry|
+                    format!("{}({})", l.emotion_name(&entry.emotion_type), l.intensity_label(entry.intensity))),
                 active_emotions: guide.emotion.active_emotions.iter()
-                    .map(|(etype, intensity)|
-                        format!("{}({})", l.emotion_name(etype), l.intensity_label(*intensity)))
+                    .map(|entry|
+                        format!("{}({})", l.emotion_name(&entry.emotion_type), l.intensity_label(entry.intensity)))
                     .collect(),
                 mood: guide.emotion.mood,
                 mood_label: l.mood_label(guide.emotion.mood).to_string(),
