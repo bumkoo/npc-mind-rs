@@ -140,105 +140,17 @@ EmotionState (감정 유형 + 강도의 조합)
 
 ### HEXACO 6차원별 감정 영향
 
-각 HEXACO 차원이 OCC 감정의 어떤 측면에 영향을 미치는지 정리:
+각 차원의 Facet 상세, 핵심 변수 공식, OCC 브랜치별 감정 연결, 이론적 근거는
+차원별 전용 가이드를 참조한다.
 
-#### H: 정직-겸손성 → Fortune-of-others 분기 핵심
-
-| H 점수 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| H↑ (양수) | HappyFor 증폭 — 타인의 행운에 진심으로 기뻐함 | empathy = (H + A) / 2 |
-| H↓ (음수) | Resentment 발생 — 타인의 행운에 질투/시기 | H < -0.2 이면 발동 |
-| H↓ + A↓ | Gloating 발생 — 타인의 불행에 고소함 | cruelty = (\|H\| + \|A\|) / 2 |
-| modesty↑ | Pride 억제 — 겸손하면 자부심이 줄어듦 | pride_mod = 1.0 - modesty × 0.3 |
-| sincerity↑ | Gratitude 증폭 — 진실한 성격은 감사를 더 강하게 느낌 | gratitude_amp = 1.0 + sincerity × 0.3 |
-
-무협 예시:
-- 무백(H=+0.65): 라이벌 승진에 HappyFor, Resentment 없음
-- 교룡(H=-0.55): 라이벌 승진에 Resentment 발생, HappyFor 없음
-
-#### E: 정서성 → 전반적 감정 반응 증폭
-
-| E 요소 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| E 전체 | 감정 반응의 전반적 증폭/억제 | emotional_amp = 1.0 + \|E\| × 0.3 |
-| fearfulness↑ | Fear 직접 증폭 | fear_amp = 1.0 + fearfulness × 0.5 |
-| fearfulness↓ | Fear 증폭 미발생 (대담) | fearfulness < 0 이면 증폭 없음 |
-| sentimentality↑ | Pity 증폭 — 감상적이면 동정심 강함 | compassion에 가산 |
-
-E는 **감정의 볼륨 노브** 역할이다.
-E↑인 NPC는 모든 감정을 더 강하게 느끼고, E↓인 NPC는 담담하게 반응한다.
-
-무협 예시:
-- 소호(E=-0.40): 대담하여 두려움 증폭이 적고, 전반적으로 담담
-- 수련(E=+0.03): 복합적 — sentimentality↑이지만 fearfulness↓
-
-#### X: 외향성 → 긍정 감정 증폭
-
-| X 점수 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| X↑ (양수) | Joy, Hope, Satisfaction 등 긍정 감정 증폭 | positive_amp = 1.0 + X × 0.3 (X>0일 때) |
-| X↓ (음수) | 긍정 감정 증폭 없음 (내성적) | X<0이면 positive_amp = 1.0 |
-
-X는 **긍정 감정의 증폭기**다. 부정 감정에는 직접 영향을 주지 않는다.
-
-#### A: 원만성 → 부정 감정 조절의 핵심
-
-| A 요소 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| A 전체 | 부정 감정 완화/증폭 | anger_mod = 1.0 - A × 0.4 |
-| patience↑ | Anger 직접 억제 | anger_amp = 1.0 - patience × 0.4 |
-| patience↓ | Anger 직접 증폭 | patience < 0 이면 anger 증폭 |
-| gentleness↑ | Reproach 억제 | reproach_amp = 1.0 - gentleness × 0.3 |
-| forgiveness↑ | Resentment 억제 | Fortune-of-others 분기에서 작용 |
-
-A는 **분노/공격성의 브레이크** 역할이다.
-A↑이면 화가 나도 참고, A↓이면 즉각 폭발한다.
-
-무협 예시: "동료의 배신" 상황
-- 무백(patience=+0.8): Anger 발생하지만 강도 억제 → 절제된 분노
-- 교룡(patience=-0.7): Anger 강도 증폭 → 폭발적 분노
-- 수련(patience=+0.9): Anger 극도로 억제 → 억눌린 고통
-
-#### C: 성실성 → 충동 억제 + 자기 기준
-
-| C 요소 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| prudence↑ | 즉각 감정 반응 억제 | impulse_mod = 1.0 - prudence × 0.3 |
-| C 전체 | Pride/Shame 증폭 (높은 자기 기준) | standards_amp = 1.0 + \|C\| × 0.3 |
-| C↑ | Shame 증폭 — 자기 기준 위반 시 더 강한 수치심 | standards_amp으로 증폭 |
-| C↓ | 충동적 반응 — prudence 억제 없이 즉각 행동 | impulse_mod ≈ 1.0 |
-
-C는 **이중 역할**을 한다:
-1. prudence가 Distress 등 즉각 반응을 억제 (감정 표현 자체를 줄임)
-2. 높은 자기 기준이 Pride/Shame 강도를 증폭 (기준 충족/위반에 더 민감)
-
-무협 예시:
-- 수련(C=+0.70, prudence=+0.9): 감정을 억누르되, 기준 위반 시 강한 수치심
-- 소호(C=-0.33, prudence=-0.5): 충동적으로 반응, 자기 기준에 무심
-
-#### O: 개방성 → 대상 반응(Love/Hate) 증폭
-
-| O 요소 | 감정 영향 | 수식 |
-|--------|-----------|------|
-| aesthetic_appreciation↑ | Love/Hate 증폭 — 미적 감수성 | aesthetic_amp = 1.0 + \|aesthetic\| × 0.3 |
-| O↑ | 대상에 대한 반응이 더 강렬 | 아름다운 것에 더 감동, 추한 것에 더 혐오 |
-| O↓ | 대상에 대한 반응이 무덤덤 | 미적/정서적 자극에 둔감 |
-
-O는 현재 Object-based 분기에만 작용하지만, 향후 창의적 문제 해결이나
-비관습적 감정 반응에도 확장 가능하다.
-
----
-
-## HEXACO→OCC 매핑 요약표
-
-| HEXACO | 역할 비유 | 영향 대상 감정 | 방향 |
-|--------|-----------|----------------|------|
-| H 정직-겸손 | 도덕 필터 | HappyFor, Resentment, Gloating, Pride, Gratitude | H↑=공감, H↓=질투/고소 |
-| E 정서성 | 볼륨 노브 | 전체 감정, Fear 직접 | E↑=증폭, E↓=담담 |
-| X 외향성 | 긍정 증폭기 | Joy, Hope, Satisfaction, Relief | X↑=긍정 강화 |
-| A 원만성 | 분노 브레이크 | Anger, Reproach, Pity | A↑=억제, A↓=폭발 |
-| C 성실성 | 충동 억제 + 자기 기준 | Distress 억제, Pride/Shame 증폭 | C↑=절제+높은 기준 |
-| O 개방성 | 미적 감수성 | Love, Hate | O↑=반응 증폭 |
+| 차원 | 역할 | 주요 감정 | 상세 가이드 |
+|------|------|---------|-----------|
+| H 정직-겸손성 | Fortune-of-others 분기 핵심 | HappyFor, Resentment, Gloating, Pride, Gratitude | [H 차원 가이드](h-dimension-guide.md) |
+| E 정서성 | 감정 볼륨 노브 | 전체 감정 증폭, Fear 직접 | [E 차원 가이드](e-dimension-guide.md) |
+| X 외향성 | 긍정 감정 증폭기 | Joy, Hope, Satisfaction, Relief | [X 차원 가이드](x-dimension-guide.md) |
+| A 원만성 | 분노 브레이크 | Anger, Reproach, Resentment, Gloating | [A 차원 가이드](a-dimension-guide.md) |
+| C 성실성 | 충동 억제 + 자기 기준 | Distress(억제), Pride/Shame/Admiration/Reproach | [C 차원 가이드](c-dimension-guide.md) |
+| O 개방성 | 미적 감수성 | Love, Hate | [O 차원 가이드](o-dimension-guide.md) |
 
 ---
 
