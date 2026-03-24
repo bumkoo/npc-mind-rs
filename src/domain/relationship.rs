@@ -12,6 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::emotion::{EmotionState, Situation, SituationFocus};
 use super::personality::Score;
 
 // ---------------------------------------------------------------------------
@@ -130,6 +131,25 @@ impl Relationship {
     /// 게임 이벤트에 의한 power 직접 설정
     pub fn set_power(&mut self, power: Score) {
         self.power = power;
+    }
+
+    /// 대화 종료 후 관계 통합 갱신
+    ///
+    /// - trust: Action 분기의 praiseworthiness 기반 (점진적)
+    /// - closeness: 대화 최종 감정 결과 기반 (매우 점진적)
+    /// - power: 변경 없음 (서사 이벤트에서만)
+    pub fn update_after_dialogue(
+        &mut self,
+        final_state: &EmotionState,
+        situation: &Situation,
+    ) {
+        // trust: Action 분기일 때만 갱신
+        if let SituationFocus::Action { praiseworthiness, .. } = &situation.focus {
+            self.update_trust(*praiseworthiness);
+        }
+
+        // closeness: 항상 갱신 (전체 감정 결과 기반)
+        self.update_closeness(final_state.overall_valence());
     }
 }
 
