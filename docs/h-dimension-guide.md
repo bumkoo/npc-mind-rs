@@ -417,46 +417,6 @@ sensitivity_boost = (fear_intensity + distress_intensity) / 2.0 × 0.3
 
 ---
 
-### H 차원과 EmotionalMomentum의 관계
-
-**H 차원(avg.h, sincerity, modesty)은 EmotionalMomentum과 독립적으로 동작한다.**
-
-H 관련 수치는 `from_state` 계산에 포함되지 않으며,
-`appraise_event` / `appraise_action` 내부에서 EmotionalMomentum과 별개로 직접 참조된다.
-
-```
-H 차원 ──────────────────────────────────────→ 감정 함수 내부에서 직접 사용
-                                                (appraise_event, appraise_action)
-
-EmotionalMomentum ──(from_state)──→ 감정 함수 내부에서 별도 경로로 사용
-```
-
----
-
-### H Facet이 감정에 적용되는 경로
-
-#### avg.h — Event 브랜치에서 직접 사용
-
-| 감정 | avg.h 역할 |
-|------|-----------|
-| **HappyFor** | `desir_other × (0.5 + (avg.h + avg.a) / 2 × 0.5)` — 공감 배율에 직접 기여 |
-| **Resentment** | 발동 조건(`avg.h < -0.2`) 및 강도(`desir_other × \|avg.h\| × anger_mod`) |
-| **Gloating** | 발동 조건(`avg.h < -0.2 AND avg.a < -0.2`) 및 강도(`\|desir_other\| × (\|avg.h\|+\|avg.a\|)/2`) |
-
-#### H.modesty — Action 브랜치에서 직접 사용
-
-| 감정 | modesty 역할 |
-|------|------------|
-| **Pride** | `pride_mod = 1.0 - modesty.max(0.0) × 0.3` — 자부심 강도 억제 |
-
-#### H.sincerity — Action 브랜치에서 직접 사용
-
-| 감정 | sincerity 역할 |
-|------|--------------|
-| **Gratitude** | `gratitude_amp = 1.0 + sincerity.max(0.0) × 0.3` — 감사 강도 증폭 |
-
----
-
 ### H 관련 감정에서 Momentum이 개입하는 경로
 
 H가 관여하는 감정들 중 `EmotionalMomentum`이 실제로 개입하는 경우는 **Resentment 하나**뿐이며,
@@ -476,28 +436,6 @@ anger_mod = (1.0 - avg.a × 0.4) + m.anger_erosion + m.negative_bias
 | Gloating | 없음 | — |
 | Gratitude | 없음 | — |
 | Pride | 없음 | — |
-
----
-
-### H 차원 × EmotionalMomentum 전체 구조
-
-```
-EmotionalMomentum (4개 필드, EmotionState만 참조)
-├── negative_bias      → Resentment(anger_mod), Reproach, Anger 증폭
-├── positive_bias      → Joy, Hope, Satisfaction, Relief 증폭
-├── anger_erosion      → Anger, Resentment(anger_mod) 분노 확대
-└── sensitivity_boost  → Fear, Distress 민감도 상승
-
-H 차원 (EmotionState 독립, 감정 함수에서 직접 참조)
-├── avg.h   → HappyFor 공감 배율, Resentment 발동·강도, Gloating 발동·강도
-├── sincerity → Gratitude 증폭 (gratitude_amp)
-└── modesty   → Pride 억제 (pride_mod)
-
-교점: Resentment의 anger_mod
-  avg.h  → |avg.h| (강도 기여)          ← H 차원 경로
-  avg.a  → (1.0 - avg.a × 0.4)         ← A 차원 경로
-  m.anger_erosion + m.negative_bias     ← Momentum 경로
-```
 
 ---
 
