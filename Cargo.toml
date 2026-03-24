@@ -6,15 +6,14 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 
 [features]
 default = []
-embed = ["fastembed", "anyhow"]
+embed = ["dep:bge-m3-onnx-rust"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 toml = "0.8"
-fastembed = { version = "5", optional = true }
-anyhow = { version = "1", optional = true }
+bge-m3-onnx-rust = { path = "../bge-m3-onnx-rust", optional = true }
 
 [dev-dependencies]
 approx = "0.5"

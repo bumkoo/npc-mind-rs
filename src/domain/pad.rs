@@ -166,3 +166,121 @@ pub const PAD_ANCHORS: [&PadAxisAnchors; 3] = [
     &AROUSAL_ANCHORS,
     &DOMINANCE_ANCHORS,
 ];
+
+
+// ---------------------------------------------------------------------------
+// PadAnalyzer — 도메인 서비스 (업무 규칙)
+// ---------------------------------------------------------------------------
+//
+// TextEmbedder(인프라 포트)에만 의존하며, 구체적 임베딩 모델을 모른다.
+// cosine_sim, mean_vector, axis_score는 순수 수학 — 인프라 무관.
+
+use crate::ports::{TextEmbedder, EmbedError};
+
+/// 사전 계산된 앵커 임베딩 (축 하나의 양극단)
+pub struct AxisEmbeddings {
+    /// 양극단 평균 벡터
+    pub positive: Vec<f32>,
+    /// 음극단 평균 벡터
+    pub negative: Vec<f32>,
+}
+
+/// 대사 → PAD 변환 도메인 서비스
+///
+/// 초기화 시 TextEmbedder로 앵커 임베딩을 사전 계산하고,
+/// analyze() 시 대사 벡터와 앵커 간 유사도로 PAD를 추출.
+///
+/// 임베딩 모델을 교체해도 이 코드는 변경 없음.
+pub struct PadAnalyzer {
+    embedder: Box<dyn TextEmbedder + Send>,
+    pleasure: AxisEmbeddings,
+    arousal: AxisEmbeddings,
+    dominance: AxisEmbeddings,
+}
+
+impl PadAnalyzer {
+    /// TextEmbedder로 앵커 임베딩을 사전 계산하여 생성
+    pub fn new(mut embedder: Box<dyn TextEmbedder + Send>) -> Result<Self, EmbedError> {
+        let pleasure = Self::embed_axis(&mut *embedder, &PLEASURE_ANCHORS)?;
+        let arousal = Self::embed_axis(&mut *embedder, &AROUSAL_ANCHORS)?;
+        let dominance = Self::embed_axis(&mut *embedder, &DOMINANCE_ANCHORS)?;
+
+        Ok(Self { embedder, pleasure, arousal, dominance })
+    }
+
+    /// 앵커 텍스트 → 평균 임베딩 벡터 계산
+    fn embed_axis(
+        embedder: &mut dyn TextEmbedder,
+        anchors: &PadAxisAnchors,
+    ) -> Result<AxisEmbeddings, EmbedError> {
+        let pos_vecs = embedder.embed(anchors.positive)?;
+        let neg_vecs = embedder.embed(anchors.negative)?;
+
+        Ok(AxisEmbeddings {
+            positive: Self::mean_vector(&pos_vecs),
+            negative: Self::mean_vector(&neg_vecs),
+        })
+    }
+
+    /// 대사 벡터를 앵커와 비교하여 PAD 계산 (순수 도메인 로직, 인프라 호출 없음)
+    pub fn to_pad(&self, utterance_embedding: &[f32]) -> Pad {
+        Pad::new(
+            Self::axis_score(utterance_embedding, &self.pleasure),
+            Self::axis_score(utterance_embedding, &self.arousal),
+            Self::axis_score(utterance_embedding, &self.dominance),
+        )
+    }
+
+    // --- 순수 수학 함수 (인프라 무관) ---
+
+    /// 여러 벡터의 평균
+    fn mean_vector(vectors: &[Vec<f32>]) -> Vec<f32> {
+        if vectors.is_empty() { return Vec::new(); }
+        let dim = vectors[0].len();
+        let n = vectors.len() as f32;
+        let mut mean = vec![0.0_f32; dim];
+        for v in vectors {
+            for (i, val) in v.iter().enumerate() {
+                mean[i] += val;
+            }
+        }
+        for val in mean.iter_mut() {
+            *val /= n;
+        }
+        mean
+    }
+
+    /// 코사인 유사도
+    pub fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
+        let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
+        let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+        let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+        if na == 0.0 || nb == 0.0 { return 0.0; }
+        dot / (na * nb)
+    }
+
+    /// 대사 임베딩과 축 앵커 유사도 차이 → -1.0~1.0
+    fn axis_score(utterance_emb: &[f32], axis: &AxisEmbeddings) -> f32 {
+        let sim_pos = Self::cosine_sim(utterance_emb, &axis.positive);
+        let sim_neg = Self::cosine_sim(utterance_emb, &axis.negative);
+        (sim_pos - sim_neg).clamp(-1.0, 1.0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UtteranceAnalyzer 포트 구현
+// ---------------------------------------------------------------------------
+
+impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
+    fn analyze(&mut self, utterance: &str) -> Pad {
+        let embeddings = self.embedder
+            .embed(&[utterance])
+            .unwrap_or_default();
+
+        if embeddings.is_empty() {
+            return Pad::neutral();
+        }
+
+        self.to_pad(&embeddings[0])
+    }
+}

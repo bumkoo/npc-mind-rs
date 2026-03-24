@@ -1,0 +1,8 @@
+# ort(ONNX Runtime) 정적 링크 시 CRT 충돌 방지
+# bge-m3-onnx-rust 의존성이 /MD(동적 CRT)를 요구하므로 통일
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=-crt-static"]
+
+[env]
+CFLAGS = "/MD"
+CXXFLAGS = "/MD"

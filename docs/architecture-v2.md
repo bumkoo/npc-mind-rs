@@ -897,38 +897,159 @@ pub struct RelationshipSnapshot {
 
 ---
 
-## 감정 분류 도구 구성
+## 감정 분류: 포트 앤드 어댑터 아키텍처
+
+### 문제: 인프라와 도메인의 결합
+
+대사를 PAD로 변환하는 과정에는 두 가지 관심사가 있다:
+
+1. **인프라**: 텍스트를 벡터로 변환한다 (임베딩 모델 — fastembed, ort, Python 서버 등)
+2. **도메인**: 벡터를 앵커와 비교하여 PAD 좌표를 계산한다 (cosine_sim, axis_score)
+
+이 둘이 한 곳에 섞이면 임베딩 모델을 교체할 때 도메인 로직까지 다시 작성해야 한다.
+
+### 해결: 포트로 경계 분리
+
+```
+                    ┌─────── ports.rs ────────┐
+                    │                         │
+                    │  TextEmbedder (인프라 포트) │
+                    │  fn embed(&[&str])       │
+                    │    → Vec<Vec<f32>>       │
+                    │                         │
+                    │  UtteranceAnalyzer       │
+                    │  (도메인 포트, 기존 유지)   │
+                    │  fn analyze(&str) → Pad  │
+                    │                         │
+                    └──────┬──────────┬───────┘
+                           │          │
+              ┌────────────▼──┐  ┌────▼──────────┐
+              │   adapter/    │  │   domain/      │
+              │ (인프라 구현)   │  │ (업무 규칙)     │
+              │               │  │                │
+              │ fastembed_    │  │ pad.rs         │
+              │  embedder.rs  │  │  PadAnalyzer   │
+              │  TextEmbedder │  │  (TextEmbedder │
+              │  for fastembed│  │   에 의존)      │
+              │               │  │  mean_vector   │
+              │ ort_embedder  │  │  cosine_sim    │
+              │  .rs (나중에)  │  │  axis_score    │
+              │  TextEmbedder │  │  앵커 비교      │
+              │  for bge-m3-  │  │                │
+              │  onnx-rust    │  │                │
+              └───────────────┘  └────────────────┘
+```
+
+### 포트 정의
+
+```rust
+/// 인프라 포트: 텍스트 → 벡터 변환
+///
+/// 임베딩 모델(fastembed, ort, Python 서버 등)이 이 트레이트를 구현.
+/// 도메인(PadAnalyzer)은 이 트레이트에만 의존하고
+/// 구체적 임베딩 구현을 알지 못한다.
+pub trait TextEmbedder {
+    fn embed(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError>;
+}
+
+/// 도메인 포트: 대사 → PAD 변환 (기존 유지)
+pub trait UtteranceAnalyzer {
+    fn analyze(&mut self, utterance: &str) -> Pad;
+}
+```
+
+### 도메인: PadAnalyzer (업무 규칙)
+
+```rust
+/// 도메인 서비스: 앵커 비교 → PAD 변환
+///
+/// TextEmbedder 트레이트에만 의존.
+/// cosine_sim, mean_vector, axis_score는 순수 수학 — 인프라 무관.
+pub struct PadAnalyzer {
+    pleasure: AxisEmbeddings,  // 사전 계산된 앵커 벡터
+    arousal: AxisEmbeddings,
+    dominance: AxisEmbeddings,
+}
+
+impl PadAnalyzer {
+    /// 초기화 시 TextEmbedder로 앵커 임베딩 사전 계산
+    pub fn new(embedder: &mut dyn TextEmbedder) -> Result<Self, EmbedError> {
+        // 앵커 텍스트(도메인) → embedder(인프라) → 벡터 → 평균
+    }
+
+    /// 대사 벡터를 앵커와 비교하여 PAD 계산 (순수 도메인 로직)
+    pub fn to_pad(&self, utterance_embedding: &[f32]) -> Pad {
+        // cosine_sim, axis_score — 인프라 호출 없음
+    }
+}
+```
+
+### 어댑터: TextEmbedder 구현체들
+
+```rust
+// adapter/fastembed_embedder.rs
+pub struct FastembedEmbedder {
+    model: fastembed::TextEmbedding,
+}
+impl TextEmbedder for FastembedEmbedder { ... }
+
+// adapter/ort_embedder.rs (bge-m3-onnx-rust 활용)
+pub struct OrtEmbedder {
+    embedder: bge_m3_onnx_rust::BgeM3Embedder,
+}
+impl TextEmbedder for OrtEmbedder { ... }
+
+// 테스트용
+pub struct MockEmbedder {
+    responses: HashMap<String, Vec<f32>>,
+}
+impl TextEmbedder for MockEmbedder { ... }
+```
+
+### 교체 시 변경 범위
+
+| 항목 | fastembed → ort 교체 시 |
+|------|----------------------|
+| `adapter/fastembed_embedder.rs` | 삭제 또는 feature gate |
+| `adapter/ort_embedder.rs` | 신규 작성 (~30줄) |
+| `domain/pad.rs` (PadAnalyzer) | **변경 없음** |
+| `ports.rs` (TextEmbedder) | **변경 없음** |
+| 앵커 텍스트, cosine_sim, axis_score | **변경 없음** |
+| Cargo.toml | fastembed → bge-m3-onnx-rust |
+| 크레이트 수 | 605 → ~80 |
 
 ### 도구별 역할
 
-| 도구 | 역할 | 적용 대상 |
-|------|------|----------|
-| fastembed-rs (bge-m3) | PAD 앵커 임베딩 유사도 계산 | 플레이어 자유 입력 |
-| bge-reranker-v2-m3 | (PAD 추출에는 미사용, 향후 확장용) | — |
-| ahocorasick_rs | 감정 키워드 빠른 탐지 (힌트) | 모든 텍스트 입력 |
+| 도구 | 레이어 | 역할 |
+|------|--------|------|
+| bge-m3 (fastembed 또는 ort) | adapter | 텍스트 → 벡터 변환 |
+| PadAnalyzer | domain | 벡터 → PAD 변환 (앵커 비교) |
+| ahocorasick_rs | adapter | 키워드 탐지 → PAD 힌트 가산 |
 
 ### 파이프라인
 
 ```
 플레이어 대사
   │
-  ├─ [1단] Aho-Corasick: 키워드 신호 탐지
+  ├─ [1단] Aho-Corasick (adapter): 키워드 신호 탐지
   │   "도둑질" → 비난 힌트
   │   "은혜" → 감사 힌트
   │
-  ├─ [2단] bge-m3: 임베딩 → 6개 앵커와 유사도
-  │   sim(대사, P+) = 0.2, sim(대사, P-) = 0.7 → P ≈ -0.6
-  │   sim(대사, A+) = 0.6, sim(대사, A-) = 0.2 → A ≈ +0.5
-  │   sim(대사, D+) = 0.6, sim(대사, D-) = 0.2 → D ≈ +0.5
+  ├─ [2단] TextEmbedder (adapter): 텍스트 → Vec<f32>
+  │   ↓
+  │   PadAnalyzer (domain): 앵커 비교 → PAD
+  │   sim(대사, P+) - sim(대사, P-) → P
+  │   sim(대사, A+) - sim(대사, A-) → A
+  │   sim(대사, D+) - sim(대사, D-) → D
   │
   └─ → PAD(-0.6, +0.5, +0.5)
 ```
 
 ### 사전 준비
 
-- PAD 앵커 텍스트 세트 정의 (3축 × 2극 × N개 변형)
-- bge-m3로 앵커 임베딩 사전 계산 및 캐싱
-- Aho-Corasick 키워드 사전 구축 (무협 도메인 특화)
+- PAD 앵커 텍스트 세트 정의 — `domain/pad.rs` (3축 × 2극 × N개 변형)
+- 앵커 임베딩 사전 계산 — `PadAnalyzer::new(embedder)` 초기화 시 1회
+- Aho-Corasick 키워드 사전 — `adapter/` (무협 도메인 특화)
 
 ---
 
@@ -958,7 +1079,10 @@ pub struct RelationshipSnapshot {
 상대방 대사 (플레이어 자유 입력)
         │
         ▼
-  UtteranceAnalyzer.analyze(대사) → PAD
+  TextEmbedder.embed(대사) → Vec<f32>        [adapter: fastembed 또는 ort]
+        │
+        ▼
+  PadAnalyzer.to_pad(벡터) → PAD              [domain: 앵커 비교]
         │
         ▼
   StimulusProcessor.apply_stimulus(personality, current_state, PAD)
@@ -1041,7 +1165,8 @@ pub struct RelationshipSnapshot {
 | 7 | apply_stimulus 구현 + 2.5 삭제 | pad_dot, stimulus_absorb_rate, appraise_with_context 삭제, 기존 감정 누적 테스트 3개 재작성 | 사이클 6 |
 | 8 | ActingGuide에 Relationship 포함 | RelationshipSnapshot, power 기반 톤 결정 | 사이클 4 |
 | 9 | 대화 후 Relationship 갱신 메커니즘 | update_after_dialogue() | 사이클 4, 7 |
-| 10 | PAD 앵커 임베딩 파이프라인 (fastembed-rs + bge-m3) | UtteranceAnalyzer 구현, 앵커 세트 | 사이클 6 |
+| 10 | 임베딩 포트 앤드 어댑터 리팩터링 | TextEmbedder 포트, PadAnalyzer(도메인), FastembedEmbedder(어댑터) 분리 | 사이클 6 |
+| 10.5 | ort 어댑터 교체 (bge-m3-onnx-rust) | OrtEmbedder, fastembed 의존성 제거, 크레이트 605→~80 | 사이클 10 |
 | 11 | Aho-Corasick 키워드 사전 + PAD 힌트 통합 | 무협 도메인 키워드 사전, 힌트 가산 | 사이클 10 |
 
 ### 사이클 5 상세: AppraisalEngine 단순화 + Relationship 통합
@@ -1106,3 +1231,4 @@ let state1 = processor.apply_stimulus(
 | 0.3.0 | 2026-03-24 | 구현 순서 재편. 사이클 9(Momentum 리팩터링)를 사이클 7(apply_stimulus)에 통합. 사이클 7 상세 계획 추가: 삭제 대상, 테스트 재작성 방법, 검증 포인트 |
 | 0.4.0 | 2026-03-24 | apply_stimulus 단순화. emotion_state_to_pad/compute_receptivity/코사인유사도/StimulusModifier 구조체/X긍정증폭 삭제. pad_dot(단순 내적)+stimulus_absorb_rate(덧셈뺄셈) 2함수로 통합. 함수 3개 30줄 미만 |
 | 0.5.0 | 2026-03-24 | AppraisalEngine 단순화. 상수 12개→3개(PERSONALITY_WEIGHT, EMPATHY_BASE, FORTUNE_THRESHOLD). 가중치 패턴 통일(1.0 ± facet × 0.3). Momentum 파라미터 제거. appraise_event/action/object 코드 수준 설계 포함 |
+| 0.6.0 | 2026-03-25 | 감정 분류 포트 앤드 어댑터 아키텍처. TextEmbedder 인프라 포트 분리, PadAnalyzer 도메인 서비스 분리, 어댑터 교체 가능(fastembed↔ort). 사이클 10→10+10.5 분리 |

@@ -35,10 +35,29 @@ pub trait StimulusProcessor {
     ) -> EmotionState;
 }
 
-/// 대사 감정 분석 포트 — 플레이어 자유 입력 → PAD 변환
+/// 인프라 포트: 텍스트 → 벡터 변환 (임베딩)
 ///
-/// 대사 텍스트를 PAD 3축 좌표로 변환.
-/// fastembed 등 외부 임베딩 모델 어댑터가 이 트레이트를 구현.
+/// 임베딩 모델(fastembed, ort, Python 서버 등)이 이 트레이트를 구현.
+/// 도메인(PadAnalyzer)은 이 트레이트에만 의존하고
+/// 구체적 임베딩 구현을 알지 못한다.
+pub trait TextEmbedder {
+    /// 텍스트 목록 → 임베딩 벡터 목록
+    fn embed(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError>;
+}
+
+/// 임베딩 오류
+#[derive(Debug, thiserror::Error)]
+pub enum EmbedError {
+    #[error("임베딩 모델 초기화 실패: {0}")]
+    InitError(String),
+    #[error("임베딩 추론 실패: {0}")]
+    InferenceError(String),
+}
+
+/// 도메인 포트: 대사 → PAD 변환
+///
+/// PadAnalyzer가 이 트레이트를 구현.
+/// TextEmbedder로 벡터를 얻고, 앵커 비교로 PAD를 계산.
 pub trait UtteranceAnalyzer {
     /// 대사 텍스트 → PAD (Pleasure, Arousal, Dominance)
     fn analyze(&mut self, utterance: &str) -> Pad;
