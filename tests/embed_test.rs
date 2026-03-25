@@ -4,6 +4,9 @@
 //! - OrtEmbedder (adapter) → TextEmbedder 포트
 //! - PadAnalyzer (domain) → UtteranceAnalyzer 포트
 //!
+//! 3축(P, A, D) 모두 측정한다.
+//! P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
+//!
 //! `cargo test --features embed --test embed_test -- --nocapture` 으로 실행.
 
 #![cfg(feature = "embed")]
@@ -89,7 +92,7 @@ fn 전체_흐름_대사분석_후_자극_적용() {
             a.patience = npc_mind::domain::personality::Score::new(-0.7, "").unwrap();
         })
         .build();
-    let rel = Relationship::neutral("target");
+    let rel = Relationship::neutral("gyo", "target");
     let situation = Situation {
         description: "배신".into(),
         focus: SituationFocus::Action {

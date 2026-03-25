@@ -8,7 +8,20 @@
 //! 용도:
 //! - OCC 감정 → PAD 변환 (매핑 테이블, Gebhard 2005 ALMA 모델 참고)
 //! - 대사 자극의 감정적 방향/강도 표현
-//! - apply_stimulus에서 pad_dot(내적)으로 공명 계산
+//! - apply_stimulus에서 pad_dot으로 공명 계산
+//!
+//! ## pad_dot 공식: P·A 방향 × D 격차 스케일러
+//!
+//! D축은 관계적 차원(상보적)이라 내적 기반 공명에 적합하지 않다.
+//! 복종적 감정(Shame, Fear)에 지배적 자극이 증폭해야 하지만,
+//! 내적은 "같은 방향=공명"이라 반대로 작동한다.
+//!
+//! 해결: P·A가 공명 방향(증폭/감소)을 정하고,
+//! D축 차이(|D_n - D_o|)가 그 효과의 강도를 스케일링한다.
+//!
+//! 직관: 상대와 나의 권력 격차가 클수록, 그 사람의 말이 나에게 더 강하게 작용한다.
+//!
+//! 상세: docs/pad-stimulus-design-decisions.md
 
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +42,7 @@ pub struct Pad {
     /// 각성-이완 (-1.0=이완, +1.0=각성)
     pub arousal: f32,
     /// 지배-복종 (-1.0=복종, +1.0=지배)
+    /// pad_dot에서 P·A 결과의 강도 스케일러로 사용 (내적 항으로는 사용하지 않음)
     pub dominance: f32,
 }
 
@@ -47,16 +61,27 @@ impl Pad {
 // PAD 연산
 // ---------------------------------------------------------------------------
 
-/// PAD 단순 내적 — 같은 방향이면 양수, 반대면 음수.
-/// 자극이 강할수록 내적 절대값이 커서 자극 크기도 자동 반영.
+/// D축 격차의 스케일러 가중치
+const D_SCALE_WEIGHT: f32 = 0.3;
+
+/// P·A 공명 × D 격차 스케일러
 ///
-/// apply_stimulus에서 감정별 공명 계산에 사용:
-/// - 양수 → 같은 방향 → 해당 감정 증폭
-/// - 음수 → 반대 방향 → 해당 감정 감소
+/// P·A 내적이 공명 방향(증폭/감소)을 결정하고,
+/// D축 차이(|D_n - D_o|)가 그 효과의 강도를 배율로 조절한다.
+///
+/// 공식: (P_a × P_b + A_a × A_b) × (1.0 + |D_a - D_b| × 0.3)
+///
+/// D축을 내적 항에서 분리한 이유:
+/// D축은 관계적 차원(상보적)이라 "같은 방향=공명"이 성립하지 않는다.
+/// Shame(D:-0.60) + 비난(D:+0.5) → 내적은 반발이지만 실제로는 증폭이어야 한다.
+/// D 격차를 스케일러로 쓰면 "권력 격차가 클수록 자극이 세게 먹힌다"는
+/// 직관을 방향 왜곡 없이 반영할 수 있다.
+///
+/// 상세: docs/pad-stimulus-design-decisions.md
 pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
-    a.pleasure * b.pleasure
-    + a.arousal * b.arousal
-    + a.dominance * b.dominance
+    let pa = a.pleasure * b.pleasure + a.arousal * b.arousal;
+    let d_gap = (a.dominance - b.dominance).abs();
+    pa * (1.0 + d_gap * D_SCALE_WEIGHT)
 }
 
 // ---------------------------------------------------------------------------
@@ -66,7 +91,7 @@ pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
 /// OCC 22개 감정 유형을 PAD 좌표로 변환
 ///
 /// 대표값이며 플레이테스트로 튜닝 대상.
-/// apply_stimulus에서 감정별 내적 계산에 사용.
+/// P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
 pub fn emotion_to_pad(emotion: EmotionType) -> Pad {
     match emotion {
         // --- Event: Well-being ---
@@ -147,6 +172,7 @@ pub const AROUSAL_ANCHORS: PadAxisAnchors = PadAxisAnchors {
 };
 
 /// D축: 지배(Dominance) ↔ 복종
+/// pad_dot에서 D 격차 스케일러로 사용. PadAnalyzer에서 임베딩한다.
 pub const DOMINANCE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
     positive: &[
         "내가 주도한다, 물러서라",
@@ -187,9 +213,10 @@ pub struct AxisEmbeddings {
 
 /// 대사 → PAD 변환 도메인 서비스
 ///
-/// 초기화 시 TextEmbedder로 앵커 임베딩을 사전 계산하고,
+/// 초기화 시 TextEmbedder로 3축 앵커 임베딩을 사전 계산하고,
 /// analyze() 시 대사 벡터와 앵커 간 유사도로 PAD를 추출.
 ///
+/// P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
 /// 임베딩 모델을 교체해도 이 코드는 변경 없음.
 pub struct PadAnalyzer {
     embedder: Box<dyn TextEmbedder + Send>,
@@ -199,7 +226,7 @@ pub struct PadAnalyzer {
 }
 
 impl PadAnalyzer {
-    /// TextEmbedder로 앵커 임베딩을 사전 계산하여 생성
+    /// TextEmbedder로 3축 앵커 임베딩을 사전 계산하여 생성
     pub fn new(mut embedder: Box<dyn TextEmbedder + Send>) -> Result<Self, EmbedError> {
         let pleasure = Self::embed_axis(&mut *embedder, &PLEASURE_ANCHORS)?;
         let arousal = Self::embed_axis(&mut *embedder, &AROUSAL_ANCHORS)?;
