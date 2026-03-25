@@ -1,6 +1,7 @@
 //! Relationship 도메인 모델 테스트
 //!
 //! 3축(closeness, trust, power) 기본 기능 + 감정 엔진 연동 + 대화 후 갱신
+//! Relationship은 Value Object — 갱신 시 새 인스턴스 반환
 
 mod common;
 
@@ -17,7 +18,8 @@ fn s(v: f32) -> Score {
 
 #[test]
 fn 중립_관계_생성() {
-    let rel = Relationship::neutral("mu_baek");
+    let rel = Relationship::neutral("npc_a", "mu_baek");
+    assert_eq!(rel.owner_id(), "npc_a");
     assert_eq!(rel.target_id(), "mu_baek");
     assert_eq!(rel.closeness().value(), 0.0);
     assert_eq!(rel.trust().value(), 0.0);
@@ -26,11 +28,12 @@ fn 중립_관계_생성() {
 
 #[test]
 fn 빌더로_관계_생성() {
-    let rel = RelationshipBuilder::new("gyo_ryong")
+    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.9))
         .trust(s(0.8))
         .power(s(0.0))
         .build();
+    assert_eq!(rel.owner_id(), "mu_baek");
     assert_eq!(rel.target_id(), "gyo_ryong");
     assert!((rel.closeness().value() - 0.9).abs() < 0.001);
     assert!((rel.trust().value() - 0.8).abs() < 0.001);
@@ -39,7 +42,7 @@ fn 빌더로_관계_생성() {
 
 #[test]
 fn 적대_관계_생성() {
-    let rel = RelationshipBuilder::new("enemy")
+    let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.8))
         .trust(s(-0.5))
         .power(s(-0.3))
@@ -54,7 +57,7 @@ fn 적대_관계_생성() {
 
 #[test]
 fn 의형제_감정_배율이_높음() {
-    let rel = RelationshipBuilder::new("brother")
+    let rel = RelationshipBuilder::new("mu_baek", "brother")
         .closeness(s(0.9))
         .build();
     let multiplier = rel.emotion_intensity_multiplier();
@@ -64,7 +67,7 @@ fn 의형제_감정_배율이_높음() {
 
 #[test]
 fn 무관한_사람_감정_배율은_기본() {
-    let rel = Relationship::neutral("stranger");
+    let rel = Relationship::neutral("mu_baek", "stranger");
     let multiplier = rel.emotion_intensity_multiplier();
     // 1.0 + 0.0 * 0.5 = 1.0
     assert!((multiplier - 1.0).abs() < 0.001);
@@ -73,7 +76,7 @@ fn 무관한_사람_감정_배율은_기본() {
 #[test]
 fn 적대_관계도_감정_배율이_높음() {
     // 적대(-0.8)도 절대값이 크므로 감정 반응 강함
-    let rel = RelationshipBuilder::new("enemy")
+    let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.8))
         .build();
     let multiplier = rel.emotion_intensity_multiplier();
@@ -87,7 +90,7 @@ fn 적대_관계도_감정_배율이_높음() {
 
 #[test]
 fn 신뢰하던_상대의_배신은_기대_위반_극대() {
-    let rel = RelationshipBuilder::new("trusted")
+    let rel = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
         .build();
     // trust 0.8인데 배신 praiseworthiness -0.7 → 차이 1.5
@@ -97,7 +100,7 @@ fn 신뢰하던_상대의_배신은_기대_위반_극대() {
 
 #[test]
 fn 불신하던_상대의_배신은_기대_부합() {
-    let rel = RelationshipBuilder::new("distrusted")
+    let rel = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();
     // trust -0.5인데 배신 praiseworthiness -0.7 → 차이 0.2
@@ -107,7 +110,7 @@ fn 불신하던_상대의_배신은_기대_부합() {
 
 #[test]
 fn 불신하던_상대의_도움은_기대_위반() {
-    let rel = RelationshipBuilder::new("distrusted")
+    let rel = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();
     // trust -0.5인데 도움 praiseworthiness 0.7 → 차이 1.2
@@ -117,7 +120,7 @@ fn 불신하던_상대의_도움은_기대_위반() {
 
 #[test]
 fn trust_감정_modifier_기대_위반시_증폭() {
-    let rel = RelationshipBuilder::new("trusted")
+    let rel = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
         .build();
     let modifier = rel.trust_emotion_modifier(-0.7);
@@ -127,7 +130,7 @@ fn trust_감정_modifier_기대_위반시_증폭() {
 
 #[test]
 fn trust_감정_modifier_기대_부합시_완화() {
-    let rel = RelationshipBuilder::new("distrusted")
+    let rel = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();
     let modifier = rel.trust_emotion_modifier(-0.7);
@@ -136,89 +139,121 @@ fn trust_감정_modifier_기대_부합시_완화() {
 }
 
 // ===========================================================================
-// 대화 후 갱신
+// 대화 후 갱신 (Value Object — 새 인스턴스 반환)
 // ===========================================================================
 
 #[test]
 fn 대화후_배신하면_trust_하락() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
-    let before = rel.trust().value();
-    rel.update_trust(-0.7);  // 배신 행위
-    let after = rel.trust().value();
-    assert!(after < before, "배신 후 trust 하락: {} → {}", before, after);
+    let updated = rel.with_updated_trust(-0.7);  // 배신 행위
+    assert!(updated.trust().value() < rel.trust().value(),
+        "배신 후 trust 하락: {} → {}", rel.trust().value(), updated.trust().value());
 }
 
 #[test]
 fn 대화후_의로운_행동하면_trust_상승() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.0))
         .build();
-    let before = rel.trust().value();
-    rel.update_trust(0.8);  // 의로운 행위
-    let after = rel.trust().value();
-    assert!(after > before, "의로운 행동 후 trust 상승: {} → {}", before, after);
+    let updated = rel.with_updated_trust(0.8);  // 의로운 행위
+    assert!(updated.trust().value() > rel.trust().value(),
+        "의로운 행동 후 trust 상승: {} → {}", rel.trust().value(), updated.trust().value());
 }
 
 #[test]
 fn 대화후_부정_감정이면_closeness_하락() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.5))
         .build();
-    let before = rel.closeness().value();
-    rel.update_closeness(-0.6);  // 부정적 대화 결과
-    let after = rel.closeness().value();
-    assert!(after < before, "부정 대화 후 closeness 하락: {} → {}", before, after);
+    let updated = rel.with_updated_closeness(-0.6);  // 부정적 대화 결과
+    assert!(updated.closeness().value() < rel.closeness().value(),
+        "부정 대화 후 closeness 하락: {} → {}",
+        rel.closeness().value(), updated.closeness().value());
 }
 
 #[test]
 fn 대화후_긍정_감정이면_closeness_상승() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.0))
         .build();
-    let before = rel.closeness().value();
-    rel.update_closeness(0.7);  // 긍정적 대화 결과
-    let after = rel.closeness().value();
-    assert!(after > before, "긍정 대화 후 closeness 상승: {} → {}", before, after);
+    let updated = rel.with_updated_closeness(0.7);  // 긍정적 대화 결과
+    assert!(updated.closeness().value() > rel.closeness().value(),
+        "긍정 대화 후 closeness 상승: {} → {}",
+        rel.closeness().value(), updated.closeness().value());
 }
 
 #[test]
 fn closeness_갱신은_매우_점진적() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.5))
         .build();
-    rel.update_closeness(-0.6);
+    let updated = rel.with_updated_closeness(-0.6);
     // CLOSENESS_UPDATE_RATE = 0.05 → -0.6 × 0.05 = -0.03
     let expected = 0.5 - 0.03;
-    assert!((rel.closeness().value() - expected).abs() < 0.001,
-        "점진적 변화: {}", rel.closeness().value());
+    assert!((updated.closeness().value() - expected).abs() < 0.001,
+        "점진적 변화: {}", updated.closeness().value());
 }
 
 #[test]
 fn trust_갱신은_중간_속도() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
-    rel.update_trust(-0.7);
+    let updated = rel.with_updated_trust(-0.7);
     // TRUST_UPDATE_RATE = 0.1 → -0.7 × 0.1 = -0.07
     let expected = 0.5 - 0.07;
-    assert!((rel.trust().value() - expected).abs() < 0.001,
-        "중간 속도 변화: {}", rel.trust().value());
+    assert!((updated.trust().value() - expected).abs() < 0.001,
+        "중간 속도 변화: {}", updated.trust().value());
+}
+
+#[test]
+fn 원본_불변_검증() {
+    let original = RelationshipBuilder::new("mu_baek", "target")
+        .trust(s(0.5))
+        .closeness(s(0.5))
+        .build();
+    let _updated = original.with_updated_trust(-0.7);
+
+    // 원본은 변하지 않아야 함
+    assert!((original.trust().value() - 0.5).abs() < 0.001,
+        "원본 trust 불변: {}", original.trust().value());
+    assert!((original.closeness().value() - 0.5).abs() < 0.001,
+        "원본 closeness 불변: {}", original.closeness().value());
+}
+
+#[test]
+fn 갱신_체이닝() {
+    let rel = RelationshipBuilder::new("mu_baek", "target")
+        .trust(s(0.0))
+        .closeness(s(0.0))
+        .build();
+    let updated = rel
+        .with_updated_trust(0.8)
+        .with_updated_closeness(0.5);
+
+    assert!(updated.trust().value() > 0.0);
+    assert!(updated.closeness().value() > 0.0);
+    // 원본은 불변
+    assert_eq!(rel.trust().value(), 0.0);
+    assert_eq!(rel.closeness().value(), 0.0);
 }
 
 // ===========================================================================
-// power 설정
+// power 설정 (Value Object — 새 인스턴스 반환)
 // ===========================================================================
 
 #[test]
 fn power_게임이벤트로_직접_설정() {
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("shu_lien", "target")
         .power(s(0.0))
         .build();
     assert_eq!(rel.power().value(), 0.0);
-    rel.set_power(s(0.8));  // 무림맹주 추대
-    assert!((rel.power().value() - 0.8).abs() < 0.001);
+    let updated = rel.with_power(s(0.8));  // 무림맹주 추대
+    assert!((updated.power().value() - 0.8).abs() < 0.001);
+    // 원본 불변
+    assert_eq!(rel.power().value(), 0.0);
 }
 
 // ===========================================================================
@@ -228,7 +263,7 @@ fn power_게임이벤트로_직접_설정() {
 #[test]
 fn 무백과_교룡_의형제_관계() {
     // 무백 → 교룡: 의형제이지만 교룡을 완전히 믿지는 못함
-    let rel = RelationshipBuilder::new("gyo_ryong")
+    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.8))
         .trust(s(0.3))
         .power(s(0.0))  // 대등
@@ -243,7 +278,7 @@ fn 무백과_교룡_의형제_관계() {
 #[test]
 fn 교룡의_숙적_관계() {
     // 교룡 → 숙적: 적대적이고 불신
-    let rel = RelationshipBuilder::new("enemy")
+    let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.7))
         .trust(s(-0.8))
         .power(s(0.0))
@@ -259,7 +294,7 @@ fn 교룡의_숙적_관계() {
 #[test]
 fn 수련과_사부_관계() {
     // 수련 → 사부: 매우 가까운 사이, 완전 신뢰, 하위
-    let rel = RelationshipBuilder::new("master")
+    let rel = RelationshipBuilder::new("shu_lien", "master")
         .closeness(s(0.9))
         .trust(s(0.9))
         .power(s(-0.7))  // 사부가 상위
@@ -271,7 +306,7 @@ fn 수련과_사부_관계() {
 
 #[test]
 fn 직렬화_역직렬화() {
-    let rel = RelationshipBuilder::new("mu_baek")
+    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.8))
         .trust(s(0.3))
         .power(s(0.0))
@@ -279,6 +314,16 @@ fn 직렬화_역직렬화() {
 
     let json = serde_json::to_string(&rel).unwrap();
     let deserialized: Relationship = serde_json::from_str(&json).unwrap();
-    assert_eq!(deserialized.target_id(), "mu_baek");
+    assert_eq!(deserialized.owner_id(), "mu_baek");
+    assert_eq!(deserialized.target_id(), "gyo_ryong");
     assert!((deserialized.closeness().value() - 0.8).abs() < 0.001);
+}
+
+#[test]
+fn owner_id_직렬화에_포함() {
+    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
+        .build();
+    let json = serde_json::to_string(&rel).unwrap();
+    assert!(json.contains("mu_baek"), "JSON에 owner_id 포함: {}", json);
+    assert!(json.contains("gyo_ryong"), "JSON에 target_id 포함: {}", json);
 }

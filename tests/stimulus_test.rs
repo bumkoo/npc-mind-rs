@@ -11,7 +11,7 @@ use npc_mind::domain::relationship::Relationship;
 use common::{make_무백, make_교룡};
 
 fn neutral_rel() -> Relationship {
-    Relationship::neutral("test")
+    Relationship::neutral("npc", "test")
 }
 
 // ---------------------------------------------------------------------------

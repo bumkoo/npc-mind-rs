@@ -1,7 +1,9 @@
 //! 대화 후 Relationship 갱신 통합 테스트
 //!
-//! 전체 대화 흐름: appraise → apply_stimulus → update_after_dialogue
+//! 전체 대화 흐름: appraise → apply_stimulus → after_dialogue
 //! 대화 결과에 따라 관계가 변하는지 검증
+//!
+//! Relationship은 Value Object — 갱신 시 새 인스턴스로 교체
 
 mod common;
 
@@ -23,7 +25,7 @@ fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
 #[test]
 fn 배신_대화_후_trust_하락() {
     let yu = make_교룡();
-    let mut rel = RelationshipBuilder::new("mu_baek")
+    let rel = RelationshipBuilder::new("gyo_ryong", "mu_baek")
         .closeness(s(0.8))
         .trust(s(0.5))
         .build();
@@ -46,13 +48,11 @@ fn 배신_대화_후_trust_하락() {
     let state2 = StimulusEngine::apply_stimulus(yu.personality(), &state1, &provocation);
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &state2, &provocation);
 
-    // 3. 대화 종료 → 관계 갱신
-    let trust_before = rel.trust().value();
-    rel.update_after_dialogue(&final_state, &situation);
-    let trust_after = rel.trust().value();
+    // 3. 대화 종료 → 새 관계 인스턴스 생성
+    let updated = rel.after_dialogue(&final_state, &situation);
 
-    assert!(trust_after < trust_before,
-        "배신 대화 후 trust 하락: {} → {}", trust_before, trust_after);
+    assert!(updated.trust().value() < rel.trust().value(),
+        "배신 대화 후 trust 하락: {} → {}", rel.trust().value(), updated.trust().value());
 }
 
 // ===========================================================================
@@ -62,7 +62,7 @@ fn 배신_대화_후_trust_하락() {
 #[test]
 fn 부정_대화_후_closeness_하락() {
     let yu = make_교룡();
-    let mut rel = RelationshipBuilder::new("mu_baek")
+    let rel = RelationshipBuilder::new("gyo_ryong", "mu_baek")
         .closeness(s(0.5))
         .build();
 
@@ -76,14 +76,11 @@ fn 부정_대화_후_closeness_하락() {
     };
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
+    let updated = rel.after_dialogue(&state, &situation);
 
-    // 대화 종료 (자극 없이 바로 갱신)
-    let closeness_before = rel.closeness().value();
-    rel.update_after_dialogue(&state, &situation);
-    let closeness_after = rel.closeness().value();
-
-    assert!(closeness_after < closeness_before,
-        "부정 대화 후 closeness 하락: {} → {}", closeness_before, closeness_after);
+    assert!(updated.closeness().value() < rel.closeness().value(),
+        "부정 대화 후 closeness 하락: {} → {}",
+        rel.closeness().value(), updated.closeness().value());
 }
 
 // ===========================================================================
@@ -93,7 +90,7 @@ fn 부정_대화_후_closeness_하락() {
 #[test]
 fn 긍정_대화_후_closeness_상승() {
     let li = make_무백();
-    let mut rel = RelationshipBuilder::new("friend")
+    let rel = RelationshipBuilder::new("mu_baek", "friend")
         .closeness(s(0.3))
         .build();
 
@@ -108,13 +105,11 @@ fn 긍정_대화_후_closeness_상승() {
     };
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
+    let updated = rel.after_dialogue(&state, &situation);
 
-    let closeness_before = rel.closeness().value();
-    rel.update_after_dialogue(&state, &situation);
-    let closeness_after = rel.closeness().value();
-
-    assert!(closeness_after > closeness_before,
-        "긍정 대화 후 closeness 상승: {} → {}", closeness_before, closeness_after);
+    assert!(updated.closeness().value() > rel.closeness().value(),
+        "긍정 대화 후 closeness 상승: {} → {}",
+        rel.closeness().value(), updated.closeness().value());
 }
 
 // ===========================================================================
@@ -124,7 +119,7 @@ fn 긍정_대화_후_closeness_상승() {
 #[test]
 fn event_분기는_trust_변경_없음() {
     let li = make_무백();
-    let mut rel = RelationshipBuilder::new("target")
+    let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
 
@@ -139,13 +134,11 @@ fn event_분기는_trust_변경_없음() {
     };
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
+    let updated = rel.after_dialogue(&state, &situation);
 
-    let trust_before = rel.trust().value();
-    rel.update_after_dialogue(&state, &situation);
-    let trust_after = rel.trust().value();
-
-    assert!((trust_before - trust_after).abs() < 0.001,
-        "Event 분기 → trust 미변경: {} → {}", trust_before, trust_after);
+    assert!((rel.trust().value() - updated.trust().value()).abs() < 0.001,
+        "Event 분기 → trust 미변경: {} → {}",
+        rel.trust().value(), updated.trust().value());
 }
 
 // ===========================================================================
@@ -155,7 +148,7 @@ fn event_분기는_trust_변경_없음() {
 #[test]
 fn 대화_후_power_변경_없음() {
     let yu = make_교룡();
-    let mut rel = RelationshipBuilder::new("master")
+    let rel = RelationshipBuilder::new("gyo_ryong", "master")
         .power(s(-0.7))
         .build();
 
@@ -169,10 +162,10 @@ fn 대화_후_power_변경_없음() {
     };
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
-    rel.update_after_dialogue(&state, &situation);
+    let updated = rel.after_dialogue(&state, &situation);
 
-    assert!((rel.power().value() - -0.7).abs() < 0.001,
-        "power는 대화로 변하지 않음: {}", rel.power().value());
+    assert!((updated.power().value() - -0.7).abs() < 0.001,
+        "power는 대화로 변하지 않음: {}", updated.power().value());
 }
 
 // ===========================================================================
@@ -184,7 +177,7 @@ fn 시나리오_의형제_배신_후_관계_악화() {
     let yu = make_교룡();
 
     // 초기: 의형제 관계
-    let mut rel = RelationshipBuilder::new("mu_baek")
+    let rel = RelationshipBuilder::new("gyo_ryong", "mu_baek")
         .closeness(s(0.8))
         .trust(s(0.7))
         .power(s(0.0))
@@ -210,31 +203,31 @@ fn 시나리오_의형제_배신_후_관계_악화() {
     let s2 = StimulusEngine::apply_stimulus(yu.personality(), &s1, &provocation);
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &s2, &provocation);
 
-    // 3. 대화 종료 → 관계 갱신
-    let trust_before = rel.trust().value();
-    let closeness_before = rel.closeness().value();
-
-    rel.update_after_dialogue(&final_state, &situation);
-
-    let trust_after = rel.trust().value();
-    let closeness_after = rel.closeness().value();
+    // 3. 대화 종료 → 새 관계 인스턴스
+    let updated = rel.after_dialogue(&final_state, &situation);
 
     // 검증: trust 급락 (배신 praiseworthiness -0.8)
-    assert!(trust_after < trust_before,
-        "trust 급락: {} → {}", trust_before, trust_after);
-    assert!(trust_before - trust_after > 0.05,
-        "trust 하락폭이 유의미: delta={}", trust_before - trust_after);
+    assert!(updated.trust().value() < rel.trust().value(),
+        "trust 급락: {} → {}", rel.trust().value(), updated.trust().value());
+    assert!(rel.trust().value() - updated.trust().value() > 0.05,
+        "trust 하락폭이 유의미: delta={}",
+        rel.trust().value() - updated.trust().value());
 
     // 검증: closeness도 하락 (부정 감정 valence)
-    assert!(closeness_after < closeness_before,
-        "closeness 하락: {} → {}", closeness_before, closeness_after);
+    assert!(updated.closeness().value() < rel.closeness().value(),
+        "closeness 하락: {} → {}",
+        rel.closeness().value(), updated.closeness().value());
 
     // 검증: power는 불변
-    assert!((rel.power().value() - 0.0).abs() < 0.001);
+    assert!((updated.power().value() - 0.0).abs() < 0.001);
+
+    // 검증: 원본 불변
+    assert!((rel.trust().value() - 0.7).abs() < 0.001, "원본 trust 불변");
+    assert!((rel.closeness().value() - 0.8).abs() < 0.001, "원본 closeness 불변");
 
     println!("=== 의형제 배신 시나리오 ===");
-    println!("trust: {} → {}", trust_before, trust_after);
-    println!("closeness: {} → {}", closeness_before, closeness_after);
+    println!("trust: {} → {}", rel.trust().value(), updated.trust().value());
+    println!("closeness: {} → {}", rel.closeness().value(), updated.closeness().value());
 }
 
 // ===========================================================================
@@ -244,7 +237,7 @@ fn 시나리오_의형제_배신_후_관계_악화() {
 #[test]
 fn 여러_대화에_걸쳐_관계_누적_변화() {
     let li = make_무백();
-    let mut rel = RelationshipBuilder::new("ally")
+    let rel0 = RelationshipBuilder::new("mu_baek", "ally")
         .closeness(s(0.0))
         .trust(s(0.0))
         .build();
@@ -258,16 +251,12 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
             outcome_for_self: Some(0.5),
         },
     };
-    let state1 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel);
-    rel.update_after_dialogue(&state1, &good_situation);
-
-    let after_good = (rel.closeness().value(), rel.trust().value());
+    let state1 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel0);
+    let rel1 = rel0.after_dialogue(&state1, &good_situation);
 
     // 대화 2: 또 긍정
-    let state2 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel);
-    rel.update_after_dialogue(&state2, &good_situation);
-
-    let after_good2 = (rel.closeness().value(), rel.trust().value());
+    let state2 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel1);
+    let rel2 = rel1.after_dialogue(&state2, &good_situation);
 
     // 대화 3: 부정 (배신)
     let bad_situation = Situation {
@@ -278,24 +267,30 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
             outcome_for_self: Some(-0.5),
         },
     };
-    let state3 = AppraisalEngine::appraise(li.personality(), &bad_situation, &rel);
-    rel.update_after_dialogue(&state3, &bad_situation);
-
-    let after_bad = (rel.closeness().value(), rel.trust().value());
+    let state3 = AppraisalEngine::appraise(li.personality(), &bad_situation, &rel2);
+    let rel3 = rel2.after_dialogue(&state3, &bad_situation);
 
     // 검증: 긍정 대화로 관계 개선
-    assert!(after_good.0 > 0.0, "대화1 후 closeness 상승: {}", after_good.0);
-    assert!(after_good.1 > 0.0, "대화1 후 trust 상승: {}", after_good.1);
+    assert!(rel1.closeness().value() > 0.0,
+        "대화1 후 closeness 상승: {}", rel1.closeness().value());
+    assert!(rel1.trust().value() > 0.0,
+        "대화1 후 trust 상승: {}", rel1.trust().value());
 
     // 검증: 연속 긍정으로 더 개선
-    assert!(after_good2.1 > after_good.1, "대화2 후 trust 더 상승");
+    assert!(rel2.trust().value() > rel1.trust().value(),
+        "대화2 후 trust 더 상승");
 
-    // 검증: 배신으로 trust 하락 (but closeness는 누적이라 아직 양수일 수 있음)
-    assert!(after_bad.1 < after_good2.1, "배신 후 trust 하락");
+    // 검증: 배신으로 trust 하락
+    assert!(rel3.trust().value() < rel2.trust().value(),
+        "배신 후 trust 하락");
+
+    // 검증: 원본들 전부 불변
+    assert_eq!(rel0.trust().value(), 0.0, "rel0 불변");
+    assert!((rel1.trust().value() - rel1.trust().value()).abs() < 0.001, "rel1 불변");
 
     println!("=== 관계 변화 추적 ===");
-    println!("초기: closeness=0.0, trust=0.0");
-    println!("대화1(긍정): c={:.3}, t={:.3}", after_good.0, after_good.1);
-    println!("대화2(긍정): c={:.3}, t={:.3}", after_good2.0, after_good2.1);
-    println!("대화3(배신): c={:.3}, t={:.3}", after_bad.0, after_bad.1);
+    println!("초기:       c={:.3}, t={:.3}", rel0.closeness().value(), rel0.trust().value());
+    println!("대화1(긍정): c={:.3}, t={:.3}", rel1.closeness().value(), rel1.trust().value());
+    println!("대화2(긍정): c={:.3}, t={:.3}", rel2.closeness().value(), rel2.trust().value());
+    println!("대화3(배신): c={:.3}, t={:.3}", rel3.closeness().value(), rel3.trust().value());
 }

@@ -12,7 +12,7 @@ use npc_mind::presentation::korean::KoreanFormatter;
 use common::{make_무백, make_교룡, score as s};
 
 fn neutral_rel() -> Relationship {
-    Relationship::neutral("test")
+    Relationship::neutral("npc", "test")
 }
 
 // ---------------------------------------------------------------------------
@@ -199,7 +199,7 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
         },
     };
 
-    let brother = RelationshipBuilder::new("gyo_ryong")
+    let brother = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.9))
         .trust(s(0.8))
         .power(s(0.0))
@@ -221,7 +221,7 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
 #[test]
 fn 관계_포함_json에_관계_데이터() {
     let yu = make_교룡();
-    let enemy = RelationshipBuilder::new("enemy")
+    let enemy = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.7))
         .trust(s(-0.8))
         .power(s(0.0))

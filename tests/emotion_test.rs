@@ -10,7 +10,7 @@ use common::{make_무백, make_교룡, make_수련, make_소호, score as s};
 
 /// 테스트용 중립 관계
 fn neutral_rel() -> Relationship {
-    Relationship::neutral("test")
+    Relationship::neutral("npc", "test")
 }
 
 // ---------------------------------------------------------------------------
@@ -273,11 +273,6 @@ fn 감정_significant_필터링() {
 }
 
 // ===========================================================================
-// 시나리오 5: 대화 중 감정 변화 → 사이클 7(apply_stimulus)에서 재작성 예정
-// 기존 appraise_with_context 테스트 3개 삭제됨
-// ===========================================================================
-
-// ===========================================================================
 // 시나리오 6: Relationship이 감정 강도에 미치는 영향
 // ===========================================================================
 
@@ -293,11 +288,11 @@ fn 의형제의_배신이_남의_배신보다_분노가_큼() {
         },
     };
 
-    let brother = RelationshipBuilder::new("brother")
+    let brother = RelationshipBuilder::new("gyo_ryong", "brother")
         .closeness(s(0.9))
         .trust(s(0.8))
         .build();
-    let stranger = Relationship::neutral("stranger");
+    let stranger = Relationship::neutral("gyo_ryong", "stranger");
 
     let state_brother = AppraisalEngine::appraise(yu.personality(), &situation, &brother);
     let state_stranger = AppraisalEngine::appraise(yu.personality(), &situation, &stranger);
@@ -322,11 +317,11 @@ fn 신뢰하던_상대의_배신이_기대위반으로_더_강함() {
     };
 
     // trust 높았는데 배신 → 기대 위반 → 감정 증폭
-    let trusted = RelationshipBuilder::new("trusted")
+    let trusted = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
         .build();
     // trust 낮았는데 배신 → 기대 부합 → 감정 완화
-    let distrusted = RelationshipBuilder::new("distrusted")
+    let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();
 
@@ -354,10 +349,10 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
         },
     };
 
-    let close = RelationshipBuilder::new("close")
+    let close = RelationshipBuilder::new("mu_baek", "close")
         .closeness(s(0.9))
         .build();
-    let distant = Relationship::neutral("distant");
+    let distant = Relationship::neutral("mu_baek", "distant");
 
     let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
     let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
@@ -382,10 +377,10 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
         },
     };
 
-    let rival = RelationshipBuilder::new("rival")
+    let rival = RelationshipBuilder::new("gyo_ryong", "rival")
         .closeness(s(-0.7))
         .build();
-    let nobody = Relationship::neutral("nobody");
+    let nobody = Relationship::neutral("gyo_ryong", "nobody");
 
     let state_rival = AppraisalEngine::appraise(yu.personality(), &situation, &rival);
     let state_nobody = AppraisalEngine::appraise(yu.personality(), &situation, &nobody);
