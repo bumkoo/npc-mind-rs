@@ -39,6 +39,7 @@ impl AppraisalEngine {
     ) -> EmotionState {
         let mut state = EmotionState::new();
         let rel_mul = relationship.emotion_intensity_multiplier();
+        let closeness_val = relationship.closeness().value(); // [변경1] closeness 방향 추출
 
         match &situation.focus {
             SituationFocus::Event {
@@ -49,6 +50,7 @@ impl AppraisalEngine {
             } => {
                 Self::appraise_event(
                     personality, &mut state, rel_mul,
+                    closeness_val, // [변경1] Fortune-of-others 방향 조절용
                     *desirability_for_self,
                     *desirability_for_other,
                     *is_prospective,
@@ -83,6 +85,7 @@ impl AppraisalEngine {
         p: &HexacoProfile,
         state: &mut EmotionState,
         rel_mul: f32,
+        closeness_value: f32, // [변경2] Fortune-of-others 방향 조절용
         desirability_self: f32,
         desirability_other: Option<f32>,
         is_prospective: bool,
@@ -141,15 +144,22 @@ impl AppraisalEngine {
             let h = avg.h;
             let a = avg.a;
 
+            // [변경3] closeness 방향 조절자 (Fortune-of-others 전용)
+            // 친화 감정(HappyFor, Pity): 친구면 증폭, 원수면 억제
+            // 적대 감정(Resentment, Gloating): 원수면 증폭, 친구면 억제
+            // 1.0 ± closeness × W 패턴 통일
+            let affinity_mod = 1.0 + closeness_value * w;
+            let hostility_mod = 1.0 - closeness_value * w;
+
             if desir_other > 0.0 {
                 if h > 0.0 || a > 0.0 {
                     let empathy = (h.max(0.0) + a.max(0.0)) / 2.0;
                     state.add(Emotion::new(EmotionType::HappyFor,
-                        desir_other * (Self::EMPATHY_BASE + empathy * Self::EMPATHY_BASE) * rel_mul));
+                        desir_other * (Self::EMPATHY_BASE + empathy * Self::EMPATHY_BASE) * affinity_mod * rel_mul));
                 }
                 if h < t {
                     state.add(Emotion::new(EmotionType::Resentment,
-                        desir_other * h.abs() * negative_mod * rel_mul));
+                        desir_other * h.abs() * negative_mod * hostility_mod * rel_mul));
                 }
             } else if desir_other < 0.0 {
                 let abs = desir_other.abs();
@@ -157,12 +167,12 @@ impl AppraisalEngine {
                     let compassion = (a.max(0.0)
                         + p.emotionality.sentimentality.value().max(0.0)) / 2.0;
                     state.add(Emotion::new(EmotionType::Pity,
-                        abs * (Self::EMPATHY_BASE + compassion * Self::EMPATHY_BASE) * rel_mul));
+                        abs * (Self::EMPATHY_BASE + compassion * Self::EMPATHY_BASE) * affinity_mod * rel_mul));
                 }
                 if h < t && a < t {
                     let cruelty = (h.abs() + a.abs()) / 2.0;
                     state.add(Emotion::new(EmotionType::Gloating,
-                        abs * cruelty * rel_mul));
+                        abs * cruelty * hostility_mod * rel_mul));
                 }
             }
         }

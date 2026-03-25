@@ -385,3 +385,144 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
         "라이벌({}) > 남({}) 시기 — closeness 절대값 효과",
         resent_rival, resent_nobody);
 }
+
+// ===========================================================================
+// 시나리오 7: closeness 방향이 Fortune-of-others 감정을 조절
+//
+// 성격(HEXACO)이 발동 여부를 결정하고,
+// closeness 방향이 "이 사람에 대해 얼마나 강하게 느끼는가"를 조절.
+// affinity_mod  = 1 + closeness × W  (HappyFor, Pity)
+// hostility_mod = 1 - closeness × W  (Resentment, Gloating)
+// ===========================================================================
+
+/// 타인에게 좋은 일이 생기는 상황
+fn 타인_행운_상황() -> Situation {
+    Situation {
+        description: "상대가 무림맹주에 추대되었다".into(),
+        focus: SituationFocus::Event {
+            desirability_for_self: 0.0,
+            desirability_for_other: Some(0.8),
+            is_prospective: false,
+            prior_expectation: None,
+        },
+    }
+}
+
+/// 타인에게 나쁜 일이 생기는 상황
+fn 타인_불행_상황() -> Situation {
+    Situation {
+        description: "상대가 비무에서 크게 패했다".into(),
+        focus: SituationFocus::Event {
+            desirability_for_self: 0.0,
+            desirability_for_other: Some(-0.7),
+            is_prospective: false,
+            prior_expectation: None,
+        },
+    }
+}
+
+// --- HappyFor: 원수의 행운에는 기쁨이 억제됨 ---
+
+#[test]
+fn 원수의_행운에_무백은_기뻐하되_약하게() {
+    let li = make_무백();
+    let situation = 타인_행운_상황();
+
+    let enemy = RelationshipBuilder::new("mu_baek", "enemy")
+        .closeness(s(-0.8))
+        .build();
+
+    let state_enemy = AppraisalEngine::appraise(li.personality(), &situation, &enemy);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let happy_enemy = find_emotion(&state_enemy, EmotionType::HappyFor).unwrap();
+    let happy_neutral = find_emotion(&state_neutral, EmotionType::HappyFor).unwrap();
+
+    // 무백은 H↑라서 HappyFor 발동은 하지만, 원수니까 무관한 사람보다 약해야 함
+    assert!(happy_enemy < happy_neutral,
+        "원수 행운({}) < 무관한 사람 행운({}) — closeness 방향 억제",
+        happy_enemy, happy_neutral);
+}
+
+// --- Resentment: 친구의 행운에는 질투가 억제됨 ---
+
+#[test]
+fn 친구의_행운에_교룡은_시기하되_약하게() {
+    let yu = make_교룡();
+    let situation = 타인_행운_상황();
+
+    let friend = RelationshipBuilder::new("gyo_ryong", "friend")
+        .closeness(s(0.8))
+        .build();
+
+    let state_friend = AppraisalEngine::appraise(yu.personality(), &situation, &friend);
+    let state_neutral = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
+
+    let resent_friend = find_emotion(&state_friend, EmotionType::Resentment).unwrap();
+    let resent_neutral = find_emotion(&state_neutral, EmotionType::Resentment).unwrap();
+
+    // 교룡은 H↓라서 Resentment 발동은 하지만, 친구니까 무관한 사람보다 약해야 함
+    assert!(resent_friend < resent_neutral,
+        "친구 행운 시기({}) < 무관 행운 시기({}) — closeness 방향 억제",
+        resent_friend, resent_neutral);
+}
+
+// --- Pity: 친구의 불행에 더 안타까움 ---
+
+#[test]
+fn 친구의_불행에_수련은_더_강하게_동정() {
+    let shu = make_수련();
+    let situation = 타인_불행_상황();
+
+    let friend = RelationshipBuilder::new("shu_lien", "friend")
+        .closeness(s(0.8))
+        .build();
+
+    let state_friend = AppraisalEngine::appraise(shu.personality(), &situation, &friend);
+    let state_neutral = AppraisalEngine::appraise(shu.personality(), &situation, &neutral_rel());
+
+    let pity_friend = find_emotion(&state_friend, EmotionType::Pity).unwrap();
+    let pity_neutral = find_emotion(&state_neutral, EmotionType::Pity).unwrap();
+
+    assert!(pity_friend > pity_neutral,
+        "친구 불행 동정({}) > 무관 불행 동정({}) — closeness 방향 증폭",
+        pity_friend, pity_neutral);
+}
+
+// --- Gloating: 원수의 불행에 더 쾌재 ---
+
+#[test]
+fn 원수의_불행에_교룡은_더_강하게_쾌재() {
+    let yu = make_교룡();
+    let situation = 타인_불행_상황();
+
+    let enemy = RelationshipBuilder::new("gyo_ryong", "enemy")
+        .closeness(s(-0.8))
+        .build();
+
+    let state_enemy = AppraisalEngine::appraise(yu.personality(), &situation, &enemy);
+    let state_neutral = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
+
+    let gloat_enemy = find_emotion(&state_enemy, EmotionType::Gloating).unwrap();
+    let gloat_neutral = find_emotion(&state_neutral, EmotionType::Gloating).unwrap();
+
+    assert!(gloat_enemy > gloat_neutral,
+        "원수 불행 쾌재({}) > 무관 불행 쾌재({}) — closeness 방향 증폭",
+        gloat_enemy, gloat_neutral);
+}
+
+// --- 중립 관계는 기존과 동일 (회귀 방지) ---
+
+#[test]
+fn 중립_관계는_closeness_방향_영향_없음() {
+    let li = make_무백();
+    let situation = 타인_행운_상황();
+
+    // closeness=0일 때 affinity_mod=1.0, hostility_mod=1.0 → 기존과 동일
+    let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let happy = find_emotion(&state, EmotionType::HappyFor).unwrap();
+
+    // 무백(H=0.65, A=0.575)은 중립 관계에서도 HappyFor이 발생해야 함
+    assert!(happy > 0.3,
+        "중립 관계에서 무백의 HappyFor 정상 발동: {}", happy);
+}
