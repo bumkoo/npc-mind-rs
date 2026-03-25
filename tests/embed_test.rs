@@ -36,7 +36,7 @@ fn shared_analyzer() -> &'static Mutex<PadAnalyzer> {
 #[test]
 fn 도발_대사는_pleasure_음수() {
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let pad = analyzer.analyze("네 이놈, 죽고 싶으냐!");
+    let pad = analyzer.analyze("네 이놈, 죽고 싶으냐!").expect("임베딩 실패");
     println!("도발: P={:.3}, A={:.3}, D={:.3}", pad.pleasure, pad.arousal, pad.dominance);
     assert!(pad.pleasure < 0.0, "도발 대사의 P는 음수: {}", pad.pleasure);
 }
@@ -44,7 +44,7 @@ fn 도발_대사는_pleasure_음수() {
 #[test]
 fn 감사_대사는_pleasure_양수() {
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let pad = analyzer.analyze("은혜를 잊지 않겠습니다. 정말 감사합니다.");
+    let pad = analyzer.analyze("은혜를 잊지 않겠습니다. 정말 감사합니다.").expect("임베딩 실패");
     println!("감사: P={:.3}, A={:.3}, D={:.3}", pad.pleasure, pad.arousal, pad.dominance);
     assert!(pad.pleasure > 0.0, "감사 대사의 P는 양수: {}", pad.pleasure);
 }
@@ -52,7 +52,7 @@ fn 감사_대사는_pleasure_양수() {
 #[test]
 fn 위협_대사는_arousal_양수() {
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let pad = analyzer.analyze("당장 목을 치겠다! 칼을 뽑아라!");
+    let pad = analyzer.analyze("당장 목을 치겠다! 칼을 뽑아라!").expect("임베딩 실패");
     println!("위협: P={:.3}, A={:.3}, D={:.3}", pad.pleasure, pad.arousal, pad.dominance);
     assert!(pad.arousal > 0.0, "위협 대사의 A는 양수: {}", pad.arousal);
 }
@@ -60,8 +60,8 @@ fn 위협_대사는_arousal_양수() {
 #[test]
 fn 차분한_대사가_위협보다_arousal_낮음() {
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let calm_pad = analyzer.analyze("편안히 쉬시게. 차 한잔 올리지.");
-    let threat_pad = analyzer.analyze("당장 목을 치겠다!");
+    let calm_pad = analyzer.analyze("편안히 쉬시게. 차 한잔 올리지.").expect("임베딩 실패");
+    let threat_pad = analyzer.analyze("당장 목을 치겠다!").expect("임베딩 실패");
     println!("차분: A={:.3}, 위협: A={:.3}", calm_pad.arousal, threat_pad.arousal);
     assert!(calm_pad.arousal < threat_pad.arousal,
         "차분({:.3}) < 위협({:.3}) arousal", calm_pad.arousal, threat_pad.arousal);
@@ -70,8 +70,8 @@ fn 차분한_대사가_위협보다_arousal_낮음() {
 #[test]
 fn 복종이_명령보다_dominance_낮음() {
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let submit = analyzer.analyze("제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.");
-    let command = analyzer.analyze("내가 주도한다. 물러서라, 이것이 명이다!");
+    let submit = analyzer.analyze("제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.").expect("임베딩 실패");
+    let command = analyzer.analyze("내가 주도한다. 물러서라, 이것이 명이다!").expect("임베딩 실패");
     println!("복종: D={:.3}, 명령: D={:.3}", submit.dominance, command.dominance);
     assert!(submit.dominance < command.dominance,
         "복종({:.3}) < 명령({:.3}) dominance", submit.dominance, command.dominance);
@@ -83,7 +83,7 @@ fn 전체_흐름_대사분석_후_자극_적용() {
     use npc_mind::domain::relationship::Relationship;
 
     let mut analyzer = shared_analyzer().lock().unwrap();
-    let stimulus = analyzer.analyze("배은망덕한 놈! 의리도 없는 것이!");
+    let stimulus = analyzer.analyze("배은망덕한 놈! 의리도 없는 것이!").expect("임베딩 실패");
     println!("대사 PAD: P={:.3}, A={:.3}, D={:.3}",
         stimulus.pleasure, stimulus.arousal, stimulus.dominance);
 
