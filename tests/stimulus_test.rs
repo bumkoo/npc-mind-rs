@@ -7,12 +7,7 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
-use npc_mind::domain::relationship::Relationship;
-use common::{make_무백, make_교룡};
-
-fn neutral_rel() -> Relationship {
-    Relationship::neutral("npc", "test")
-}
+use common::{make_무백, make_교룡, neutral_rel};
 
 // ---------------------------------------------------------------------------
 // 헬퍼

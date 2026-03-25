@@ -6,12 +6,7 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
-use common::{make_무백, make_교룡, make_수련, make_소호, score as s};
-
-/// 테스트용 중립 관계
-fn neutral_rel() -> Relationship {
-    Relationship::neutral("npc", "test")
-}
+use common::{make_무백, make_교룡, make_수련, make_소호, score as s, neutral_rel};
 
 // ---------------------------------------------------------------------------
 // 헬퍼: 감정 상태에서 특정 감정 찾기
@@ -316,11 +311,9 @@ fn 신뢰하던_상대의_배신이_기대위반으로_더_강함() {
         },
     };
 
-    // trust 높았는데 배신 → 기대 위반 → 감정 증폭
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
         .build();
-    // trust 낮았는데 배신 → 기대 부합 → 감정 완화
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();

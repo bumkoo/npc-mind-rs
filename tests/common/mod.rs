@@ -1,13 +1,19 @@
 //! 테스트 공통 유틸리티
 //!
-//! 무협 4인 캐릭터 빌더 + Score 헬퍼
+//! 무협 4인 캐릭터 빌더 + Score 헬퍼 + 관계 팩토리
 
 #![allow(dead_code)]
 
 use npc_mind::domain::personality::*;
+use npc_mind::domain::relationship::Relationship;
 
 pub fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
+}
+
+/// 테스트용 중립 관계 (감정 엔진에 Relationship 필수이므로 기본값 역할)
+pub fn neutral_rel() -> Relationship {
+    Relationship::neutral("npc", "test")
 }
 
 /// 무백 — 정의로운 검객. 의리와 절제를 중시한다.

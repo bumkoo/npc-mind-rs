@@ -6,14 +6,10 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
-use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
+use npc_mind::domain::relationship::RelationshipBuilder;
 use npc_mind::ports::GuideFormatter;
 use npc_mind::presentation::korean::KoreanFormatter;
-use common::{make_무백, make_교룡, score as s};
-
-fn neutral_rel() -> Relationship {
-    Relationship::neutral("npc", "test")
-}
+use common::{make_무백, make_교룡, score as s, neutral_rel};
 
 // ---------------------------------------------------------------------------
 // 성격 스냅샷 테스트 (도메인)
