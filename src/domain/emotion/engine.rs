@@ -139,6 +139,16 @@ impl AppraisalEngine {
         }
 
         // 4. 타인의 운 → HappyFor / Pity / Gloating / Resentment
+        //
+        // Fortune-of-others에서는 rel_mul(closeness 절대값)을 적용하지 않는다.
+        // affinity_mod/hostility_mod가 closeness의 방향 + 강도를 모두 담당한다.
+        //   친구(+0.8) → affinity_mod=1.24 (증폭), hostility_mod=0.76 (억제)
+        //   원수(-0.8) → affinity_mod=0.76 (억제), hostility_mod=1.24 (증폭)
+        //   무관(0.0)  → 둘 다 1.0 (기본값)
+        //
+        // rel_mul을 곱하면 closeness가 이중 적용되어
+        // "원수의 행운에 기뻐하는 강도"가 "무관한 사람의 행운에 기뻐하는 강도"보다
+        // 커지는 역전 현상이 발생한다.
         if let Some(desir_other) = desirability_other {
             let t = Self::FORTUNE_THRESHOLD;
             let h = avg.h;
@@ -152,11 +162,11 @@ impl AppraisalEngine {
                 if h > 0.0 || a > 0.0 {
                     let empathy = (h.max(0.0) + a.max(0.0)) / 2.0;
                     state.add(Emotion::new(EmotionType::HappyFor,
-                        desir_other * (Self::EMPATHY_BASE + empathy * Self::EMPATHY_BASE) * affinity_mod * rel_mul));
+                        desir_other * (Self::EMPATHY_BASE + empathy * Self::EMPATHY_BASE) * affinity_mod));
                 }
                 if h < t {
                     state.add(Emotion::new(EmotionType::Resentment,
-                        desir_other * h.abs() * negative_mod * hostility_mod * rel_mul));
+                        desir_other * h.abs() * negative_mod * hostility_mod));
                 }
             } else if desir_other < 0.0 {
                 let abs = desir_other.abs();
@@ -164,12 +174,12 @@ impl AppraisalEngine {
                     let compassion = (a.max(0.0)
                         + p.emotionality.sentimentality.value().max(0.0)) / 2.0;
                     state.add(Emotion::new(EmotionType::Pity,
-                        abs * (Self::EMPATHY_BASE + compassion * Self::EMPATHY_BASE) * affinity_mod * rel_mul));
+                        abs * (Self::EMPATHY_BASE + compassion * Self::EMPATHY_BASE) * affinity_mod));
                 }
                 if h < t && a < t {
                     let cruelty = (h.abs() + a.abs()) / 2.0;
                     state.add(Emotion::new(EmotionType::Gloating,
-                        abs * cruelty * hostility_mod * rel_mul));
+                        abs * cruelty * hostility_mod));
                 }
             }
         }
