@@ -200,7 +200,7 @@ impl EmotionState {
     /// 가장 강한 감정 반환
     pub fn dominant(&self) -> Option<&Emotion> {
         self.emotions.iter()
-            .max_by(|a, b| a.intensity().partial_cmp(&b.intensity()).unwrap())
+            .max_by(|a, b| a.intensity().partial_cmp(&b.intensity()).unwrap_or(std::cmp::Ordering::Equal))
     }
 
     /// threshold 이상의 유의미한 감정들만 반환 (강도 내림차순)
@@ -208,7 +208,7 @@ impl EmotionState {
         let mut result: Vec<_> = self.emotions.iter()
             .filter(|e| e.is_significant(threshold))
             .collect();
-        result.sort_by(|a, b| b.intensity().partial_cmp(&a.intensity()).unwrap());
+        result.sort_by(|a, b| b.intensity().partial_cmp(&a.intensity()).unwrap_or(std::cmp::Ordering::Equal));
         result
     }
 

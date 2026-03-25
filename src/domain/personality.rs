@@ -50,6 +50,14 @@ impl Score {
         Ok(Self(value))
     }
 
+    /// 범위 내로 클램핑하여 Score 생성 (항상 성공)
+    ///
+    /// 이미 연산 결과로 나온 값을 안전하게 Score로 변환할 때 사용.
+    /// 범위 밖 값은 -1.0 또는 1.0으로 클램핑된다.
+    pub fn clamped(value: f32) -> Self {
+        Self(value.clamp(SCORE_MIN, SCORE_MAX))
+    }
+
     pub fn neutral() -> Self {
         Self(SCORE_NEUTRAL)
     }
