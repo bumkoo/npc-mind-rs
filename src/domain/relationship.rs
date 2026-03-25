@@ -119,11 +119,8 @@ impl Relationship {
     /// trust를 갱신한 새 Relationship 반환
     /// Action 분기의 praiseworthiness 기반. 점진적 변화.
     pub fn with_updated_trust(&self, praiseworthiness: f32) -> Self {
-        let delta = praiseworthiness * TRUST_UPDATE_RATE;
-        let new_value = (self.trust.value() + delta).clamp(-1.0, 1.0);
         Self {
-            trust: Score::new(new_value, "trust")
-                .expect("clamped value is always valid"),
+            trust: updated_score(self.trust, praiseworthiness * TRUST_UPDATE_RATE),
             ..self.clone()
         }
     }
@@ -131,11 +128,8 @@ impl Relationship {
     /// closeness를 갱신한 새 Relationship 반환
     /// 대화의 전체 감정 결과(overall_valence) 기반. 매우 점진적.
     pub fn with_updated_closeness(&self, overall_valence: f32) -> Self {
-        let delta = overall_valence * CLOSENESS_UPDATE_RATE;
-        let new_value = (self.closeness.value() + delta).clamp(-1.0, 1.0);
         Self {
-            closeness: Score::new(new_value, "closeness")
-                .expect("clamped value is always valid"),
+            closeness: updated_score(self.closeness, overall_valence * CLOSENESS_UPDATE_RATE),
             ..self.clone()
         }
     }
@@ -171,6 +165,15 @@ impl Relationship {
 
         result
     }
+}
+
+// ---------------------------------------------------------------------------
+// 헬퍼 함수
+// ---------------------------------------------------------------------------
+
+/// Score를 delta만큼 갱신한 새 Score 반환 (클램핑으로 항상 유효)
+fn updated_score(current: Score, delta: f32) -> Score {
+    Score::clamped(current.value() + delta)
 }
 
 // ---------------------------------------------------------------------------
