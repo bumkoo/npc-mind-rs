@@ -167,12 +167,48 @@ Relationship:
 - **언어**: 코드 주석, 도메인 용어, 테스트 이름 모두 한국어
 - **에러 처리**: `thiserror` 사용, fallible 함수는 `Result<T, E>` 반환
 - **네이밍**: PascalCase(타입), snake_case(함수/변수), 차원 약어(h, e, x, a, c, o)
-- **패턴**: Builder(NpcBuilder, RelationshipBuilder), Value Object(Score, Pad), DDD
 - **캡슐화**: Entity/VO는 private 필드 + getter, pub(super) 내부 변경 메서드
 - **직렬화**: 모든 도메인 타입에 `Serialize`/`Deserialize`
 - **Score 범위**: -1.0 ~ 1.0 (경계값 검증 필수)
 - **가중치 패턴**: `1.0 ± facet × PERSONALITY_WEIGHT` 통일
 - **unsafe 코드 사용 금지**
+
+### DDD 네이밍 룰
+
+이름만 보고 DDD 역할을 알 수 있어야 한다. Rust 관용어와 충돌하지 않는다.
+
+| DDD 패턴 | 네이밍 룰 | 현재 예시 | 향후 예시 |
+|----------|----------|----------|----------|
+| Entity | 도메인 이름 그대로 `Xxx` + `XxxId` | `Npc`, `NpcId` | `Player`, `PlayerId` |
+| Value Object | 도메인 이름 그대로, doc에 `/// Value Object` | `Score`, `Pad`, `Emotion`, `Relationship` | `DialogueContext` |
+| Domain Service | 역할 동사+명사 `XxxEngine`/`XxxAnalyzer`, doc에 `/// 도메인 서비스` | `AppraisalEngine`, `StimulusEngine`, `PadAnalyzer` | `KeywordDetector` |
+| Application Service | `XxxService` 접미사 (유스케이스 오케스트레이션) | (없음) | `DialogueService` |
+| Port (trait) | 행위/능력 명사, `ports.rs`에 집중, doc에 driving/driven 명시 | `Appraiser`, `TextEmbedder`, `RelationshipRepository` | `NpcRepository`, `EventPublisher` |
+| Adapter | 구현기술 + 포트명 `XxxYyy` | `OrtEmbedder` | `InMemoryRelationshipRepo`, `SqliteNpcRepository` |
+| Domain Event | 과거형 동사 `XxxChanged`/`XxxOccurred` | (없음) | `EmotionChanged`, `RelationshipUpdated` |
+| Snapshot / DTO | `XxxSnapshot` 접미사 (읽기 전용 요약) | `PersonalitySnapshot`, `EmotionSnapshot` | `NpcSnapshot` |
+| Builder | `XxxBuilder` 접미사 | `NpcBuilder`, `RelationshipBuilder` | `SituationBuilder` |
+| Policy / Specification | `XxxPolicy`/`XxxRule` (비즈니스 규칙 캡슐화) | (없음) | `DialogueRefusalPolicy` |
+| Error | 소속 모듈 + `Error` 접미사 | `PersonalityError`, `EmbedError` | `DialogueError` |
+
+**Aggregate Root**: 별도 접미사 없이 Entity와 같은 이름. doc에 `/// Aggregate Root` 명시. 현재 후보: `Npc`.
+
+**Enum 접미사**: "종류"면 `~Type`(`EmotionType`), "정도"면 `~Level`(`RelationshipLevel`, `PowerLevel`), "분류"면 `~Branch`/`~Kind`(`EmotionBranch`).
+
+**Domain Service vs Application Service 구분**:
+- Domain Service (`~Engine`/`~Analyzer`): 도메인 용어로만 동작, 인프라를 모름
+- Application Service (`~Service`): 포트들을 조립하고 트랜잭션 흐름을 관리
+
+**모듈 위치로 역할 표현**:
+
+```
+src/
+  domain/         ← Entity, VO, Domain Service, Domain Event
+  ports.rs        ← Port (trait 정의만)
+  adapter/        ← Adapter (포트 구현)
+  application/    ← Application Service (향후)
+  presentation/   ← Formatter, Snapshot 렌더링
+```
 
 ## 의존성
 
