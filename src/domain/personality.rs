@@ -12,7 +12,7 @@
 //! 감정 값 × 성격 가중치 = 방향 유지 + 강도 증폭
 //! 예: 부정 감정(-0.3) × 까칠함(1.5) = -0.45 (단순 곱셈으로 자연스러운 증폭)
 
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, Deserialize, Deserializer};
 
 /// HEXACO 성격 점수의 유효 범위
 pub const SCORE_MIN: f32 = -1.0;
@@ -34,8 +34,22 @@ pub enum PersonalityError {
 /// -1.0 ~ 1.0 범위의 성격 점수 (Value Object)
 ///
 /// 0.0 = 중립, 양수 = 해당 특성이 강함, 음수 = 반대 특성이 강함
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+///
+/// 역직렬화 시 범위를 검증한다. 범위 밖 값은 에러를 반환.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Score(f32);
+
+impl<'de> Deserialize<'de> for Score {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = f32::deserialize(deserializer)?;
+        if !(SCORE_MIN..=SCORE_MAX).contains(&value) {
+            return Err(serde::de::Error::custom(format!(
+                "Score {value}는 유효 범위 [{SCORE_MIN}, {SCORE_MAX}]를 벗어남"
+            )));
+        }
+        Ok(Self(value))
+    }
+}
 
 impl Score {
     pub fn new(value: f32, field: &str) -> Result<Self, PersonalityError> {

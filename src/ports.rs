@@ -60,7 +60,7 @@ pub enum EmbedError {
 /// TextEmbedder로 벡터를 얻고, 앵커 비교로 PAD를 계산.
 pub trait UtteranceAnalyzer {
     /// 대사 텍스트 → PAD (Pleasure, Arousal, Dominance)
-    fn analyze(&mut self, utterance: &str) -> Pad;
+    fn analyze(&mut self, utterance: &str) -> Result<Pad, EmbedError>;
 }
 
 /// 관계 저장소 포트 — NPC 간 관계의 영속화

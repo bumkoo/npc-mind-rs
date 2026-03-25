@@ -299,15 +299,13 @@ impl PadAnalyzer {
 // ---------------------------------------------------------------------------
 
 impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
-    fn analyze(&mut self, utterance: &str) -> Pad {
-        let embeddings = self.embedder
-            .embed(&[utterance])
-            .unwrap_or_default();
+    fn analyze(&mut self, utterance: &str) -> Result<Pad, EmbedError> {
+        let embeddings = self.embedder.embed(&[utterance])?;
 
         if embeddings.is_empty() {
-            return Pad::neutral();
+            return Ok(Pad::neutral());
         }
 
-        self.to_pad(&embeddings[0])
+        Ok(self.to_pad(&embeddings[0]))
     }
 }
