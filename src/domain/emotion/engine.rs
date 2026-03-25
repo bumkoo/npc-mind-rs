@@ -39,7 +39,7 @@ impl AppraisalEngine {
     ) -> EmotionState {
         let mut state = EmotionState::new();
         let rel_mul = relationship.emotion_intensity_multiplier();
-        let closeness_val = relationship.closeness().value(); // [변경1] closeness 방향 추출
+        let closeness_val = relationship.closeness().value();
 
         match &situation.focus {
             SituationFocus::Event {
@@ -50,7 +50,7 @@ impl AppraisalEngine {
             } => {
                 Self::appraise_event(
                     personality, &mut state, rel_mul,
-                    closeness_val, // [변경1] Fortune-of-others 방향 조절용
+                    closeness_val,
                     *desirability_for_self,
                     *desirability_for_other,
                     *is_prospective,
@@ -62,7 +62,7 @@ impl AppraisalEngine {
                 praiseworthiness,
                 outcome_for_self,
             } => {
-                let trust_mod = relationship.trust_emotion_modifier(*praiseworthiness);
+                let trust_mod = relationship.trust_emotion_modifier();
                 Self::appraise_action(
                     personality, &mut state, rel_mul, trust_mod,
                     *is_self_agent,
@@ -85,7 +85,7 @@ impl AppraisalEngine {
         p: &HexacoProfile,
         state: &mut EmotionState,
         rel_mul: f32,
-        closeness_value: f32, // [변경2] Fortune-of-others 방향 조절용
+        closeness_value: f32,
         desirability_self: f32,
         desirability_other: Option<f32>,
         is_prospective: bool,
@@ -144,10 +144,7 @@ impl AppraisalEngine {
             let h = avg.h;
             let a = avg.a;
 
-            // [변경3] closeness 방향 조절자 (Fortune-of-others 전용)
-            // 친화 감정(HappyFor, Pity): 친구면 증폭, 원수면 억제
-            // 적대 감정(Resentment, Gloating): 원수면 증폭, 친구면 억제
-            // 1.0 ± closeness × W 패턴 통일
+            // closeness 방향 조절자 (Fortune-of-others 전용)
             let affinity_mod = 1.0 + closeness_value * w;
             let hostility_mod = 1.0 - closeness_value * w;
 
@@ -193,6 +190,7 @@ impl AppraisalEngine {
         let standards_amp = 1.0 + avg.c.abs() * w;
 
         if is_self_agent {
+            // 자기 행동 — trust 무관
             if praiseworthiness > 0.0 {
                 let pride_mod = 1.0 - p.honesty_humility.modesty.value().max(0.0) * w;
                 state.add(Emotion::new(EmotionType::Pride,
@@ -202,9 +200,10 @@ impl AppraisalEngine {
                     praiseworthiness.abs() * standards_amp * rel_mul));
             }
         } else {
+            // 타인 행동 — trust_mod 적용
             if praiseworthiness > 0.0 {
                 state.add(Emotion::new(EmotionType::Admiration,
-                    praiseworthiness * standards_amp * rel_mul));
+                    praiseworthiness * standards_amp * trust_mod * rel_mul));
             } else {
                 let reproach_mod = 1.0 - p.agreeableness.gentleness.value().max(0.0) * w;
                 state.add(Emotion::new(EmotionType::Reproach,
@@ -215,6 +214,7 @@ impl AppraisalEngine {
         // Compound 감정
         if let Some(outcome) = outcome_for_self {
             if is_self_agent {
+                // 자기 행동 + 결과 — trust 무관
                 if praiseworthiness > 0.0 && outcome > 0.0 {
                     state.add(Emotion::new(EmotionType::Gratification,
                         (praiseworthiness + outcome) / 2.0 * standards_amp * rel_mul));
@@ -223,6 +223,7 @@ impl AppraisalEngine {
                         (praiseworthiness.abs() + outcome.abs()) / 2.0 * standards_amp * rel_mul));
                 }
             } else {
+                // 타인 행동 + 결과 — trust_mod 적용
                 if praiseworthiness > 0.0 && outcome > 0.0 {
                     let gratitude_amp = 1.0 + p.honesty_humility.sincerity.value().max(0.0) * w;
                     state.add(Emotion::new(EmotionType::Gratitude,

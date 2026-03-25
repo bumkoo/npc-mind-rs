@@ -300,7 +300,7 @@ fn 의형제의_배신이_남의_배신보다_분노가_큼() {
 }
 
 #[test]
-fn 신뢰하던_상대의_배신이_기대위반으로_더_강함() {
+fn 신뢰하던_상대의_배신이_더_강한_분노() {
     let li = make_무백();
     let situation = Situation {
         description: "배신".into(),
@@ -325,7 +325,7 @@ fn 신뢰하던_상대의_배신이_기대위반으로_더_강함() {
     let anger_distrusted = find_emotion(&state_distrusted, EmotionType::Anger).unwrap();
 
     assert!(anger_trusted > anger_distrusted,
-        "신뢰 배신({}) > 불신 배신({}) — 기대 위반 효과",
+        "신뢰 배신({}) > 불신 배신({}) — 신뢰도 배율 효과",
         anger_trusted, anger_distrusted);
 }
 
@@ -421,8 +421,6 @@ fn 타인_불행_상황() -> Situation {
     }
 }
 
-// --- HappyFor: 원수의 행운에는 기쁨이 억제됨 ---
-
 #[test]
 fn 원수의_행운에_무백은_기뻐하되_약하게() {
     let li = make_무백();
@@ -438,13 +436,10 @@ fn 원수의_행운에_무백은_기뻐하되_약하게() {
     let happy_enemy = find_emotion(&state_enemy, EmotionType::HappyFor).unwrap();
     let happy_neutral = find_emotion(&state_neutral, EmotionType::HappyFor).unwrap();
 
-    // 무백은 H↑라서 HappyFor 발동은 하지만, 원수니까 무관한 사람보다 약해야 함
     assert!(happy_enemy < happy_neutral,
         "원수 행운({}) < 무관한 사람 행운({}) — closeness 방향 억제",
         happy_enemy, happy_neutral);
 }
-
-// --- Resentment: 친구의 행운에는 질투가 억제됨 ---
 
 #[test]
 fn 친구의_행운에_교룡은_시기하되_약하게() {
@@ -461,13 +456,10 @@ fn 친구의_행운에_교룡은_시기하되_약하게() {
     let resent_friend = find_emotion(&state_friend, EmotionType::Resentment).unwrap();
     let resent_neutral = find_emotion(&state_neutral, EmotionType::Resentment).unwrap();
 
-    // 교룡은 H↓라서 Resentment 발동은 하지만, 친구니까 무관한 사람보다 약해야 함
     assert!(resent_friend < resent_neutral,
         "친구 행운 시기({}) < 무관 행운 시기({}) — closeness 방향 억제",
         resent_friend, resent_neutral);
 }
-
-// --- Pity: 친구의 불행에 더 안타까움 ---
 
 #[test]
 fn 친구의_불행에_수련은_더_강하게_동정() {
@@ -489,8 +481,6 @@ fn 친구의_불행에_수련은_더_강하게_동정() {
         pity_friend, pity_neutral);
 }
 
-// --- Gloating: 원수의 불행에 더 쾌재 ---
-
 #[test]
 fn 원수의_불행에_교룡은_더_강하게_쾌재() {
     let yu = make_교룡();
@@ -511,18 +501,197 @@ fn 원수의_불행에_교룡은_더_강하게_쾌재() {
         gloat_enemy, gloat_neutral);
 }
 
-// --- 중립 관계는 기존과 동일 (회귀 방지) ---
-
 #[test]
 fn 중립_관계는_closeness_방향_영향_없음() {
     let li = make_무백();
     let situation = 타인_행운_상황();
 
-    // closeness=0일 때 affinity_mod=1.0, hostility_mod=1.0 → 기존과 동일
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let happy = find_emotion(&state, EmotionType::HappyFor).unwrap();
 
-    // 무백(H=0.65, A=0.575)은 중립 관계에서도 HappyFor이 발생해야 함
     assert!(happy > 0.3,
         "중립 관계에서 무백의 HappyFor 정상 발동: {}", happy);
+}
+
+// ===========================================================================
+// 시나리오 8: trust 방향이 Action 감정 강도를 조절
+//
+// trust_mod = 1.0 + trust × 0.3
+// 신뢰하는 사람의 행동에 더 강하게 반응하고,
+// 불신하는 사람의 행동에 덜 반응한다.
+//
+// 부정 행동: 신뢰→"믿었는데!" 증폭, 불신→"역시나" 약화
+// 긍정 행동: 신뢰→"역시 형이야" 증폭, 불신→"꿍꿍이겠지" 약화
+// ===========================================================================
+
+/// 타인의 부정 행동 (배신) — Reproach, Anger 발동
+fn 배신_상황() -> Situation {
+    Situation {
+        description: "상대가 적에게 아군 위치를 밀고했다".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+            outcome_for_self: Some(-0.6),
+        },
+    }
+}
+
+/// 타인의 긍정 행동 (도움) — Admiration, Gratitude 발동
+fn 도움_상황() -> Situation {
+    Situation {
+        description: "상대가 목숨을 걸고 나를 구해주었다".into(),
+        focus: SituationFocus::Action {
+            is_self_agent: false,
+            praiseworthiness: 0.7,
+            outcome_for_self: Some(0.6),
+        },
+    }
+}
+
+// --- 부정 행동: 신뢰하면 분노/비난 증폭 ---
+
+#[test]
+fn 신뢰하던_사람의_배신에_더_강한_분노() {
+    let li = make_무백();
+    let situation = 배신_상황();
+
+    let trusted = RelationshipBuilder::new("mu_baek", "trusted")
+        .trust(s(0.8))
+        .build();
+
+    let state_trusted = AppraisalEngine::appraise(li.personality(), &situation, &trusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let anger_trusted = find_emotion(&state_trusted, EmotionType::Anger).unwrap();
+    let anger_neutral = find_emotion(&state_neutral, EmotionType::Anger).unwrap();
+
+    assert!(anger_trusted > anger_neutral,
+        "신뢰 배신({}) > 중립 배신({}) — 믿었는데!",
+        anger_trusted, anger_neutral);
+}
+
+#[test]
+fn 신뢰하던_사람의_배신에_더_강한_비난() {
+    let li = make_무백();
+    let situation = 배신_상황();
+
+    let trusted = RelationshipBuilder::new("mu_baek", "trusted")
+        .trust(s(0.8))
+        .build();
+
+    let state_trusted = AppraisalEngine::appraise(li.personality(), &situation, &trusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let reproach_trusted = find_emotion(&state_trusted, EmotionType::Reproach).unwrap();
+    let reproach_neutral = find_emotion(&state_neutral, EmotionType::Reproach).unwrap();
+
+    assert!(reproach_trusted > reproach_neutral,
+        "신뢰 배신 비난({}) > 중립 배신 비난({}) — 믿었는데!",
+        reproach_trusted, reproach_neutral);
+}
+
+// --- 부정 행동: 불신하면 분노/비난 약화 ---
+
+#[test]
+fn 불신하던_사람의_배신에_약한_분노() {
+    let li = make_무백();
+    let situation = 배신_상황();
+
+    let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
+        .trust(s(-0.5))
+        .build();
+
+    let state_distrusted = AppraisalEngine::appraise(li.personality(), &situation, &distrusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let anger_distrusted = find_emotion(&state_distrusted, EmotionType::Anger).unwrap();
+    let anger_neutral = find_emotion(&state_neutral, EmotionType::Anger).unwrap();
+
+    assert!(anger_distrusted < anger_neutral,
+        "불신 배신({}) < 중립 배신({}) — 역시나",
+        anger_distrusted, anger_neutral);
+}
+
+// --- 긍정 행동: 신뢰하면 감사/감탄 증폭 ---
+
+#[test]
+fn 신뢰하던_사람의_도움에_더_강한_감사() {
+    let li = make_무백();
+    let situation = 도움_상황();
+
+    let trusted = RelationshipBuilder::new("mu_baek", "trusted")
+        .trust(s(0.8))
+        .build();
+
+    let state_trusted = AppraisalEngine::appraise(li.personality(), &situation, &trusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let grat_trusted = find_emotion(&state_trusted, EmotionType::Gratitude).unwrap();
+    let grat_neutral = find_emotion(&state_neutral, EmotionType::Gratitude).unwrap();
+
+    assert!(grat_trusted > grat_neutral,
+        "신뢰 도움 감사({}) > 중립 도움 감사({}) — 역시 형이야",
+        grat_trusted, grat_neutral);
+}
+
+#[test]
+fn 신뢰하던_사람의_의로운_행동에_더_강한_감탄() {
+    let li = make_무백();
+    let situation = 도움_상황();
+
+    let trusted = RelationshipBuilder::new("mu_baek", "trusted")
+        .trust(s(0.8))
+        .build();
+
+    let state_trusted = AppraisalEngine::appraise(li.personality(), &situation, &trusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let adm_trusted = find_emotion(&state_trusted, EmotionType::Admiration).unwrap();
+    let adm_neutral = find_emotion(&state_neutral, EmotionType::Admiration).unwrap();
+
+    assert!(adm_trusted > adm_neutral,
+        "신뢰 의로움 감탄({}) > 중립 의로움 감탄({}) — 역시 대협",
+        adm_trusted, adm_neutral);
+}
+
+// --- 긍정 행동: 불신하면 감사/감탄 약화 ---
+
+#[test]
+fn 불신하던_사람의_도움에_약한_감사() {
+    let li = make_무백();
+    let situation = 도움_상황();
+
+    let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
+        .trust(s(-0.5))
+        .build();
+
+    let state_distrusted = AppraisalEngine::appraise(li.personality(), &situation, &distrusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let grat_distrusted = find_emotion(&state_distrusted, EmotionType::Gratitude).unwrap();
+    let grat_neutral = find_emotion(&state_neutral, EmotionType::Gratitude).unwrap();
+
+    assert!(grat_distrusted < grat_neutral,
+        "불신 도움 감사({}) < 중립 도움 감사({}) — 뭔 꿍꿍이지",
+        grat_distrusted, grat_neutral);
+}
+
+#[test]
+fn 불신하던_사람의_의로운_행동에_약한_감탄() {
+    let li = make_무백();
+    let situation = 도움_상황();
+
+    let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
+        .trust(s(-0.5))
+        .build();
+
+    let state_distrusted = AppraisalEngine::appraise(li.personality(), &situation, &distrusted);
+    let state_neutral = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+
+    let adm_distrusted = find_emotion(&state_distrusted, EmotionType::Admiration).unwrap();
+    let adm_neutral = find_emotion(&state_neutral, EmotionType::Admiration).unwrap();
+
+    assert!(adm_distrusted < adm_neutral,
+        "불신 의로움 감탄({}) < 중립 의로움 감탄({}) — 덤덤",
+        adm_distrusted, adm_neutral);
 }

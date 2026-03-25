@@ -5,7 +5,7 @@
 //!
 //! 3축:
 //! - closeness (친밀도): 감정 반응의 전반적 배율 + Fortune-of-others 방향
-//! - trust (신뢰도): 기대 위반/부합에 따른 감정 증폭/완화
+//! - trust (신뢰도): 신뢰 방향에 따른 감정 증폭/약화
 //! - power (상하 관계): 대사 톤 결정 (감정 엔진 영향 최소)
 //!
 //! ## DDD 분류: Value Object
@@ -48,7 +48,7 @@ pub struct Relationship {
     /// 감정 반응의 전반적 배율 + Fortune-of-others 분기 방향
     closeness: Score,
     /// 신뢰도 (-1.0=불신, 0.0=중립, 1.0=전적 신뢰)
-    /// 기대 위반/부합에 따른 감정 증폭/완화 (OCC unexpectedness 역할)
+    /// 신뢰할수록 감정이 강해짐 (Action 브랜치 4개 감정에 적용)
     trust: Score,
     /// 상하 관계 (-1.0=하위, 0.0=대등, 1.0=상위)
     /// 대사 톤 결정 (감정 엔진 영향 최소)
@@ -100,23 +100,18 @@ impl Relationship {
         1.0 + self.closeness.intensity() * 0.5
     }
 
-    /// 기대 위반도: trust와 행동의 불일치가 클수록 감정 증폭
+    /// 신뢰도 감정 배율: trust 방향에 따라 감정 증폭/약화
     ///
-    /// trust 높은데 배신(praiseworthiness 음수) → 높은 위반도 → 감정 증폭
-    /// trust 낮은데 배신 → 기대 부합 → 감정 완화
-    /// trust 낮은데 도움(praiseworthiness 양수) → 높은 위반도 → 감정 증폭
+    /// 신뢰하는 사람의 행동에는 더 강하게 반응하고,
+    /// 불신하는 사람의 행동에는 덜 반응한다.
     ///
-    /// 반환: 0.0(기대 부합) ~ 2.0(극도의 기대 위반)
-    pub fn expectation_violation(&self, praiseworthiness: f32) -> f32 {
-        let violation = (self.trust.value() - praiseworthiness).abs();
-        violation.min(2.0)
-    }
-
-    /// 기대 위반을 감정 배율로 변환
-    /// 위반도 1.0(중립) 기준으로 0.5~1.5 범위
-    pub fn trust_emotion_modifier(&self, praiseworthiness: f32) -> f32 {
-        let violation = self.expectation_violation(praiseworthiness);
-        0.5 + violation * 0.5
+    /// - 신뢰(0.8) → 1.24: "믿었는데!" / "역시 형이야"
+    /// - 중립(0.0) → 1.0
+    /// - 불신(-0.5) → 0.85: "역시나" / "뭔 꿍꿍이지"
+    ///
+    /// 1.0 ± trust × 0.3 패턴 (engine.rs의 W와 동일)
+    pub fn trust_emotion_modifier(&self) -> f32 {
+        1.0 + self.trust.value() * 0.3
     }
 
     // --- 새 인스턴스 반환 (Value Object 패턴) ---

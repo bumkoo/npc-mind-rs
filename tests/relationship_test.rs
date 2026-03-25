@@ -75,7 +75,6 @@ fn 무관한_사람_감정_배율은_기본() {
 
 #[test]
 fn 적대_관계도_감정_배율이_높음() {
-    // 적대(-0.8)도 절대값이 크므로 감정 반응 강함
     let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.8))
         .build();
@@ -85,57 +84,68 @@ fn 적대_관계도_감정_배율이_높음() {
 }
 
 // ===========================================================================
-// 기대 위반 (trust)
+// 신뢰도 배율 (trust)
+//
+// trust_emotion_modifier = 1.0 + trust × 0.3
+// 신뢰하는 사람의 행동에 더 강하게 반응하고,
+// 불신하는 사람의 행동에 덜 반응한다.
 // ===========================================================================
 
 #[test]
-fn 신뢰하던_상대의_배신은_기대_위반_극대() {
+fn 신뢰하는_사이_감정_증폭() {
     let rel = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
         .build();
-    // trust 0.8인데 배신 praiseworthiness -0.7 → 차이 1.5
-    let violation = rel.expectation_violation(-0.7);
-    assert!(violation > 1.4, "기대 위반 극대: {}", violation);
+    let modifier = rel.trust_emotion_modifier();
+    // 1.0 + 0.8 * 0.3 = 1.24
+    assert!(modifier > 1.0,
+        "신뢰하는 사이 → 감정 증폭: {}", modifier);
+    assert!((modifier - 1.24).abs() < 0.001,
+        "정확한 값: {}", modifier);
 }
 
 #[test]
-fn 불신하던_상대의_배신은_기대_부합() {
+fn 불신하는_사이_감정_약화() {
     let rel = RelationshipBuilder::new("mu_baek", "distrusted")
         .trust(s(-0.5))
         .build();
-    // trust -0.5인데 배신 praiseworthiness -0.7 → 차이 0.2
-    let violation = rel.expectation_violation(-0.7);
-    assert!(violation < 0.3, "기대 부합 (역시나): {}", violation);
+    let modifier = rel.trust_emotion_modifier();
+    // 1.0 + (-0.5) * 0.3 = 0.85
+    assert!(modifier < 1.0,
+        "불신하는 사이 → 감정 약화: {}", modifier);
+    assert!((modifier - 0.85).abs() < 0.001,
+        "정확한 값: {}", modifier);
 }
 
 #[test]
-fn 불신하던_상대의_도움은_기대_위반() {
-    let rel = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
-        .build();
-    // trust -0.5인데 도움 praiseworthiness 0.7 → 차이 1.2
-    let violation = rel.expectation_violation(0.7);
-    assert!(violation > 1.0, "기대 위반 (예상 밖 도움): {}", violation);
+fn 중립_trust_배율_기본값() {
+    let rel = Relationship::neutral("mu_baek", "stranger");
+    let modifier = rel.trust_emotion_modifier();
+    // 1.0 + 0.0 * 0.3 = 1.0
+    assert!((modifier - 1.0).abs() < 0.001,
+        "중립 trust → 배율 1.0: {}", modifier);
 }
 
 #[test]
-fn trust_감정_modifier_기대_위반시_증폭() {
-    let rel = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+fn 극신뢰_배율_상한() {
+    let rel = RelationshipBuilder::new("mu_baek", "soulmate")
+        .trust(s(1.0))
         .build();
-    let modifier = rel.trust_emotion_modifier(-0.7);
-    // violation 1.5 → 0.5 + 1.5 * 0.5 = 1.25
-    assert!(modifier > 1.0, "기대 위반 → 감정 증폭: {}", modifier);
+    let modifier = rel.trust_emotion_modifier();
+    // 1.0 + 1.0 * 0.3 = 1.3
+    assert!((modifier - 1.3).abs() < 0.001,
+        "극신뢰 → 최대 1.3: {}", modifier);
 }
 
 #[test]
-fn trust_감정_modifier_기대_부합시_완화() {
-    let rel = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
+fn 극불신_배율_하한() {
+    let rel = RelationshipBuilder::new("mu_baek", "nemesis")
+        .trust(s(-1.0))
         .build();
-    let modifier = rel.trust_emotion_modifier(-0.7);
-    // violation 0.2 → 0.5 + 0.2 * 0.5 = 0.6
-    assert!(modifier < 1.0, "기대 부합 → 감정 완화: {}", modifier);
+    let modifier = rel.trust_emotion_modifier();
+    // 1.0 + (-1.0) * 0.3 = 0.7
+    assert!((modifier - 0.7).abs() < 0.001,
+        "극불신 → 최소 0.7: {}", modifier);
 }
 
 // ===========================================================================
@@ -147,7 +157,7 @@ fn 대화후_배신하면_trust_하락() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
-    let updated = rel.with_updated_trust(-0.7);  // 배신 행위
+    let updated = rel.with_updated_trust(-0.7);
     assert!(updated.trust().value() < rel.trust().value(),
         "배신 후 trust 하락: {} → {}", rel.trust().value(), updated.trust().value());
 }
@@ -157,7 +167,7 @@ fn 대화후_의로운_행동하면_trust_상승() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.0))
         .build();
-    let updated = rel.with_updated_trust(0.8);  // 의로운 행위
+    let updated = rel.with_updated_trust(0.8);
     assert!(updated.trust().value() > rel.trust().value(),
         "의로운 행동 후 trust 상승: {} → {}", rel.trust().value(), updated.trust().value());
 }
@@ -167,7 +177,7 @@ fn 대화후_부정_감정이면_closeness_하락() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.5))
         .build();
-    let updated = rel.with_updated_closeness(-0.6);  // 부정적 대화 결과
+    let updated = rel.with_updated_closeness(-0.6);
     assert!(updated.closeness().value() < rel.closeness().value(),
         "부정 대화 후 closeness 하락: {} → {}",
         rel.closeness().value(), updated.closeness().value());
@@ -178,7 +188,7 @@ fn 대화후_긍정_감정이면_closeness_상승() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.0))
         .build();
-    let updated = rel.with_updated_closeness(0.7);  // 긍정적 대화 결과
+    let updated = rel.with_updated_closeness(0.7);
     assert!(updated.closeness().value() > rel.closeness().value(),
         "긍정 대화 후 closeness 상승: {} → {}",
         rel.closeness().value(), updated.closeness().value());
@@ -190,7 +200,6 @@ fn closeness_갱신은_매우_점진적() {
         .closeness(s(0.5))
         .build();
     let updated = rel.with_updated_closeness(-0.6);
-    // CLOSENESS_UPDATE_RATE = 0.05 → -0.6 × 0.05 = -0.03
     let expected = 0.5 - 0.03;
     assert!((updated.closeness().value() - expected).abs() < 0.001,
         "점진적 변화: {}", updated.closeness().value());
@@ -202,7 +211,6 @@ fn trust_갱신은_중간_속도() {
         .trust(s(0.5))
         .build();
     let updated = rel.with_updated_trust(-0.7);
-    // TRUST_UPDATE_RATE = 0.1 → -0.7 × 0.1 = -0.07
     let expected = 0.5 - 0.07;
     assert!((updated.trust().value() - expected).abs() < 0.001,
         "중간 속도 변화: {}", updated.trust().value());
@@ -216,7 +224,6 @@ fn 원본_불변_검증() {
         .build();
     let _updated = original.with_updated_trust(-0.7);
 
-    // 원본은 변하지 않아야 함
     assert!((original.trust().value() - 0.5).abs() < 0.001,
         "원본 trust 불변: {}", original.trust().value());
     assert!((original.closeness().value() - 0.5).abs() < 0.001,
@@ -235,7 +242,6 @@ fn 갱신_체이닝() {
 
     assert!(updated.trust().value() > 0.0);
     assert!(updated.closeness().value() > 0.0);
-    // 원본은 불변
     assert_eq!(rel.trust().value(), 0.0);
     assert_eq!(rel.closeness().value(), 0.0);
 }
@@ -250,9 +256,8 @@ fn power_게임이벤트로_직접_설정() {
         .power(s(0.0))
         .build();
     assert_eq!(rel.power().value(), 0.0);
-    let updated = rel.with_power(s(0.8));  // 무림맹주 추대
+    let updated = rel.with_power(s(0.8));
     assert!((updated.power().value() - 0.8).abs() < 0.001);
-    // 원본 불변
     assert_eq!(rel.power().value(), 0.0);
 }
 
@@ -262,22 +267,21 @@ fn power_게임이벤트로_직접_설정() {
 
 #[test]
 fn 무백과_교룡_의형제_관계() {
-    // 무백 → 교룡: 의형제이지만 교룡을 완전히 믿지는 못함
     let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.8))
         .trust(s(0.3))
-        .power(s(0.0))  // 대등
+        .power(s(0.0))
         .build();
 
     // 가까운 사이 → 감정 배율 높음
     assert!(rel.emotion_intensity_multiplier() > 1.3);
-    // trust 약간 양수인데 배신(-0.7) → 기대 위반
-    assert!(rel.expectation_violation(-0.7) > 0.9);
+    // trust 양수 → 행동에 대한 감정 증폭
+    assert!(rel.trust_emotion_modifier() > 1.0,
+        "의형제라 trust 양수 → 감정 증폭: {}", rel.trust_emotion_modifier());
 }
 
 #[test]
 fn 교룡의_숙적_관계() {
-    // 교룡 → 숙적: 적대적이고 불신
     let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.7))
         .trust(s(-0.8))
@@ -286,22 +290,24 @@ fn 교룡의_숙적_관계() {
 
     // 적대적이지만 감정 배율은 높음 (관심이 있으니까)
     assert!(rel.emotion_intensity_multiplier() > 1.3);
-    // 불신(-0.8)인데 배신(-0.7) → 기대 부합 (역시나)
-    let violation = rel.expectation_violation(-0.7);
-    assert!(violation < 0.2, "숙적의 배신은 예상된 것: {}", violation);
+    // trust 음수 → 행동에 대한 감정 약화 ("역시나")
+    assert!(rel.trust_emotion_modifier() < 1.0,
+        "숙적이라 trust 음수 → 감정 약화: {}", rel.trust_emotion_modifier());
 }
 
 #[test]
 fn 수련과_사부_관계() {
-    // 수련 → 사부: 매우 가까운 사이, 완전 신뢰, 하위
     let rel = RelationshipBuilder::new("shu_lien", "master")
         .closeness(s(0.9))
         .trust(s(0.9))
-        .power(s(-0.7))  // 사부가 상위
+        .power(s(-0.7))
         .build();
 
     assert!(rel.emotion_intensity_multiplier() > 1.4);
-    assert!(rel.power().is_low());  // 하위 관계
+    assert!(rel.power().is_low());
+    // 극신뢰 → 행동에 대한 감정 강하게 증폭
+    assert!(rel.trust_emotion_modifier() > 1.2,
+        "사부를 극신뢰 → 강한 증폭: {}", rel.trust_emotion_modifier());
 }
 
 #[test]
