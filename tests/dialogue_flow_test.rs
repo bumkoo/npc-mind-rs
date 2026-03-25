@@ -18,6 +18,42 @@ fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
         .map(|e| e.intensity())
 }
 
+/// 배신 상황 (Action + Event)
+fn 배신_상황() -> Situation {
+    Situation {
+        description: "동료의 배신".into(),
+        focuses: vec![
+            SituationFocus::Action(ActionFocus {
+                is_self_agent: false,
+                praiseworthiness: -0.7,
+            }),
+            SituationFocus::Event(EventFocus {
+                desirability_for_self: -0.6,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+        ],
+    }
+}
+
+/// 갈등 상황 (Action + Event, 중간 강도)
+fn 갈등_상황() -> Situation {
+    Situation {
+        description: "갈등".into(),
+        focuses: vec![
+            SituationFocus::Action(ActionFocus {
+                is_self_agent: false,
+                praiseworthiness: -0.5,
+            }),
+            SituationFocus::Event(EventFocus {
+                desirability_for_self: -0.4,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+        ],
+    }
+}
+
 // ===========================================================================
 // 배신 대화 → trust 하락
 // ===========================================================================
@@ -29,26 +65,14 @@ fn 배신_대화_후_trust_하락() {
         .closeness(s(0.8))
         .trust(s(0.5))
         .build();
+    let situation = 배신_상황();
 
-    let situation = Situation {
-        description: "동료의 배신".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: -0.7,
-            outcome_for_self: Some(-0.6),
-        },
-    };
-
-    // 1. 상황 진입
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
-
-    // 2. 대화 중 도발 3턴
     let provocation = Pad::new(-0.6, 0.7, 0.5);
     let state1 = StimulusEngine::apply_stimulus(yu.personality(), &state, &provocation);
     let state2 = StimulusEngine::apply_stimulus(yu.personality(), &state1, &provocation);
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &state2, &provocation);
 
-    // 3. 대화 종료 → 새 관계 인스턴스 생성
     let updated = rel.after_dialogue(&final_state, &situation);
 
     assert!(updated.trust().value() < rel.trust().value(),
@@ -65,15 +89,7 @@ fn 부정_대화_후_closeness_하락() {
     let rel = RelationshipBuilder::new("gyo_ryong", "mu_baek")
         .closeness(s(0.5))
         .build();
-
-    let situation = Situation {
-        description: "갈등".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: -0.5,
-            outcome_for_self: Some(-0.4),
-        },
-    };
+    let situation = 갈등_상황();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
     let updated = rel.after_dialogue(&state, &situation);
@@ -96,12 +112,11 @@ fn 긍정_대화_후_closeness_상승() {
 
     let situation = Situation {
         description: "좋은 소식".into(),
-        focus: SituationFocus::Event {
+        focuses: vec![SituationFocus::Event(EventFocus {
             desirability_for_self: 0.7,
             desirability_for_other: None,
-            is_prospective: false,
-            prior_expectation: None,
-        },
+            prospect: None,
+        })],
     };
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
@@ -125,12 +140,11 @@ fn event_분기는_trust_변경_없음() {
 
     let situation = Situation {
         description: "적 대군 접근".into(),
-        focus: SituationFocus::Event {
+        focuses: vec![SituationFocus::Event(EventFocus {
             desirability_for_self: -0.7,
             desirability_for_other: None,
-            is_prospective: true,
-            prior_expectation: None,
-        },
+            prospect: Some(Prospect::Anticipation),
+        })],
     };
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
@@ -151,15 +165,7 @@ fn 대화_후_power_변경_없음() {
     let rel = RelationshipBuilder::new("gyo_ryong", "master")
         .power(s(-0.7))
         .build();
-
-    let situation = Situation {
-        description: "갈등".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: -0.7,
-            outcome_for_self: Some(-0.6),
-        },
-    };
+    let situation = 배신_상황();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
     let updated = rel.after_dialogue(&state, &situation);
@@ -175,8 +181,6 @@ fn 대화_후_power_변경_없음() {
 #[test]
 fn 시나리오_의형제_배신_후_관계_악화() {
     let yu = make_교룡();
-
-    // 초기: 의형제 관계
     let rel = RelationshipBuilder::new("gyo_ryong", "mu_baek")
         .closeness(s(0.8))
         .trust(s(0.7))
@@ -185,43 +189,42 @@ fn 시나리오_의형제_배신_후_관계_악화() {
 
     let situation = Situation {
         description: "무백이 교룡의 검을 빼앗아 관에 넘겼다".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: -0.8,
-            outcome_for_self: Some(-0.7),
-        },
+        focuses: vec![
+            SituationFocus::Action(ActionFocus {
+                is_self_agent: false,
+                praiseworthiness: -0.8,
+            }),
+            SituationFocus::Event(EventFocus {
+                desirability_for_self: -0.7,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+        ],
     };
 
-    // 1. 상황 진입 — 의형제의 배신이라 감정 극대
+    // 1. 상황 진입
     let initial_state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
     let anger = find_emotion(&initial_state, EmotionType::Anger).unwrap();
     assert!(anger > 0.5, "의형제 배신 → 강한 분노: {}", anger);
 
-    // 2. 대화 — 도발 3턴으로 분노 증폭
+    // 2. 대화 — 도발 3턴
     let provocation = Pad::new(-0.7, 0.8, 0.6);
     let s1 = StimulusEngine::apply_stimulus(yu.personality(), &initial_state, &provocation);
     let s2 = StimulusEngine::apply_stimulus(yu.personality(), &s1, &provocation);
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &s2, &provocation);
 
-    // 3. 대화 종료 → 새 관계 인스턴스
+    // 3. 대화 종료
     let updated = rel.after_dialogue(&final_state, &situation);
 
-    // 검증: trust 급락 (배신 praiseworthiness -0.8)
     assert!(updated.trust().value() < rel.trust().value(),
         "trust 급락: {} → {}", rel.trust().value(), updated.trust().value());
     assert!(rel.trust().value() - updated.trust().value() > 0.05,
         "trust 하락폭이 유의미: delta={}",
         rel.trust().value() - updated.trust().value());
-
-    // 검증: closeness도 하락 (부정 감정 valence)
     assert!(updated.closeness().value() < rel.closeness().value(),
         "closeness 하락: {} → {}",
         rel.closeness().value(), updated.closeness().value());
-
-    // 검증: power는 불변
     assert!((updated.power().value() - 0.0).abs() < 0.001);
-
-    // 검증: 원본 불변
     assert!((rel.trust().value() - 0.7).abs() < 0.001, "원본 trust 불변");
     assert!((rel.closeness().value() - 0.8).abs() < 0.001, "원본 closeness 불변");
 
@@ -245,11 +248,17 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
     // 대화 1: 긍정 (도움)
     let good_situation = Situation {
         description: "동료가 도움을 줌".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: 0.6,
-            outcome_for_self: Some(0.5),
-        },
+        focuses: vec![
+            SituationFocus::Action(ActionFocus {
+                is_self_agent: false,
+                praiseworthiness: 0.6,
+            }),
+            SituationFocus::Event(EventFocus {
+                desirability_for_self: 0.5,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+        ],
     };
     let state1 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel0);
     let rel1 = rel0.after_dialogue(&state1, &good_situation);
@@ -261,11 +270,17 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
     // 대화 3: 부정 (배신)
     let bad_situation = Situation {
         description: "배신".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
-            praiseworthiness: -0.7,
-            outcome_for_self: Some(-0.5),
-        },
+        focuses: vec![
+            SituationFocus::Action(ActionFocus {
+                is_self_agent: false,
+                praiseworthiness: -0.7,
+            }),
+            SituationFocus::Event(EventFocus {
+                desirability_for_self: -0.5,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+        ],
     };
     let state3 = AppraisalEngine::appraise(li.personality(), &bad_situation, &rel2);
     let rel3 = rel2.after_dialogue(&state3, &bad_situation);
@@ -286,7 +301,6 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
 
     // 검증: 원본들 전부 불변
     assert_eq!(rel0.trust().value(), 0.0, "rel0 불변");
-    assert!((rel1.trust().value() - rel1.trust().value()).abs() < 0.001, "rel1 불변");
 
     println!("=== 관계 변화 추적 ===");
     println!("초기:       c={:.3}, t={:.3}", rel0.closeness().value(), rel0.trust().value());

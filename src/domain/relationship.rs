@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::emotion::{EmotionState, Situation, SituationFocus};
+use super::emotion::{EmotionState, Situation};
 use super::personality::Score;
 
 // ---------------------------------------------------------------------------
@@ -161,9 +161,9 @@ impl Relationship {
     ) -> Self {
         let mut result = self.clone();
 
-        // trust: Action 분기일 때만 갱신
-        if let SituationFocus::Action { praiseworthiness, .. } = &situation.focus {
-            result = result.with_updated_trust(*praiseworthiness);
+        // trust: Action 분기가 있을 때만 갱신
+        if let Some(action) = situation.find_action() {
+            result = result.with_updated_trust(action.praiseworthiness);
         }
 
         // closeness: 항상 갱신 (전체 감정 결과 기반)
