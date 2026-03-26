@@ -74,6 +74,40 @@ pub enum EmotionType {
 }
 
 impl EmotionType {
+    /// 이 감정의 고유 인덱스 (0~21)
+    /// 배열 기반의 빠른 접근을 위해 사용합니다.
+    pub fn index(&self) -> usize {
+        match self {
+            Self::Joy => 0, Self::Distress => 1,
+            Self::HappyFor => 2, Self::Pity => 3, Self::Gloating => 4, Self::Resentment => 5,
+            Self::Hope => 6, Self::Fear => 7,
+            Self::Satisfaction => 8, Self::Disappointment => 9,
+            Self::Relief => 10, Self::FearsConfirmed => 11,
+            Self::Pride => 12, Self::Shame => 13,
+            Self::Admiration => 14, Self::Reproach => 15,
+            Self::Gratification => 16, Self::Remorse => 17,
+            Self::Gratitude => 18, Self::Anger => 19,
+            Self::Love => 20, Self::Hate => 21,
+        }
+    }
+
+    /// 인덱스로부터 감정 유형 반환
+    pub fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Joy), 1 => Some(Self::Distress),
+            2 => Some(Self::HappyFor), 3 => Some(Self::Pity), 4 => Some(Self::Gloating), 5 => Some(Self::Resentment),
+            6 => Some(Self::Hope), 7 => Some(Self::Fear),
+            8 => Some(Self::Satisfaction), 9 => Some(Self::Disappointment),
+            10 => Some(Self::Relief), 11 => Some(Self::FearsConfirmed),
+            12 => Some(Self::Pride), 13 => Some(Self::Shame),
+            14 => Some(Self::Admiration), 15 => Some(Self::Reproach),
+            16 => Some(Self::Gratification), 17 => Some(Self::Remorse),
+            18 => Some(Self::Gratitude), 19 => Some(Self::Anger),
+            20 => Some(Self::Love), 21 => Some(Self::Hate),
+            _ => None,
+        }
+    }
+
     /// 이 감정의 기본 valence (양수=긍정, 음수=부정)
     pub fn base_valence(&self) -> f32 {
         match self {
@@ -171,67 +205,92 @@ impl Emotion {
 }
 
 /// NPC의 현재 감정 상태: 여러 감정의 조합
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// 리팩토링: Vec<Emotion> 대신 고정 크기 배열 [f32; 22]를 사용하여
+/// 감정 추가 및 조회 성능을 최적화했습니다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmotionState {
-    emotions: Vec<Emotion>,
+    /// 각 감정 유형별 강도 (인덱스는 EmotionType::index()와 대응)
+    intensities: [f32; 22],
+}
+
+impl Default for EmotionState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EmotionState {
+    /// 빈 감정 상태 생성
     pub fn new() -> Self {
-        Self { emotions: Vec::new() }
+        Self { intensities: [0.0; 22] }
     }
 
-    /// 감정 목록 접근
-    pub fn emotions(&self) -> &[Emotion] {
-        &self.emotions
+    /// 감정 목록을 Vec<Emotion>으로 변환하여 반환 (강도가 0보다 큰 것만)
+    /// 외부와의 호환성을 위해 제공됩니다.
+    pub fn emotions(&self) -> Vec<Emotion> {
+        self.intensities.iter().enumerate()
+            .filter(|(_, &i)| i > 0.0)
+            .filter_map(|(idx, &i)| {
+                EmotionType::from_index(idx).map(|t| Emotion::new(t, i))
+            })
+            .collect()
     }
 
     /// 감정 추가 (같은 유형이면 강도 합산)
     pub fn add(&mut self, emotion: Emotion) {
-        if let Some(existing) = self.emotions.iter_mut()
-            .find(|e| e.emotion_type() == emotion.emotion_type())
-        {
-            existing.add_intensity(emotion.intensity());
-        } else {
-            self.emotions.push(emotion);
-        }
+        let idx = emotion.emotion_type().index();
+        self.intensities[idx] = (self.intensities[idx] + emotion.intensity()).clamp(0.0, 1.0);
     }
 
     /// 가장 강한 감정 반환
-    pub fn dominant(&self) -> Option<&Emotion> {
-        self.emotions.iter()
-            .max_by(|a, b| a.intensity().partial_cmp(&b.intensity()).unwrap_or(std::cmp::Ordering::Equal))
+    pub fn dominant(&self) -> Option<Emotion> {
+        self.intensities.iter().enumerate()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+            .and_then(|(idx, &i)| {
+                if i > 0.0 {
+                    EmotionType::from_index(idx).map(|t| Emotion::new(t, i))
+                } else {
+                    None
+                }
+            })
     }
 
     /// threshold 이상의 유의미한 감정들만 반환 (강도 내림차순)
-    pub fn significant(&self, threshold: f32) -> Vec<&Emotion> {
-        let mut result: Vec<_> = self.emotions.iter()
-            .filter(|e| e.is_significant(threshold))
-            .collect();
+    pub fn significant(&self, threshold: f32) -> Vec<Emotion> {
+        let mut result = self.emotions();
+        result.retain(|e| e.is_significant(threshold));
         result.sort_by(|a, b| b.intensity().partial_cmp(&a.intensity()).unwrap_or(std::cmp::Ordering::Equal));
         result
     }
 
     /// 특정 감정의 강도를 직접 설정 (apply_stimulus용)
     pub fn set_intensity(&mut self, emotion_type: EmotionType, intensity: f32) {
-        if let Some(existing) = self.emotions.iter_mut()
-            .find(|e| e.emotion_type() == emotion_type)
-        {
-            existing.intensity = intensity.clamp(0.0, 1.0);
-        }
+        let idx = emotion_type.index();
+        self.intensities[idx] = intensity.clamp(0.0, 1.0);
     }
 
     /// 특정 감정 제거 (자연 소멸, apply_stimulus용)
     pub fn remove(&mut self, emotion_type: EmotionType) {
-        self.emotions.retain(|e| e.emotion_type() != emotion_type);
+        let idx = emotion_type.index();
+        self.intensities[idx] = 0.0;
     }
 
     /// 전체 감정 valence (양수=긍정적 상태, 음수=부정적 상태)
     pub fn overall_valence(&self) -> f32 {
-        if self.emotions.is_empty() { return 0.0; }
-        let sum: f32 = self.emotions.iter()
-            .map(|e| e.emotion_type().base_valence() * e.intensity())
-            .sum();
-        (sum / self.emotions.len() as f32).clamp(-1.0, 1.0)
+        let mut sum = 0.0;
+        let mut count = 0;
+
+        for (idx, &intensity) in self.intensities.iter().enumerate() {
+            if intensity > 0.0 {
+                if let Some(t) = EmotionType::from_index(idx) {
+                    sum += t.base_valence() * intensity;
+                    count += 1;
+                }
+            }
+        }
+
+        if count == 0 { return 0.0; }
+        (sum / count as f32).clamp(-1.0, 1.0)
     }
 }

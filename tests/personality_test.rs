@@ -92,12 +92,13 @@ fn score_거리_계산() {
 fn neutral_프로필_모든_차원_0() {
     let profile = HexacoProfile::neutral();
     let avg = profile.dimension_averages();
-    assert_eq!(avg.h, 0.0);
-    assert_eq!(avg.e, 0.0);
-    assert_eq!(avg.x, 0.0);
-    assert_eq!(avg.a, 0.0);
-    assert_eq!(avg.c, 0.0);
-    assert_eq!(avg.o, 0.0);
+    // DimensionAverages의 필드는 이제 Score 타입임
+    assert_eq!(avg.h.value(), 0.0);
+    assert_eq!(avg.e.value(), 0.0);
+    assert_eq!(avg.x.value(), 0.0);
+    assert_eq!(avg.a.value(), 0.0);
+    assert_eq!(avg.c.value(), 0.0);
+    assert_eq!(avg.o.value(), 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -138,10 +139,11 @@ fn 무백_정직한_검객() {
 
     let avg = mu_baek.personality().dimension_averages();
 
-    assert!(avg.h > 0.4, "무백의 정직-겸손성은 높아야 함: {}", avg.h);
-    assert!(avg.e < -0.2, "무백의 정서성은 낮아야 함: {}", avg.e);
-    assert!(avg.a > 0.4, "무백의 원만성은 높아야 함: {}", avg.a);
-    assert!(avg.c > 0.4, "무백의 성실성은 높아야 함: {}", avg.c);
+    // Score 타입을 직접 f32와 비교할 수 없으므로 .value() 사용
+    assert!(avg.h.value() > 0.4, "무백의 정직-겸손성은 높아야 함: {}", avg.h.value());
+    assert!(avg.e.value() < -0.2, "무백의 정서성은 낮아야 함: {}", avg.e.value());
+    assert!(avg.a.value() > 0.4, "무백의 원만성은 높아야 함: {}", avg.a.value());
+    assert!(avg.c.value() > 0.4, "무백의 성실성은 높아야 함: {}", avg.c.value());
 }
 
 #[test]
@@ -178,10 +180,11 @@ fn 교룡_반항적_여검객() {
 
     let avg = gyo_ryong.personality().dimension_averages();
 
-    assert!(avg.h < -0.4, "교룡의 정직-겸손성은 낮아야 함: {}", avg.h);
-    assert!(avg.x > 0.4, "교룡의 외향성은 높아야 함: {}", avg.x);
-    assert!(avg.a < -0.4, "교룡의 원만성은 낮아야 함: {}", avg.a);
-    assert!(avg.o > 0.7, "교룡의 개방성은 높아야 함: {}", avg.o);
+    // Score 타입을 직접 f32와 비교할 수 없으므로 .value() 사용
+    assert!(avg.h.value() < -0.4, "교룡의 정직-겸손성은 낮아야 함: {}", avg.h.value());
+    assert!(avg.x.value() > 0.4, "교룡의 외향성은 높아야 함: {}", avg.x.value());
+    assert!(avg.a.value() < -0.4, "교룡의 원만성은 낮아야 함: {}", avg.a.value());
+    assert!(avg.o.value() > 0.7, "교룡의 개방성은 높아야 함: {}", avg.o.value());
 }
 
 // ---------------------------------------------------------------------------
@@ -225,12 +228,13 @@ fn 같은_상황_다른_성격_다른_해석_가능성() {
     let li_avg = li.personality().dimension_averages();
     let yu_avg = yu.personality().dimension_averages();
 
-    assert!(li_avg.a > 0.0 && yu_avg.a < 0.0,
-        "무백(A={})은 양수, 교룡(A={})은 음수여야 함", li_avg.a, yu_avg.a);
-    assert!(li_avg.h > 0.0 && yu_avg.h < 0.0,
-        "무백(H={})은 양수, 교룡(H={})은 음수여야 함", li_avg.h, yu_avg.h);
+    // Score 타입을 직접 비교할 수 없으므로 .value() 사용
+    assert!(li_avg.a.value() > 0.0 && yu_avg.a.value() < 0.0,
+        "무백(A={})은 양수, 교룡(A={})은 음수여야 함", li_avg.a.value(), yu_avg.a.value());
+    assert!(li_avg.h.value() > 0.0 && yu_avg.h.value() < 0.0,
+        "무백(H={})은 양수, 교룡(H={})은 음수여야 함", li_avg.h.value(), yu_avg.h.value());
 
-    let a_gap = li_avg.a - yu_avg.a;
+    let a_gap = li_avg.a.value() - yu_avg.a.value();
     assert!(a_gap > 1.0,
         "원만성 차이({})가 1.0 이상이어야 감정 분기가 극적임", a_gap);
 }
@@ -332,11 +336,12 @@ fn 수련_절제의_여검객() {
 
     let avg = shu_lien.personality().dimension_averages();
 
-    assert!(avg.h > 0.6, "수련의 정직-겸손성은 매우 높아야 함: {}", avg.h);
-    assert!(avg.e.abs() < 0.3, "수련의 정서성은 복합적(중립 근처)이어야 함: {}", avg.e);
-    assert!(avg.a > 0.4, "수련의 원만성은 높아야 함: {}", avg.a);
-    assert!(avg.c > 0.6, "수련의 성실성은 매우 높아야 함: {}", avg.c);
-    assert!(avg.o < 0.0, "수련의 개방성은 낮아야 함(전통적): {}", avg.o);
+    // Score 연산 시 .value() 또는 .intensity() 사용
+    assert!(avg.h.value() > 0.6, "수련의 정직-겸손성은 매우 높아야 함: {}", avg.h.value());
+    assert!(avg.e.intensity() < 0.3, "수련의 정서성은 복합적(중립 근처)이어야 함: {}", avg.e.value());
+    assert!(avg.a.value() > 0.4, "수련의 원만성은 높아야 함: {}", avg.a.value());
+    assert!(avg.c.value() > 0.6, "수련의 성실성은 매우 높아야 함: {}", avg.c.value());
+    assert!(avg.o.value() < 0.0, "수련의 개방성은 낮아야 함(전통적): {}", avg.o.value());
 }
 
 // ---------------------------------------------------------------------------
@@ -389,10 +394,11 @@ fn 소호_자유로운_낭인() {
 
     let avg = so_ho.personality().dimension_averages();
 
-    assert!(avg.e < -0.3, "소호의 정서성은 낮아야 함(대담): {}", avg.e);
-    assert!(avg.x > 0.4, "소호의 외향성은 높아야 함: {}", avg.x);
-    assert!(avg.c < -0.2, "소호의 성실성은 낮아야 함(자유분방): {}", avg.c);
-    assert!(avg.o > 0.5, "소호의 개방성은 높아야 함: {}", avg.o);
+    // Score 비교를 위해 .value() 사용
+    assert!(avg.e.value() < -0.3, "소호의 정서성은 낮아야 함(대담): {}", avg.e.value());
+    assert!(avg.x.value() > 0.4, "소호의 외향성은 높아야 함: {}", avg.x.value());
+    assert!(avg.c.value() < -0.2, "소호의 성실성은 낮아야 함(자유분방): {}", avg.c.value());
+    assert!(avg.o.value() > 0.5, "소호의 개방성은 높아야 함: {}", avg.o.value());
 }
 
 // ---------------------------------------------------------------------------
@@ -428,8 +434,9 @@ fn 사인_성격_대비() {
     let yu_avg = yu.personality().dimension_averages();
     let na_avg = na.personality().dimension_averages();
 
-    assert!(li_avg.a > 0.4 && li_avg.e < -0.2);
-    assert!(shu_avg.c > 0.6);
-    assert!(yu_avg.a < -0.4 && yu_avg.x > 0.4);
-    assert!(na_avg.e < -0.3 && na_avg.c < -0.2);
+    // Score 비교를 위해 .value() 사용
+    assert!(li_avg.a.value() > 0.4 && li_avg.e.value() < -0.2);
+    assert!(shu_avg.c.value() > 0.6);
+    assert!(yu_avg.a.value() < -0.4 && yu_avg.x.value() > 0.4);
+    assert!(na_avg.e.value() < -0.3 && na_avg.c.value() < -0.2);
 }

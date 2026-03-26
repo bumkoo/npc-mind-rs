@@ -115,6 +115,34 @@ impl Score {
     pub fn amplify(&self, factor: f32) -> f32 {
         (self.0 * factor).clamp(SCORE_MIN, SCORE_MAX)
     }
+
+    // -----------------------------------------------------------------------
+    // 감정 강도 변조(Modifier) 계산기
+    // -----------------------------------------------------------------------
+
+    /// 기본적인 가중치 계산: 1.0 + (성격 점수 × 가중치 계수)
+    /// 성향이 강할수록 감정의 강도를 증폭시키고 싶을 때 사용합니다.
+    pub fn modifier(&self, weight: f32) -> f32 {
+        1.0 + self.0 * weight
+    }
+
+    /// 절대값 기반 가중치 계산: 1.0 + (|성격 점수| × 가중치 계수)
+    /// 성격의 방향(긍정/부정)과 상관없이 '극단성' 자체가 감정을 증폭시킬 때 사용합니다.
+    pub fn abs_modifier(&self, weight: f32) -> f32 {
+        1.0 + self.0.abs() * weight
+    }
+
+    /// 양수 성향 기반 증폭: 1.0 + (max(0, 성격 점수) × 가중치 계수)
+    /// 특정 성향이 '양수'일 때만 감정을 강화하고 싶을 때 사용합니다.
+    pub fn pos_modifier(&self, weight: f32) -> f32 {
+        1.0 + self.0.max(0.0) * weight
+    }
+
+    /// 양수 성향 기반 억제: 1.0 - (max(0, 성격 점수) × 가중치 계수)
+    /// 특정 성향(예: 인내심, 신중함)이 높을수록 감정을 억제하고 싶을 때 사용합니다.
+    pub fn neg_modifier(&self, weight: f32) -> f32 {
+        1.0 - self.0.max(0.0) * weight
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -268,12 +296,13 @@ impl HexacoProfile {
 /// 6개 차원의 평균 점수 요약
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DimensionAverages {
-    pub h: f32, pub e: f32, pub x: f32,
-    pub a: f32, pub c: f32, pub o: f32,
+    pub h: Score, pub e: Score, pub x: Score,
+    pub a: Score, pub c: Score, pub o: Score,
 }
 
-fn avg4(a: Score, b: Score, c: Score, d: Score) -> f32 {
-    (a.value() + b.value() + c.value() + d.value()) / 4.0
+/// 4개 점수의 평균을 계산하여 Score로 반환 (범위 클램핑 포함)
+fn avg4(a: Score, b: Score, c: Score, d: Score) -> Score {
+    Score::clamped((a.value() + b.value() + c.value() + d.value()) / 4.0)
 }
 
 // ---------------------------------------------------------------------------

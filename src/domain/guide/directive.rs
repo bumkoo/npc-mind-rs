@@ -22,34 +22,38 @@ pub struct ActingDirective {
 }
 
 impl ActingDirective {
+    /// 감정과 성격을 기반으로 구체적인 연기 지시를 생성합니다.
     pub fn from_emotion_and_personality(
         state: &EmotionState,
         profile: &HexacoProfile,
     ) -> Self {
         let avg = profile.dimension_averages();
         let mood = state.overall_valence();
+        
+        // 리팩토링: EmotionState 메서드들이 이제 소유권이 있는 값(Emotion, Vec<Emotion>)을 반환합니다.
         let dominant = state.dominant();
         let significant = state.significant(EMOTION_THRESHOLD);
 
         // --- 어조 결정 ---
+        // 성격 차원 평균(avg)의 각 필드는 이제 Score 타입이므로 .value()를 통해 비교합니다.
         let t = TRAIT_THRESHOLD;
-        let tone = match dominant.map(|e| e.emotion_type()) {
+        let tone = match dominant.as_ref().map(|e| e.emotion_type()) {
             Some(EmotionType::Anger) => {
-                if avg.c > t { Tone::SuppressedCold }
+                if avg.c.value() > t { Tone::SuppressedCold }
                 else { Tone::RoughAggressive }
             }
             Some(EmotionType::Distress) => {
-                if avg.e > t { Tone::AnxiousTrembling }
+                if avg.e.value() > t { Tone::AnxiousTrembling }
                 else { Tone::SomberRestrained }
             }
             Some(EmotionType::Joy) => Tone::BrightLively,
             Some(EmotionType::Fear) => {
-                if avg.e < -t { Tone::VigilantCalm }
+                if avg.e.value() < -t { Tone::VigilantCalm }
                 else { Tone::TenseAnxious }
             }
             Some(EmotionType::Shame) => Tone::ShrinkingSmall,
             Some(EmotionType::Pride) => {
-                if avg.h > t { Tone::QuietConfidence }
+                if avg.h.value() > t { Tone::QuietConfidence }
                 else { Tone::ProudArrogant }
             }
             Some(EmotionType::Reproach) => Tone::CynicalCritical,
@@ -65,8 +69,9 @@ impl ActingDirective {
         };
 
         // --- 태도 결정 ---
+        // significant는 이제 Vec<Emotion>이므로 .iter()를 통해 순회하며 조건을 확인합니다.
         let attitude = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
-            if avg.a < -t {
+            if avg.a.value() < -t {
                 Attitude::HostileAggressive
             } else {
                 Attitude::SuppressedDiscomfort
@@ -85,15 +90,15 @@ impl ActingDirective {
 
         // --- 행동 경향 결정 ---
         let behavioral_tendency = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
-            if avg.c < -t {
+            if avg.c.value() < -t {
                 BehavioralTendency::ImmediateConfrontation
-            } else if avg.c > t {
+            } else if avg.c.value() > t {
                 BehavioralTendency::StrategicResponse
             } else {
                 BehavioralTendency::ExpressAndObserve
             }
         } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
-            if avg.e < -t {
+            if avg.e.value() < -t {
                 BehavioralTendency::BraveConfrontation
             } else {
                 BehavioralTendency::SeekSafety
@@ -121,7 +126,7 @@ impl ActingDirective {
         if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
             restrictions.push(Restriction::NoBravado);
         }
-        if avg.h > HONESTY_RESTRICTION_THRESHOLD {
+        if avg.h.value() > HONESTY_RESTRICTION_THRESHOLD {
             restrictions.push(Restriction::NoLyingOrExaggeration);
         }
 

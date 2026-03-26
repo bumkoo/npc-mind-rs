@@ -89,11 +89,13 @@ impl AppraisalEngine {
         let avg = p.dimension_averages();
         let w = Self::W;
 
-        // 공통 가중치 — 전부 같은 패턴
-        let emotional_amp = 1.0 + avg.e.abs() * w;
-        let positive_amp = 1.0 + avg.x.max(0.0) * w;
-        let negative_mod = 1.0 - avg.a.max(0.0) * w;
-        let impulse_mod = 1.0 - p.conscientiousness.prudence.value().max(0.0) * w;
+        // 성격에 따른 증폭 계수들을 Score 메서드를 통해 계산합니다.
+        // 정서성(E)의 극단성은 감정 폭을 넓히고, 외향성(X)의 긍정성은 기쁨을 키우며,
+        // 원만성(A)과 신중함(C)은 부정적 감정을 억제합니다.
+        let emotional_amp = avg.e.abs_modifier(w);
+        let positive_amp = avg.x.pos_modifier(w);
+        let negative_mod = avg.a.neg_modifier(w);
+        let impulse_mod = p.conscientiousness.prudence.neg_modifier(w);
 
         let desirability_self = event.desirability_for_self;
 
@@ -119,7 +121,7 @@ impl AppraisalEngine {
                 state.add(Emotion::new(EmotionType::Hope,
                     desirability_self * positive_amp * rel_mul));
             } else if desirability_self < 0.0 {
-                let fear_amp = 1.0 + p.emotionality.fearfulness.value().abs() * w;
+                let fear_amp = p.emotionality.fearfulness.abs_modifier(w);
                 state.add(Emotion::new(EmotionType::Fear,
                     desirability_self.abs() * emotional_amp * fear_amp * rel_mul));
             }
@@ -136,19 +138,15 @@ impl AppraisalEngine {
         }
 
         // 4. 타인의 운 → HappyFor / Pity / Gloating / Resentment
-        //
-        // closeness는 DesirabilityForOther.relationship에서 가져온다.
-        // 대화 상대와 사건의 영향 대상이 다를 수 있기 때문.
-        // rel_mul(대화 상대 기반)은 적용하지 않는다 — affinity/hostility_mod가 담당.
         if let Some(other) = &event.desirability_for_other {
             let t = Self::FORTUNE_THRESHOLD;
-            let h = avg.h;
-            let a = avg.a;
+            let h = avg.h.value();
+            let a = avg.a.value();
 
             // 제3자와의 관계에서 closeness 추출
-            let closeness_value = other.relationship.closeness().value();
-            let affinity_mod = 1.0 + closeness_value * w;
-            let hostility_mod = 1.0 - closeness_value * w;
+            let closeness = other.relationship.closeness();
+            let affinity_mod = closeness.modifier(w);
+            let hostility_mod = closeness.modifier(-w); // 친밀도가 높을수록 적대감 억제
             let desir_other = other.desirability;
 
             if desir_other > 0.0 {
@@ -179,9 +177,6 @@ impl AppraisalEngine {
     }
 
     // --- Action-based 감정 평가 ---
-    //
-    // outcome_for_self 제거됨 — Compound 감정은 appraise_compound()에서 처리.
-    // 여기서는 순수 Attribution 감정만 생성: Pride/Shame/Admiration/Reproach.
     fn appraise_action(
         p: &HexacoProfile,
         state: &mut EmotionState,
@@ -191,13 +186,13 @@ impl AppraisalEngine {
     ) {
         let avg = p.dimension_averages();
         let w = Self::W;
-        let standards_amp = 1.0 + avg.c.abs() * w;
+        let standards_amp = avg.c.abs_modifier(w); // 성실성(C)이 높을수록 도덕적 기준 엄격
         let praiseworthiness = action.praiseworthiness;
 
         if action.is_self_agent {
             // 자기 행동 — trust 무관
             if praiseworthiness > 0.0 {
-                let pride_mod = 1.0 - p.honesty_humility.modesty.value().max(0.0) * w;
+                let pride_mod = p.honesty_humility.modesty.neg_modifier(w); // 겸손할수록 자부심 억제
                 state.add(Emotion::new(EmotionType::Pride,
                     praiseworthiness * standards_amp * pride_mod * rel_mul));
             } else {
@@ -210,7 +205,7 @@ impl AppraisalEngine {
                 state.add(Emotion::new(EmotionType::Admiration,
                     praiseworthiness * standards_amp * trust_mod * rel_mul));
             } else {
-                let reproach_mod = 1.0 - p.agreeableness.gentleness.value().max(0.0) * w;
+                let reproach_mod = p.agreeableness.gentleness.neg_modifier(w); // 온화할수록 비난 억제
                 state.add(Emotion::new(EmotionType::Reproach,
                     praiseworthiness.abs() * standards_amp * reproach_mod * trust_mod * rel_mul));
             }
@@ -218,12 +213,6 @@ impl AppraisalEngine {
     }
 
     // --- Compound 감정: Action + Event 교차 ---
-    //
-    // OCC Compound 감정은 Attribution(행동 평가)과 Well-being(사건 결과)의 교차점.
-    // Action과 Event가 Vec에 동시 존재할 때만 호출된다.
-    //
-    // 자기 행동 + 결과: Gratification (Pride+Joy), Remorse (Shame+Distress)
-    // 타인 행동 + 결과: Gratitude (Admiration+Joy), Anger (Reproach+Distress)
     fn appraise_compound(
         p: &HexacoProfile,
         state: &mut EmotionState,
@@ -234,12 +223,11 @@ impl AppraisalEngine {
     ) {
         let avg = p.dimension_averages();
         let w = Self::W;
-        let standards_amp = 1.0 + avg.c.abs() * w;
+        let standards_amp = avg.c.abs_modifier(w);
         let praiseworthiness = action.praiseworthiness;
         let outcome = event.desirability_for_self;
 
         if action.is_self_agent {
-            // 자기 행동 + 결과 — trust 무관
             if praiseworthiness > 0.0 && outcome > 0.0 {
                 state.add(Emotion::new(EmotionType::Gratification,
                     (praiseworthiness + outcome) / 2.0 * standards_amp * rel_mul));
@@ -248,13 +236,12 @@ impl AppraisalEngine {
                     (praiseworthiness.abs() + outcome.abs()) / 2.0 * standards_amp * rel_mul));
             }
         } else {
-            // 타인 행동 + 결과 — trust_mod 적용
             if praiseworthiness > 0.0 && outcome > 0.0 {
-                let gratitude_amp = 1.0 + p.honesty_humility.sincerity.value().max(0.0) * w;
+                let gratitude_amp = p.honesty_humility.sincerity.pos_modifier(w); // 진실할수록 감사 증폭
                 state.add(Emotion::new(EmotionType::Gratitude,
                     (praiseworthiness + outcome) / 2.0 * gratitude_amp * trust_mod * rel_mul));
             } else if praiseworthiness < 0.0 && outcome < 0.0 {
-                let anger_mod = 1.0 - p.agreeableness.patience.value() * w;
+                let anger_mod = p.agreeableness.patience.neg_modifier(w); // 인내심이 높을수록 분노 억제
                 state.add(Emotion::new(EmotionType::Anger,
                     (praiseworthiness.abs() + outcome.abs()) / 2.0 * anger_mod * trust_mod * rel_mul));
             }
@@ -268,7 +255,7 @@ impl AppraisalEngine {
         rel_mul: f32,
         object: &ObjectFocus,
     ) {
-        let aesthetic_amp = 1.0 + p.openness.aesthetic_appreciation.value().abs() * Self::W;
+        let aesthetic_amp = p.openness.aesthetic_appreciation.abs_modifier(Self::W); // 미적 개방성이 높을수록 호불호 명확
 
         if object.appealingness > 0.0 {
             state.add(Emotion::new(EmotionType::Love,

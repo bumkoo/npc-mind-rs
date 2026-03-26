@@ -171,9 +171,17 @@ pub struct ObjectFocus {
 // ---------------------------------------------------------------------------
 
 impl Situation {
+    /// focuses에서 특정 타입의 포커스를 찾는 내부 헬퍼 메서드
+    fn find_focus<T, F>(&self, f: F) -> Option<&T>
+    where
+        F: Fn(&SituationFocus) -> Option<&T>,
+    {
+        self.focuses.iter().find_map(f)
+    }
+
     /// focuses에서 첫 번째 EventFocus 찾기
     pub fn find_event(&self) -> Option<&EventFocus> {
-        self.focuses.iter().find_map(|f| match f {
+        self.find_focus(|f| match f {
             SituationFocus::Event(e) => Some(e),
             _ => None,
         })
@@ -181,7 +189,7 @@ impl Situation {
 
     /// focuses에서 첫 번째 ActionFocus 찾기
     pub fn find_action(&self) -> Option<&ActionFocus> {
-        self.focuses.iter().find_map(|f| match f {
+        self.find_focus(|f| match f {
             SituationFocus::Action(a) => Some(a),
             _ => None,
         })
@@ -189,7 +197,7 @@ impl Situation {
 
     /// focuses에서 첫 번째 ObjectFocus 찾기
     pub fn find_object(&self) -> Option<&ObjectFocus> {
-        self.focuses.iter().find_map(|f| match f {
+        self.find_focus(|f| match f {
             SituationFocus::Object(o) => Some(o),
             _ => None,
         })

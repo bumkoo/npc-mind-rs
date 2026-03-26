@@ -13,7 +13,8 @@ use npc_mind::domain::relationship::*;
 use common::{make_무백, make_교룡, score as s};
 
 fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    state.emotions().iter()
+    // state.emotions()는 이제 Vec<Emotion>을 반환하므로 직접 순회 가능
+    state.emotions().into_iter()
         .find(|e| e.emotion_type() == etype)
         .map(|e| e.intensity())
 }

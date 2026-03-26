@@ -25,63 +25,64 @@ pub struct PersonalitySnapshot {
 }
 
 impl PersonalitySnapshot {
-    /// HEXACO 프로필에서 두드러지는 특성을 추출
+    /// HEXACO 프로필에서 두드러지는 특성을 추출합니다.
     pub fn from_profile(profile: &HexacoProfile) -> Self {
         let avg = profile.dimension_averages();
         let t = TRAIT_THRESHOLD;
         let mut traits = Vec::new();
         let mut styles = Vec::new();
 
+        // 리팩토링: avg의 필드들이 Score 타입이므로 .value()로 비교를 수행합니다.
         // H: 정직-겸손성
-        if avg.h > t {
+        if avg.h.value() > t {
             traits.push(PersonalityTrait::HonestAndModest);
             styles.push(SpeechStyle::FrankAndUnadorned);
-        } else if avg.h < -t {
+        } else if avg.h.value() < -t {
             traits.push(PersonalityTrait::CunningAndAmbitious);
             styles.push(SpeechStyle::HidesInnerThoughts);
         }
 
         // E: 정서성
-        if avg.e > t {
+        if avg.e.value() > t {
             traits.push(PersonalityTrait::EmotionalAndAnxious);
             styles.push(SpeechStyle::ExpressiveAndWorried);
-        } else if avg.e < -t {
+        } else if avg.e.value() < -t {
             traits.push(PersonalityTrait::BoldAndIndependent);
             styles.push(SpeechStyle::CalmAndComposed);
         }
 
         // X: 외향성
-        if avg.x > t {
+        if avg.x.value() > t {
             traits.push(PersonalityTrait::ConfidentAndSociable);
             styles.push(SpeechStyle::ActiveAndForceful);
-        } else if avg.x < -t {
+        } else if avg.x.value() < -t {
             traits.push(PersonalityTrait::IntrovertedAndQuiet);
             styles.push(SpeechStyle::BriefAndConcise);
         }
 
         // A: 원만성
-        if avg.a > t {
+        if avg.a.value() > t {
             traits.push(PersonalityTrait::TolerantAndGentle);
             styles.push(SpeechStyle::SoftAndConsiderate);
-        } else if avg.a < -t {
+        } else if avg.a.value() < -t {
             traits.push(PersonalityTrait::GrudgingAndCritical);
             styles.push(SpeechStyle::SharpAndDirect);
         }
 
         // C: 성실성
-        if avg.c > t {
+        if avg.c.value() > t {
             traits.push(PersonalityTrait::SystematicAndDiligent);
             styles.push(SpeechStyle::LogicalAndRational);
-        } else if avg.c < -t {
+        } else if avg.c.value() < -t {
             traits.push(PersonalityTrait::FreeAndImpulsive);
             styles.push(SpeechStyle::UnfilteredAndSpontaneous);
         }
 
         // O: 개방성
-        if avg.o > t {
+        if avg.o.value() > t {
             traits.push(PersonalityTrait::CuriousAndCreative);
             styles.push(SpeechStyle::MetaphoricalAndUnique);
-        } else if avg.o < -t {
+        } else if avg.o.value() < -t {
             traits.push(PersonalityTrait::TraditionalAndConservative);
             styles.push(SpeechStyle::FormalAndTraditional);
         }
@@ -122,11 +123,13 @@ pub struct EmotionSnapshot {
 }
 
 impl EmotionSnapshot {
-    /// EmotionState에서 스냅샷 생성
+    /// EmotionState에서 스냅샷 요약을 생성합니다.
     pub fn from_state(state: &EmotionState) -> Self {
+        // 리팩토링: dominant()가 이제 Option<Emotion> 소유권 값을 반환합니다.
         let dominant = state.dominant()
             .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() });
 
+        // 리팩토링: significant()가 이제 Vec<Emotion> 소유권 목록을 반환합니다.
         let active_emotions = state.significant(EMOTION_THRESHOLD)
             .iter()
             .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() })

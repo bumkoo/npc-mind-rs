@@ -13,7 +13,8 @@ use common::{make_무백, make_교룡, make_수련, make_소호, score as s, neu
 // ---------------------------------------------------------------------------
 
 fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    state.emotions().iter()
+    // state.emotions()는 이제 Vec<Emotion>을 반환하므로 직접 순회 가능
+    state.emotions().into_iter()
         .find(|e| e.emotion_type() == etype)
         .map(|e| e.intensity())
 }
@@ -262,6 +263,7 @@ fn 감정_상태_전체_valence() {
 fn 감정_상태_dominant_감정() {
     let yu = make_교룡();
     let state = AppraisalEngine::appraise(yu.personality(), &배신_상황_기본(), &neutral_rel());
+    // dominant()는 이제 Option<Emotion> 소유권을 반환
     let dom = state.dominant().unwrap();
     assert!(
         dom.emotion_type() == EmotionType::Anger
@@ -274,6 +276,7 @@ fn 감정_상태_dominant_감정() {
 fn 감정_significant_필터링() {
     let li = make_무백();
     let state = AppraisalEngine::appraise(li.personality(), &배신_상황_기본(), &neutral_rel());
+    // significant()는 이제 Vec<Emotion> 소유권을 반환
     let significant = state.significant(0.2);
     assert!(!significant.is_empty(), "유의미한 감정이 있어야 함");
     for w in significant.windows(2) {

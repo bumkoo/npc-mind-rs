@@ -26,9 +26,9 @@ const FADE_THRESHOLD: f32 = 0.05;
 pub struct StimulusEngine;
 
 impl StimulusEngine {
-    /// 대사 자극에 의한 감정 변동
+    /// 대사 자극에 의한 감정 변동을 계산합니다.
     ///
-    /// 기존 감정의 강도만 변동. 새 감정을 생성하지 않음.
+    /// 기존 감정의 강도만 변동시키며, 새 감정을 생성하지 않습니다.
     /// - 자극과 같은 방향의 감정 → 증폭
     /// - 자극과 반대 방향의 감정 → 감소
     /// - 0.05 이하로 떨어진 감정 → 자연 소멸
@@ -40,6 +40,7 @@ impl StimulusEngine {
         let absorb = Self::stimulus_absorb_rate(personality, stimulus);
         let mut new_state = current_state.clone();
 
+        // 리팩토링: emotions()가 Vec<Emotion>을 반환하므로 직접 순회합니다.
         for emotion in current_state.emotions() {
             let emotion_pad = emotion_to_pad(emotion.emotion_type());
             let alignment = pad_dot(&emotion_pad, stimulus);
@@ -56,15 +57,17 @@ impl StimulusEngine {
         new_state
     }
 
-    /// HEXACO 기반 자극 수용도
+    /// HEXACO 성격에 기반한 자극 수용도(Absorb Rate)를 계산합니다.
     ///
-    /// - E: 전반적 민감도 (높으면 자극 더 수용)
-    /// - A.patience: 부정 자극 완충 (높으면 부정 자극 걸러냄)
-    /// - C.prudence: 급변 억제 (높으면 변동 폭 작아짐)
+    /// - E(정서성): 전반적 민감도 (높으면 자극을 더 크게 수용)
+    /// - A.patience(인내심): 부정 자극 완충 (높으면 부정 자극을 걸러냄)
+    /// - C.prudence(신중함): 감정 급변 억제 (높으면 변동 폭이 작아짐)
     fn stimulus_absorb_rate(p: &HexacoProfile, stimulus: &Pad) -> f32 {
         let avg = p.dimension_averages();
         let mut rate = 1.0;
-        rate += avg.e.abs() * 0.3;                                   // E: 민감도
+        
+        // 리팩토링: avg.e가 Score 타입이므로 intensity()를 사용하여 절대 강도를 가져옵니다.
+        rate += avg.e.intensity() * 0.3;                             // E: 민감도
         if stimulus.pleasure < 0.0 {
             rate -= p.agreeableness.patience.value().max(0.0) * 0.4; // A: 부정 완충
         }
