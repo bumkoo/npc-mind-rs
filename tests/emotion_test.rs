@@ -1,4 +1,4 @@
-//! OCC 감정 모델 + HEXACO 연결 테스트
+﻿//! OCC 감정 모델 + HEXACO 연결 테스트
 //!
 //! 무협 4인 캐릭터가 같은 상황에서 다른 감정을 보이는지 검증
 
@@ -30,20 +30,19 @@ fn has_emotion(state: &EmotionState, etype: EmotionType) -> bool {
 #[test]
 fn 배신_무백은_절제된_분노() {
     let li = make_무백();
-    let situation = Situation {
-        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let situation = Situation::new(
+        "동료 무사가 적에게 아군의 위치를 밀고했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
 
@@ -56,20 +55,19 @@ fn 배신_무백은_절제된_분노() {
 #[test]
 fn 배신_교룡은_폭발적_분노() {
     let yu = make_교룡();
-    let situation = Situation {
-        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let situation = Situation::new(
+        "동료 무사가 적에게 아군의 위치를 밀고했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
 
@@ -86,20 +84,19 @@ fn 배신_교룡은_폭발적_분노() {
 #[test]
 fn 배신_수련은_억눌린_고통() {
     let shu = make_수련();
-    let situation = Situation {
-        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let situation = Situation::new(
+        "동료 무사가 적에게 아군의 위치를 밀고했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(shu.personality(), &situation, &neutral_rel());
 
@@ -120,14 +117,16 @@ fn 배신_수련은_억눌린_고통() {
 #[test]
 fn 적_대군_무백은_담담한_두려움() {
     let li = make_무백();
-    let situation = Situation {
-        description: "적의 대군이 산 너머에서 다가오고 있다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "적의 대군이 산 너머에서 다가오고 있다",
+        Some(EventFocus {
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let fear = find_emotion(&state, EmotionType::Fear).unwrap();
@@ -137,14 +136,16 @@ fn 적_대군_무백은_담담한_두려움() {
 #[test]
 fn 적_대군_소호는_두려움_없이_행동() {
     let na = make_소호();
-    let situation = Situation {
-        description: "적의 대군이 산 너머에서 다가오고 있다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "적의 대군이 산 너머에서 다가오고 있다",
+        Some(EventFocus {
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let na_state = AppraisalEngine::appraise(na.personality(), &situation, &neutral_rel());
     let na_fear = find_emotion(&na_state, EmotionType::Fear).unwrap();
@@ -159,9 +160,9 @@ fn 적_대군_소호는_두려움_없이_행동() {
 fn 라이벌_승진_무백은_대리기쁨() {
     let li = make_무백();
     let other_rel = neutral_rel();
-    let situation = Situation {
-        description: "오랜 라이벌이 무림맹주에 추대되었다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "오랜 라이벌이 무림맹주에 추대되었다",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -169,8 +170,10 @@ fn 라이벌_승진_무백은_대리기쁨() {
                 relationship: other_rel,
             }),
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     assert!(has_emotion(&state, EmotionType::HappyFor),
@@ -183,9 +186,9 @@ fn 라이벌_승진_무백은_대리기쁨() {
 fn 라이벌_승진_교룡은_시기() {
     let yu = make_교룡();
     let other_rel = neutral_rel();
-    let situation = Situation {
-        description: "오랜 라이벌이 무림맹주에 추대되었다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "오랜 라이벌이 무림맹주에 추대되었다",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -193,8 +196,10 @@ fn 라이벌_승진_교룡은_시기() {
                 relationship: other_rel,
             }),
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     assert!(has_emotion(&state, EmotionType::Resentment),
@@ -209,14 +214,16 @@ fn 라이벌_승진_교룡은_시기() {
 fn 해독약_실패_실망_강도_비교() {
     let li = make_무백();
     let shu = make_수련();
-    let situation = Situation {
-        description: "사부의 독을 치료할 해독약을 끝내 구하지 못했다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "사부의 독을 치료할 해독약을 끝내 구하지 못했다",
+        Some(EventFocus {
             desirability_for_self: -0.8,
             desirability_for_other: None,
             prospect: Some(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let shu_state = AppraisalEngine::appraise(shu.personality(), &situation, &neutral_rel());
@@ -234,20 +241,19 @@ fn 해독약_실패_실망_강도_비교() {
 
 /// 배신 상황 (Action + Event) 헬퍼
 fn 배신_상황_기본() -> Situation {
-    Situation {
-        description: "배신".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "배신",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 #[test]
@@ -267,8 +273,9 @@ fn 감정_상태_dominant_감정() {
     let dom = state.dominant().unwrap();
     assert!(
         dom.emotion_type() == EmotionType::Anger
-        || dom.emotion_type() == EmotionType::Reproach,
-        "교룡의 지배 감정: {:?} (강도 {})", dom.emotion_type(), dom.intensity()
+        || dom.emotion_type() == EmotionType::Reproach
+        || dom.emotion_type() == EmotionType::Distress,
+        "교룡의 지배 감정은 부정 감정: {:?} (강도 {})", dom.emotion_type(), dom.intensity()
     );
 }
 
@@ -341,9 +348,9 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let sit_close = Situation {
-        description: "동료 승진".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let sit_close = Situation::new(
+        "동료 승진",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "close".into(),
@@ -351,11 +358,13 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
                 relationship: close,
             }),
             prospect: None,
-        })],
-    };
-    let sit_distant = Situation {
-        description: "동료 승진".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+        }),
+        None,
+        None,
+    ).unwrap();
+    let sit_distant = Situation::new(
+        "동료 승진",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "distant".into(),
@@ -363,8 +372,10 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
                 relationship: distant,
             }),
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state_close = AppraisalEngine::appraise(li.personality(), &sit_close, &neutral_rel());
     let state_distant = AppraisalEngine::appraise(li.personality(), &sit_distant, &neutral_rel());
@@ -385,9 +396,9 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
         .build();
     let nobody = Relationship::neutral("gyo_ryong", "nobody");
 
-    let sit_rival = Situation {
-        description: "라이벌 승진".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let sit_rival = Situation::new(
+        "라이벌 승진",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -395,12 +406,14 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
                 relationship: rival,
             }),
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
-    let sit_nobody = Situation {
-        description: "라이벌 승진".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let sit_nobody = Situation::new(
+        "라이벌 승진",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "nobody".into(),
@@ -408,8 +421,10 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
                 relationship: nobody,
             }),
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state_rival = AppraisalEngine::appraise(yu.personality(), &sit_rival, &neutral_rel());
     let state_nobody = AppraisalEngine::appraise(yu.personality(), &sit_nobody, &neutral_rel());
@@ -428,9 +443,9 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
 
 /// 타인에게 좋은 일이 생기는 상황 (관계 정보 포함)
 fn 타인_행운_상황(other_rel: &Relationship) -> Situation {
-    Situation {
-        description: "상대가 무림맹주에 추대되었다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    Situation::new(
+        "상대가 무림맹주에 추대되었다",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
@@ -438,15 +453,17 @@ fn 타인_행운_상황(other_rel: &Relationship) -> Situation {
                 relationship: other_rel.clone(),
             }),
             prospect: None,
-        })],
-    }
+        }),
+        None,
+        None,
+    ).unwrap()
 }
 
 /// 타인에게 나쁜 일이 생기는 상황 (관계 정보 포함)
 fn 타인_불행_상황(other_rel: &Relationship) -> Situation {
-    Situation {
-        description: "상대가 비무에서 크게 패했다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    Situation::new(
+        "상대가 비무에서 크게 패했다",
+        Some(EventFocus {
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
@@ -454,8 +471,10 @@ fn 타인_불행_상황(other_rel: &Relationship) -> Situation {
                 relationship: other_rel.clone(),
             }),
             prospect: None,
-        })],
-    }
+        }),
+        None,
+        None,
+    ).unwrap()
 }
 
 #[test]
@@ -546,38 +565,36 @@ fn 중립_관계는_closeness_방향_영향_없음() {
 
 /// 타인의 부정 행동 (배신) — Reproach, Anger 발동
 fn 배신_상황() -> Situation {
-    Situation {
-        description: "상대가 적에게 아군 위치를 밀고했다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "상대가 적에게 아군 위치를 밀고했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 /// 타인의 긍정 행동 (도움) — Admiration, Gratitude 발동
 fn 도움_상황() -> Situation {
-    Situation {
-        description: "상대가 목숨을 걸고 나를 구해주었다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: 0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: 0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "상대가 목숨을 걸고 나를 구해주었다",
+        Some(EventFocus {
+            desirability_for_self: 0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: 0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 #[test]
@@ -697,4 +714,273 @@ fn 불신하던_사람의_의로운_행동에_약한_감탄() {
     assert!(adm_distrusted < adm_neutral,
         "불신 의로움 감탄({}) < 중립 의로움 감탄({}) — 덤덤",
         adm_distrusted, adm_neutral);
+}
+
+
+// ===========================================================================
+// 시나리오 9: rel_mul이 자기 행동 vs 타인 행동에 미치는 영향 대조
+// ===========================================================================
+
+/// 자기 행동 상황 — Pride/Shame 발동
+fn 자기_칭찬_상황() -> Situation {
+    Situation::new(
+        "내가 의로운 일을 했다",
+        None,
+        Some(ActionFocus {
+            is_self_agent: true,
+            praiseworthiness: 0.7,
+        }),
+        None,
+    ).unwrap()
+}
+
+fn 자기_비난_상황() -> Situation {
+    Situation::new(
+        "내가 비겁한 짓을 했다",
+        None,
+        Some(ActionFocus {
+            is_self_agent: true,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
+}
+
+/// 타인 행동 상황 — Admiration/Reproach 발동
+fn 타인_칭찬_상황() -> Situation {
+    Situation::new(
+        "상대가 의로운 일을 했다",
+        None,
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: 0.7,
+        }),
+        None,
+    ).unwrap()
+}
+
+fn 타인_비난_상황() -> Situation {
+    Situation::new(
+        "상대가 비겁한 짓을 했다",
+        None,
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
+}
+
+// --- 자기 행동: closeness 변해도 Pride/Shame 동일 ---
+
+#[test]
+fn 자기_행동_pride는_closeness에_무관() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &자기_칭찬_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &자기_칭찬_상황(), &distant);
+
+    let pride_close = find_emotion(&state_close, EmotionType::Pride).unwrap();
+    let pride_distant = find_emotion(&state_distant, EmotionType::Pride).unwrap();
+
+    assert!((pride_close - pride_distant).abs() < 0.001,
+        "자기 Pride는 closeness 무관: close({}) == distant({})",
+        pride_close, pride_distant);
+}
+
+#[test]
+fn 자기_행동_shame은_closeness에_무관() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &자기_비난_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &자기_비난_상황(), &distant);
+
+    let shame_close = find_emotion(&state_close, EmotionType::Shame).unwrap();
+    let shame_distant = find_emotion(&state_distant, EmotionType::Shame).unwrap();
+
+    assert!((shame_close - shame_distant).abs() < 0.001,
+        "자기 Shame은 closeness 무관: close({}) == distant({})",
+        shame_close, shame_distant);
+}
+
+// --- 타인 행동: closeness 높으면 Admiration/Reproach 증폭 ---
+
+#[test]
+fn 타인_행동_admiration은_closeness에_증폭() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &타인_칭찬_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &타인_칭찬_상황(), &distant);
+
+    let adm_close = find_emotion(&state_close, EmotionType::Admiration).unwrap();
+    let adm_distant = find_emotion(&state_distant, EmotionType::Admiration).unwrap();
+
+    assert!(adm_close > adm_distant,
+        "가까운 사이 Admiration({}) > 먼 사이({}) — rel_mul 효과",
+        adm_close, adm_distant);
+}
+
+#[test]
+fn 타인_행동_reproach는_closeness에_증폭() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &타인_비난_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &타인_비난_상황(), &distant);
+
+    let repr_close = find_emotion(&state_close, EmotionType::Reproach).unwrap();
+    let repr_distant = find_emotion(&state_distant, EmotionType::Reproach).unwrap();
+
+    assert!(repr_close > repr_distant,
+        "가까운 사이 Reproach({}) > 먼 사이({}) — rel_mul 효과",
+        repr_close, repr_distant);
+}
+
+// --- 자기 compound: closeness 변해도 Gratification/Remorse 동일 ---
+
+#[test]
+fn 자기_compound_gratification의_pride는_closeness에_무관() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let situation = Situation::new(
+        "내가 의롭게 행동하여 좋은 결과를 얻었다",
+        Some(EventFocus {
+            desirability_for_self: 0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: true,
+            praiseworthiness: 0.7,
+        }),
+        None,
+    ).unwrap();
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
+
+    // Pride는 closeness에 완전 무관 (자기 평가)
+    let pride_close = find_emotion(&state_close, EmotionType::Pride).unwrap();
+    let pride_distant = find_emotion(&state_distant, EmotionType::Pride).unwrap();
+    assert!((pride_close - pride_distant).abs() < 0.001,
+        "Pride는 closeness 무관: close({}) == distant({})", pride_close, pride_distant);
+
+    // Gratification = (Pride + Joy) / 2
+    // Joy는 rel_mul 영향. Pride는 고정 → 변동폭이 Joy 단독보다 작아야.
+    let joy_close = find_emotion(&state_close, EmotionType::Joy).unwrap();
+    let joy_distant = find_emotion(&state_distant, EmotionType::Joy).unwrap();
+    let joy_diff = (joy_close - joy_distant).abs();
+
+    let grat_close = find_emotion(&state_close, EmotionType::Gratification).unwrap();
+    let grat_distant = find_emotion(&state_distant, EmotionType::Gratification).unwrap();
+    let grat_diff = (grat_close - grat_distant).abs();
+
+    assert!(grat_diff < joy_diff,
+        "Gratification 변동폭({}) < Joy 변동폭({}) — Pride 고정 효과",
+        grat_diff, joy_diff);
+}
+
+#[test]
+fn 자기_compound_remorse의_shame은_closeness에_무관() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let situation = Situation::new(
+        "내가 비겁하게 행동하여 나쁜 결과를 초래했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: true,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap();
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
+
+    // Shame은 closeness에 완전 무관 (자기 평가)
+    let shame_close = find_emotion(&state_close, EmotionType::Shame).unwrap();
+    let shame_distant = find_emotion(&state_distant, EmotionType::Shame).unwrap();
+    assert!((shame_close - shame_distant).abs() < 0.001,
+        "Shame은 closeness 무관: close({}) == distant({})", shame_close, shame_distant);
+
+    // Remorse = (Shame + Distress) / 2
+    // Distress는 rel_mul 영향. Shame은 고정 → 변동폭이 Distress 단독보다 작아야.
+    let dist_close = find_emotion(&state_close, EmotionType::Distress).unwrap();
+    let dist_distant = find_emotion(&state_distant, EmotionType::Distress).unwrap();
+    let dist_diff = (dist_close - dist_distant).abs();
+
+    let rem_close = find_emotion(&state_close, EmotionType::Remorse).unwrap();
+    let rem_distant = find_emotion(&state_distant, EmotionType::Remorse).unwrap();
+    let rem_diff = (rem_close - rem_distant).abs();
+
+    assert!(rem_diff < dist_diff,
+        "Remorse 변동폭({}) < Distress 변동폭({}) — Shame 고정 효과",
+        rem_diff, dist_diff);
+}
+
+// --- 타인 compound: closeness 높으면 Gratitude/Anger 증폭 ---
+
+#[test]
+fn 타인_compound_gratitude는_closeness에_증폭() {
+    let li = make_무백();
+    let close = RelationshipBuilder::new("mu_baek", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("mu_baek", "distant");
+
+    let state_close = AppraisalEngine::appraise(li.personality(), &도움_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(li.personality(), &도움_상황(), &distant);
+
+    let grat_close = find_emotion(&state_close, EmotionType::Gratitude).unwrap();
+    let grat_distant = find_emotion(&state_distant, EmotionType::Gratitude).unwrap();
+
+    assert!(grat_close > grat_distant,
+        "가까운 사이 Gratitude({}) > 먼 사이({}) — rel_mul 효과",
+        grat_close, grat_distant);
+}
+
+#[test]
+fn 타인_compound_anger는_closeness에_증폭() {
+    let yu = make_교룡();
+    let close = RelationshipBuilder::new("gyo_ryong", "close")
+        .closeness(s(0.9))
+        .build();
+    let distant = Relationship::neutral("gyo_ryong", "distant");
+
+    let state_close = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &close);
+    let state_distant = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &distant);
+
+    let anger_close = find_emotion(&state_close, EmotionType::Anger).unwrap();
+    let anger_distant = find_emotion(&state_distant, EmotionType::Anger).unwrap();
+
+    assert!(anger_close > anger_distant,
+        "가까운 사이 Anger({}) > 먼 사이({}) — rel_mul 효과",
+        anger_close, anger_distant);
 }

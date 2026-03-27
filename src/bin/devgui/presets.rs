@@ -73,11 +73,11 @@ fn apply_교룡(s: &mut GuiState) {
     s.gentleness = -0.5;
     s.flexibility = -0.4;
     s.patience = -0.7;
-    // C (미설정 → 0)
-    s.organization = 0.0;
-    s.diligence = 0.0;
-    s.perfectionism = 0.0;
-    s.prudence = 0.0;
+    // C
+    s.organization = -0.5;
+    s.diligence = -0.3;
+    s.perfectionism = -0.4;
+    s.prudence = -0.6;
     // O
     s.aesthetic_appreciation = 0.6;
     s.inquisitiveness = 0.8;

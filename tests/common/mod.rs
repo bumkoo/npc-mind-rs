@@ -57,6 +57,10 @@ pub fn make_교룡() -> Npc {
             a.forgiveness = s(-0.6); a.gentleness = s(-0.5);
             a.flexibility = s(-0.4); a.patience = s(-0.7);
         })
+        .conscientiousness(|c| {
+            c.organization = s(-0.5); c.diligence = s(-0.3);
+            c.perfectionism = s(-0.4); c.prudence = s(-0.6);
+        })
         .openness(|o| {
             o.aesthetic_appreciation = s(0.6); o.inquisitiveness = s(0.8);
             o.creativity = s(0.7); o.unconventionality = s(0.9);

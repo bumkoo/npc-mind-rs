@@ -21,38 +21,36 @@ fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
 
 /// 배신 상황 (Action + Event)
 fn 배신_상황() -> Situation {
-    Situation {
-        description: "동료의 배신".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "동료의 배신",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 /// 갈등 상황 (Action + Event, 중간 강도)
 fn 갈등_상황() -> Situation {
-    Situation {
-        description: "갈등".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.5,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.4,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "갈등",
+        Some(EventFocus {
+            desirability_for_self: -0.4,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.5,
+        }),
+        None,
+    ).unwrap()
 }
 
 // ===========================================================================
@@ -111,14 +109,16 @@ fn 긍정_대화_후_closeness_상승() {
         .closeness(s(0.3))
         .build();
 
-    let situation = Situation {
-        description: "좋은 소식".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "좋은 소식",
+        Some(EventFocus {
             desirability_for_self: 0.7,
             desirability_for_other: None,
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
     let updated = rel.after_dialogue(&state, &situation);
@@ -139,14 +139,16 @@ fn event_분기는_trust_변경_없음() {
         .trust(s(0.5))
         .build();
 
-    let situation = Situation {
-        description: "적 대군 접근".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "적 대군 접근",
+        Some(EventFocus {
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
     let updated = rel.after_dialogue(&state, &situation);
@@ -188,20 +190,19 @@ fn 시나리오_의형제_배신_후_관계_악화() {
         .power(s(0.0))
         .build();
 
-    let situation = Situation {
-        description: "무백이 교룡의 검을 빼앗아 관에 넘겼다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.8,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.7,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let situation = Situation::new(
+        "무백이 교룡의 검을 빼앗아 관에 넘겼다",
+        Some(EventFocus {
+            desirability_for_self: -0.7,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.8,
+        }),
+        None,
+    ).unwrap();
 
     // 1. 상황 진입
     let initial_state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
@@ -247,20 +248,19 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
         .build();
 
     // 대화 1: 긍정 (도움)
-    let good_situation = Situation {
-        description: "동료가 도움을 줌".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: 0.6,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: 0.5,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let good_situation = Situation::new(
+        "동료가 도움을 줌",
+        Some(EventFocus {
+            desirability_for_self: 0.5,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: 0.6,
+        }),
+        None,
+    ).unwrap();
     let state1 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel0);
     let rel1 = rel0.after_dialogue(&state1, &good_situation);
 
@@ -269,20 +269,19 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
     let rel2 = rel1.after_dialogue(&state2, &good_situation);
 
     // 대화 3: 부정 (배신)
-    let bad_situation = Situation {
-        description: "배신".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.5,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    };
+    let bad_situation = Situation::new(
+        "배신",
+        Some(EventFocus {
+            desirability_for_self: -0.5,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap();
     let state3 = AppraisalEngine::appraise(li.personality(), &bad_situation, &rel2);
     let rel3 = rel2.after_dialogue(&state3, &bad_situation);
 

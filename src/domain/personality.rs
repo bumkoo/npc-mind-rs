@@ -1,4 +1,4 @@
-//! HEXACO 성격 모델
+﻿//! HEXACO 성격 모델
 //!
 //! 6개 차원(Dimension) × 각 4개 facet = 24개 facet으로
 //! NPC의 성격을 정의한다.
@@ -122,8 +122,9 @@ impl Score {
 
     /// 기본적인 가중치 계산: 1.0 + (성격 점수 × 가중치 계수)
     /// 성향이 강할수록 감정의 강도를 증폭시키고 싶을 때 사용합니다.
+    /// 하한 0.0 보장 — 음수 가중치가 감정 방향을 뒤집지 않도록.
     pub fn modifier(&self, weight: f32) -> f32 {
-        1.0 + self.0 * weight
+        (1.0 + self.0 * weight).max(0.0)
     }
 
     /// 절대값 기반 가중치 계산: 1.0 + (|성격 점수| × 가중치 계수)
@@ -409,5 +410,139 @@ impl NpcBuilder {
             description: self.description,
             personality: self.profile,
         }
+    }
+}
+
+
+// ---------------------------------------------------------------------------
+// AppraisalWeights 구현 — HEXACO → OCC 가중치 캡슐화
+// ---------------------------------------------------------------------------
+
+impl crate::ports::AppraisalWeights for HexacoProfile {
+    /// 사건-자기-현재: Joy, Distress
+    ///
+    /// d > 0 (좋은 일): E(예민→증폭) + X(사교→기쁨증폭)
+    /// d < 0 (나쁜 일): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
+    fn desirability_self_weight(&self, desirability: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 1.0;
+        let e_effect = avg.e.value() * 0.3;
+
+        let valence_effect = if desirability >= 0.0 {
+            avg.x.value() * 0.3
+        } else {
+            -avg.a.value() * 0.3 - self.conscientiousness.prudence.value() * 0.3
+        };
+
+        (base + e_effect + valence_effect).clamp(0.5, 1.5)
+    }
+
+    /// 사건-자기-전망: Hope, Fear
+    ///
+    /// d > 0 (희망): E(예민→증폭) + X(낙관→증폭)
+    /// d < 0 (공포): E(예민→증폭) + Fear(겁→증폭)
+    fn desirability_prospect_weight(&self, desirability: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 1.0;
+        let e_effect = avg.e.value() * 0.3;
+
+        let valence_effect = if desirability >= 0.0 {
+            avg.x.value() * 0.3 - self.conscientiousness.prudence.value() * 0.2
+        } else {
+            self.emotionality.fearfulness.value() * 0.3
+        };
+
+        (base + e_effect + valence_effect).clamp(0.5, 1.5)
+    }
+
+    /// 사건-자기-확인: Satisfaction, Disappointment, Relief, FearsConfirmed
+    ///
+    /// E(예민→크게 반응) - Pru(신중→충격 감소, 이미 마음의 준비)
+    fn desirability_confirmation_weight(&self, _desirability: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 1.0;
+        let e_effect = avg.e.value() * 0.3;
+        let pru_effect = -self.conscientiousness.prudence.value() * 0.2;
+
+        (base + e_effect + pru_effect).clamp(0.5, 1.5)
+    }
+
+    /// 사건-타인-공감: HappyFor, Pity
+    ///
+    /// d > 0 (타인에게 좋은 일 → HappyFor): H(정직→공감) + A(원만→공감)
+    /// d < 0 (타인에게 나쁜 일 → Pity): A(원만→연민) + Sent(감상→연민)
+    /// 결과가 0 이하이면 해당 감정 미발동
+    fn empathy_weight(&self, desirability: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 0.5; // 타인의 운은 자기 감정보다 약함
+
+        let valence_effect = if desirability >= 0.0 {
+            avg.h.value() * 0.4 + avg.a.value() * 0.4
+        } else {
+            avg.a.value() * 0.4 + self.emotionality.sentimentality.value() * 0.4
+        };
+
+        (base + valence_effect).clamp(0.0, 1.5)
+    }
+
+    /// 사건-타인-적대: Resentment, Gloating
+    ///
+    /// d > 0 (타인에게 좋은 일 → Resentment): -H(정직 낮을수록 시기)
+    /// d < 0 (타인에게 나쁜 일 → Gloating): -H(정직 낮음) - A(원만 낮음)
+    /// 결과가 0 이하이면 해당 감정 미발동
+    fn hostility_weight(&self, desirability: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 0.0;
+
+        let valence_effect = if desirability >= 0.0 {
+            -avg.h.value() * 0.7
+        } else {
+            -avg.h.value() * 0.4 - avg.a.value() * 0.4
+        };
+
+        (base + valence_effect).clamp(0.0, 1.5)
+    }
+
+    /// 행동 평가: Pride, Shame, Admiration, Reproach
+    ///
+    /// 공통: C(성실→기준엄격)
+    /// 자기+칭찬(Pride): -Mod(겸손→자긍심억제)
+    /// 자기+비난(Shame): +Mod(겸손→수치심증폭, 내 탓이오)
+    /// 타인+칭찬(Admiration): +Gen(온화→감탄증폭)
+    /// 타인+비난(Reproach): -Gen(온화→비난억제)
+    fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 1.0;
+        let c_effect = avg.c.value() * 0.3;
+
+        let facet_effect = if is_self {
+            if praiseworthiness > 0.0 {
+                // Pride: 겸손하면 자긍심 억제
+                -self.honesty_humility.modesty.value() * 0.3
+            } else {
+                // Shame: 겸손하면 수치심 증폭 (내 탓이오)
+                self.honesty_humility.modesty.value() * 0.3
+            }
+        } else {
+            if praiseworthiness < 0.0 {
+                // Reproach: 온화하면 비난 억제
+                -self.agreeableness.gentleness.value() * 0.3
+            } else {
+                // Admiration: 온화하면 감탄 증폭
+                self.agreeableness.gentleness.value() * 0.3
+            }
+        };
+
+        (base + c_effect + facet_effect).clamp(0.5, 1.5)
+    }
+
+    /// 대상 호불호: Love, Hate
+    ///
+    /// Aes(심미안→호불호 반응 강도)
+    fn appealingness_weight(&self, _appealingness: f32) -> f32 {
+        let base = 1.0;
+        let aes_effect = self.openness.aesthetic_appreciation.value() * 0.3;
+
+        (base + aes_effect).clamp(0.5, 1.5)
     }
 }

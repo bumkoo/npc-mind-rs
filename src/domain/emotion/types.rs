@@ -264,6 +264,11 @@ impl EmotionState {
         result
     }
 
+    /// 특정 감정의 강도 조회
+    pub fn intensity_of(&self, emotion_type: EmotionType) -> f32 {
+        self.intensities[emotion_type.index()]
+    }
+
     /// 특정 감정의 강도를 직접 설정 (apply_stimulus용)
     pub fn set_intensity(&mut self, emotion_type: EmotionType, intensity: f32) {
         let idx = emotion_type.index();

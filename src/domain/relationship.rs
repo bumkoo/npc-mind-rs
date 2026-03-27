@@ -156,7 +156,7 @@ impl Relationship {
         let mut result = self.clone();
 
         // trust: Action 분기가 있을 때만 갱신
-        if let Some(action) = situation.find_action() {
+        if let Some(action) = &situation.action {
             result = result.with_updated_trust(action.praiseworthiness);
         }
 

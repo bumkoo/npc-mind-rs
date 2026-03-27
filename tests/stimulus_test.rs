@@ -16,20 +16,19 @@ fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
 
 /// 배신 상황 (Action + Event)
 fn 배신_상황() -> Situation {
-    Situation {
-        description: "배신".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "배신",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 #[test]
@@ -106,14 +105,16 @@ fn 부정_자극_반복이면_분노_계속_증폭() {
 #[test]
 fn 긍정_자극이_joy를_증폭() {
     let li = make_무백();
-    let situation = Situation {
-        description: "좋은 소식".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "좋은 소식",
+        Some(EventFocus {
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let initial = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let joy_before = find_emotion(&initial, EmotionType::Joy).unwrap();
@@ -129,14 +130,16 @@ fn 긍정_자극이_joy를_증폭() {
 #[test]
 fn 반대_자극_반복이면_감정_소멸() {
     let li = make_무백();
-    let situation = Situation {
-        description: "약한 불쾌".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "약한 불쾌",
+        Some(EventFocus {
             desirability_for_self: -0.2,
             desirability_for_other: None,
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
 
     let initial = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     assert!(find_emotion(&initial, EmotionType::Distress).is_some(),

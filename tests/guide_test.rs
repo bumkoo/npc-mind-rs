@@ -1,4 +1,4 @@
-//! LLM 연기 가이드 생성 테스트
+﻿//! LLM 연기 가이드 생성 테스트
 //!
 //! 4인 캐릭터의 같은 상황에서 다른 연기 가이드가 생성되는지 검증
 
@@ -13,20 +13,19 @@ use common::{make_무백, make_교룡, score as s, neutral_rel};
 
 /// 배신 상황 헬퍼 (Action + Event)
 fn 배신_상황() -> Situation {
-    Situation {
-        description: "동료 무사가 적에게 아군의 위치를 밀고했다".into(),
-        focuses: vec![
-            SituationFocus::Action(ActionFocus {
-                is_self_agent: false,
-                praiseworthiness: -0.7,
-            }),
-            SituationFocus::Event(EventFocus {
-                desirability_for_self: -0.6,
-                desirability_for_other: None,
-                prospect: None,
-            }),
-        ],
-    }
+    Situation::new(
+        "동료 무사가 적에게 아군의 위치를 밀고했다",
+        Some(EventFocus {
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            is_self_agent: false,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
 }
 
 // ---------------------------------------------------------------------------
@@ -105,14 +104,16 @@ fn 배신_교룡_가이드_폭발적_분노() {
 #[test]
 fn 가이드_프롬프트_구조_검증() {
     let li = make_무백();
-    let situation = Situation {
-        description: "좋은 소식을 들었다".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "좋은 소식을 들었다",
+        Some(EventFocus {
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
@@ -155,6 +156,18 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
     let li_guide = ActingGuide::build(&li, &li_state, None, None);
     let yu_guide = ActingGuide::build(&yu, &yu_state, None, None);
 
+    // 엔진 보장: 성격 차이로 인해 감정 강도가 달라야 함
+    let li_anger = li_state.emotions().iter()
+        .find(|e| e.emotion_type() == EmotionType::Anger)
+        .map(|e| e.intensity()).unwrap_or(0.0);
+    let yu_anger = yu_state.emotions().iter()
+        .find(|e| e.emotion_type() == EmotionType::Anger)
+        .map(|e| e.intensity()).unwrap_or(0.0);
+    assert!(yu_anger > li_anger,
+        "교룡 분노({}) > 무백 분노({}) — 성격 차이 반영",
+        yu_anger, li_anger);
+
+    // 가이드: 어조와 태도 모두 달라야 함
     assert_ne!(li_guide.directive.tone, yu_guide.directive.tone,
         "무백({:?})과 교룡({:?})의 어조가 달라야 함",
         li_guide.directive.tone, yu_guide.directive.tone);
@@ -221,14 +234,16 @@ fn 관계_포함_json에_관계_데이터() {
 #[test]
 fn 관계_없으면_json에_관계_없음() {
     let li = make_무백();
-    let situation = Situation {
-        description: "좋은 소식".into(),
-        focuses: vec![SituationFocus::Event(EventFocus {
+    let situation = Situation::new(
+        "좋은 소식",
+        Some(EventFocus {
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
-        })],
-    };
+        }),
+        None,
+        None,
+    ).unwrap();
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
 
     let guide = ActingGuide::build(&li, &state, None, None);

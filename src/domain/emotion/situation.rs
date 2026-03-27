@@ -1,19 +1,48 @@
 //! 상황(Situation) — 감정 생성의 입력
 //!
-//! OCC 3대 분기(Event, Action, Object)를 `Vec<SituationFocus>`로 동시에 받을 수 있다.
+//! OCC 3대 분기(Event, Action, Object)를 각각 Option 필드로 표현.
+//! 컴파일 타임에 각 타입 최대 1개 보장, 최소 1개는 스마트 생성자로 검증.
 //! 엔진은 순수 함수 — ID 없이 전부 Value Object.
 //! 상황/감정 추적은 게임 시스템의 책임.
 //!
+//! ## v3 변경사항
+//!
+//! - Situation.focuses: Vec<SituationFocus> → event/action/object: Option
+//! - SituationFocus enum 제거 — 컴파일 타임 타입 안전성 확보
+//! - Situation::new() 스마트 생성자로 "최소 1개" 불변식 보장
+//!
 //! ## v2 변경사항
 //!
-//! - Situation.focus → Situation.focuses: Vec (3분기 동시 수용)
 //! - EventFocus.desirability_for_other → DesirabilityForOther (대상 정보 포함)
 //! - is_prospective + prior_expectation → Option<Prospect> 통합
 //! - ActionFocus에서 outcome_for_self 제거 (Event 동시 전달로 대체)
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::relationship::Relationship;
+
+// ---------------------------------------------------------------------------
+// SituationError
+// ---------------------------------------------------------------------------
+
+/// Situation 생성 오류
+#[derive(Debug, Clone)]
+pub enum SituationError {
+    /// Event, Action, Object 중 하나 이상 필요
+    NoFocus,
+}
+
+impl fmt::Display for SituationError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoFocus => write!(f, "최소 하나의 Focus(Event/Action/Object)가 필요합니다"),
+        }
+    }
+}
+
+impl std::error::Error for SituationError {}
 
 // ---------------------------------------------------------------------------
 // Situation (Value Object)
@@ -22,36 +51,53 @@ use crate::domain::relationship::Relationship;
 /// 상황 설명 — 감정 엔진의 입력
 ///
 /// Value Object — ID 없음. 게임 시스템이 외부에서 추적.
+///
+/// OCC 3분기 초점을 각각 Option으로 보유.
+/// 컴파일 타임에 각 타입 최대 1개 보장.
+/// 최소 1개는 `Situation::new()`에서 런타임 검증.
+///
+/// "사형제가 밀고하고 독을 탔다" →
+///   event: Some(독 피해), action: Some(밀고 비난), object: Some(독약 혐오)
+///
+/// Compound 감정(Anger, Gratitude 등)은 엔진이
+/// action + event 동시 존재를 감지하여 자동 생성.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Situation {
     /// 상황 설명 텍스트 (LLM 가이드용)
     pub description: String,
-    /// OCC 3분기 초점 (1~3개, Event/Action/Object 동시 가능)
-    ///
-    /// 같은 사건에 대한 여러 관점을 동시에 담는다.
-    /// "사형제가 밀고하고 독을 탔다" →
-    ///   [Action(밀고 비난), Event(독 피해), Object(독약 혐오)]
-    ///
-    /// Compound 감정(Anger, Gratitude 등)은 엔진이
-    /// Vec에서 Action+Event 동시 존재를 감지하여 자동 생성.
-    pub focuses: Vec<SituationFocus>,
+    /// 사건 초점 (누군가에게 무슨 일이 일어남)
+    pub event: Option<EventFocus>,
+    /// 행동 초점 (누군가가 무엇을 했음)
+    pub action: Option<ActionFocus>,
+    /// 대상 초점 (무언가를 접함)
+    pub object: Option<ObjectFocus>,
 }
 
-// ---------------------------------------------------------------------------
-// SituationFocus (enum 유지 — Value Object)
-// ---------------------------------------------------------------------------
+impl Situation {
+    /// 스마트 생성자 — 최소 1개 Focus 불변식 보장
+    pub fn new(
+        description: impl Into<String>,
+        event: Option<EventFocus>,
+        action: Option<ActionFocus>,
+        object: Option<ObjectFocus>,
+    ) -> Result<Self, SituationError> {
+        if event.is_none() && action.is_none() && object.is_none() {
+            return Err(SituationError::NoFocus);
+        }
+        Ok(Self {
+            description: description.into(),
+            event,
+            action,
+            object,
+        })
+    }
 
-/// 상황의 초점 — OCC 3대 분기와 대응
-///
-/// Value Object — enum 유지하면서 Vec으로 동시 수용.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SituationFocus {
-    /// 사건 발생 (누군가에게 무슨 일이 일어남)
-    Event(EventFocus),
-    /// 행동 평가 (누군가가 무엇을 했음)
-    Action(ActionFocus),
-    /// 대상 인식 (무언가를 접함)
-    Object(ObjectFocus),
+    /// Focus 개수 반환
+    pub fn focus_count(&self) -> usize {
+        self.event.is_some() as usize
+            + self.action.is_some() as usize
+            + self.object.is_some() as usize
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -166,40 +212,4 @@ pub struct ObjectFocus {
     pub appealingness: f32,
 }
 
-// ---------------------------------------------------------------------------
-// Situation 헬퍼
-// ---------------------------------------------------------------------------
 
-impl Situation {
-    /// focuses에서 특정 타입의 포커스를 찾는 내부 헬퍼 메서드
-    fn find_focus<T, F>(&self, f: F) -> Option<&T>
-    where
-        F: Fn(&SituationFocus) -> Option<&T>,
-    {
-        self.focuses.iter().find_map(f)
-    }
-
-    /// focuses에서 첫 번째 EventFocus 찾기
-    pub fn find_event(&self) -> Option<&EventFocus> {
-        self.find_focus(|f| match f {
-            SituationFocus::Event(e) => Some(e),
-            _ => None,
-        })
-    }
-
-    /// focuses에서 첫 번째 ActionFocus 찾기
-    pub fn find_action(&self) -> Option<&ActionFocus> {
-        self.find_focus(|f| match f {
-            SituationFocus::Action(a) => Some(a),
-            _ => None,
-        })
-    }
-
-    /// focuses에서 첫 번째 ObjectFocus 찾기
-    pub fn find_object(&self) -> Option<&ObjectFocus> {
-        self.find_focus(|f| match f {
-            SituationFocus::Object(o) => Some(o),
-            _ => None,
-        })
-    }
-}

@@ -9,14 +9,58 @@ use crate::domain::pad::Pad;
 use crate::domain::personality::HexacoProfile;
 use crate::domain::relationship::Relationship;
 
-/// 감정 평가 포트 — HEXACO 성격 × Relationship 기반 OCC 감정 생성
+// ---------------------------------------------------------------------------
+// OCC 감정 평가 가중치 포트
+// ---------------------------------------------------------------------------
+
+/// OCC 감정 평가 가중치 포트 — 성격 모델이 자극의 해석 강도를 반환
+///
+/// 성격 모델(HEXACO, Big Five 등)이 이 트레이트를 구현하여
+/// "이 자극을 내 성격으로 얼마나 크게 느끼냐"를 캡슐화한다.
+/// 엔진은 성격 모델의 내부 facet을 모른 채 가중치만 받아 사용한다.
+///
+/// 모든 weight는 가산 모델(base + facets)로 계산하며,
+/// clamp(0.5, 1.5) 범위로 극단값을 방지한다.
+pub trait AppraisalWeights {
+    /// 사건-자기-현재: Joy, Distress 가중치
+    /// d > 0 → 기쁨 증폭 계수, d < 0 → 고통 증폭 계수
+    fn desirability_self_weight(&self, desirability: f32) -> f32;
+
+    /// 사건-자기-전망: Hope, Fear 가중치
+    /// d > 0 → 희망 증폭, d < 0 → 공포 증폭
+    fn desirability_prospect_weight(&self, desirability: f32) -> f32;
+
+    /// 사건-자기-확인: Satisfaction, Disappointment, Relief, FearsConfirmed 가중치
+    fn desirability_confirmation_weight(&self, desirability: f32) -> f32;
+
+    /// 사건-타인-공감: HappyFor, Pity 가중치
+    /// 0이면 미발동, >0이면 강도. d > 0 → 대리기쁨, d < 0 → 연민
+    fn empathy_weight(&self, desirability: f32) -> f32;
+
+    /// 사건-타인-적대: Resentment, Gloating 가중치
+    /// 0이면 미발동, >0이면 강도. d > 0 → 시기, d < 0 → 쾌재
+    fn hostility_weight(&self, desirability: f32) -> f32;
+
+    /// 행동 평가: Pride, Shame, Admiration, Reproach 가중치
+    /// is_self: 자기 행동 여부, pw 부호로 칭찬/비난 분기
+    fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32;
+
+    /// 대상 호불호: Love, Hate 가중치
+    fn appealingness_weight(&self, appealingness: f32) -> f32;
+}
+
+// ---------------------------------------------------------------------------
+// 감정 평가 엔진 포트
+// ---------------------------------------------------------------------------
+
+/// 감정 평가 포트 — 성격 × 상황 × 관계 기반 OCC 감정 생성
 ///
 /// 상황 진입 시 1회 평가. 대화 중 감정 변동은 StimulusProcessor가 담당.
 pub trait Appraiser {
-    /// 성격 + 상황 + 관계 → 감정 상태 (상황 진입 시 1회)
-    fn appraise(
+    /// 성격(가중치) + 상황 + 관계 → 감정 상태 (상황 진입 시 1회)
+    fn appraise<P: AppraisalWeights>(
         &self,
-        personality: &HexacoProfile,
+        personality: &P,
         situation: &Situation,
         relationship: &Relationship,
     ) -> EmotionState;
