@@ -31,7 +31,7 @@ pub fn show(ui: &mut egui::Ui, state: &mut GuiState) {
 
     // 가로 2열: 왼쪽 30% (NPC+HEXACO) | 오른쪽 70% (상황+관계+PAD)
     let total_width = ui.available_width();
-    let left_width = total_width * 0.30;
+    let left_width = total_width * 0.50;
 
     ui.horizontal_top(|ui| {
         // ── 왼쪽: NPC 정보 + HEXACO ──
@@ -106,7 +106,8 @@ macro_rules! dimension_row {
             ui.label(format!("{avg:.2}"));
         });
         $ui.horizontal(|ui| {
-            ui.spacing_mut().slider_width = 60.0;
+            ui.spacing_mut().slider_width = 85.0;
+            ui.spacing_mut().item_spacing.x = 14.0;
             ui.spacing_mut().item_spacing.x = 2.0;
             ui.label($l1);
             ui.add(egui::Slider::new(&mut $v1, -1.0..=1.0).step_by(0.05).fixed_decimals(2));

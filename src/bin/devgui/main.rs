@@ -9,7 +9,7 @@ mod state;
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([1400.0, 900.0])
+            .with_inner_size([1500.0, 1200.0])
             .with_title("NPC Mind 디버그 GUI"),
         ..Default::default()
     };
