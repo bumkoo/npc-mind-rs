@@ -7,6 +7,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 default = []
 embed = ["dep:bge-m3-onnx-rust"]
+devgui = ["dep:eframe"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -14,6 +15,12 @@ serde_json = "1"
 thiserror = "2"
 toml = "0.8"
 bge-m3-onnx-rust = { path = "../bge-m3-onnx-rust", optional = true }
+eframe = { version = "0.31", optional = true }
 
 [dev-dependencies]
 approx = "0.5"
+
+[[bin]]
+name = "npc-devgui"
+path = "src/bin/devgui/main.rs"
+required-features = ["devgui"]

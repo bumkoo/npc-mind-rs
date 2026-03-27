@@ -241,7 +241,7 @@ impl AppraisalEngine {
                 state.add(Emotion::new(EmotionType::Gratitude,
                     (praiseworthiness + outcome) / 2.0 * gratitude_amp * trust_mod * rel_mul));
             } else if praiseworthiness < 0.0 && outcome < 0.0 {
-                let anger_mod = p.agreeableness.patience.neg_modifier(w); // 인내심이 높을수록 분노 억제
+                let anger_mod = p.agreeableness.patience.modifier(-w); // 인내심 높으면 억제, 낮으면 증폭
                 state.add(Emotion::new(EmotionType::Anger,
                     (praiseworthiness.abs() + outcome.abs()) / 2.0 * anger_mod * trust_mod * rel_mul));
             }
