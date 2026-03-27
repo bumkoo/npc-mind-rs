@@ -1,4 +1,4 @@
-//! apply_stimulus 테스트
+﻿//! apply_stimulus 테스트
 //!
 //! 대화 중 대사 자극에 의한 감정 변동 검증.
 
@@ -19,12 +19,14 @@ fn 배신_상황() -> Situation {
     Situation::new(
         "배신",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -108,6 +110,7 @@ fn 긍정_자극이_joy를_증폭() {
     let situation = Situation::new(
         "좋은 소식",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
@@ -133,6 +136,7 @@ fn 반대_자극_반복이면_감정_소멸() {
     let situation = Situation::new(
         "약한 불쾌",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.2,
             desirability_for_other: None,
             prospect: None,

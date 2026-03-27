@@ -24,12 +24,14 @@ fn 배신_상황() -> Situation {
     Situation::new(
         "동료의 배신",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -41,12 +43,14 @@ fn 갈등_상황() -> Situation {
     Situation::new(
         "갈등",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.4,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.5,
         }),
         None,
@@ -112,6 +116,7 @@ fn 긍정_대화_후_closeness_상승() {
     let situation = Situation::new(
         "좋은 소식",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.7,
             desirability_for_other: None,
             prospect: None,
@@ -142,6 +147,7 @@ fn event_분기는_trust_변경_없음() {
     let situation = Situation::new(
         "적 대군 접근",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
@@ -193,12 +199,14 @@ fn 시나리오_의형제_배신_후_관계_악화() {
     let situation = Situation::new(
         "무백이 교룡의 검을 빼앗아 관에 넘겼다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.8,
         }),
         None,
@@ -251,12 +259,14 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
     let good_situation = Situation::new(
         "동료가 도움을 줌",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.5,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: 0.6,
         }),
         None,
@@ -272,12 +282,14 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
     let bad_situation = Situation::new(
         "배신",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.5,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,

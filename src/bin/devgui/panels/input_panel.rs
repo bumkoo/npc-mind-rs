@@ -1,4 +1,4 @@
-//! 상단 입력 패널 — 가로 2열 배치, 폰트 +1
+﻿//! 상단 입력 패널 — 가로 2열 배치, 폰트 +1
 
 use eframe::egui;
 
@@ -175,6 +175,8 @@ fn show_situation(ui: &mut egui::Ui, state: &mut GuiState) {
             let focus = &mut state.focuses[i];
             match focus.focus_type {
                 FocusType::Event => {
+                    ui.label("설명:");
+                    ui.add(egui::TextEdit::singleline(&mut focus.event_description).desired_width(100.0));
                     ui.label("자기:");
                     ui.add(egui::Slider::new(&mut focus.desirability_for_self, -1.0..=1.0).step_by(0.05).fixed_decimals(2));
                     ui.checkbox(&mut focus.has_other, "타인");
@@ -189,11 +191,17 @@ fn show_situation(ui: &mut egui::Ui, state: &mut GuiState) {
                         });
                 }
                 FocusType::Action => {
+                    ui.label("설명:");
+                    ui.add(egui::TextEdit::singleline(&mut focus.action_description).desired_width(100.0));
                     ui.checkbox(&mut focus.is_self_agent, "자기");
                     ui.label("도덕성:");
                     ui.add(egui::Slider::new(&mut focus.praiseworthiness, -1.0..=1.0).step_by(0.05).fixed_decimals(2));
                 }
                 FocusType::Object => {
+                    ui.label("대상ID:");
+                    ui.add(egui::TextEdit::singleline(&mut focus.object_target_id).desired_width(80.0));
+                    ui.label("설명:");
+                    ui.add(egui::TextEdit::singleline(&mut focus.object_target_description).desired_width(120.0));
                     ui.label("매력도:");
                     ui.add(egui::Slider::new(&mut focus.appealingness, -1.0..=1.0).step_by(0.05).fixed_decimals(2));
                 }

@@ -1,4 +1,4 @@
-//! GUI 상태 — raw f32/String/bool로 egui 슬라이더와 직접 바인딩
+﻿//! GUI 상태 — raw f32/String/bool로 egui 슬라이더와 직접 바인딩
 
 /// 프리셋 선택지
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -88,6 +88,7 @@ impl ProspectChoice {
 pub struct FocusEntry {
     pub focus_type: FocusType,
     // Event
+    pub event_description: String,
     pub desirability_for_self: f32,
     pub has_other: bool,
     pub other_target_id: String,
@@ -97,9 +98,12 @@ pub struct FocusEntry {
     pub other_power: f32,
     pub prospect: ProspectChoice,
     // Action
+    pub action_description: String,
     pub is_self_agent: bool,
     pub praiseworthiness: f32,
     // Object
+    pub object_target_id: String,
+    pub object_target_description: String,
     pub appealingness: f32,
 }
 
@@ -107,6 +111,7 @@ impl Default for FocusEntry {
     fn default() -> Self {
         Self {
             focus_type: FocusType::Event,
+            event_description: String::new(),
             desirability_for_self: 0.0,
             has_other: false,
             other_target_id: String::new(),
@@ -115,8 +120,11 @@ impl Default for FocusEntry {
             other_trust: 0.0,
             other_power: 0.0,
             prospect: ProspectChoice::None,
+            action_description: String::new(),
             is_self_agent: false,
             praiseworthiness: 0.0,
+            object_target_id: String::new(),
+            object_target_description: String::new(),
             appealingness: 0.0,
         }
     }

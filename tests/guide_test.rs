@@ -16,12 +16,14 @@ fn 배신_상황() -> Situation {
     Situation::new(
         "동료 무사가 적에게 아군의 위치를 밀고했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -107,6 +109,7 @@ fn 가이드_프롬프트_구조_검증() {
     let situation = Situation::new(
         "좋은 소식을 들었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
@@ -237,6 +240,7 @@ fn 관계_없으면_json에_관계_없음() {
     let situation = Situation::new(
         "좋은 소식",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,

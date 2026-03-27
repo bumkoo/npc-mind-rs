@@ -33,12 +33,14 @@ fn 배신_무백은_절제된_분노() {
     let situation = Situation::new(
         "동료 무사가 적에게 아군의 위치를 밀고했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -58,12 +60,14 @@ fn 배신_교룡은_폭발적_분노() {
     let situation = Situation::new(
         "동료 무사가 적에게 아군의 위치를 밀고했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -87,12 +91,14 @@ fn 배신_수련은_억눌린_고통() {
     let situation = Situation::new(
         "동료 무사가 적에게 아군의 위치를 밀고했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -120,6 +126,7 @@ fn 적_대군_무백은_담담한_두려움() {
     let situation = Situation::new(
         "적의 대군이 산 너머에서 다가오고 있다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
@@ -139,6 +146,7 @@ fn 적_대군_소호는_두려움_없이_행동() {
     let situation = Situation::new(
         "적의 대군이 산 너머에서 다가오고 있다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.7,
             desirability_for_other: None,
             prospect: Some(Prospect::Anticipation),
@@ -163,6 +171,7 @@ fn 라이벌_승진_무백은_대리기쁨() {
     let situation = Situation::new(
         "오랜 라이벌이 무림맹주에 추대되었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -189,6 +198,7 @@ fn 라이벌_승진_교룡은_시기() {
     let situation = Situation::new(
         "오랜 라이벌이 무림맹주에 추대되었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -217,6 +227,7 @@ fn 해독약_실패_실망_강도_비교() {
     let situation = Situation::new(
         "사부의 독을 치료할 해독약을 끝내 구하지 못했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.8,
             desirability_for_other: None,
             prospect: Some(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
@@ -244,12 +255,14 @@ fn 배신_상황_기본() -> Situation {
     Situation::new(
         "배신",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -351,6 +364,7 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
     let sit_close = Situation::new(
         "동료 승진",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "close".into(),
@@ -365,6 +379,7 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
     let sit_distant = Situation::new(
         "동료 승진",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "distant".into(),
@@ -399,6 +414,7 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
     let sit_rival = Situation::new(
         "라이벌 승진",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
@@ -414,6 +430,7 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
     let sit_nobody = Situation::new(
         "라이벌 승진",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "nobody".into(),
@@ -446,6 +463,7 @@ fn 타인_행운_상황(other_rel: &Relationship) -> Situation {
     Situation::new(
         "상대가 무림맹주에 추대되었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
@@ -464,6 +482,7 @@ fn 타인_불행_상황(other_rel: &Relationship) -> Situation {
     Situation::new(
         "상대가 비무에서 크게 패했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.0,
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
@@ -568,12 +587,14 @@ fn 배신_상황() -> Situation {
     Situation::new(
         "상대가 적에게 아군 위치를 밀고했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -585,12 +606,14 @@ fn 도움_상황() -> Situation {
     Situation::new(
         "상대가 목숨을 걸고 나를 구해주었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -727,7 +750,8 @@ fn 자기_칭찬_상황() -> Situation {
         "내가 의로운 일을 했다",
         None,
         Some(ActionFocus {
-            is_self_agent: true,
+            description: "".into(),
+            agent_id: None, relationship: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -739,7 +763,8 @@ fn 자기_비난_상황() -> Situation {
         "내가 비겁한 짓을 했다",
         None,
         Some(ActionFocus {
-            is_self_agent: true,
+            description: "".into(),
+            agent_id: None, relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -752,7 +777,8 @@ fn 타인_칭찬_상황() -> Situation {
         "상대가 의로운 일을 했다",
         None,
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -764,7 +790,8 @@ fn 타인_비난_상황() -> Situation {
         "상대가 비겁한 짓을 했다",
         None,
         Some(ActionFocus {
-            is_self_agent: false,
+            description: "".into(),
+            agent_id: Some("partner".into()), relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -854,7 +881,7 @@ fn 타인_행동_reproach는_closeness에_증폭() {
 // --- 자기 compound: closeness 변해도 Gratification/Remorse 동일 ---
 
 #[test]
-fn 자기_compound_gratification의_pride는_closeness에_무관() {
+fn 자기_compound_gratification은_closeness에_무관() {
     let li = make_무백();
     let close = RelationshipBuilder::new("mu_baek", "close")
         .closeness(s(0.9))
@@ -864,12 +891,14 @@ fn 자기_compound_gratification의_pride는_closeness에_무관() {
     let situation = Situation::new(
         "내가 의롭게 행동하여 좋은 결과를 얻었다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: 0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: true,
+            description: "".into(),
+            agent_id: None, relationship: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -878,29 +907,26 @@ fn 자기_compound_gratification의_pride는_closeness에_무관() {
     let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
     let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
 
-    // Pride는 closeness에 완전 무관 (자기 평가)
+    // Joy, Pride 모두 closeness에 무관 (rel_mul 미적용)
+    let joy_close = find_emotion(&state_close, EmotionType::Joy).unwrap();
+    let joy_distant = find_emotion(&state_distant, EmotionType::Joy).unwrap();
+    assert!((joy_close - joy_distant).abs() < 0.001,
+        "Joy는 closeness 무관: close({}) == distant({})", joy_close, joy_distant);
+
     let pride_close = find_emotion(&state_close, EmotionType::Pride).unwrap();
     let pride_distant = find_emotion(&state_distant, EmotionType::Pride).unwrap();
     assert!((pride_close - pride_distant).abs() < 0.001,
         "Pride는 closeness 무관: close({}) == distant({})", pride_close, pride_distant);
 
-    // Gratification = (Pride + Joy) / 2
-    // Joy는 rel_mul 영향. Pride는 고정 → 변동폭이 Joy 단독보다 작아야.
-    let joy_close = find_emotion(&state_close, EmotionType::Joy).unwrap();
-    let joy_distant = find_emotion(&state_distant, EmotionType::Joy).unwrap();
-    let joy_diff = (joy_close - joy_distant).abs();
-
+    // Gratification = (Pride + Joy) / 2 → 둘 다 고정이므로 Gratification도 고정
     let grat_close = find_emotion(&state_close, EmotionType::Gratification).unwrap();
     let grat_distant = find_emotion(&state_distant, EmotionType::Gratification).unwrap();
-    let grat_diff = (grat_close - grat_distant).abs();
-
-    assert!(grat_diff < joy_diff,
-        "Gratification 변동폭({}) < Joy 변동폭({}) — Pride 고정 효과",
-        grat_diff, joy_diff);
+    assert!((grat_close - grat_distant).abs() < 0.001,
+        "Gratification도 closeness 무관: close({}) == distant({})", grat_close, grat_distant);
 }
 
 #[test]
-fn 자기_compound_remorse의_shame은_closeness에_무관() {
+fn 자기_compound_remorse는_closeness에_무관() {
     let li = make_무백();
     let close = RelationshipBuilder::new("mu_baek", "close")
         .closeness(s(0.9))
@@ -910,12 +936,14 @@ fn 자기_compound_remorse의_shame은_closeness에_무관() {
     let situation = Situation::new(
         "내가 비겁하게 행동하여 나쁜 결과를 초래했다",
         Some(EventFocus {
+            description: "".into(),
             desirability_for_self: -0.6,
             desirability_for_other: None,
             prospect: None,
         }),
         Some(ActionFocus {
-            is_self_agent: true,
+            description: "".into(),
+            agent_id: None, relationship: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -924,25 +952,22 @@ fn 자기_compound_remorse의_shame은_closeness에_무관() {
     let state_close = AppraisalEngine::appraise(li.personality(), &situation, &close);
     let state_distant = AppraisalEngine::appraise(li.personality(), &situation, &distant);
 
-    // Shame은 closeness에 완전 무관 (자기 평가)
+    // Distress, Shame 모두 closeness에 무관 (rel_mul 미적용)
+    let dist_close = find_emotion(&state_close, EmotionType::Distress).unwrap();
+    let dist_distant = find_emotion(&state_distant, EmotionType::Distress).unwrap();
+    assert!((dist_close - dist_distant).abs() < 0.001,
+        "Distress는 closeness 무관: close({}) == distant({})", dist_close, dist_distant);
+
     let shame_close = find_emotion(&state_close, EmotionType::Shame).unwrap();
     let shame_distant = find_emotion(&state_distant, EmotionType::Shame).unwrap();
     assert!((shame_close - shame_distant).abs() < 0.001,
         "Shame은 closeness 무관: close({}) == distant({})", shame_close, shame_distant);
 
-    // Remorse = (Shame + Distress) / 2
-    // Distress는 rel_mul 영향. Shame은 고정 → 변동폭이 Distress 단독보다 작아야.
-    let dist_close = find_emotion(&state_close, EmotionType::Distress).unwrap();
-    let dist_distant = find_emotion(&state_distant, EmotionType::Distress).unwrap();
-    let dist_diff = (dist_close - dist_distant).abs();
-
+    // Remorse = (Shame + Distress) / 2 → 둘 다 고정이므로 Remorse도 고정
     let rem_close = find_emotion(&state_close, EmotionType::Remorse).unwrap();
     let rem_distant = find_emotion(&state_distant, EmotionType::Remorse).unwrap();
-    let rem_diff = (rem_close - rem_distant).abs();
-
-    assert!(rem_diff < dist_diff,
-        "Remorse 변동폭({}) < Distress 변동폭({}) — Shame 고정 효과",
-        rem_diff, dist_diff);
+    assert!((rem_close - rem_distant).abs() < 0.001,
+        "Remorse도 closeness 무관: close({}) == distant({})", rem_close, rem_distant);
 }
 
 // --- 타인 compound: closeness 높으면 Gratitude/Anger 증폭 ---

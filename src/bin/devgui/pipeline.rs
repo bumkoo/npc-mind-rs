@@ -90,6 +90,7 @@ pub fn build_situation(s: &GuiState) -> Situation {
             }
         };
         EventFocus {
+            description: f.event_description.clone(),
             desirability_for_self: f.desirability_for_self,
             desirability_for_other: other,
             prospect,
@@ -98,13 +99,17 @@ pub fn build_situation(s: &GuiState) -> Situation {
 
     let action = s.focuses.iter().find(|f| f.focus_type == FocusType::Action).map(|f| {
         ActionFocus {
-            is_self_agent: f.is_self_agent,
+            description: f.action_description.clone(),
+            agent_id: if f.is_self_agent { None } else { Some("partner".into()) },
             praiseworthiness: f.praiseworthiness,
+            relationship: None, // devgui에서는 대화 상대만 (제3자 미지원)
         }
     });
 
     let object = s.focuses.iter().find(|f| f.focus_type == FocusType::Object).map(|f| {
         ObjectFocus {
+            target_id: f.object_target_id.clone(),
+            target_description: f.object_target_description.clone(),
             appealingness: f.appealingness,
         }
     });

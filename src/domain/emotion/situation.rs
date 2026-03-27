@@ -113,6 +113,8 @@ impl Situation {
 /// - prospect: 선택. None이면 현재 사건, Some이면 전망 관련.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EventFocus {
+    /// 사건 설명 (감정의 원인/맥락 — LLM 프롬프트에 포함됨)
+    pub description: String,
     /// 사건이 자신에게 바람직한 정도 (-1.0 ~ 1.0)
     /// 양수 → Joy, 음수 → Distress
     pub desirability_for_self: f32,
@@ -193,10 +195,16 @@ pub enum ProspectResult {
 /// 엔진이 Compound 감정(Anger, Gratitude 등)을 자동 생성.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ActionFocus {
-    /// 행위자가 자기 자신인지
-    pub is_self_agent: bool,
+    /// 행동 설명 (감정의 원인/맥락 — LLM 프롬프트에 포함됨)
+    pub description: String,
+    /// 행위자 ID — None이면 자기 자신, Some이면 타인
+    pub agent_id: Option<String>,
     /// 행동의 칭찬받을만한 정도 (-1.0=비난, +1.0=칭찬)
     pub praiseworthiness: f32,
+    /// 행위자와의 관계 — 제3자 행동 평가 시 제공
+    /// None이면 대화 상대의 행동 (appraise의 relationship 파라미터 사용)
+    /// Some이면 제3자의 행동 (이 relationship 사용)
+    pub relationship: Option<Relationship>,
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +213,16 @@ pub struct ActionFocus {
 
 /// 대상 초점 — Love/Hate
 ///
+/// 대상이 사물(명검, 산수화), 장소(절벽, 밀실), 사람의 특성(카리스마) 등
+/// "존재 자체"에 대한 호불호를 표현한다.
+///
 /// Value Object
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObjectFocus {
+    /// 대상 식별자 (게임 시스템이 참조용으로 사용, 엔진은 사용 안 함)
+    pub target_id: String,
+    /// 대상 설명 (LLM 프롬프트에 포함됨)
+    pub target_description: String,
     /// 대상의 매력도 (-1.0=혐오, +1.0=매력)
     pub appealingness: f32,
 }

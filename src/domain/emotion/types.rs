@@ -168,6 +168,8 @@ pub struct Emotion {
     emotion_type: EmotionType,
     /// 감정 강도 (0.0 ~ 1.0, 0이면 느끼지 않음)
     intensity: f32,
+    /// 감정의 원인/맥락 설명 (LLM 프롬프트에 포함됨)
+    context: Option<String>,
 }
 
 impl Emotion {
@@ -180,6 +182,16 @@ impl Emotion {
         Self {
             emotion_type,
             intensity: intensity.clamp(0.0, 1.0),
+            context: None,
+        }
+    }
+
+    /// context 포함 감정 생성
+    pub fn with_context(emotion_type: EmotionType, intensity: f32, context: impl Into<String>) -> Self {
+        Self {
+            emotion_type,
+            intensity: intensity.clamp(0.0, 1.0),
+            context: Some(context.into()),
         }
     }
 
@@ -191,6 +203,11 @@ impl Emotion {
     /// 감정 강도 (0.0 ~ 1.0)
     pub fn intensity(&self) -> f32 {
         self.intensity
+    }
+
+    /// 감정의 원인/맥락 설명
+    pub fn context(&self) -> Option<&str> {
+        self.context.as_deref()
     }
 
     /// 이 감정이 유의미한지 (강도가 threshold 이상)
@@ -212,6 +229,8 @@ impl Emotion {
 pub struct EmotionState {
     /// 각 감정 유형별 강도 (인덱스는 EmotionType::index()와 대응)
     intensities: [f32; 22],
+    /// 각 감정 유형별 맥락 설명
+    contexts: [Option<String>; 22],
 }
 
 impl Default for EmotionState {
@@ -223,7 +242,10 @@ impl Default for EmotionState {
 impl EmotionState {
     /// 빈 감정 상태 생성
     pub fn new() -> Self {
-        Self { intensities: [0.0; 22] }
+        Self {
+            intensities: [0.0; 22],
+            contexts: Default::default(),
+        }
     }
 
     /// 감정 목록을 Vec<Emotion>으로 변환하여 반환 (강도가 0보다 큰 것만)
@@ -232,15 +254,23 @@ impl EmotionState {
         self.intensities.iter().enumerate()
             .filter(|(_, &i)| i > 0.0)
             .filter_map(|(idx, &i)| {
-                EmotionType::from_index(idx).map(|t| Emotion::new(t, i))
+                EmotionType::from_index(idx).map(|t| {
+                    match &self.contexts[idx] {
+                        Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                        None => Emotion::new(t, i),
+                    }
+                })
             })
             .collect()
     }
 
-    /// 감정 추가 (같은 유형이면 강도 합산)
+    /// 감정 추가 (같은 유형이면 강도 합산, context는 최초 것 유지)
     pub fn add(&mut self, emotion: Emotion) {
         let idx = emotion.emotion_type().index();
         self.intensities[idx] = (self.intensities[idx] + emotion.intensity()).clamp(0.0, 1.0);
+        if self.contexts[idx].is_none() {
+            self.contexts[idx] = emotion.context;
+        }
     }
 
     /// 가장 강한 감정 반환
@@ -249,7 +279,12 @@ impl EmotionState {
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .and_then(|(idx, &i)| {
                 if i > 0.0 {
-                    EmotionType::from_index(idx).map(|t| Emotion::new(t, i))
+                    EmotionType::from_index(idx).map(|t| {
+                        match &self.contexts[idx] {
+                            Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                            None => Emotion::new(t, i),
+                        }
+                    })
                 } else {
                     None
                 }
@@ -267,6 +302,11 @@ impl EmotionState {
     /// 특정 감정의 강도 조회
     pub fn intensity_of(&self, emotion_type: EmotionType) -> f32 {
         self.intensities[emotion_type.index()]
+    }
+
+    /// 특정 감정의 맥락 조회
+    pub fn context_of(&self, emotion_type: EmotionType) -> Option<&str> {
+        self.contexts[emotion_type.index()].as_deref()
     }
 
     /// 특정 감정의 강도를 직접 설정 (apply_stimulus용)

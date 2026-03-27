@@ -1,4 +1,4 @@
-//! PAD 앵커 임베딩 파이프라인 통합 테스트
+﻿//! PAD 앵커 임베딩 파이프라인 통합 테스트
 //!
 //! 포트 앤드 어댑터 구조 검증:
 //! - OrtEmbedder (adapter) → TextEmbedder 포트
@@ -93,14 +93,22 @@ fn 전체_흐름_대사분석_후_자극_적용() {
         })
         .build();
     let rel = Relationship::neutral("gyo", "target");
-    let situation = Situation {
-        description: "배신".into(),
-        focus: SituationFocus::Action {
-            is_self_agent: false,
+    let situation = Situation::new(
+        "배신",
+        Some(EventFocus {
+            description: "배신으로 인한 피해".into(),
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            description: "배신 행위".into(),
+            agent_id: Some("partner".into()),
             praiseworthiness: -0.7,
-            outcome_for_self: Some(-0.6),
-        },
-    };
+            relationship: None,
+        }),
+        None,
+    ).unwrap();
 
     let initial = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
     let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &stimulus);
