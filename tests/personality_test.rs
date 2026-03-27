@@ -34,54 +34,11 @@ fn score_범위_초과시_에러() {
 }
 
 #[test]
-fn score_높낮이_판별() {
-    let high = Score::new(0.7, "h").unwrap();
-    let low = Score::new(-0.6, "l").unwrap();
-    let mid = Score::new(0.0, "m").unwrap();
-
-    assert!(high.is_high());
-    assert!(!high.is_low());
-    assert!(low.is_low());
-    assert!(!low.is_high());
-    assert!(!mid.is_high());
-    assert!(!mid.is_low());
-}
-
-#[test]
-fn score_방향_판별() {
-    let pos = Score::new(0.3, "p").unwrap();
-    let neg = Score::new(-0.3, "n").unwrap();
-    let zero = Score::new(0.0, "z").unwrap();
-
-    assert!(pos.is_positive());
-    assert!(!pos.is_negative());
-    assert!(neg.is_negative());
-    assert!(!neg.is_positive());
-    assert!(!zero.is_positive());
-    assert!(!zero.is_negative());
-}
-
-#[test]
 fn score_강도() {
     let pos = Score::new(0.7, "p").unwrap();
     let neg = Score::new(-0.7, "n").unwrap();
     assert!((pos.intensity() - 0.7).abs() < f32::EPSILON);
     assert!((neg.intensity() - 0.7).abs() < f32::EPSILON);
-}
-
-#[test]
-fn score_증폭() {
-    let s = Score::new(0.5, "s").unwrap();
-    assert!((s.amplify(1.5) - 0.75).abs() < f32::EPSILON);
-    assert!((s.amplify(3.0) - 1.0).abs() < f32::EPSILON);
-}
-
-#[test]
-fn score_거리_계산() {
-    let a = Score::new(-0.6, "a").unwrap();
-    let b = Score::new(0.6, "b").unwrap();
-    let dist = a.distance(&b);
-    assert!((dist - 1.2).abs() < f32::EPSILON);
 }
 
 // ---------------------------------------------------------------------------

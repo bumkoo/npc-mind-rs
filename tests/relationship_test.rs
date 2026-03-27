@@ -47,8 +47,8 @@ fn 적대_관계_생성() {
         .trust(s(-0.5))
         .power(s(-0.3))
         .build();
-    assert!(rel.closeness().is_low());
-    assert!(rel.trust().is_negative());
+    assert!(rel.closeness().value() <= -0.4);
+    assert!(rel.trust().value() < 0.0);
 }
 
 // ===========================================================================
@@ -306,7 +306,7 @@ fn 수련과_사부_관계() {
         .build();
 
     assert!(rel.emotion_intensity_multiplier() > 1.4);
-    assert!(rel.power().is_low());
+    assert!(rel.power().value() <= -0.4);
     // 극신뢰 → 행동에 대한 감정 강하게 증폭
     assert!(rel.trust_emotion_modifier() > 1.2,
         "사부를 극신뢰 → 강한 증폭: {}", rel.trust_emotion_modifier());

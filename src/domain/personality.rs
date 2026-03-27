@@ -80,40 +80,9 @@ impl Score {
         self.0
     }
 
-    /// 이 점수가 "높은" 수준인지 (0.4 이상)
-    pub fn is_high(&self) -> bool {
-        self.0 >= 0.4
-    }
-
-    /// 이 점수가 "낮은" 수준인지 (-0.4 이하)
-    pub fn is_low(&self) -> bool {
-        self.0 <= -0.4
-    }
-
-    /// 양수 방향인지 (해당 특성이 강한 쪽)
-    pub fn is_positive(&self) -> bool {
-        self.0 > 0.0
-    }
-
-    /// 음수 방향인지 (반대 특성이 강한 쪽)
-    pub fn is_negative(&self) -> bool {
-        self.0 < 0.0
-    }
-
     /// 절대 강도 (방향 무시, 0.0 ~ 1.0)
     pub fn intensity(&self) -> f32 {
         self.0.abs()
-    }
-
-    /// 두 점수 간의 차이 (절대값)
-    pub fn distance(&self, other: &Score) -> f32 {
-        (self.0 - other.0).abs()
-    }
-
-    /// 성격 가중치로 값을 증폭 (방향 유지, 강도 조절)
-    /// 감정값 × 성격점수 형태로 사용
-    pub fn amplify(&self, factor: f32) -> f32 {
-        (self.0 * factor).clamp(SCORE_MIN, SCORE_MAX)
     }
 
     // -----------------------------------------------------------------------
