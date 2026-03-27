@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::emotion::{EmotionState, Situation};
+use super::emotion::EmotionState;
 use super::personality::Score;
 
 // ---------------------------------------------------------------------------
@@ -94,10 +94,10 @@ impl Relationship {
 
     // --- 감정 엔진 연동 (읽기 전용) ---
 
-    /// 감정 반응 배율: closeness 절대값이 클수록 강한 반응
-    /// 무관한 사람(0.0)이면 1.0, 가까운/적대적이면 1.0 이상
+    /// 감정 반응 배율: closeness 방향에 따라 강화/약화
+    /// 가까운 사이(+)면 감정 반응 강화, 적대적(-)이면 감정 절제/경계
     pub fn emotion_intensity_multiplier(&self) -> f32 {
-        1.0 + self.closeness.intensity() * 0.5
+        (1.0 + self.closeness.value() * 0.5).max(0.0)
     }
 
     /// 신뢰도 감정 배율: trust 방향에 따라 감정 증폭/약화
@@ -112,6 +112,24 @@ impl Relationship {
     /// 1.0 ± trust × 0.3 패턴 (engine.rs의 W와 동일)
     pub fn trust_emotion_modifier(&self) -> f32 {
         1.0 + self.trust.value() * 0.3
+    }
+
+    /// 공감 관계 배율: 가까울수록 공감(HappyFor/Pity) 증폭
+    ///
+    /// - 의형제(0.9) → 1.27: 가까운 사이라 더 공감
+    /// - 중립(0.0) → 1.0
+    /// - 원수(-0.8) → 0.76: 멀어서 공감 약함
+    pub fn empathy_rel_modifier(&self) -> f32 {
+        (1.0 + self.closeness.value() * 0.3).max(0.0)
+    }
+
+    /// 적대 관계 배율: 적대적일수록 적대감(Resentment/Gloating) 증폭
+    ///
+    /// - 의형제(0.9) → 0.73: 가까운 사이라 적대 억제
+    /// - 중립(0.0) → 1.0
+    /// - 원수(-0.8) → 1.24: 멀어서 적대 증폭
+    pub fn hostility_rel_modifier(&self) -> f32 {
+        (1.0 - self.closeness.value() * 0.3).max(0.0)
     }
 
     // --- 새 인스턴스 반환 (Value Object 패턴) ---
@@ -145,19 +163,19 @@ impl Relationship {
 
     /// 대화 종료 후 갱신된 새 Relationship 반환
     ///
-    /// - trust: Action 분기의 praiseworthiness 기반 (점진적)
+    /// - trust: praiseworthiness 기반 (점진적). None이면 미갱신.
     /// - closeness: 대화 최종 감정 결과 기반 (매우 점진적)
     /// - power: 변경 없음 (서사 이벤트에서만)
     pub fn after_dialogue(
         &self,
         final_state: &EmotionState,
-        situation: &Situation,
+        praiseworthiness: Option<f32>,
     ) -> Self {
         let mut result = self.clone();
 
-        // trust: Action 분기가 있을 때만 갱신
-        if let Some(action) = &situation.action {
-            result = result.with_updated_trust(action.praiseworthiness);
+        // trust: praiseworthiness가 있을 때만 갱신
+        if let Some(pw) = praiseworthiness {
+            result = result.with_updated_trust(pw);
         }
 
         // closeness: 항상 갱신 (전체 감정 결과 기반)

@@ -25,8 +25,6 @@ use super::situation::*;
 pub struct AppraisalEngine;
 
 impl AppraisalEngine {
-    /// 관계 기반 closeness modifier 가중치 계수
-    const W: f32 = 0.3;
 
     /// 성격 + 상황 + 관계 → 감정 상태 생성 (상황 진입 시 1회)
     pub fn appraise<P: AppraisalWeights>(
@@ -102,13 +100,11 @@ impl AppraisalEngine {
         // 4. 타인의 운 → HappyFor / Pity / Gloating / Resentment
         if let Some(other) = &event.desirability_for_other {
             let d_other = other.desirability;
-            let closeness = other.relationship.closeness();
-            let cw = Self::W;
 
             // 공감 채널: HappyFor / Pity
             let emp_w = p.empathy_weight(d_other);
             if emp_w > 0.0 {
-                let rel_mod = closeness.modifier(cw);
+                let rel_mod = other.relationship.empathy_rel_modifier();
                 if d_other > 0.0 {
                     state.add(Emotion::new(EmotionType::HappyFor, d_other * emp_w * rel_mod));
                 } else if d_other < 0.0 {
@@ -119,7 +115,7 @@ impl AppraisalEngine {
             // 적대 채널: Resentment / Gloating
             let hos_w = p.hostility_weight(d_other);
             if hos_w > 0.0 {
-                let rel_mod = closeness.modifier(-cw);
+                let rel_mod = other.relationship.hostility_rel_modifier();
                 if d_other > 0.0 {
                     state.add(Emotion::new(EmotionType::Resentment, d_other * hos_w * rel_mod));
                 } else if d_other < 0.0 {

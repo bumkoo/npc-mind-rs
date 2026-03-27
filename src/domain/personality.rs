@@ -126,24 +126,6 @@ impl Score {
     pub fn modifier(&self, weight: f32) -> f32 {
         (1.0 + self.0 * weight).max(0.0)
     }
-
-    /// 절대값 기반 가중치 계산: 1.0 + (|성격 점수| × 가중치 계수)
-    /// 성격의 방향(긍정/부정)과 상관없이 '극단성' 자체가 감정을 증폭시킬 때 사용합니다.
-    pub fn abs_modifier(&self, weight: f32) -> f32 {
-        1.0 + self.0.abs() * weight
-    }
-
-    /// 양수 성향 기반 증폭: 1.0 + (max(0, 성격 점수) × 가중치 계수)
-    /// 특정 성향이 '양수'일 때만 감정을 강화하고 싶을 때 사용합니다.
-    pub fn pos_modifier(&self, weight: f32) -> f32 {
-        1.0 + self.0.max(0.0) * weight
-    }
-
-    /// 양수 성향 기반 억제: 1.0 - (max(0, 성격 점수) × 가중치 계수)
-    /// 특정 성향(예: 인내심, 신중함)이 높을수록 감정을 억제하고 싶을 때 사용합니다.
-    pub fn neg_modifier(&self, weight: f32) -> f32 {
-        1.0 - self.0.max(0.0) * weight
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -544,5 +526,27 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
         let aes_effect = self.openness.aesthetic_appreciation.value() * 0.3;
 
         (base + aes_effect).clamp(0.5, 1.5)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// StimulusWeights 구현 — HEXACO → 자극 수용도 캡슐화
+// ---------------------------------------------------------------------------
+
+impl crate::ports::StimulusWeights for HexacoProfile {
+    /// E(예민→수용↑) - Pru(신중→급변억제) - patience(부정자극시 완충)
+    fn stimulus_absorb_rate(&self, stimulus: &crate::domain::pad::Pad) -> f32 {
+        let avg = self.dimension_averages();
+        let base = 1.0;
+        let e_effect = avg.e.value() * 0.3;
+        let pru_effect = -self.conscientiousness.prudence.value() * 0.3;
+
+        let valence_effect = if stimulus.pleasure < 0.0 {
+            -self.agreeableness.patience.value() * 0.4
+        } else {
+            0.0
+        };
+
+        (base + e_effect + pru_effect + valence_effect).clamp(0.1, 2.0)
     }
 }

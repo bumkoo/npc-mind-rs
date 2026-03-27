@@ -267,7 +267,8 @@ pub fn run_after_dialogue(
     let relationship = build_relationship(s);
     let situation = build_situation(s);
 
-    let new_rel = relationship.after_dialogue(current_state, &situation);
+    let pw = situation.action.as_ref().map(|a| a.praiseworthiness);
+    let new_rel = relationship.after_dialogue(current_state, pw);
 
     let text = format!(
         "친밀도: {:.3} -> {:.3}\n신뢰도: {:.3} -> {:.3}\n상하:   {:.3} -> {:.3}",

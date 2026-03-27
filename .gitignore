@@ -20,5 +20,9 @@ Desktop.ini
 *.onnx_data
 
 
-.fastembed_cache
-.claude
+.fastembed_cache/
+.claude/
+
+
+# Image files (필요에 따라 적용)
+*.jpg

@@ -240,26 +240,28 @@ fn 같은_상황_다른_성격_다른_해석_가능성() {
 }
 
 // ---------------------------------------------------------------------------
-// -1~1 범위의 핵심 이점: 감정 × 성격 = 단순 곱셈 증폭
+// Score::modifier() 선형 패턴: 방향에 따라 증폭/억제
 // ---------------------------------------------------------------------------
 
 #[test]
-fn 감정_성격_곱셈_증폭() {
-    let emotion_raw = -0.3_f32;
-    let patience = Score::new(-0.7, "patience").unwrap();
+fn 성격_modifier_선형_패턴() {
+    // 까칠한 사람(patience=-0.7)은 부정 감정을 증폭
+    let impatient = Score::new(-0.7, "patience").unwrap();
+    let mod_impatient = impatient.modifier(-0.3); // 1.0 - (-0.7)*0.3 = 1.21
+    assert!(mod_impatient > 1.0,
+        "까칠함(-0.7)은 부정 감정 증폭: {}", mod_impatient);
 
-    let amplification = 1.0 + patience.intensity();
-    let result = (emotion_raw * amplification).clamp(-1.0, 1.0);
-
-    assert!(result < emotion_raw,
-        "까칠한 성격이 부정 감정을 증폭해야 함: {} → {}", emotion_raw, result);
-
+    // 관용적인 사람(patience=0.7)은 부정 감정을 억제
     let patient = Score::new(0.7, "patience").unwrap();
-    let dampening = 1.0 - patient.value() * 0.5;
-    let result_calm = (emotion_raw * dampening).clamp(-1.0, 1.0);
+    let mod_patient = patient.modifier(-0.3); // 1.0 - 0.7*0.3 = 0.79
+    assert!(mod_patient < 1.0,
+        "관용(0.7)은 부정 감정 억제: {}", mod_patient);
 
-    assert!(result_calm > emotion_raw,
-        "관용적 성격이 부정 감정을 완화해야 함: {} → {}", emotion_raw, result_calm);
+    // 중립(0.0)은 변동 없음
+    let neutral = Score::neutral();
+    let mod_neutral = neutral.modifier(-0.3); // 1.0
+    assert!((mod_neutral - 1.0).abs() < f32::EPSILON,
+        "중립은 변동 없음: {}", mod_neutral);
 }
 
 // ---------------------------------------------------------------------------

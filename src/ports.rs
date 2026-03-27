@@ -6,7 +6,6 @@
 use crate::domain::emotion::{EmotionState, Situation};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
-use crate::domain::personality::HexacoProfile;
 use crate::domain::relationship::Relationship;
 
 // ---------------------------------------------------------------------------
@@ -66,14 +65,24 @@ pub trait Appraiser {
     ) -> EmotionState;
 }
 
+/// 대사 자극 수용도 포트 — 성격이 자극을 얼마나 크게 수용하는가
+///
+/// AppraisalWeights가 "상황을 얼마나 크게 느끼냐"라면,
+/// StimulusWeights는 "대화 중 자극에 얼마나 흔들리냐"를 캡슐화한다.
+pub trait StimulusWeights {
+    /// 자극 수용도 (0.1 ~ 2.0)
+    /// 높을수록 대사에 크게 반응, 낮을수록 덤덤
+    fn stimulus_absorb_rate(&self, stimulus: &Pad) -> f32;
+}
+
 /// 대사 자극 처리 포트 — 대화 매 턴 감정 변동
 ///
 /// 기존 감정의 강도만 변동. 새 감정 생성 없음.
 pub trait StimulusProcessor {
-    /// 성격 + 현재 감정 + PAD 자극 → 갱신된 감정 상태
-    fn apply_stimulus(
+    /// 성격(수용도) + 현재 감정 + PAD 자극 → 갱신된 감정 상태
+    fn apply_stimulus<P: StimulusWeights>(
         &self,
-        personality: &HexacoProfile,
+        personality: &P,
         current_state: &EmotionState,
         stimulus: &Pad,
     ) -> EmotionState;

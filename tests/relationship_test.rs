@@ -74,13 +74,14 @@ fn 무관한_사람_감정_배율은_기본() {
 }
 
 #[test]
-fn 적대_관계도_감정_배율이_높음() {
+fn 적대_관계는_감정_절제() {
     let rel = RelationshipBuilder::new("gyo_ryong", "enemy")
         .closeness(s(-0.8))
         .build();
     let multiplier = rel.emotion_intensity_multiplier();
-    // 1.0 + 0.8 * 0.5 = 1.4
-    assert!(multiplier > 1.3);
+    // 1.0 + (-0.8) * 0.5 = 0.6 — 원수 앞에선 감정 절제/경계
+    assert!(multiplier < 1.0, "적대 관계는 감정 억제: {}", multiplier);
+    assert!(multiplier > 0.5, "완전 무감각은 아님: {}", multiplier);
 }
 
 // ===========================================================================
@@ -288,8 +289,9 @@ fn 교룡의_숙적_관계() {
         .power(s(0.0))
         .build();
 
-    // 적대적이지만 감정 배율은 높음 (관심이 있으니까)
-    assert!(rel.emotion_intensity_multiplier() > 1.3);
+    // 적대적이면 전반적 감정 절제 (경계/억제)
+    assert!(rel.emotion_intensity_multiplier() < 1.0,
+        "숙적 앞에선 감정 절제: {}", rel.emotion_intensity_multiplier());
     // trust 음수 → 행동에 대한 감정 약화 ("역시나")
     assert!(rel.trust_emotion_modifier() < 1.0,
         "숙적이라 trust 음수 → 감정 약화: {}", rel.trust_emotion_modifier());
