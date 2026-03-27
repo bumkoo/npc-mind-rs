@@ -6,7 +6,8 @@ use npc_mind::domain::pad::Pad;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
 use npc_mind::presentation::korean::KoreanFormatter;
-use npc_mind::ports::GuideFormatter;
+use npc_mind::ports::{AppraisalWeights, GuideFormatter};
+use crate::trace_collector::AppraisalCollector;
 
 use crate::state::{FocusType, GuiState, ProspectChoice};
 
@@ -164,14 +165,17 @@ pub struct GuideOutput {
 // 파이프라인 실행
 // ---------------------------------------------------------------------------
 
-pub fn run_appraise(s: &GuiState) -> (EmotionState, AppraisalOutput) {
+pub fn run_appraise(s: &GuiState, collector: &AppraisalCollector) -> (EmotionState, AppraisalOutput) {
     let npc = build_npc(s);
     let situation = build_situation(s);
     let relationship = build_relationship(s);
 
+    // collector 비우고 appraise 실행 → trace 이벤트 수집
+    collector.take_entries();
     let state = AppraisalEngine::appraise(npc.personality(), &situation, &relationship);
-    let trace = trace_appraisal(npc.personality(), &situation, &relationship);
-    let intermediates = format_intermediates(npc.personality(), &relationship, s);
+    let trace_entries = collector.take_entries();
+    let trace = trace_entries.join("\n");
+    let intermediates = format_weights(npc.personality(), &relationship);
     let emotion_state = format_emotion_state(&state);
 
     let output = AppraisalOutput {
@@ -328,334 +332,77 @@ pub fn format_emotion_state(state: &EmotionState) -> String {
     emotions_text
 }
 
-/// 중간 계산값 + 공식 텍스트
-fn format_intermediates(
+/// 성격 weight + 관계 modifier 요약 (AppraisalWeights 포트를 통해 조회)
+fn format_weights(
     p: &HexacoProfile,
     rel: &Relationship,
-    s: &GuiState,
 ) -> String {
     let avg = p.dimension_averages();
-    let w: f32 = 0.3;
-
-    let h = avg.h.value();
-    let e = avg.e.value();
-    let x = avg.x.value();
-    let a = avg.a.value();
-    let c = avg.c.value();
-    let o = avg.o.value();
-
-    let emotional_amp = avg.e.modifier(w);
-    let positive_amp = avg.x.modifier(w);
-    let negative_mod = avg.a.modifier(-w);
-    let impulse_mod = p.conscientiousness.prudence.modifier(-w);
-    let standards_amp = avg.c.modifier(w);
-    let fear_amp = p.emotionality.fearfulness.modifier(w);
-    let pride_mod = p.honesty_humility.modesty.modifier(-w);
-    let reproach_mod = p.agreeableness.gentleness.modifier(-w);
-    let anger_mod = p.agreeableness.patience.modifier(-w);
-    let gratitude_amp = p.honesty_humility.sincerity.modifier(w);
-    let aesthetic_amp = p.openness.aesthetic_appreciation.modifier(w);
-
-    let rel_mul = rel.emotion_intensity_multiplier();
-    let trust_mod = rel.trust_emotion_modifier();
-
     let mut text = String::new();
 
     text.push_str("── HEXACO 차원 평균 ──\n");
     text.push_str(&format!(
         "  H={:.2}  E={:.2}  X={:.2}  A={:.2}  C={:.2}  O={:.2}\n\n",
-        h, e, x, a, c, o
+        avg.h.value(), avg.e.value(), avg.x.value(),
+        avg.a.value(), avg.c.value(), avg.o.value()
     ));
 
-    text.push_str("── Event 감정 계수 ──\n");
+    text.push_str("── AppraisalWeights (성격 가중치) ──\n");
     text.push_str(&format!(
-        "  emotional_amp = 1.0 + E({:.2}) * {w} = {emotional_amp:.3}\n", e
-    ));
+        "  desirability_self_weight(+0.8) = {:.3}\n",
+        p.desirability_self_weight(0.8)));
     text.push_str(&format!(
-        "  positive_amp  = 1.0 + X({:.2}) * {w} = {positive_amp:.3}\n", x
-    ));
+        "  desirability_self_weight(-0.8) = {:.3}\n",
+        p.desirability_self_weight(-0.8)));
     text.push_str(&format!(
-        "  negative_mod  = 1.0 - A({:.2}) * {w} = {negative_mod:.3}\n", a
-    ));
+        "  desirability_prospect_weight(+0.8) = {:.3}\n",
+        p.desirability_prospect_weight(0.8)));
     text.push_str(&format!(
-        "  impulse_mod   = 1.0 - prudence({:.2}) * {w} = {impulse_mod:.3}\n",
-        p.conscientiousness.prudence.value()
-    ));
+        "  desirability_prospect_weight(-0.8) = {:.3}\n",
+        p.desirability_prospect_weight(-0.8)));
     text.push_str(&format!(
-        "  fear_amp      = 1.0 + fearfulness({:.2}) * {w} = {fear_amp:.3}\n\n",
-        p.emotionality.fearfulness.value()
-    ));
-
-    text.push_str("── Action 감정 계수 ──\n");
+        "  desirability_confirmation_weight = {:.3}\n",
+        p.desirability_confirmation_weight(0.8)));
     text.push_str(&format!(
-        "  standards_amp = 1.0 + C({:.2}) * {w} = {standards_amp:.3}\n", c
-    ));
+        "  empathy_weight(+0.8) = {:.3}\n",
+        p.empathy_weight(0.8)));
     text.push_str(&format!(
-        "  pride_mod     = 1.0 - modesty({:.2}) * {w} = {pride_mod:.3}\n",
-        p.honesty_humility.modesty.value()
-    ));
+        "  empathy_weight(-0.8) = {:.3}\n",
+        p.empathy_weight(-0.8)));
     text.push_str(&format!(
-        "  reproach_mod  = 1.0 - gentleness({:.2}) * {w} = {reproach_mod:.3}\n",
-        p.agreeableness.gentleness.value()
-    ));
+        "  hostility_weight(+0.8) = {:.3}\n",
+        p.hostility_weight(0.8)));
     text.push_str(&format!(
-        "  gratitude_amp = 1.0 + sincerity({:.2}) * {w} = {gratitude_amp:.3}\n",
-        p.honesty_humility.sincerity.value()
-    ));
+        "  hostility_weight(-0.8) = {:.3}\n",
+        p.hostility_weight(-0.8)));
     text.push_str(&format!(
-        "  anger_mod     = 1.0 - patience({:.2}) * {w} = {anger_mod:.3}\n",
-        p.agreeableness.patience.value()
-    ));
+        "  praiseworthiness_weight(self, +0.8) = {:.3}\n",
+        p.praiseworthiness_weight(true, 0.8)));
     text.push_str(&format!(
-        "  aesthetic_amp = 1.0 + aesthetic({:.2}) * {w} = {aesthetic_amp:.3}\n\n",
-        p.openness.aesthetic_appreciation.value()
-    ));
-
+        "  praiseworthiness_weight(self, -0.8) = {:.3}\n",
+        p.praiseworthiness_weight(true, -0.8)));
+    text.push_str(&format!(
+        "  praiseworthiness_weight(other, +0.8) = {:.3}\n",
+        p.praiseworthiness_weight(false, 0.8)));
+    text.push_str(&format!(
+        "  praiseworthiness_weight(other, -0.8) = {:.3}\n",
+        p.praiseworthiness_weight(false, -0.8)));
+    text.push_str(&format!(
+        "  appealingness_weight = {:.3}\n\n",
+        p.appealingness_weight(0.8)));
     text.push_str("── 관계 계수 ──\n");
     text.push_str(&format!(
-        "  rel_mul   = 1.0 + |closeness({:.2})| * 0.5 = {rel_mul:.3}\n",
-        s.closeness
-    ));
+        "  emotion_intensity_multiplier = {:.3}\n",
+        rel.emotion_intensity_multiplier()));
     text.push_str(&format!(
-        "  trust_mod = 1.0 + trust({:.2}) * 0.3 = {trust_mod:.3}\n",
-        s.trust
-    ));
+        "  trust_emotion_modifier = {:.3}\n",
+        rel.trust_emotion_modifier()));
+    text.push_str(&format!(
+        "  empathy_rel_modifier = {:.3}\n",
+        rel.empathy_rel_modifier()));
+    text.push_str(&format!(
+        "  hostility_rel_modifier = {:.3}\n",
+        rel.hostility_rel_modifier()));
 
     text
-}
-
-/// AppraisalEngine 로직을 미러링하여 각 감정의 생성 사유 + 공식을 추적
-fn trace_appraisal(
-    p: &HexacoProfile,
-    situation: &Situation,
-    relationship: &Relationship,
-) -> String {
-    let mut out = String::new();
-    let avg = p.dimension_averages();
-    let w: f32 = 0.3;
-    let rel_mul = relationship.emotion_intensity_multiplier();
-    let trust_mod = relationship.trust_emotion_modifier();
-
-    let emotional_amp = avg.e.modifier(w);
-    let positive_amp = avg.x.modifier(w);
-    let negative_mod = avg.a.modifier(-w);
-    let impulse_mod = p.conscientiousness.prudence.modifier(-w);
-    let fear_amp = p.emotionality.fearfulness.modifier(w);
-
-    let standards_amp = avg.c.modifier(w);
-    let pride_mod = p.honesty_humility.modesty.modifier(-w);
-    let reproach_mod = p.agreeableness.gentleness.modifier(-w);
-    let anger_mod = p.agreeableness.patience.modifier(-w);
-    let gratitude_amp = p.honesty_humility.sincerity.modifier(w);
-    let aesthetic_amp = p.openness.aesthetic_appreciation.modifier(w);
-
-    let h = avg.h.value();
-    let a = avg.a.value();
-    let empathy_base: f32 = 0.5;
-    let fortune_t: f32 = -0.2;
-
-    let mut fi = 0;
-
-    // 기초 감정 추적 (Compound 계산용)
-    let mut joy_val: f32 = 0.0;
-    let mut distress_val: f32 = 0.0;
-    let mut pride_val: f32 = 0.0;
-    let mut shame_val: f32 = 0.0;
-    let mut admiration_val: f32 = 0.0;
-    let mut reproach_val: f32 = 0.0;
-
-    if let Some(event) = &situation.event {
-        fi += 1;
-        out.push_str(&format!("━━ Focus {} ━━\n", fi));
-        let d = event.desirability_for_self;
-        out.push_str(&format!("  [Event] desirability_for_self = {d:.2}\n"));
-
-        if let Some(Prospect::Confirmation(result)) = &event.prospect {
-            let base = d.abs() * emotional_amp * rel_mul;
-            let etype = match result {
-                ProspectResult::HopeFulfilled => "Satisfaction",
-                ProspectResult::HopeUnfulfilled => "Disappointment",
-                ProspectResult::FearUnrealized => "Relief",
-                ProspectResult::FearConfirmed => "FearsConfirmed",
-            };
-            out.push_str(&format!(
-                "  → {etype}: |{d:.2}| * emotional_amp({emotional_amp:.3}) * rel_mul({rel_mul:.3}) = {base:.3}\n"
-            ));
-        } else if let Some(Prospect::Anticipation) = &event.prospect {
-            if d > 0.0 {
-                let v = d * positive_amp * rel_mul;
-                out.push_str(&format!(
-                    "  → Hope: {d:.2} * positive_amp({positive_amp:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            } else if d < 0.0 {
-                let v = d.abs() * emotional_amp * fear_amp * rel_mul;
-                out.push_str(&format!(
-                    "  → Fear: |{d:.2}| * emotional_amp({emotional_amp:.3}) * fear_amp({fear_amp:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            }
-        } else {
-            if d > 0.0 {
-                let v = d * emotional_amp * positive_amp * rel_mul;
-                joy_val = v;
-                out.push_str(&format!(
-                    "  → Joy: {d:.2} * emotional_amp({emotional_amp:.3}) * positive_amp({positive_amp:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            } else if d < 0.0 {
-                let v = d.abs() * emotional_amp * negative_mod * impulse_mod * rel_mul;
-                distress_val = v;
-                out.push_str(&format!(
-                    "  → Distress: |{d:.2}| * emotional_amp({emotional_amp:.3}) * negative_mod({negative_mod:.3}) * impulse_mod({impulse_mod:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            }
-
-            if let Some(other) = &event.desirability_for_other {
-                let do_ = other.desirability;
-                let c_val = other.relationship.closeness().value();
-                let affinity = other.relationship.closeness().modifier(w);
-                let hostility = other.relationship.closeness().modifier(-w);
-                out.push_str(&format!(
-                    "  [타인 운] desir_other={do_:.2}, closeness={c_val:.2}, affinity_mod={affinity:.3}, hostility_mod={hostility:.3}\n"
-                ));
-
-                if do_ > 0.0 {
-                    if h > 0.0 || a > 0.0 {
-                        let empathy = (h.max(0.0) + a.max(0.0)) / 2.0;
-                        let v = do_ * (empathy_base + empathy * empathy_base) * affinity;
-                        out.push_str(&format!(
-                            "  → HappyFor: {do_:.2} * (0.5 + empathy({empathy:.3}) * 0.5) * affinity({affinity:.3}) = {v:.3}\n"
-                        ));
-                    }
-                    if h < fortune_t {
-                        let v = do_ * h.abs() * negative_mod * hostility;
-                        out.push_str(&format!(
-                            "  → Resentment: {do_:.2} * |H({h:.2})| * negative_mod({negative_mod:.3}) * hostility({hostility:.3}) = {v:.3}\n"
-                        ));
-                    }
-                } else if do_ < 0.0 {
-                    let abs_d = do_.abs();
-                    let sent = p.emotionality.sentimentality.value();
-                    if a > 0.0 || sent > 0.0 {
-                        let compassion = (a.max(0.0) + sent.max(0.0)) / 2.0;
-                        let v = abs_d * (empathy_base + compassion * empathy_base) * affinity;
-                        out.push_str(&format!(
-                            "  → Pity: |{do_:.2}| * (0.5 + compassion({compassion:.3}) * 0.5) * affinity({affinity:.3}) = {v:.3}\n"
-                        ));
-                    }
-                    if h < fortune_t && a < fortune_t {
-                        let cruelty = (h.abs() + a.abs()) / 2.0;
-                        let v = abs_d * cruelty * hostility;
-                        out.push_str(&format!(
-                            "  → Gloating: |{do_:.2}| * cruelty({cruelty:.3}) * hostility({hostility:.3}) = {v:.3}\n"
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    if let Some(action) = &situation.action {
-        fi += 1;
-        out.push_str(&format!("━━ Focus {} ━━\n", fi));
-        let pw = action.praiseworthiness;
-        let self_str = if action.is_self_agent { "자기" } else { "타인" };
-        out.push_str(&format!(
-            "  [Action] {self_str} 행동, praiseworthiness = {pw:.2}\n"
-        ));
-
-        if action.is_self_agent {
-            if pw > 0.0 {
-                let v = pw * standards_amp * pride_mod;
-                pride_val = v;
-                out.push_str(&format!(
-                    "  → Pride: {pw:.2} * standards_amp({standards_amp:.3}) * pride_mod({pride_mod:.3}) = {v:.3}\n"
-                ));
-            } else if pw < 0.0 {
-                let v = pw.abs() * standards_amp;
-                shame_val = v;
-                out.push_str(&format!(
-                    "  → Shame: |{pw:.2}| * standards_amp({standards_amp:.3}) = {v:.3}\n"
-                ));
-            }
-        } else {
-            if pw > 0.0 {
-                let v = pw * standards_amp * trust_mod * rel_mul;
-                admiration_val = v;
-                out.push_str(&format!(
-                    "  → Admiration: {pw:.2} * standards_amp({standards_amp:.3}) * trust_mod({trust_mod:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            } else if pw < 0.0 {
-                let v = pw.abs() * standards_amp * reproach_mod * trust_mod * rel_mul;
-                reproach_val = v;
-                out.push_str(&format!(
-                    "  → Reproach: |{pw:.2}| * standards_amp({standards_amp:.3}) * reproach_mod({reproach_mod:.3}) * trust_mod({trust_mod:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-                ));
-            }
-        }
-    }
-
-    if let Some(object) = &situation.object {
-        fi += 1;
-        out.push_str(&format!("━━ Focus {} ━━\n", fi));
-        let ap = object.appealingness;
-        out.push_str(&format!("  [Object] appealingness = {ap:.2}\n"));
-
-        if ap > 0.0 {
-            let v = ap * aesthetic_amp * rel_mul;
-            out.push_str(&format!(
-                "  → Love: {ap:.2} * aesthetic_amp({aesthetic_amp:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-            ));
-        } else if ap < 0.0 {
-            let v = ap.abs() * aesthetic_amp * rel_mul;
-            out.push_str(&format!(
-                "  → Hate: |{ap:.2}| * aesthetic_amp({aesthetic_amp:.3}) * rel_mul({rel_mul:.3}) = {v:.3}\n"
-            ));
-        }
-    }
-
-    // Compound 감정 — 이미 계산된 기초 감정값 결합
-    if let (Some(action), Some(_event)) = (&situation.action, &situation.event) {
-        let has_compound = if action.is_self_agent {
-            (pride_val > 0.0 && joy_val > 0.0) || (shame_val > 0.0 && distress_val > 0.0)
-        } else {
-            (admiration_val > 0.0 && joy_val > 0.0) || (reproach_val > 0.0 && distress_val > 0.0)
-        };
-
-        if has_compound {
-            out.push_str("\n━━ Compound (기초 감정값 결합) ━━\n");
-
-            if action.is_self_agent {
-                if pride_val > 0.0 && joy_val > 0.0 {
-                    let v = (pride_val + joy_val) / 2.0;
-                    out.push_str(&format!(
-                        "  → Gratification: (Pride({pride_val:.3}) + Joy({joy_val:.3})) / 2 = {v:.3}\n"
-                    ));
-                }
-                if shame_val > 0.0 && distress_val > 0.0 {
-                    let v = (shame_val + distress_val) / 2.0;
-                    out.push_str(&format!(
-                        "  → Remorse: (Shame({shame_val:.3}) + Distress({distress_val:.3})) / 2 = {v:.3}\n"
-                    ));
-                }
-            } else {
-                if admiration_val > 0.0 && joy_val > 0.0 {
-                    let v = (admiration_val + joy_val) / 2.0;
-                    out.push_str(&format!(
-                        "  → Gratitude: (Admiration({admiration_val:.3}) + Joy({joy_val:.3})) / 2 = {v:.3}\n"
-                    ));
-                }
-                if reproach_val > 0.0 && distress_val > 0.0 {
-                    let v = (reproach_val + distress_val) / 2.0;
-                    out.push_str(&format!(
-                        "  → Anger: (Reproach({reproach_val:.3}) + Distress({distress_val:.3})) / 2 = {v:.3}\n"
-                    ));
-                }
-            }
-        }
-    }
-
-    if out.is_empty() {
-        out.push_str("포커스 없음 — 감정 생성 없음\n");
-    }
-
-    out
 }

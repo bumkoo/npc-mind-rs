@@ -1,12 +1,22 @@
 //! NPC Mind 디버그 GUI — eframe 진입점
 
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
 mod app;
 mod panels;
 mod pipeline;
 mod presets;
 mod state;
+mod trace_collector;
 
 fn main() -> eframe::Result<()> {
+    // tracing subscriber 초기화 — 엔진의 trace!() 이벤트를 수집
+    let collector = trace_collector::AppraisalCollector::new();
+    tracing_subscriber::registry()
+        .with(collector.clone())
+        .init();
+
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_inner_size([1500.0, 1200.0])
@@ -19,7 +29,7 @@ fn main() -> eframe::Result<()> {
         options,
         Box::new(|cc| {
             setup_fonts(&cc.egui_ctx);
-            Ok(Box::new(app::DebugApp::new(cc)))
+            Ok(Box::new(app::DebugApp::new(cc, collector.clone())))
         }),
     )
 }

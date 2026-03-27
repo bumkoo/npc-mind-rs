@@ -1,4 +1,4 @@
-//! DebugApp — eframe 앱 구현
+﻿//! DebugApp — eframe 앱 구현
 
 use eframe::egui;
 
@@ -7,6 +7,7 @@ use npc_mind::domain::emotion::EmotionState;
 use crate::panels;
 use crate::pipeline::{self, AppraisalOutput, Col1Entry, GuideOutput};
 use crate::state::GuiState;
+use crate::trace_collector::AppraisalCollector;
 
 pub struct DebugApp {
     pub state: GuiState,
@@ -31,6 +32,9 @@ pub struct DebugApp {
     /// 상태 표시줄 메시지
     pub status_message: String,
 
+    /// tracing 수집기
+    pub collector: AppraisalCollector,
+
     /// PadAnalyzer (embed feature 활성 시에만 로드)
     #[cfg(feature = "embed")]
     pub pad_analyzer: Option<npc_mind::domain::pad::PadAnalyzer>,
@@ -39,7 +43,7 @@ pub struct DebugApp {
 }
 
 impl DebugApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(_cc: &eframe::CreationContext<'_>, collector: AppraisalCollector) -> Self {
         #[cfg(feature = "embed")]
         let (pad_analyzer, embed_status) = {
             match load_pad_analyzer() {
@@ -57,6 +61,7 @@ impl DebugApp {
             col2_guide: None,
             col2_relationship: None,
             status_message: String::new(),
+            collector,
             #[cfg(feature = "embed")]
             pad_analyzer,
             #[cfg(feature = "embed")]
@@ -124,7 +129,7 @@ fn show_action_buttons(ui: &mut egui::Ui, app: &mut DebugApp) {
         // ── 감정 평가 ──
         if ui.button("감정 평가").clicked() {
             app.clear_all();
-            let (emotion, output) = pipeline::run_appraise(&app.state);
+            let (emotion, output) = pipeline::run_appraise(&app.state, &app.collector);
             app.current_emotion = Some(emotion);
             app.col0_appraisal = Some(output);
             app.status_message = app.col0_appraisal.as_ref().unwrap().title.clone();

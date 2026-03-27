@@ -8,6 +8,8 @@
 //! - 성격이 "자극 수용도"를 캡슐화하여 반환
 //! - 기존 감정의 강도만 변동, 새 감정 생성 없음
 
+use tracing::trace;
+
 use crate::ports::StimulusWeights;
 use crate::domain::pad::{Pad, pad_dot, emotion_to_pad};
 
@@ -34,17 +36,21 @@ impl StimulusEngine {
         stimulus: &Pad,
     ) -> EmotionState {
         let absorb = personality.stimulus_absorb_rate(stimulus);
+        trace!(absorb_rate = absorb, pleasure = stimulus.pleasure, arousal = stimulus.arousal, dominance = stimulus.dominance);
         let mut new_state = current_state.clone();
 
         for emotion in current_state.emotions() {
             let emotion_pad = emotion_to_pad(emotion.emotion_type());
             let alignment = pad_dot(&emotion_pad, stimulus);
             let delta = alignment * absorb * IMPACT_RATE;
-            let new_intensity = (emotion.intensity() + delta).clamp(0.0, 1.0);
+            let old_intensity = emotion.intensity();
+            let new_intensity = (old_intensity + delta).clamp(0.0, 1.0);
 
             if new_intensity < FADE_THRESHOLD {
+                trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, result = "faded");
                 new_state.remove(emotion.emotion_type());
             } else {
+                trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, new = new_intensity);
                 new_state.set_intensity(emotion.emotion_type(), new_intensity);
             }
         }
