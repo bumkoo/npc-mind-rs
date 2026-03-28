@@ -89,7 +89,14 @@ tests/
   stimulus_test.rs                # apply_stimulus 감정 변동 (8개)
   dialogue_flow_test.rs           # 전체 대화 흐름 통합 (7개)
   embed_test.rs                   # 임베딩 PAD 추출 (--features embed)
-docs/                              # 설계 문서 (한국어)
+docs/
+  collaboration-workflow.md        # 협업 워크플로우 가이드
+  architecture/                    # 시스템 구조
+  personality/                     # HEXACO 성격 모델
+    facets/                        # 6차원별 상세 가이드
+  emotion/                         # OCC 감정 + 평가 엔진 + PAD
+  guide/                           # 연기 가이드 생성
+  infra/                           # 인프라/어댑터
 data/
   presets/                         # 4인 프리셋 JSON (무백, 교룡, 수련, 소호)
   {도서명}/                        # 테스트 시나리오 폴더 구조
@@ -452,11 +459,19 @@ data/{도서명}/{장면명}/session_{NNN}/scenario.json
 
 ## 설계 문서
 
-- `docs/architecture-v2.md` — 4레이어 아키텍처, 포트 정의, 데이터 흐름
-- `docs/hexaco-research.md` — HEXACO 이론, 4인 캐릭터 프로필
-- `docs/occ-emotion-model.md` — OCC 22개 감정, 3분기 구조
-- `docs/guide-mapping-table.md` — 가이드 생성 매핑 테이블
-- `docs/hexaco-occ-emotion-mapping.md` — HEXACO→OCC 감정 매핑 관계
-- `docs/pad-stimulus-design-decisions.md` — PAD 자극 설계 결정 근거
-- `docs/situation-structure.md` — 상황 모델 구조 설계
-- `docs/HEXACO/` — HEXACO 6차원별 상세 가이드
+- `docs/collaboration-workflow.md` — Bekay×Claude 협업 워크플로우 가이드 (개선 루프, 세션 관리)
+- `docs/architecture/` — 시스템 구조
+  - `architecture-v2.md` — 4레이어 아키텍처, 포트 정의, 데이터 흐름
+  - `situation-structure.md` — 상황 모델 구조 설계
+- `docs/personality/` — HEXACO 성격 모델
+  - `hexaco-research.md` — HEXACO 이론, 4인 캐릭터 프로필
+  - `facets/` — HEXACO 6차원별 상세 가이드 (H/E/X/A/C/O)
+- `docs/emotion/` — OCC 감정 + 평가 엔진 + PAD
+  - `occ-emotion-model.md` — OCC 22개 감정, 3분기 구조
+  - `hexaco-occ-emotion-mapping.md` — HEXACO→OCC 감정 매핑 관계
+  - `appraisal-engine.md` — AppraisalEngine 설계 문서
+  - `pad-stimulus-design-decisions.md` — PAD 자극 설계 결정 근거
+- `docs/guide/` — 연기 가이드 생성
+  - `guide-mapping-table.md` — 가이드 생성 매핑 테이블
+- `docs/infra/` — 인프라/어댑터
+  - `embedding-adapter-migration.md` — 임베딩 어댑터 마이그레이션 기록
