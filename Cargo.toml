@@ -7,7 +7,6 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 default = []
 embed = ["dep:bge-m3-onnx-rust"]
-devgui = ["dep:eframe", "dep:tracing-subscriber"]
 webui = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing-subscriber"]
 
 [dependencies]
@@ -17,7 +16,6 @@ thiserror = "2"
 toml = "0.8"
 tracing = "0.1"
 bge-m3-onnx-rust = { path = "../bge-m3-onnx-rust", optional = true }
-eframe = { version = "0.31", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
@@ -25,11 +23,6 @@ tower-http = { version = "0.6", features = ["cors", "fs"], optional = true }
 
 [dev-dependencies]
 approx = "0.5"
-
-[[bin]]
-name = "npc-devgui"
-path = "src/bin/devgui/main.rs"
-required-features = ["devgui"]
 
 [[bin]]
 name = "npc-webui"
