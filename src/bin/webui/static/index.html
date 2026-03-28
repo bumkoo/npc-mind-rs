@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NPC Mind Engine</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #e0e0e0; }
+h1 { padding: 16px 24px; background: #16213e; border-bottom: 1px solid #333; font-size: 18px; }
+.status { padding: 24px; color: #aaa; }
+.ok { color: #4caf50; }
+</style>
+</head>
+<body>
+<h1>NPC Mind Engine — WebUI</h1>
+<div class="status" id="status">서버 연결 확인 중...</div>
+<script>
+fetch('/api/npcs')
+  .then(r => r.json())
+  .then(data => {
+    document.getElementById('status').innerHTML =
+      '<span class="ok">서버 연결 OK</span> — 등록된 NPC: ' + data.length + '개';
+  })
+  .catch(e => {
+    document.getElementById('status').textContent = '서버 연결 실패: ' + e;
+  });
+</script>
+</body>
+</html>

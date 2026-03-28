@@ -54,17 +54,27 @@ impl GuideFormatter for LocaleFormatter {
         if let Some(ref entry) = guide.emotion.dominant {
             let emotion = l.emotion_name(&entry.emotion_type);
             let intensity_str = l.intensity_label(entry.intensity);
-            lines.push(l.render_template(&t.dominant_emotion, &[
+            let mut dominant_str = l.render_template(&t.dominant_emotion, &[
                 ("emotion", emotion),
                 ("intensity", intensity_str),
-            ]));
+            ]);
+            if let Some(ref ctx) = entry.context {
+                if !ctx.is_empty() {
+                    dominant_str.push_str(&format!(" — {}", ctx));
+                }
+            }
+            lines.push(dominant_str);
         }
         if !guide.emotion.active_emotions.is_empty() {
             let emotions_str: Vec<String> = guide.emotion.active_emotions.iter()
                 .map(|entry| {
                     let emotion = l.emotion_name(&entry.emotion_type);
                     let intensity_str = l.intensity_label(entry.intensity);
-                    format!("{}({})", emotion, intensity_str)
+                    let base = format!("{}({})", emotion, intensity_str);
+                    match &entry.context {
+                        Some(ctx) if !ctx.is_empty() => format!("{} — {}", base, ctx),
+                        _ => base,
+                    }
                 })
                 .collect();
             let list = emotions_str.join(", ");

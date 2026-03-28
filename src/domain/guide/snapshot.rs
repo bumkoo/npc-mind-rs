@@ -105,6 +105,8 @@ pub struct EmotionEntry {
     pub emotion_type: EmotionType,
     /// 감정 강도 (0.0 ~ 1.0)
     pub intensity: f32,
+    /// 감정의 원인/맥락 (LLM 프롬프트에 포함됨)
+    pub context: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -125,14 +127,20 @@ pub struct EmotionSnapshot {
 impl EmotionSnapshot {
     /// EmotionState에서 스냅샷 요약을 생성합니다.
     pub fn from_state(state: &EmotionState) -> Self {
-        // 리팩토링: dominant()가 이제 Option<Emotion> 소유권 값을 반환합니다.
         let dominant = state.dominant()
-            .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() });
+            .map(|e| EmotionEntry {
+                emotion_type: e.emotion_type(),
+                intensity: e.intensity(),
+                context: e.context().map(|s| s.to_string()),
+            });
 
-        // 리팩토링: significant()가 이제 Vec<Emotion> 소유권 목록을 반환합니다.
         let active_emotions = state.significant(EMOTION_THRESHOLD)
             .iter()
-            .map(|e| EmotionEntry { emotion_type: e.emotion_type(), intensity: e.intensity() })
+            .map(|e| EmotionEntry {
+                emotion_type: e.emotion_type(),
+                intensity: e.intensity(),
+                context: e.context().map(|s| s.to_string()),
+            })
             .collect();
 
         let mood = state.overall_valence();
