@@ -20,8 +20,8 @@ cargo test --test stimulus_test       # 대사 자극 감정 변동 (8개)
 cargo test --test dialogue_flow_test  # 대화 흐름 통합 (7개)
 cargo test --features embed --test embed_test  # 임베딩 PAD 추출
 
-# devgui 빌드
-cargo run --features devgui --bin npc-devgui
+# webui 빌드 & 실행
+cargo run --features webui --bin npc-webui   # http://127.0.0.1:3000
 ```
 
 ### 빌드 주의사항 (Windows)
@@ -70,14 +70,12 @@ src/
     locale.rs                     # LocaleBundle (TOML 로딩, VariantName)
     formatter.rs                  # LocaleFormatter (언어 무관 포맷터)
     korean.rs                     # KoreanFormatter (ko.toml 내장 래퍼)
-  bin/devgui/
-    main.rs                       # eframe 진입점 + tracing subscriber 초기화
-    app.rs                        # DebugApp (AppraisalCollector 포함)
-    pipeline.rs                   # 도메인 타입 변환 + 파이프라인 실행
-    presets.rs                    # 4인 캐릭터 프리셋 (무백, 교룡, 수련, 소호)
-    panels.rs                     # GUI 패널 레이아웃
-    state.rs                      # GuiState
+  bin/webui/
+    main.rs                       # axum 서버 진입점 + tracing subscriber 초기화
+    handlers.rs                   # API 핸들러 (CRUD + 파이프라인 + 저장/로드)
+    state.rs                      # AppState, NpcProfile, RelationshipData, TurnRecord
     trace_collector.rs            # AppraisalCollector (tracing Layer 구현)
+    static/index.html             # React CDN 기반 SPA (프론트엔드)
 locales/
   ko.toml                         # 한국어 로케일
   en.toml                         # 영어 로케일
@@ -92,6 +90,15 @@ tests/
   dialogue_flow_test.rs           # 전체 대화 흐름 통합 (7개)
   embed_test.rs                   # 임베딩 PAD 추출 (--features embed)
 docs/                              # 설계 문서 (한국어)
+data/
+  presets/                         # 4인 프리셋 JSON (무백, 교룡, 수련, 소호)
+  {도서명}/                        # 테스트 시나리오 폴더 구조
+    {장면명}/
+      session_{NNN}/
+        scenario.json              # NPC + 관계 + turn_history (서버 상태 스냅샷)
+        test_report.md             # 테스트 레포트
+        evaluation.md              # 평가 노트
+        turn{N}_{label}.txt        # 턴별 프롬프트 출력
 ```
 
 ## 아키텍처 (DDD + 헥사고날 + 포트 앤드 어댑터)
@@ -226,8 +233,8 @@ let _span = info_span!("appraisal_tick", agent_id = npc.id().0.as_str()).entered
 Action 감정은 추가로 `rel_mul, trust_mod`. Compound는 `comp1_type, comp1_val, comp2_type, comp2_val`.
 Fortune-of-others는 `multiplier`(empathy/hostility_rel_modifier).
 
-**Layer 구현**: `src/bin/devgui/trace_collector.rs`의 `AppraisalCollector`.
-devgui, web GUI, 라이브러리 사용자 모두 자기 subscriber를 연결 가능.
+**Layer 구현**: `src/bin/webui/trace_collector.rs`의 `AppraisalCollector`.
+webui, 라이브러리 사용자 모두 자기 subscriber를 연결 가능.
 
 ### 도메인 상수
 
@@ -387,14 +394,61 @@ src/
 - `tracing` — 구조화된 trace 이벤트 (subscriber 없으면 no-op)
 - `approx` (dev) — 부동소수점 비교 테스트
 
-### devgui feature
-- `eframe` — eframe GUI 프레임워크
+### webui feature
+- `axum` — HTTP 서버 프레임워크
+- `tokio` — 비동기 런타임
+- `tower-http` — CORS, 정적 파일 서빙
 - `tracing-subscriber` — tracing Layer/Subscriber 조합
 
 ### embed feature (선택적)
 - `bge-m3-onnx-rust` (path = "../bge-m3-onnx-rust") — ort 기반 bge-m3 임베딩
   - 모델: `../models/bge-m3/model_quantized.onnx` (INT8, ~570MB)
   - 토크나이저: `../models/bge-m3/tokenizer.json`
+
+## WebUI (axum 기반 협업 도구)
+
+Claude(API)와 Bekay(브라우저)가 동시에 사용하는 NPC 심리 엔진 협업 도구.
+서버: `cargo run --features webui --bin npc-webui` → http://127.0.0.1:3000
+
+### API 엔드포인트
+
+| 엔드포인트 | 메서드 | 용도 |
+|---|---|---|
+| `/api/npcs` | GET/POST | NPC CRUD |
+| `/api/npcs/{id}` | DELETE | NPC 삭제 |
+| `/api/relationships` | GET/POST | 관계 CRUD |
+| `/api/relationships/{owner}/{target}` | DELETE | 관계 삭제 |
+| `/api/objects` | GET/POST | 오브젝트 CRUD |
+| `/api/objects/{id}` | DELETE | 오브젝트 삭제 |
+| `/api/appraise` | POST | 감정 평가 (상황 → 감정 + 프롬프트) |
+| `/api/stimulus` | POST | PAD 자극 적용 → 감정 변동 + 프롬프트 재생성 |
+| `/api/guide` | POST | 현재 감정 기준 가이드 재생성 |
+| `/api/after-dialogue` | POST | 대화 종료 → 관계 갱신 |
+| `/api/scenarios` | GET | data/ 폴더 스캔 → 시나리오 목록 |
+| `/api/history` | GET | 턴별 기록 조회 |
+| `/api/save` | POST | JSON 파일 저장 (turn_history 포함) |
+| `/api/load` | POST | JSON 파일 로드 |
+
+### 턴 히스토리 (TurnRecord)
+
+appraise/stimulus/after_dialogue 호출 시 요청+응답 JSON이 자동 기록됨.
+`scenario.json` 저장 시 `turn_history` 필드에 포함되어 로드 시 복원.
+
+```rust
+pub struct TurnRecord {
+    pub label: String,           // "Turn 1: appraise (jim→huck)"
+    pub action: String,          // "appraise" | "stimulus" | "after_dialogue"
+    pub request: serde_json::Value,
+    pub response: serde_json::Value,
+}
+```
+
+### 테스트 데이터 폴더 규칙
+
+```
+data/{도서명}/{장면명}/session_{NNN}/scenario.json
+```
+예: `data/huckleberry_finn/ch8_jackson_island_meeting/session_001/scenario.json`
 
 ## 설계 문서
 

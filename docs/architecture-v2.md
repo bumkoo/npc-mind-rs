@@ -8,16 +8,16 @@ v2 아키텍처의 핵심은 **다중 초점 상황 평가(Multi-focus Appraisal
 
 ---
 
-## 5레이어 아키텍처
+## 4레이어 아키텍처
 
 ### 전체 흐름 및 데이터 전이
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│  레이어 1: Situation (v2: 다중 초점 지원, Vec<Focus>)      │
+│  레이어 1: Situation (다중 초점: Option<Event/Action/Object>) │
 │  "밀고(Action)와 독(Event)이 동시에 일어난 상황"            │
 │                                                           │
-│  레이어 2: HEXACO (성격 가중치, Modifier 메서드 활용)        │
+│  레이어 2: HEXACO (성격 가중치, AppraisalWeights trait)     │
 │                                                           │
 │  레이어 3: Relationship (친밀도/신뢰도 기반 강도 보정)        │
 │                                                           │
@@ -34,18 +34,11 @@ v2 아키텍처의 핵심은 **다중 초점 상황 평가(Multi-focus Appraisal
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
-┌─────────────────────────────────────────────────────────┐
-│  레이어 5: Acting Guide (Presentation)                    │
-│                                                           │
-│  최종 EmotionState + Personality + Situation              │
-│  → GuideEngine → ActingDirective (지문, 톤, 행동 양식)      │
-└────────────────────────┬────────────────────────────────┘
+ ActingGuide 생성 (Presentation Layer)
+ → EmotionState + Personality + Situation → LLM 연기 가이드
                          │
                          ▼
-┌─────────────────────────────────────────────────────────┐
-│  대화 종료 후 (결과 전이)                                   │
-│  최종 EmotionState + Situation → Relationship 갱신         │
-└─────────────────────────────────────────────────────────┘
+ 대화 종료 → Relationship.after_dialogue() → 관계 갱신
 ```
 
 ---
@@ -53,13 +46,15 @@ v2 아키텍처의 핵심은 **다중 초점 상황 평가(Multi-focus Appraisal
 ## 핵심 컴포넌트 설계
 
 ### 1. Situation (다중 초점 구조)
-v2에서는 하나의 상황이 여러 성격을 가질 수 있도록 `Vec<SituationFocus>`를 사용한다.
-- **복합 감정 자동 생성**: 엔진이 `Action`과 `Event`의 동시 존재를 감지하여 `Anger`, `Gratitude` 등을 자동으로 도출한다.
+하나의 상황이 여러 성격을 가질 수 있도록 `Option<EventFocus>`, `Option<ActionFocus>`, `Option<ObjectFocus>` 3개 필드를 사용한다.
+- **복합 감정 자동 생성**: 엔진이 Action과 Event의 동시 존재를 감지하여 Anger, Gratitude 등을 자동 도출.
+- **Action 3분기**: `agent_id`가 None이면 자기(Pride/Shame), Some이면 대화 상대 또는 제3자(Admiration/Reproach).
+- **Emotion context**: 각 Focus의 `description`이 감정에 부착되어 LLM 프롬프트에 포함됨.
 
-### 2. Relationship (관계 기반 심각성 보정)
-상대방과의 관계는 감정의 질과 양을 결정한다.
-- **친밀도 배율 (`rel_mul`)**: `1.0 + closeness.intensity() * 0.5`. 관계가 깊을수록(적대적이든 친밀하든) 정서적 진폭이 커진다.
-- **신뢰도 보정 (`trust_mod`)**: `1.0 + trust.value() * 0.3`. 신뢰하는 이의 행동에는 더 민감하게, 불신하는 이의 행동에는 덤덤하게 반응한다.
+### 2. Relationship (관계 기반 보정)
+- **rel_mul**: `(1.0 + closeness × 0.5).max(0.0)` — **Admiration/Reproach에만 적용**. 나머지 감정은 rel_mul 없음.
+- **trust_mod**: `1.0 + trust × 0.3` — Admiration/Reproach에 적용.
+- **empathy/hostility_rel_modifier**: Fortune-of-others 감정에 별도 적용.
 
 ### 3. 성격 기반 감정 변조 (Personality Modulation)
 성격(HEXACO)은 발생한 감정을 증폭하거나 억제하는 필터 역할을 한다. 범용 가중치 계수(`W`)는 **0.3**을 기본으로 한다.
@@ -98,15 +93,21 @@ v2에서는 하나의 상황이 여러 성격을 가질 수 있도록 `Vec<Situa
 
 ## 구현 로드맵 및 상태 (사이클)
 
-### 완료 (v2 코어 구현)
+### 완료
 - [x] 사이클 1~3: HEXACO, OCC, ActingGuide 기본 모델
 - [x] 사이클 4~5: Relationship 도메인 모델 및 AppraisalEngine 통합
 - [x] 사이클 6~7: PAD 모델 및 StimulusEngine (D-스케일러 반영)
 - [x] 사이클 10~10.5: ONNX(ort) 기반 임베딩 어댑터 리팩터링
+- [x] DDD 리팩토링: rel_mul 정리, Action 3분기, Emotion context
+- [x] WebUI: axum 기반 협업 도구 (API + 브라우저 SPA)
+- [x] 턴 히스토리: 장면 설정/감정 평가/프롬프트를 scenario.json에 보존
+- [x] 테스트 시나리오: 허클베리핀 Ch.8 잭슨 섬 첫 만남 (Jim 관점 4턴)
 
-### 진행 중 / 예정
-- [ ] 사이클 11: 무협 도메인 특화 PAD 앵커 확장 및 튜닝
-- [ ] 사이클 12: 대화 맥락 유지 기능 고도화 (Long-term Memory 검토)
+### 예정
+- [ ] PAD 앵커 동적 관리 (앵커 편집 + 재임베딩)
+- [ ] Power → Tone/Attitude 매핑
+- [ ] 톤 시프트 감지 설계
+- [ ] 대화 맥락 유지 기능 고도화
 
 ---
 
@@ -115,4 +116,5 @@ v2에서는 하나의 상황이 여러 성격을 가질 수 있도록 `Vec<Situa
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
 | 0.1.0 | 2026-03-24 | 초기 설계안 |
-| 0.9.0 | 2026-03-26 | **대규모 현행화**: 다중 초점 Situation, D-스케일러 PAD 공식, 관계 보정 수치, 포트 앤드 어댑터 구조 반영 및 완료된 사이클 업데이트. |
+| 0.9.0 | 2026-03-26 | 다중 초점 Situation, D-스케일러 PAD 공식, 관계 보정 수치, 포트 앤드 어댑터 구조 반영 |
+| 1.0.0 | 2026-03-28 | Situation→Option 기반 전환, Action 3분기, Emotion context, rel_mul 범위 한정(Admiration/Reproach만), devgui 삭제→webui 단일화, 턴 히스토리, 테스트 데이터 폴더 구조 |
