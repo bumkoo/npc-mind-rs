@@ -27,9 +27,10 @@ pub fn appraise(
 
 상황(Situation) 내의 각 포커스(Focus)를 분석하고, 성격과 관계 수치를 가중치로 적용하여 감정을 생성한다.
 
-1. **Focus 순회**: `Situation`에 포함된 `Event`, `Action`, `Object` 포커스를 각각 독립적으로 평가한다.
-2. **복합 감정 감지**: 상황 내에 `Action`과 `Event`가 동시에 존재할 경우, 이를 결합하여 **Compound 감정**(분노, 감사 등)을 자동으로 생성한다.
-3. **관계 가중치 적용**: 상대방과의 친밀도 및 신뢰도에 따라 감정 강도를 증폭하거나 억제한다.
+1. **Focus 순회**: `Situation`에 포함된 `Option<EventFocus>`, `Option<ActionFocus>`, `Option<ObjectFocus>`를 각각 독립적으로 평가한다.
+2. **복합 감정 감지**: Action과 Event가 동시에 존재할 경우, 이를 결합하여 **Compound 감정**(분노, 감사 등)을 자동으로 생성한다.
+3. **관계 가중치 적용**: Admiration/Reproach에만 `rel_mul`과 `trust_mod`를 적용한다. 나머지 감정은 rel_mul 없음.
+4. **Emotion context**: 각 감정에 Focus의 `description`이 부착되어 LLM 프롬프트에 포함된다.
 
 ---
 
@@ -40,14 +41,14 @@ pub fn appraise(
 - `1.0 + (Score * W)`: 점수가 높을수록 감정 증폭
 - `1.0 - (max(0, Score) * W)`: 점수가 높을수록 감정 억제 (예: 인내심에 의한 분노 억제)
 
-### 2. 타인 복지 감정 보정 (Individual Relationship)
-사건의 대상이 타인인 경우(`DesirabilityForOther`), 전체 관계(`rel_mul`) 외에 **해당 타인과의 개별 친밀도**가 추가로 개입한다.
-- **`affinity_mod` (친화 배율)**: `closeness.modifier(w)` 
-  - **공식**: `1.0 + closeness * 0.3`
-  - **용도**: `HappyFor`(대리기쁨)와 `Pity`(동정)에 적용된다. 친할수록 타인의 행운에 더 기뻐하고 불행에 더 슬퍼한다.
-- **`hostility_mod` (적대 배율)**: `closeness.modifier(-w)`
-  - **공식**: `1.0 - closeness * 0.3`
-  - **용도**: `Resentment`(시기)와 `Gloating`(고소함)에 적용된다. 친할수록 시기심이 억제되고, 사이가 나쁠수록 타인의 불행을 더 고소해한다.
+### 2. 타인 복지 감정 보정 (Fortune-of-others)
+사건의 대상이 타인인 경우(`DesirabilityForOther`), **해당 타인과의 개별 친밀도**가 공감/적대 배율로 개입한다.
+- **`empathy_rel_modifier()`**: `(1.0 + closeness × 0.3).max(0.0)`
+  - **용도**: `HappyFor`(대리기쁨)와 `Pity`(동정)에 적용. 친할수록 타인의 행운에 더 기뻐하고 불행에 더 슬퍼한다.
+- **`hostility_rel_modifier()`**: `(1.0 - closeness × 0.3).max(0.0)`
+  - **용도**: `Resentment`(시기)와 `Gloating`(고소함)에 적용. 친할수록 시기심이 억제되고, 사이가 나쁠수록 타인의 불행을 더 고소해한다.
+
+**주의**: `rel_mul`(emotion_intensity_multiplier)은 **Admiration/Reproach에만** 적용된다. Event 감정이나 Fortune-of-others에는 적용하지 않는다.
 
 ---
 
@@ -68,9 +69,17 @@ pub fn appraise(
 
 ### 2. appraise_action() (행동 기반)
 행위자의 행동이 얼마나 찬양/비난받을 만한지(`praiseworthiness`) 평가한다.
-- **C (성실성)**: 성실성 평균이 **도덕적/사회적 기준(`standards_amp`)**으로 작용하여, 기준이 높을수록 모든 행동 감정(`Pride`, `Shame`, `Admiration`, `Reproach`)의 강도가 강해진다.
+**3분기 구조**: `agent_id`와 `relationship`에 따라 분기한다.
+- `agent_id: None` → 자기 행동 → **Pride/Shame** (rel_mul 없음)
+- `agent_id: Some(_)`, `relationship: None` → 대화 상대 → **Admiration/Reproach** (appraise 파라미터의 relationship 사용)
+- `agent_id: Some(_)`, `relationship: Some(rel)` → 제3자 → **Admiration/Reproach** (제3자 relationship 사용)
+
+HEXACO 관여:
+- **C (성실성)**: 성실성 평균이 **도덕적/사회적 기준(`standards_amp`)**으로 작용하여, 기준이 높을수록 모든 행동 감정의 강도가 강해진다.
 - **H.modesty (겸손)**: 높을수록 자신의 선행에 대한 자부심(`Pride`)이 절제된다.
 - **A.gentleness (온화함)**: 높을수록 타인의 잘못에 대한 비난(`Reproach`) 감정이 억제된다.
+- **rel_mul**: Admiration/Reproach에만 적용. `(1.0 + closeness × 0.5).max(0.0)`.
+- **trust_mod**: Admiration/Reproach에만 적용. `1.0 + trust × 0.3`.
 
 ### 3. appraise_compound() (복합 감정)
 사건의 결과(`Event`)와 원인이 되는 행동(`Action`)이 결합될 때 발생한다.
@@ -103,3 +112,4 @@ pub fn appraise(
 |------|------|-----------|
 | 0.1.0 | 2026-03-23 | 초기 설계안 작성 (Momentum 포함) |
 | 0.2.0 | 2026-03-26 | **현행화**: 실제 구현된 Relationship 기반 시스템으로 전면 수정. appraise_with_context 삭제 및 appraise_compound 추가. |
+| 0.3.0 | 2026-03-28 | Action 3분기(agent_id+relationship), rel_mul Admiration/Reproach 한정, Emotion context, empathy/hostility_rel_modifier 명칭 통일 |
