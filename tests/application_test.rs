@@ -156,5 +156,63 @@ fn test_mind_service_errors() {
 
     let res = service.appraise(req, || {}, || vec![]);
     assert!(res.is_err());
-    // "NPC 'non_existent'를 찾을 수 없습니다." 와 같은 에러 메시지 확인 가능
+}
+
+#[test]
+fn test_dto_transformation_to_domain() {
+    let mut repo = MockRepository::new();
+    repo.add_relationship(Relationship::neutral("me", "target"));
+
+    // 1. 정상 변환 테스트
+    let input = SituationInput {
+        description: "test".to_string(),
+        event: Some(EventInput {
+            description: "ev".to_string(),
+            desirability_for_self: 0.5,
+            other: Some(EventOtherInput {
+                target_id: "target".to_string(),
+                desirability: -0.3,
+            }),
+            prospect: Some("hope_fulfilled".into()),
+        }),
+        action: None,
+        object: None,
+    };
+
+    let domain = input.to_domain(&repo, "me", "partner").expect("Transformation failed");
+
+    assert_eq!(domain.description, "test");
+    let ev = domain.event.unwrap();
+    assert_eq!(ev.description, "ev");
+    assert_eq!(ev.desirability_for_self, 0.5);
+    
+    // Prospect 매핑 확인
+    match ev.prospect {
+        Some(npc_mind::domain::emotion::Prospect::Confirmation(npc_mind::domain::emotion::ProspectResult::HopeFulfilled)) => {},
+        _ => panic!("Prospect mapping failed"),
+    }
+    
+    // 타인 운 확인
+    let other = ev.desirability_for_other.unwrap();
+    assert_eq!(other.target_id, "target");
+    assert_eq!(other.desirability, -0.3);
+
+    // 2. 관계 없음 에러 테스트
+    let bad_input = SituationInput {
+        description: "test".to_string(),
+        event: Some(EventInput {
+            description: "ev".to_string(),
+            desirability_for_self: 0.5,
+            other: Some(EventOtherInput {
+                target_id: "unknown".to_string(),
+                desirability: 0.0,
+            }),
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    };
+
+    let res = bad_input.to_domain(&repo, "me", "partner");
+    assert!(matches!(res, Err(npc_mind::application::mind_service::MindServiceError::RelationshipNotFound(_, _))));
 }

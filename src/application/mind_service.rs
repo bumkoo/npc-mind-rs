@@ -1,4 +1,4 @@
-use crate::domain::emotion::{ActionFocus, AppraisalEngine, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation, StimulusEngine, EmotionState};
+use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::Npc;
@@ -63,7 +63,7 @@ impl<R: MindRepository> MindService<R> {
         let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
             .ok_or_else(|| MindServiceError::RelationshipNotFound(req.npc_id.clone(), req.partner_id.clone()))?;
 
-        let situation = self.build_situation(&req.situation, &req.npc_id, &req.partner_id)?;
+        let situation = req.situation.to_domain(&self.repository, &req.npc_id, &req.partner_id)?;
 
         before_eval();
         let emotion_state = AppraisalEngine::appraise(npc.personality(), &situation, &relationship);
@@ -193,79 +193,5 @@ impl<R: MindRepository> MindService<R> {
         self.repository.clear_emotion_state(&req.npc_id);
 
         Ok(AfterDialogueResponse { before, after })
-    }
-
-    // ---------------------------------------------------------------------------
-    // 내부 헬퍼 로직
-    // ---------------------------------------------------------------------------
-    fn build_situation(
-        &self,
-        input: &SituationInput,
-        npc_id: &str,
-        partner_id: &str,
-    ) -> Result<Situation, MindServiceError> {
-        let event = if let Some(ref e) = input.event {
-            let other = if let Some(ref o) = e.other {
-                let rel = self.repository.get_relationship(npc_id, &o.target_id)
-                    .ok_or_else(|| MindServiceError::RelationshipNotFound(npc_id.to_string(), o.target_id.clone()))?;
-                Some(DesirabilityForOther {
-                    target_id: o.target_id.clone(),
-                    desirability: o.desirability,
-                    relationship: rel,
-                })
-            } else {
-                None
-            };
-
-            let prospect = e.prospect.as_deref().and_then(|p| match p {
-                "anticipation" => Some(Prospect::Anticipation),
-                "hope_fulfilled" => Some(Prospect::Confirmation(ProspectResult::HopeFulfilled)),
-                "hope_unfulfilled" => Some(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
-                "fear_unrealized" => Some(Prospect::Confirmation(ProspectResult::FearUnrealized)),
-                "fear_confirmed" => Some(Prospect::Confirmation(ProspectResult::FearConfirmed)),
-                _ => None,
-            });
-
-            Some(EventFocus {
-                description: e.description.clone(),
-                desirability_for_self: e.desirability_for_self,
-                desirability_for_other: other,
-                prospect,
-            })
-        } else {
-            None
-        };
-
-        let action = if let Some(ref a) = input.action {
-            let relationship = match &a.agent_id {
-                Some(agent) if agent != partner_id => {
-                    self.repository.get_relationship(npc_id, agent)
-                }
-                _ => None,
-            };
-            Some(ActionFocus {
-                description: a.description.clone(),
-                agent_id: a.agent_id.clone(),
-                praiseworthiness: a.praiseworthiness,
-                relationship,
-            })
-        } else {
-            None
-        };
-
-        let object = if let Some(ref o) = input.object {
-            let description = self.repository.get_object_description(&o.target_id)
-                .unwrap_or_else(|| o.target_id.clone());
-            Some(ObjectFocus {
-                target_id: o.target_id.clone(),
-                target_description: description,
-                appealingness: o.appealingness,
-            })
-        } else {
-            None
-        };
-
-        Situation::new(input.description.clone(), event, action, object)
-            .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))
     }
 }
