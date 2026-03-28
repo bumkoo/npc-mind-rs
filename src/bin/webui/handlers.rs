@@ -6,13 +6,83 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use npc_mind::domain::emotion::*;
-use npc_mind::domain::pad::Pad;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::presentation::korean::KoreanFormatter;
-use npc_mind::ports::GuideFormatter;
-use npc_mind::domain::guide::ActingGuide;
+use npc_mind::domain::personality::Npc;
+
+use npc_mind::application::dto::*;
+use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
 
 use crate::state::*;
+
+// ---------------------------------------------------------------------------
+// Repository Wrapper for WebUI State
+// ---------------------------------------------------------------------------
+struct AppStateRepository<'a> {
+    inner: &'a mut StateInner,
+}
+
+impl<'a> MindRepository for AppStateRepository<'a> {
+    fn get_npc(&self, id: &str) -> Option<Npc> {
+        self.inner.npcs.get(id).map(|p| p.to_npc())
+    }
+
+    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
+        self.inner.find_relationship(owner_id, target_id).map(|r| r.to_relationship())
+    }
+
+    fn get_object_description(&self, object_id: &str) -> Option<String> {
+        self.inner.objects.get(object_id).map(|o| o.description.clone())
+    }
+
+    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
+        self.inner.emotions.get(npc_id).cloned()
+    }
+
+    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
+        self.inner.emotions.insert(npc_id.to_string(), state);
+    }
+
+    fn clear_emotion_state(&mut self, npc_id: &str) {
+        self.inner.emotions.remove(npc_id);
+    }
+
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
+        let key = format!("{}:{}", owner_id, target_id);
+        // We preserve the existing key if it exists, otherwise create a new one based on order
+        let existing_key = if self.inner.relationships.contains_key(&key) {
+            key
+        } else {
+            let rev_key = format!("{}:{}", target_id, owner_id);
+            if self.inner.relationships.contains_key(&rev_key) {
+                rev_key
+            } else {
+                key
+            }
+        };
+
+        self.inner.relationships.insert(existing_key, RelationshipData {
+            owner_id: owner_id.to_string(),
+            target_id: target_id.to_string(),
+            closeness: rel.closeness().value(),
+            trust: rel.trust().value(),
+            power: rel.power().value(),
+        });
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helper Error Conversion
+// ---------------------------------------------------------------------------
+fn map_service_error(e: MindServiceError) -> (StatusCode, String) {
+    match e {
+        MindServiceError::NpcNotFound(_) | MindServiceError::RelationshipNotFound(_, _) => {
+            (StatusCode::NOT_FOUND, e.to_string())
+        }
+        MindServiceError::InvalidSituation(_) | MindServiceError::EmotionStateNotFound => {
+            (StatusCode::BAD_REQUEST, e.to_string())
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // NPC CRUD
@@ -116,309 +186,56 @@ pub async fn delete_object(
 // 파이프라인: 감정 평가
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize)]
-pub struct AppraiseRequest {
-    pub npc_id: String,
-    pub partner_id: String,
-    pub situation: SituationInput,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct SituationInput {
-    pub description: String,
-    pub event: Option<EventInput>,
-    pub action: Option<ActionInput>,
-    pub object: Option<ObjectInput>,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EventInput {
-    pub description: String,
-    pub desirability_for_self: f32,
-    pub other: Option<EventOtherInput>,
-    pub prospect: Option<String>, // "anticipation", "hope_fulfilled", etc.
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct EventOtherInput {
-    pub target_id: String,
-    pub desirability: f32,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ActionInput {
-    pub description: String,
-    pub agent_id: Option<String>, // None=자기, Some=타인
-    pub praiseworthiness: f32,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct ObjectInput {
-    pub target_id: String,
-    pub appealingness: f32,
-}
-
-#[derive(Serialize)]
-pub struct AppraiseResponse {
-    pub emotions: Vec<EmotionOutput>,
-    pub dominant: Option<EmotionOutput>,
-    pub mood: f32,
-    pub prompt: String,
-    pub trace: Vec<String>,
-}
-
-#[derive(Serialize)]
-pub struct EmotionOutput {
-    pub emotion_type: String,
-    pub intensity: f32,
-    pub context: Option<String>,
-}
-
-use crate::trace_collector::AppraisalCollector;
-
 /// POST /api/appraise — 감정 평가 실행
 pub async fn appraise(
     State(state): State<AppState>,
     Json(req): Json<AppraiseRequest>,
 ) -> Result<Json<AppraiseResponse>, (StatusCode, String)> {
-    let inner = state.inner.read().await;
-
-    // 1. NPC 조회
-    let npc_profile = inner.npcs.get(&req.npc_id)
-        .ok_or((StatusCode::NOT_FOUND, format!("NPC '{}' not found", req.npc_id)))?;
-    let npc = npc_profile.to_npc();
-
-    // 2. 대화 상대 관계 조회
-    let rel_data = inner.find_relationship(&req.npc_id, &req.partner_id)
-        .ok_or((StatusCode::NOT_FOUND,
-            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?;
-    let relationship = rel_data.to_relationship();
-
-    // 3. Situation 구성
-    let situation = build_situation(&req.situation, &inner, &req.npc_id, &req.partner_id)?;
-
-    // 4. trace 수집 + 감정 평가
+    let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
-    collector.take_entries();
-    let emotion_state = AppraisalEngine::appraise(npc.personality(), &situation, &relationship);
-    let trace = collector.take_entries();
-
-    // 5. 가이드 + 프롬프트 생성
-    let guide = ActingGuide::build(&npc, &emotion_state, Some(situation.description.clone()), Some(&relationship));
-    let formatter = KoreanFormatter::new();
-    let prompt = formatter.format_prompt(&guide);
-
-    // 6. 응답 구성 (emotion_state 이동 전에 모든 값 추출)
-    let emotions: Vec<EmotionOutput> = emotion_state.emotions().iter()
-        .map(|e| EmotionOutput {
-            emotion_type: format!("{:?}", e.emotion_type()),
-            intensity: e.intensity(),
-            context: e.context().map(|s| s.to_string()),
-        })
-        .collect();
-
-    let dominant = emotion_state.dominant().map(|e| EmotionOutput {
-        emotion_type: format!("{:?}", e.emotion_type()),
-        intensity: e.intensity(),
-        context: e.context().map(|s| s.to_string()),
-    });
-
-    let mood = emotion_state.overall_valence();
-
-    // 7. 감정 상태 저장 + 턴 기록
-    drop(inner);
-    {
-        let mut inner = state.inner.write().await;
-        inner.emotions.insert(req.npc_id.clone(), emotion_state);
-    }
-
-    let response = AppraiseResponse {
-        emotions,
-        dominant,
-        mood,
-        prompt,
-        trace,
-    };
+    
+    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+    
+    let response = service.appraise(
+        req.clone(),
+        || { collector.take_entries(); }, // before
+        || collector.take_entries(),      // after
+    ).map_err(map_service_error)?;
 
     // 턴 기록 저장
-    {
-        let mut inner = state.inner.write().await;
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord {
-            label: format!("Turn {}: appraise ({}→{})", turn_num, req.npc_id, req.partner_id),
-            action: "appraise".into(),
-            request: serde_json::to_value(&req).unwrap_or_default(),
-            response: serde_json::to_value(&response).unwrap_or_default(),
-        });
-    }
+    let turn_num = inner.turn_history.len() + 1;
+    inner.turn_history.push(TurnRecord {
+        label: format!("Turn {}: appraise ({}→{})", turn_num, req.npc_id, req.partner_id),
+        action: "appraise".into(),
+        request: serde_json::to_value(&req).unwrap_or_default(),
+        response: serde_json::to_value(&response).unwrap_or_default(),
+    });
 
     Ok(Json(response))
-}
-
-// ---------------------------------------------------------------------------
-// Situation 빌드 헬퍼
-// ---------------------------------------------------------------------------
-
-fn build_situation(
-    input: &SituationInput,
-    state: &StateInner,
-    npc_id: &str,
-    partner_id: &str,
-) -> Result<Situation, (StatusCode, String)> {
-    // Event
-    let event = if let Some(ref e) = input.event {
-        let other = if let Some(ref o) = e.other {
-            let rel_data = state.find_relationship(npc_id, &o.target_id)
-                .ok_or((StatusCode::NOT_FOUND,
-                    format!("Relationship '{}↔{}' not found", npc_id, o.target_id)))?;
-            Some(DesirabilityForOther {
-                target_id: o.target_id.clone(),
-                desirability: o.desirability,
-                relationship: rel_data.to_relationship(),
-            })
-        } else {
-            None
-        };
-
-        let prospect = e.prospect.as_deref().and_then(|p| match p {
-            "anticipation" => Some(Prospect::Anticipation),
-            "hope_fulfilled" => Some(Prospect::Confirmation(ProspectResult::HopeFulfilled)),
-            "hope_unfulfilled" => Some(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
-            "fear_unrealized" => Some(Prospect::Confirmation(ProspectResult::FearUnrealized)),
-            "fear_confirmed" => Some(Prospect::Confirmation(ProspectResult::FearConfirmed)),
-            _ => None,
-        });
-
-        Some(EventFocus {
-            description: e.description.clone(),
-            desirability_for_self: e.desirability_for_self,
-            desirability_for_other: other,
-            prospect,
-        })
-    } else {
-        None
-    };
-
-    // Action — agent_id가 대화 상대면 None, 제3자면 관계 조회
-    let action = if let Some(ref a) = input.action {
-        let relationship = match &a.agent_id {
-            Some(agent) if agent != partner_id => {
-                // 제3자 → 관계 조회
-                state.find_relationship(npc_id, agent)
-                    .map(|r| r.to_relationship())
-            }
-            _ => None, // 자기 또는 대화 상대
-        };
-        Some(ActionFocus {
-            description: a.description.clone(),
-            agent_id: a.agent_id.clone(),
-            praiseworthiness: a.praiseworthiness,
-            relationship,
-        })
-    } else {
-        None
-    };
-
-    // Object — 오브젝트 레지스트리에서 description 조회
-    let object = if let Some(ref o) = input.object {
-        let description = state.objects.get(&o.target_id)
-            .map(|obj| obj.description.clone())
-            .unwrap_or_else(|| o.target_id.clone());
-        Some(ObjectFocus {
-            target_id: o.target_id.clone(),
-            target_description: description,
-            appealingness: o.appealingness,
-        })
-    } else {
-        None
-    };
-
-    Situation::new(input.description.clone(), event, action, object)
-        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
 // ---------------------------------------------------------------------------
 // 파이프라인: PAD 자극 적용
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize)]
-pub struct StimulusRequest {
-    pub npc_id: String,
-    pub partner_id: String,
-    /// 상황 설명 (가이드 재생성 시 사용)
-    pub situation_description: Option<String>,
-    /// PAD 수동 입력
-    pub pleasure: f32,
-    pub arousal: f32,
-    pub dominance: f32,
-}
-
 /// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + 프롬프트 재생성
 pub async fn stimulus(
     State(state): State<AppState>,
     Json(req): Json<StimulusRequest>,
 ) -> Result<Json<AppraiseResponse>, (StatusCode, String)> {
-    let inner = state.inner.read().await;
+    let mut inner = state.inner.write().await;
+    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    // 1. NPC + 관계 조회
-    let npc_profile = inner.npcs.get(&req.npc_id)
-        .ok_or((StatusCode::NOT_FOUND, format!("NPC '{}' not found", req.npc_id)))?;
-    let npc = npc_profile.to_npc();
+    let response = service.apply_stimulus(req.clone()).map_err(map_service_error)?;
 
-    let rel_data = inner.find_relationship(&req.npc_id, &req.partner_id)
-        .ok_or((StatusCode::NOT_FOUND,
-            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?;
-    let relationship = rel_data.to_relationship();
-
-    // 2. 현재 감정 상태 조회
-    let current = inner.emotions.get(&req.npc_id)
-        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?
-        .clone();
-
-    // 3. PAD 자극 적용
-    let pad = Pad { pleasure: req.pleasure, arousal: req.arousal, dominance: req.dominance };
-    let new_state = StimulusEngine::apply_stimulus(npc.personality(), &current, &pad);
-
-    // 4. 가이드 + 프롬프트 재생성
-    let guide = ActingGuide::build(&npc, &new_state,
-        req.situation_description.clone(), Some(&relationship));
-    let formatter = KoreanFormatter::new();
-    let prompt = formatter.format_prompt(&guide);
-
-    // 5. 응답 구성
-    let emotions: Vec<EmotionOutput> = new_state.emotions().iter()
-        .map(|e| EmotionOutput {
-            emotion_type: format!("{:?}", e.emotion_type()),
-            intensity: e.intensity(),
-            context: e.context().map(|s| s.to_string()),
-        })
-        .collect();
-    let dominant = new_state.dominant().map(|e| EmotionOutput {
-        emotion_type: format!("{:?}", e.emotion_type()),
-        intensity: e.intensity(),
-        context: e.context().map(|s| s.to_string()),
+    // 턴 기록 저장
+    let turn_num = inner.turn_history.len() + 1;
+    inner.turn_history.push(TurnRecord {
+        label: format!("Turn {}: stimulus ({})", turn_num, req.npc_id),
+        action: "stimulus".into(),
+        request: serde_json::to_value(&req).unwrap_or_default(),
+        response: serde_json::to_value(&response).unwrap_or_default(),
     });
-    let mood = new_state.overall_valence();
-
-    // 6. 감정 상태 갱신 + 턴 기록
-    drop(inner);
-    {
-        let mut inner = state.inner.write().await;
-        inner.emotions.insert(req.npc_id.clone(), new_state);
-    }
-
-    let response = AppraiseResponse { emotions, dominant, mood, prompt, trace: vec![] };
-
-    {
-        let mut inner = state.inner.write().await;
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord {
-            label: format!("Turn {}: stimulus ({})", turn_num, req.npc_id),
-            action: "stimulus".into(),
-            request: serde_json::to_value(&req).unwrap_or_default(),
-            response: serde_json::to_value(&response).unwrap_or_default(),
-        });
-    }
 
     Ok(Json(response))
 }
@@ -427,71 +244,21 @@ pub async fn stimulus(
 // 파이프라인: 가이드 재생성 (현재 감정 상태 기준)
 // ---------------------------------------------------------------------------
 
-#[derive(Serialize, Deserialize)]
-pub struct GuideRequest {
-    pub npc_id: String,
-    pub partner_id: String,
-    pub situation_description: Option<String>,
-}
-
 /// POST /api/guide — 현재 감정 상태에서 가이드 재생성
 pub async fn guide(
     State(state): State<AppState>,
     Json(req): Json<GuideRequest>,
 ) -> Result<Json<GuideResponse>, (StatusCode, String)> {
-    let inner = state.inner.read().await;
+    let mut inner = state.inner.write().await;
+    let service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    let npc_profile = inner.npcs.get(&req.npc_id)
-        .ok_or((StatusCode::NOT_FOUND, format!("NPC '{}' not found", req.npc_id)))?;
-    let npc = npc_profile.to_npc();
-
-    let rel_data = inner.find_relationship(&req.npc_id, &req.partner_id)
-        .ok_or((StatusCode::NOT_FOUND,
-            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?;
-    let relationship = rel_data.to_relationship();
-
-    let emotion_state = inner.emotions.get(&req.npc_id)
-        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?;
-
-    let guide = ActingGuide::build(&npc, emotion_state,
-        req.situation_description.clone(), Some(&relationship));
-    let formatter = KoreanFormatter::new();
-    let prompt = formatter.format_prompt(&guide);
-    let json = formatter.format_json(&guide).unwrap_or_default();
-
-    Ok(Json(GuideResponse { prompt, json }))
-}
-
-#[derive(Serialize)]
-pub struct GuideResponse {
-    pub prompt: String,
-    pub json: String,
+    let response = service.generate_guide(req).map_err(map_service_error)?;
+    Ok(Json(response))
 }
 
 // ---------------------------------------------------------------------------
 // 파이프라인: 대화 종료 → 관계 갱신
 // ---------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize)]
-pub struct AfterDialogueRequest {
-    pub npc_id: String,
-    pub partner_id: String,
-    /// 대화 중 있었던 행동의 도덕성 (None이면 행동 없음)
-    pub praiseworthiness: Option<f32>,
-}
-
-#[derive(Serialize)]
-pub struct AfterDialogueResponse {
-    pub before: RelationshipValues,
-    pub after: RelationshipValues,
-}
-
-#[derive(Serialize)]
-pub struct RelationshipValues {
-    pub closeness: f32,
-    pub trust: f32,
-    pub power: f32,
-}
 
 /// POST /api/after-dialogue — 대화 종료 → 관계 갱신
 pub async fn after_dialogue(
@@ -499,51 +266,9 @@ pub async fn after_dialogue(
     Json(req): Json<AfterDialogueRequest>,
 ) -> Result<Json<AfterDialogueResponse>, (StatusCode, String)> {
     let mut inner = state.inner.write().await;
+    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    // 1. 현재 관계 조회
-    let rel_key = format!("{}:{}", req.npc_id, req.partner_id);
-    let rel_data = inner.relationships.get(&rel_key)
-        .or_else(|| inner.relationships.get(&format!("{}:{}", req.partner_id, req.npc_id)))
-        .ok_or((StatusCode::NOT_FOUND,
-            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?
-        .clone();
-    let relationship = rel_data.to_relationship();
-
-    // 2. 현재 감정 상태
-    let emotion_state = inner.emotions.get(&req.npc_id)
-        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?;
-
-    // 3. before 값
-    let before = RelationshipValues {
-        closeness: relationship.closeness().value(),
-        trust: relationship.trust().value(),
-        power: relationship.power().value(),
-    };
-
-    // 4. 관계 갱신
-    let new_rel = relationship.after_dialogue(emotion_state, req.praiseworthiness);
-
-    // 5. after 값
-    let after = RelationshipValues {
-        closeness: new_rel.closeness().value(),
-        trust: new_rel.trust().value(),
-        power: new_rel.power().value(),
-    };
-
-    // 6. 레지스트리 업데이트
-    let key = rel_data.key();
-    inner.relationships.insert(key, RelationshipData {
-        owner_id: rel_data.owner_id.clone(),
-        target_id: rel_data.target_id.clone(),
-        closeness: new_rel.closeness().value(),
-        trust: new_rel.trust().value(),
-        power: new_rel.power().value(),
-    });
-
-    // 7. 감정 상태 초기화 (대화 종료)
-    inner.emotions.remove(&req.npc_id);
-
-    let response = AfterDialogueResponse { before, after };
+    let response = service.after_dialogue(req.clone()).map_err(map_service_error)?;
 
     // 턴 기록
     let turn_num = inner.turn_history.len() + 1;

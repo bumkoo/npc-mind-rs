@@ -1,0 +1,160 @@
+//! Application Service (MindService) 통합 테스트
+
+mod common;
+
+use std::collections::HashMap;
+use npc_mind::application::dto::*;
+use npc_mind::application::mind_service::{MindRepository, MindService};
+use npc_mind::domain::emotion::EmotionState;
+use npc_mind::domain::personality::Npc;
+use npc_mind::domain::relationship::Relationship;
+
+use common::*;
+
+/// 테스트용 인메모리 저장소
+struct MockRepository {
+    npcs: HashMap<String, Npc>,
+    relationships: HashMap<String, Relationship>,
+    emotions: HashMap<String, EmotionState>,
+}
+
+impl MockRepository {
+    fn new() -> Self {
+        Self {
+            npcs: HashMap::new(),
+            relationships: HashMap::new(),
+            emotions: HashMap::new(),
+        }
+    }
+    
+    fn add_npc(&mut self, npc: Npc) {
+        self.npcs.insert(npc.id().0.clone(), npc);
+    }
+
+    fn add_relationship(&mut self, rel: Relationship) {
+        let key = format!("{}:{}", rel.owner_id(), rel.target_id());
+        self.relationships.insert(key, rel);
+    }
+}
+
+impl MindRepository for MockRepository {
+    fn get_npc(&self, id: &str) -> Option<Npc> {
+        self.npcs.get(id).cloned()
+    }
+
+    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
+        let key = format!("{}:{}", owner_id, target_id);
+        self.relationships.get(&key).cloned()
+            .or_else(|| {
+                // 반대 방향도 시뮬레이션
+                let rev_key = format!("{}:{}", target_id, owner_id);
+                self.relationships.get(&rev_key).cloned()
+            })
+    }
+
+    fn get_object_description(&self, _object_id: &str) -> Option<String> {
+        None
+    }
+
+    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
+        self.emotions.get(npc_id).cloned()
+    }
+
+    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
+        self.emotions.insert(npc_id.to_string(), state);
+    }
+
+    fn clear_emotion_state(&mut self, npc_id: &str) {
+        self.emotions.remove(npc_id);
+    }
+
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
+        let key = format!("{}:{}", owner_id, target_id);
+        self.relationships.insert(key, rel);
+    }
+}
+
+#[test]
+fn test_mind_service_full_flow() {
+    let mut repo = MockRepository::new();
+    let mu_baek = make_무백();
+    let gyo_ryong = make_교룡();
+    
+    repo.add_npc(mu_baek.clone());
+    repo.add_npc(gyo_ryong.clone());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+    
+    let mut service = MindService::new(repo);
+
+    // 1. 상황 평가 (Appraise)
+    // 무백이 교룡의 정당한 행동(칭찬할 만한 일)을 목격함
+    let req = AppraiseRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation: SituationInput {
+            description: "교룡이 불의를 보고 참지 못하고 도와주는 장면".to_string(),
+            event: None,
+            action: Some(ActionInput {
+                description: "백성을 도와줌".to_string(),
+                agent_id: Some("gyo_ryong".to_string()),
+                praiseworthiness: 0.7,
+            }),
+            object: None,
+        },
+    };
+
+    let res = service.appraise(req, || {}, || vec![]).expect("Appraisal failed");
+    
+    // 무백은 정의로우므로 Admiration(감탄)이 발생해야 함
+    assert!(res.emotions.iter().any(|e| e.emotion_type == "Admiration"));
+    assert!(res.mood > 0.0);
+    assert!(!res.prompt.is_empty());
+
+    // 2. 자극 적용 (Stimulus)
+    // 교룡이 겸손하게 대답함 (Pleasure 자극)
+    let stim_req = StimulusRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation_description: Some("교룡의 겸손한 태도".to_string()),
+        pleasure: 0.5,
+        arousal: 0.2,
+        dominance: 0.0,
+    };
+
+    let res2 = service.apply_stimulus(stim_req).expect("Stimulus failed");
+    assert!(res2.mood > res.mood); // 기분이 더 좋아져야 함
+
+    // 3. 관계 갱신 (After Dialogue)
+    let after_req = AfterDialogueRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        praiseworthiness: Some(0.5), // 좋은 행동으로 마무리
+    };
+
+    let after_res = service.after_dialogue(after_req).expect("After dialogue failed");
+    
+    // 관계 점수가 상승했는지 확인 (closeness가 0.0에서 시작했으므로 양수여야 함)
+    assert!(after_res.after.closeness > after_res.before.closeness);
+    assert!(after_res.after.trust > after_res.before.trust);
+}
+
+#[test]
+fn test_mind_service_errors() {
+    let repo = MockRepository::new();
+    let mut service = MindService::new(repo);
+
+    let req = AppraiseRequest {
+        npc_id: "non_existent".to_string(),
+        partner_id: "any".to_string(),
+        situation: SituationInput {
+            description: "test".to_string(),
+            event: None,
+            action: None,
+            object: None,
+        },
+    };
+
+    let res = service.appraise(req, || {}, || vec![]);
+    assert!(res.is_err());
+    // "NPC 'non_existent'를 찾을 수 없습니다." 와 같은 에러 메시지 확인 가능
+}
