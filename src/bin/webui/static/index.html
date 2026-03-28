@@ -10,73 +10,140 @@
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 :root {
-  --bg: #1a1a2e; --bg2: #16213e; --bg3: #0f3460; --bg4: #1e2a4a;
-  --fg: #e0e0e0; --fg2: #aaa; --fg3: #777;
-  --accent: #4fc3f7; --accent2: #81c784; --warn: #ffb74d; --err: #ef5350;
-  --border: #333; --radius: 6px;
+  --bg: #0f1117; --bg2: #1a1d28; --bg3: #252836; --bg4: #2d3040;
+  --fg: #e0e0e0; --fg2: #9a9cb0; --fg3: #666880;
+  --accent: #6c9cff; --accent2: #4ecdc4; --warn: #ffb74d; --err: #ff6b6b;
+  --green: #66bb6a; --purple: #b388ff;
+  --border: #2a2d3a; --radius: 6px;
+  --sidebar-w: 240px; --center-w: 360px;
 }
-body { font-family: 'Segoe UI', -apple-system, sans-serif; background: var(--bg); color: var(--fg); font-size: 13px; }
-/* Layout */
-.header { padding:10px 20px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
-.header h1 { font-size:16px; font-weight:500; }
-.header .status { font-size:12px; color:var(--fg2); }
-.header .status.ok { color:var(--accent2); }
-.main { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--border); min-height:calc(100vh - 42px); }
-.panel { background:var(--bg); padding:12px; overflow-y:auto; max-height:calc(100vh - 42px); }
-.panel h2 { font-size:14px; font-weight:500; color:var(--accent); margin-bottom:10px; border-bottom:1px solid var(--border); padding-bottom:6px; }
-.panel h3 { font-size:13px; font-weight:500; color:var(--fg2); margin:10px 0 6px; }
-
-/* Form elements */
-label { display:block; font-size:12px; color:var(--fg2); margin:4px 0 2px; }
-input[type=text], input[type=number], textarea, select {
-  width:100%; padding:4px 8px; background:var(--bg2); border:1px solid var(--border);
-  border-radius:var(--radius); color:var(--fg); font-size:12px; outline:none;
-}
-input[type=text]:focus, textarea:focus, select:focus { border-color:var(--accent); }
-textarea { resize:vertical; min-height:40px; font-family:inherit; }
-input[type=range] { width:100%; accent-color:var(--accent); }
+body { font-family: 'Segoe UI', -apple-system, sans-serif; background:var(--bg); color:var(--fg); font-size:13px; overflow:hidden; height:100vh; }
 </style>
 <style>
-/* Slider row */
-.slider-row { display:flex; align-items:center; gap:6px; margin:2px 0; }
-.slider-row label { width:60px; flex-shrink:0; text-align:right; margin:0; font-size:11px; }
-.slider-row input[type=range] { flex:1; }
-.slider-row .val { width:36px; text-align:right; font-family:monospace; font-size:11px; color:var(--accent); }
+/* Layout */
+.app { display:flex; flex-direction:column; height:100vh; }
+.header { padding:8px 16px; background:var(--bg2); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.header h1 { font-size:15px; font-weight:600; color:var(--accent); }
+.header .status { font-size:11px; color:var(--fg2); }
+.header .status.ok::before { content:'● '; color:var(--accent2); }
+.header .actions { margin-left:auto; display:flex; gap:6px; align-items:center; }
+.main { display:flex; flex:1; overflow:hidden; }
 
+/* Sidebar */
+.sidebar { width:var(--sidebar-w); border-right:1px solid var(--border); background:var(--bg2); display:flex; flex-direction:column; overflow-y:auto; flex-shrink:0; }
+.sidebar-section { border-bottom:1px solid var(--border); }
+.sidebar-header { padding:8px 12px; font-size:11px; font-weight:600; color:var(--fg2); text-transform:uppercase; letter-spacing:0.5px; display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
+.sidebar-header:hover { background:var(--bg3); }
+.sidebar-header .count { background:var(--bg4); padding:1px 6px; border-radius:10px; font-size:10px; }
+.sidebar-body { padding:4px 8px 8px; }
+
+/* Sidebar items */
+.item-card { padding:6px 8px; border-radius:4px; cursor:pointer; margin:2px 0; display:flex; align-items:center; justify-content:space-between; }
+.item-card:hover { background:var(--bg3); }
+.item-card.selected { background:var(--bg4); border-left:2px solid var(--accent); padding-left:6px; }
+.item-card .name { font-size:12px; font-weight:500; }
+.item-card .sub { font-size:10px; color:var(--fg3); }
+.item-card .edit-btn { opacity:0; font-size:10px; color:var(--fg3); cursor:pointer; padding:2px 4px; }
+.item-card:hover .edit-btn { opacity:1; }
+.item-card .edit-btn:hover { color:var(--accent); }
+.add-btn { width:100%; padding:4px; border:1px dashed var(--border); border-radius:4px; background:none; color:var(--fg3); cursor:pointer; font-size:11px; margin-top:4px; }
+.add-btn:hover { border-color:var(--accent); color:var(--accent); }
+</style>
+<style>
+/* Center panel */
+.center { width:var(--center-w); border-right:1px solid var(--border); overflow-y:auto; flex-shrink:0; padding:12px; }
+.center h2 { font-size:13px; font-weight:600; color:var(--accent); margin-bottom:8px; }
+.pair-select { display:flex; gap:6px; margin-bottom:8px; }
+.pair-select > div { flex:1; }
+
+/* Right panel */
+.right { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+.result-tabs { display:flex; border-bottom:1px solid var(--border); flex-shrink:0; background:var(--bg2); }
+.result-tab { padding:8px 16px; cursor:pointer; font-size:12px; color:var(--fg3); border-bottom:2px solid transparent; }
+.result-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+.result-tab:hover { color:var(--fg); }
+.result-content { flex:1; overflow-y:auto; padding:12px; }
+
+/* Form elements */
+label { display:block; font-size:11px; color:var(--fg2); margin:4px 0 2px; }
+input[type=text], input[type=number], textarea, select {
+  width:100%; padding:5px 8px; background:var(--bg3); border:1px solid var(--border);
+  border-radius:var(--radius); color:var(--fg); font-size:12px; outline:none;
+}
+input:focus, textarea:focus, select:focus { border-color:var(--accent); }
+textarea { resize:vertical; min-height:36px; font-family:inherit; }
+
+/* Slider */
+.slider-row { display:flex; align-items:center; gap:6px; margin:3px 0; }
+.slider-row label { width:52px; flex-shrink:0; text-align:right; margin:0; font-size:11px; }
+.slider-row input[type=range] { flex:1; accent-color:var(--accent); height:16px; }
+.slider-row .val { width:36px; text-align:right; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--accent); }
+</style>
+<style>
 /* Buttons */
-.btn { padding:4px 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg2); color:var(--fg); cursor:pointer; font-size:12px; }
-.btn:hover { background:var(--bg3); }
-.btn.primary { background:var(--bg3); border-color:var(--accent); color:var(--accent); }
+.btn { padding:5px 12px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg3); color:var(--fg); cursor:pointer; font-size:12px; }
+.btn:hover { background:var(--bg4); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:500; }
+.btn.primary:hover { background:#5a8be6; }
 .btn.danger { border-color:var(--err); color:var(--err); }
-.btn.small { padding:2px 8px; font-size:11px; }
-.btn-row { display:flex; gap:6px; margin:6px 0; flex-wrap:wrap; }
+.btn.danger:hover { background:rgba(255,107,107,0.1); }
+.btn.small { padding:3px 8px; font-size:11px; }
+.btn-row { display:flex; gap:6px; margin:6px 0; }
+.btn-full { width:100%; }
 
-/* Cards */
-.card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:8px; margin:6px 0; }
-.card .card-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
-.card .card-title { font-weight:500; color:var(--fg); font-size:12px; }
+/* Section card */
+.section { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:8px; }
+.section-header { padding:6px 10px; display:flex; align-items:center; gap:6px; cursor:pointer; }
+.section-header input[type=checkbox] { accent-color:var(--accent); }
+.section-header .title { font-size:12px; font-weight:500; color:var(--fg2); }
+.section-body { padding:4px 10px 10px; }
 
-/* Results */
-.result-box { background:var(--bg4); border:1px solid var(--border); border-radius:var(--radius); padding:10px; margin:6px 0; font-family:monospace; font-size:11px; white-space:pre-wrap; max-height:300px; overflow-y:auto; line-height:1.5; }
-.prompt-box { background:#1a2a1a; border-color:#2a4a2a; }
-.trace-box { background:#2a1a1a; border-color:#4a2a2a; color:#ccc; }
+/* Emotion bars */
+.emotion-row { display:flex; align-items:center; gap:8px; margin:4px 0; }
+.emotion-row .etype { width:90px; font-size:11px; color:var(--fg); text-align:right; flex-shrink:0; }
+.emotion-row .bar-bg { flex:1; height:18px; background:var(--bg3); border-radius:3px; overflow:hidden; position:relative; }
+.emotion-row .bar-fill { height:100%; border-radius:3px; transition:width 0.3s; }
+.emotion-row .intensity { width:40px; font-size:11px; font-family:monospace; text-align:right; color:var(--fg2); }
+.emotion-row .ctx { font-size:10px; color:var(--fg3); max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+<style>
+/* Prompt & trace boxes */
+.prompt-box { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:12px; font-size:12px; white-space:pre-wrap; line-height:1.6; max-height:100%; overflow-y:auto; }
+.prompt-box .label { font-size:10px; color:var(--fg3); display:block; margin-bottom:4px; }
+.trace-box { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius); padding:10px; font-family:monospace; font-size:11px; white-space:pre-wrap; color:var(--fg2); line-height:1.5; }
 
-/* Tabs */
-.tabs { display:flex; border-bottom:1px solid var(--border); margin-bottom:8px; }
-.tab { padding:6px 14px; cursor:pointer; border-bottom:2px solid transparent; color:var(--fg2); font-size:12px; }
-.tab.active { color:var(--accent); border-bottom-color:var(--accent); }
-.tab:hover { color:var(--fg); }
+/* History */
+.history-item { padding:8px 10px; border-bottom:1px solid var(--border); cursor:pointer; }
+.history-item:hover { background:var(--bg3); }
+.history-item .hlabel { font-size:12px; font-weight:500; }
+.history-item .haction { font-size:10px; color:var(--fg3); }
 
-/* Bottom area */
-.bottom { grid-column:1/-1; display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--border); }
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:100; }
+.modal { background:var(--bg2); border:1px solid var(--border); border-radius:8px; width:560px; max-height:85vh; overflow-y:auto; padding:16px; }
+.modal h2 { font-size:14px; font-weight:600; color:var(--accent); margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; }
+.modal .close-btn { background:none; border:none; color:var(--fg3); cursor:pointer; font-size:16px; }
+.modal .close-btn:hover { color:var(--fg); }
+.modal .dim-group { margin:8px 0; }
+.modal .dim-title { font-size:12px; font-weight:500; color:var(--accent2); margin:4px 0; display:flex; justify-content:space-between; }
+
+/* Dominant emotion card */
+.dominant-card { background:linear-gradient(135deg, rgba(108,156,255,0.1), rgba(78,205,196,0.1)); border:1px solid var(--accent); border-radius:var(--radius); padding:10px 12px; margin-bottom:10px; }
+.dominant-card .d-type { font-size:16px; font-weight:600; color:var(--accent); }
+.dominant-card .d-intensity { font-size:12px; color:var(--fg2); }
+.dominant-card .d-ctx { font-size:11px; color:var(--fg3); margin-top:2px; }
+.mood-bar { font-size:11px; color:var(--fg2); margin:8px 0; }
+
+/* Empty state */
+.empty { color:var(--fg3); text-align:center; padding:40px 20px; font-size:12px; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useEffect, useCallback } = React;
+const { useState, useEffect, useCallback, useRef } = React;
 
-// --- API 헬퍼 ---
+// --- API ---
 const api = {
   get: (url) => fetch(url).then(r => r.json()),
   post: (url, data) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }),
@@ -84,180 +151,190 @@ const api = {
   postJson: (url, data) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(r => r.json()),
 };
 
-// --- 슬라이더 행 ---
+// --- Helpers ---
+const emotionColor = (type) => {
+  const colors = {
+    Joy:'#66bb6a', Distress:'#ef5350', Hope:'#4ecdc4', Fear:'#ff8a65',
+    Satisfaction:'#aed581', Disappointment:'#e57373', Relief:'#81d4fa', FearsConfirmed:'#ff7043',
+    HappyFor:'#a5d6a7', Resentment:'#ef9a9a', Gloating:'#ce93d8', Pity:'#90caf9',
+    Pride:'#ffd54f', Shame:'#bcaaa4', Admiration:'#80cbc4', Reproach:'#f48fb1',
+    Love:'#f06292', Hate:'#b71c1c', Anger:'#d32f2f', Gratitude:'#66bb6a',
+    Gratification:'#ffb74d', Remorse:'#9e9e9e',
+  };
+  return colors[type] || 'var(--accent)';
+};
+// --- Slider ---
 function Slider({label, value, onChange, min=-1, max=1, step=0.05}) {
   return (
     <div className="slider-row">
       <label>{label}</label>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(parseFloat(e.target.value))} />
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))} />
       <span className="val">{value.toFixed(2)}</span>
     </div>
   );
 }
-// --- NPC 패널 ---
-function NpcPanel({npcs, selectedNpc, onSelect, onRefresh}) {
-  const emptyNpc = {id:'',name:'',description:'',sincerity:0,fairness:0,greed_avoidance:0,modesty:0,fearfulness:0,anxiety:0,dependence:0,sentimentality:0,social_self_esteem:0,social_boldness:0,sociability:0,liveliness:0,forgiveness:0,gentleness:0,flexibility:0,patience:0,organization:0,diligence:0,perfectionism:0,prudence:0,aesthetic_appreciation:0,inquisitiveness:0,creativity:0,unconventionality:0};
-  const [npc, setNpc] = useState(emptyNpc);
-  const [expanded, setExpanded] = useState(null); // 열린 차원
 
-  useEffect(() => { if(selectedNpc) setNpc({...selectedNpc}); }, [selectedNpc]);
-
-  const set = (k,v) => setNpc(p => ({...p, [k]:v}));
-  const save = async () => {
-    if(!npc.id) return alert('ID 필수');
-    await api.post('/api/npcs', npc);
-    onRefresh();
-  };
-  const del = async () => {
-    if(!npc.id) return;
-    await api.del(`/api/npcs/${npc.id}`);
-    setNpc(emptyNpc);
-    onRefresh();
-  };
+// --- NPC Edit Modal ---
+function NpcModal({npc, onSave, onDelete, onClose}) {
+  const empty = {id:'',name:'',description:'',sincerity:0,fairness:0,greed_avoidance:0,modesty:0,fearfulness:0,anxiety:0,dependence:0,sentimentality:0,social_self_esteem:0,social_boldness:0,sociability:0,liveliness:0,forgiveness:0,gentleness:0,flexibility:0,patience:0,organization:0,diligence:0,perfectionism:0,prudence:0,aesthetic_appreciation:0,inquisitiveness:0,creativity:0,unconventionality:0};
+  const [data, setData] = useState(npc || empty);
+  useEffect(() => { setData(npc || empty); }, [npc]);
+  const set = (k,v) => setData(p => ({...p,[k]:v}));
 
   const dims = [
-    {key:'H', name:'정직-겸손성', facets:[['sincerity','진실성'],['fairness','공정성'],['greed_avoidance','탐욕회피'],['modesty','겸손']]},
-    {key:'E', name:'정서성', facets:[['fearfulness','공포성'],['anxiety','불안'],['dependence','의존성'],['sentimentality','감상성']]},
-    {key:'X', name:'외향성', facets:[['social_self_esteem','자존감'],['social_boldness','대담성'],['sociability','사교성'],['liveliness','활발성']]},
-    {key:'A', name:'원만성', facets:[['forgiveness','용서'],['gentleness','온화함'],['flexibility','유연성'],['patience','인내심']]},
-    {key:'C', name:'성실성', facets:[['organization','조직성'],['diligence','근면성'],['perfectionism','완벽주의'],['prudence','신중함']]},
-    {key:'O', name:'경험개방성', facets:[['aesthetic_appreciation','미적감상'],['inquisitiveness','탐구심'],['creativity','창의성'],['unconventionality','비관습성']]},
+    {key:'H', name:'정직-겸손성', color:'var(--accent2)', facets:[['sincerity','진실성'],['fairness','공정성'],['greed_avoidance','탐욕회피'],['modesty','겸손']]},
+    {key:'E', name:'정서성', color:'var(--warn)', facets:[['fearfulness','공포성'],['anxiety','불안'],['dependence','의존성'],['sentimentality','감상성']]},
+    {key:'X', name:'외향성', color:'var(--accent)', facets:[['social_self_esteem','자존감'],['social_boldness','대담성'],['sociability','사교성'],['liveliness','활발성']]},
+    {key:'A', name:'원만성', color:'var(--green)', facets:[['forgiveness','용서'],['gentleness','온화함'],['flexibility','유연성'],['patience','인내심']]},
+    {key:'C', name:'성실성', color:'var(--purple)', facets:[['organization','조직성'],['diligence','근면성'],['perfectionism','완벽주의'],['prudence','신중함']]},
+    {key:'O', name:'경험개방성', color:'#f06292', facets:[['aesthetic_appreciation','미적감상'],['inquisitiveness','탐구심'],['creativity','창의성'],['unconventionality','비관습성']]},
   ];
   return (
-    <div className="panel">
-      <h2>NPC 프로필</h2>
-      <div className="btn-row">
-        {npcs.map(n => (
-          <button key={n.id} className={`btn small ${selectedNpc?.id===n.id?'primary':''}`} onClick={()=>onSelect(n)}>{n.name||n.id}</button>
-        ))}
-        <button className="btn small" onClick={()=>{setNpc(emptyNpc);onSelect(null)}}>+ 새 NPC</button>
-      </div>
-      <div className="card">
-        <label>ID</label><input type="text" value={npc.id} onChange={e=>set('id',e.target.value)} />
-        <label>이름</label><input type="text" value={npc.name} onChange={e=>set('name',e.target.value)} />
-        <label>설명</label><textarea value={npc.description} onChange={e=>set('description',e.target.value)} rows={2} />
-      </div>
-      {dims.map(dim => (
-        <div key={dim.key} className="card">
-          <div className="card-header" style={{cursor:'pointer'}} onClick={()=>setExpanded(expanded===dim.key?null:dim.key)}>
-            <span className="card-title">{dim.key}: {dim.name} {(() => { const avg = dim.facets.reduce((s,f)=>s+npc[f[0]],0)/4; return <span style={{color:'var(--accent)',marginLeft:8}}>{avg.toFixed(2)}</span>; })()}</span>
-            <span style={{color:'var(--fg3)'}}>{expanded===dim.key?'▼':'▶'}</span>
-          </div>
-          {expanded===dim.key && dim.facets.map(([k,label]) => (
-            <Slider key={k} label={label} value={npc[k]} onChange={v=>set(k,v)} />
-          ))}
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e=>e.stopPropagation()}>
+        <h2>{npc ? `NPC 편집: ${npc.name||npc.id}` : '새 NPC 생성'}<button className="close-btn" onClick={onClose}>✕</button></h2>
+        <div style={{display:'flex',gap:8}}>
+          <div style={{flex:1}}><label>ID</label><input type="text" value={data.id} onChange={e=>set('id',e.target.value)} placeholder="mu_baek" /></div>
+          <div style={{flex:1}}><label>이름</label><input type="text" value={data.name} onChange={e=>set('name',e.target.value)} placeholder="무백" /></div>
         </div>
-      ))}
-      <div className="btn-row">
-        <button className="btn primary" onClick={save}>저장</button>
-        {npc.id && <button className="btn danger" onClick={del}>삭제</button>}
+        <label>설명</label><textarea value={data.description} onChange={e=>set('description',e.target.value)} rows={2} placeholder="캐릭터 설명..." />
+        {dims.map(dim => {
+          const avg = dim.facets.reduce((s,f)=>s+data[f[0]],0)/4;
+          return (
+            <div key={dim.key} className="dim-group">
+              <div className="dim-title"><span style={{color:dim.color}}>{dim.key}: {dim.name}</span><span style={{color:dim.color}}>{avg.toFixed(2)}</span></div>
+              {dim.facets.map(([k,label]) => <Slider key={k} label={label} value={data[k]} onChange={v=>set(k,v)} />)}
+            </div>
+          );
+        })}
+        <div className="btn-row" style={{marginTop:12}}>
+          <button className="btn primary" onClick={()=>{if(!data.id)return alert('ID 필수');onSave(data)}}>저장</button>
+          {npc && <button className="btn danger" onClick={()=>onDelete(data.id)}>삭제</button>}
+          <button className="btn" onClick={onClose}>취소</button>
+        </div>
       </div>
     </div>
   );
 }
-// --- 관계 패널 ---
-function RelPanel({rels, npcs, onRefresh}) {
-  const [rel, setRel] = useState({owner_id:'',target_id:'',closeness:0,trust:0,power:0});
-  const [selected, setSelected] = useState(null);
-  const set = (k,v) => setRel(p=>({...p,[k]:v}));
+// --- Relationship Edit Modal ---
+function RelModal({rel, npcIds, onSave, onDelete, onClose}) {
+  const [data, setData] = useState(rel || {owner_id:'',target_id:'',closeness:0,trust:0,power:0});
+  useEffect(() => { setData(rel || {owner_id:'',target_id:'',closeness:0,trust:0,power:0}); }, [rel]);
+  const set = (k,v) => setData(p=>({...p,[k]:v}));
+  const allIds = ['player', ...npcIds];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{width:400}} onClick={e=>e.stopPropagation()}>
+        <h2>{rel ? '관계 편집' : '새 관계'}<button className="close-btn" onClick={onClose}>✕</button></h2>
+        <div style={{display:'flex',gap:8}}>
+          <div style={{flex:1}}>
+            <label>소유자</label>
+            <select value={data.owner_id} onChange={e=>set('owner_id',e.target.value)}>
+              <option value="">선택...</option>
+              {allIds.map(id=><option key={id} value={id}>{id}</option>)}
+            </select>
+          </div>
+          <div style={{flex:1}}>
+            <label>대상</label>
+            <select value={data.target_id} onChange={e=>set('target_id',e.target.value)}>
+              <option value="">선택...</option>
+              {allIds.map(id=><option key={id} value={id}>{id}</option>)}
+            </select>
+          </div>
+        </div>
+        <Slider label="친밀도" value={data.closeness} onChange={v=>set('closeness',v)} />
+        <Slider label="신뢰도" value={data.trust} onChange={v=>set('trust',v)} />
+        <Slider label="상하" value={data.power} onChange={v=>set('power',v)} />
+        <div className="btn-row" style={{marginTop:12}}>
+          <button className="btn primary" onClick={()=>{if(!data.owner_id||!data.target_id)return alert('양쪽 ID 필수');onSave(data)}}>저장</button>
+          {rel && <button className="btn danger" onClick={()=>onDelete(rel.owner_id,rel.target_id)}>삭제</button>}
+          <button className="btn" onClick={onClose}>취소</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+// --- Object Edit Modal ---
+function ObjModal({obj, onSave, onDelete, onClose}) {
+  const [data, setData] = useState(obj || {id:'',description:'',category:null});
+  useEffect(() => { setData(obj || {id:'',description:'',category:null}); }, [obj]);
+  const set = (k,v) => setData(p=>({...p,[k]:v}));
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" style={{width:400}} onClick={e=>e.stopPropagation()}>
+        <h2>{obj ? '오브젝트 편집' : '새 오브젝트'}<button className="close-btn" onClick={onClose}>✕</button></h2>
+        <label>ID</label><input type="text" value={data.id} onChange={e=>set('id',e.target.value)} />
+        <label>설명</label><textarea value={data.description} onChange={e=>set('description',e.target.value)} rows={2} />
+        <label>카테고리</label><input type="text" value={data.category||''} onChange={e=>set('category',e.target.value||null)} placeholder="사물/장소/NPC특성..." />
+        <div className="btn-row" style={{marginTop:12}}>
+          <button className="btn primary" onClick={()=>{if(!data.id)return alert('ID 필수');onSave(data)}}>저장</button>
+          {obj && <button className="btn danger" onClick={()=>onDelete(data.id)}>삭제</button>}
+          <button className="btn" onClick={onClose}>취소</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  const save = async () => {
-    if(!rel.owner_id||!rel.target_id) return alert('양쪽 ID 필수');
-    await api.post('/api/relationships', rel);
-    onRefresh();
-  };
-  const del = async () => {
-    if(!rel.owner_id||!rel.target_id) return;
-    await api.del(`/api/relationships/${rel.owner_id}/${rel.target_id}`);
-    setRel({owner_id:'',target_id:'',closeness:0,trust:0,power:0});
-    setSelected(null);
-    onRefresh();
-  };
-
-  const npcIds = ['player', ...npcs.map(n=>n.id)];
+// --- Sidebar ---
+function Sidebar({npcs, rels, objects, selectedNpcId, onSelectNpc, onEditNpc, onEditRel, onEditObj, onNewNpc, onNewRel, onNewObj}) {
+  const [openSections, setOpenSections] = useState({npc:true, rel:true, obj:true});
+  const toggle = (k) => setOpenSections(p=>({...p,[k]:!p[k]}));
 
   return (
-    <div className="panel">
-      <h2>관계 관리</h2>
-      <div className="btn-row" style={{flexWrap:'wrap'}}>
-        {rels.map(r => (
-          <button key={r.owner_id+':'+r.target_id} className={`btn small ${selected===r.owner_id+':'+r.target_id?'primary':''}`}
-            onClick={()=>{setRel({...r});setSelected(r.owner_id+':'+r.target_id)}}>
-            {r.owner_id}↔{r.target_id}
-          </button>
-        ))}
-        <button className="btn small" onClick={()=>{setRel({owner_id:'',target_id:'',closeness:0,trust:0,power:0});setSelected(null)}}>+ 새 관계</button>
+    <div className="sidebar">
+      {/* NPC */}
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={()=>toggle('npc')}>
+          <span>{openSections.npc?'▾':'▸'} NPC</span><span className="count">{npcs.length}</span>
+        </div>
+        {openSections.npc && <div className="sidebar-body">
+          {npcs.map(n => (
+            <div key={n.id} className={`item-card ${selectedNpcId===n.id?'selected':''}`} onClick={()=>onSelectNpc(n.id)}>
+              <div><div className="name">{n.name||n.id}</div><div className="sub">{n.id}</div></div>
+              <span className="edit-btn" onClick={e=>{e.stopPropagation();onEditNpc(n)}}>편집</span>
+            </div>
+          ))}
+          <button className="add-btn" onClick={onNewNpc}>+ NPC 추가</button>
+        </div>}
       </div>
-      <div className="card">
-        <label>소유자</label>
-        <select value={rel.owner_id} onChange={e=>set('owner_id',e.target.value)}>
-          <option value="">선택...</option>
-          {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
-        </select>
-        <label>대상</label>
-        <select value={rel.target_id} onChange={e=>set('target_id',e.target.value)}>
-          <option value="">선택...</option>
-          {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
-        </select>
-        <Slider label="친밀도" value={rel.closeness} onChange={v=>set('closeness',v)} />
-        <Slider label="신뢰도" value={rel.trust} onChange={v=>set('trust',v)} />
-        <Slider label="상하" value={rel.power} onChange={v=>set('power',v)} />
+      {/* Relationships */}
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={()=>toggle('rel')}>
+          <span>{openSections.rel?'▾':'▸'} 관계</span><span className="count">{rels.length}</span>
+        </div>
+        {openSections.rel && <div className="sidebar-body">
+          {rels.map(r => (
+            <div key={r.owner_id+':'+r.target_id} className="item-card" onClick={()=>onEditRel(r)}>
+              <div><div className="name">{r.owner_id} ↔ {r.target_id}</div>
+              <div className="sub">친:{r.closeness.toFixed(1)} 신:{r.trust.toFixed(1)} 상:{r.power.toFixed(1)}</div></div>
+            </div>
+          ))}
+          <button className="add-btn" onClick={onNewRel}>+ 관계 추가</button>
+        </div>}
       </div>
-      <div className="btn-row">
-        <button className="btn primary" onClick={save}>저장</button>
-        {selected && <button className="btn danger" onClick={del}>삭제</button>}
-      </div>
-    </div>
-  );
-}
-// --- 오브젝트 패널 ---
-function ObjPanel({objects, onRefresh}) {
-  const [obj, setObj] = useState({id:'',description:'',category:null});
-  const [selected, setSelected] = useState(null);
-  const set = (k,v) => setObj(p=>({...p,[k]:v}));
-
-  const save = async () => {
-    if(!obj.id) return alert('ID 필수');
-    await api.post('/api/objects', obj);
-    onRefresh();
-  };
-  const del = async () => {
-    if(!obj.id) return;
-    await api.del(`/api/objects/${obj.id}`);
-    setObj({id:'',description:'',category:null});
-    setSelected(null);
-    onRefresh();
-  };
-
-  return (
-    <div className="panel">
-      <h2>오브젝트 등록</h2>
-      <div className="btn-row" style={{flexWrap:'wrap'}}>
-        {objects.map(o => (
-          <button key={o.id} className={`btn small ${selected===o.id?'primary':''}`}
-            onClick={()=>{setObj({...o});setSelected(o.id)}}>{o.id}</button>
-        ))}
-        <button className="btn small" onClick={()=>{setObj({id:'',description:'',category:null});setSelected(null)}}>+ 새 오브젝트</button>
-      </div>
-      <div className="card">
-        <label>ID</label><input type="text" value={obj.id} onChange={e=>set('id',e.target.value)} />
-        <label>설명</label><textarea value={obj.description} onChange={e=>set('description',e.target.value)} rows={2} />
-        <label>카테고리</label><input type="text" value={obj.category||''} onChange={e=>set('category',e.target.value||null)} placeholder="사물/장소/NPC특성..." />
-      </div>
-      <div className="btn-row">
-        <button className="btn primary" onClick={save}>저장</button>
-        {selected && <button className="btn danger" onClick={del}>삭제</button>}
+      {/* Objects */}
+      <div className="sidebar-section">
+        <div className="sidebar-header" onClick={()=>toggle('obj')}>
+          <span>{openSections.obj?'▾':'▸'} 오브젝트</span><span className="count">{objects.length}</span>
+        </div>
+        {openSections.obj && <div className="sidebar-body">
+          {objects.map(o => (
+            <div key={o.id} className="item-card" onClick={()=>onEditObj(o)}>
+              <div><div className="name">{o.id}</div><div className="sub">{o.description?.substring(0,30)}</div></div>
+            </div>
+          ))}
+          <button className="add-btn" onClick={onNewObj}>+ 오브젝트 추가</button>
+        </div>}
       </div>
     </div>
   );
 }
-// --- 상황 설정 + 결과 패널 ---
-function SituationPanel({npcs, objects, result, setResult}) {
+// --- Center: Situation Setup ---
+function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId, onAppraise, onStimulus, onAfterDialogue, loading}) {
   const npcIds = ['player', ...npcs.map(n=>n.id)];
-  const [npcId, setNpcId] = useState('');
-  const [partnerId, setPartnerId] = useState('');
   const [desc, setDesc] = useState('');
-
   // Event
   const [hasEvent, setHasEvent] = useState(true);
   const [evDesc, setEvDesc] = useState('');
@@ -266,305 +343,358 @@ function SituationPanel({npcs, objects, result, setResult}) {
   const [otherTarget, setOtherTarget] = useState('');
   const [otherD, setOtherD] = useState(0);
   const [prospect, setProspect] = useState('');
-
   // Action
   const [hasAction, setHasAction] = useState(false);
   const [acDesc, setAcDesc] = useState('');
-  const [agentId, setAgentId] = useState(''); // ''=자기
+  const [agentId, setAgentId] = useState('');
   const [pw, setPw] = useState(0);
-
   // Object
   const [hasObject, setHasObject] = useState(false);
   const [objTarget, setObjTarget] = useState('');
   const [objAp, setObjAp] = useState(0);
-
-  // PAD 자극
+  // PAD
   const [padP, setPadP] = useState(0);
   const [padA, setPadA] = useState(0);
   const [padD, setPadD] = useState(0);
 
-  const [tab, setTab] = useState('prompt');
-
-  const runAppraise = async () => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    const body = {
-      npc_id: npcId,
-      partner_id: partnerId,
-      situation: {
-        description: desc,
-        event: hasEvent ? {
-          description: evDesc,
-          desirability_for_self: evSelf,
-          other: hasOther ? { target_id: otherTarget, desirability: otherD } : null,
-          prospect: prospect || null,
-        } : null,
-        action: hasAction ? {
-          description: acDesc,
-          agent_id: agentId || null,
-          praiseworthiness: pw,
-        } : null,
-        object: hasObject ? {
-          target_id: objTarget,
-          appealingness: objAp,
-        } : null,
-      }
-    };
-    try {
-      const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok) { const t=await res.text(); alert('오류: '+t); return; }
-      setResult(await res.json());
-    } catch(e) { alert('요청 실패: '+e); }
-  };
-
-  const runStimulus = async () => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    if(!result) return alert('감정 평가를 먼저 실행하세요');
-    const body = {
-      npc_id: npcId, partner_id: partnerId,
-      situation_description: desc || null,
-      pleasure: padP, arousal: padA, dominance: padD,
-    };
-    try {
-      const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
-      setResult(await res.json());
-      setTab('emotions');
-    } catch(e) { alert('요청 실패: '+e); }
-  };
-
-  const runAfterDialogue = async () => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    const pw = hasAction ? parseFloat(prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '') || '') : NaN;
-    const body = {
-      npc_id: npcId, partner_id: partnerId,
-      praiseworthiness: isNaN(pw) ? null : pw,
-    };
-    try {
-      const res = await fetch('/api/after-dialogue', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
-      const data = await res.json();
-      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
-      setResult(null);
-    } catch(e) { alert('요청 실패: '+e); }
-  };
+  const buildSituation = () => ({
+    description: desc,
+    event: hasEvent ? { description: evDesc, desirability_for_self: evSelf, other: hasOther ? { target_id: otherTarget, desirability: otherD } : null, prospect: prospect || null } : null,
+    action: hasAction ? { description: acDesc, agent_id: agentId || null, praiseworthiness: pw } : null,
+    object: hasObject ? { target_id: objTarget, appealingness: objAp } : null,
+  });
   return (
-    <div style={{gridColumn:'1/-1', display:'grid', gridTemplateColumns:'1fr 2fr', gap:'1px', background:'var(--border)'}}>
-      {/* 왼쪽: 상황 입력 */}
-      <div className="panel">
-        <h2>상황 설정</h2>
-        <div className="card">
-          <div style={{display:'flex',gap:8}}>
-            <div style={{flex:1}}>
-              <label>NPC (주체)</label>
-              <select value={npcId} onChange={e=>setNpcId(e.target.value)}>
-                <option value="">선택...</option>
-                {npcs.map(n=><option key={n.id} value={n.id}>{n.name||n.id}</option>)}
-              </select>
-            </div>
-            <div style={{flex:1}}>
-              <label>대화 상대</label>
-              <select value={partnerId} onChange={e=>setPartnerId(e.target.value)}>
-                <option value="">선택...</option>
-                {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
-              </select>
-            </div>
-          </div>
-          <label>상황 설명</label>
-          <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="전체 상황 맥락..." />
+    <div className="center">
+      <h2>상황 설정</h2>
+      {/* NPC pair */}
+      <div className="pair-select">
+        <div>
+          <label>NPC (주체)</label>
+          <select value={npcId} onChange={e=>setNpcId(e.target.value)}>
+            <option value="">선택...</option>
+            {npcs.map(n=><option key={n.id} value={n.id}>{n.name||n.id}</option>)}
+          </select>
         </div>
-        {/* Event Focus */}
-        <div className="card">
-          <div className="card-header">
-            <label style={{display:'inline',margin:0}}><input type="checkbox" checked={hasEvent} onChange={e=>setHasEvent(e.target.checked)} /> Event (사건)</label>
-          </div>
-          {hasEvent && <>
-            <label>사건 설명</label>
-            <input type="text" value={evDesc} onChange={e=>setEvDesc(e.target.value)} placeholder="의형제가 구출됨..." />
-            <Slider label="자기 영향" value={evSelf} onChange={setEvSelf} />
-            <label style={{display:'inline',margin:'4px 0'}}><input type="checkbox" checked={hasOther} onChange={e=>setHasOther(e.target.checked)} /> 타인 영향</label>
-            {hasOther && <>
-              <label>대상</label>
-              <select value={otherTarget} onChange={e=>setOtherTarget(e.target.value)}>
-                <option value="">선택...</option>
-                {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
-              </select>
-              <Slider label="타인 영향" value={otherD} onChange={setOtherD} />
-            </>}
-            <label>전망</label>
-            <select value={prospect} onChange={e=>setProspect(e.target.value)}>
-              <option value="">없음</option>
-              <option value="anticipation">Anticipation (전망)</option>
-              <option value="hope_fulfilled">HopeFulfilled (희망 실현)</option>
-              <option value="hope_unfulfilled">HopeUnfulfilled (희망 좌절)</option>
-              <option value="fear_unrealized">FearUnrealized (공포 해소)</option>
-              <option value="fear_confirmed">FearConfirmed (공포 확인)</option>
-            </select>
-          </>}
+        <div style={{display:'flex',alignItems:'flex-end',padding:'0 0 2px',color:'var(--fg3)'}}>↔</div>
+        <div>
+          <label>대화 상대</label>
+          <select value={partnerId} onChange={e=>setPartnerId(e.target.value)}>
+            <option value="">선택...</option>
+            {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
+          </select>
         </div>
+      </div>
+      <label>상황 설명</label>
+      <textarea value={desc} onChange={e=>setDesc(e.target.value)} rows={2} placeholder="전체 상황 맥락..." />
 
-        {/* Action Focus */}
-        <div className="card">
-          <div className="card-header">
-            <label style={{display:'inline',margin:0}}><input type="checkbox" checked={hasAction} onChange={e=>setHasAction(e.target.checked)} /> Action (행동)</label>
-          </div>
-          {hasAction && <>
-            <label>행동 설명</label>
-            <input type="text" value={acDesc} onChange={e=>setAcDesc(e.target.value)} placeholder="비밀 누설..." />
-            <label>행위자</label>
-            <select value={agentId} onChange={e=>setAgentId(e.target.value)}>
-              <option value="">자기 (NPC 본인)</option>
+      {/* Event */}
+      <div className="section">
+        <div className="section-header">
+          <input type="checkbox" checked={hasEvent} onChange={e=>setHasEvent(e.target.checked)} />
+          <span className="title">Event (사건)</span>
+        </div>
+        {hasEvent && <div className="section-body">
+          <input type="text" value={evDesc} onChange={e=>setEvDesc(e.target.value)} placeholder="사건 설명..." />
+          <Slider label="자기 영향" value={evSelf} onChange={setEvSelf} />
+          <label style={{display:'inline',fontSize:11}}><input type="checkbox" checked={hasOther} onChange={e=>setHasOther(e.target.checked)} /> 타인 영향</label>
+          {hasOther && <div style={{marginLeft:16,marginTop:4}}>
+            <select value={otherTarget} onChange={e=>setOtherTarget(e.target.value)} style={{marginBottom:4}}>
+              <option value="">대상 선택...</option>
               {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
             </select>
-            <Slider label="도덕성" value={pw} onChange={setPw} />
-          </>}
-        </div>
+            <Slider label="타인 영향" value={otherD} onChange={setOtherD} />
+          </div>}
+          <label style={{fontSize:11}}>전망</label>
+          <select value={prospect} onChange={e=>setProspect(e.target.value)}>
+            <option value="">없음</option>
+            <option value="anticipation">Anticipation (전망)</option>
+            <option value="hope_fulfilled">HopeFulfilled</option>
+            <option value="hope_unfulfilled">HopeUnfulfilled</option>
+            <option value="fear_unrealized">FearUnrealized</option>
+            <option value="fear_confirmed">FearConfirmed</option>
+          </select>
+        </div>}
+      </div>
 
-        {/* Object Focus */}
-        <div className="card">
-          <div className="card-header">
-            <label style={{display:'inline',margin:0}}><input type="checkbox" checked={hasObject} onChange={e=>setHasObject(e.target.checked)} /> Object (대상)</label>
-          </div>
-          {hasObject && <>
-            <label>대상</label>
-            <select value={objTarget} onChange={e=>setObjTarget(e.target.value)}>
-              <option value="">선택...</option>
-              {objects.map(o=><option key={o.id} value={o.id}>{o.id} — {o.description}</option>)}
-              {npcIds.map(id=><option key={'npc_'+id} value={id}>{id} (NPC)</option>)}
-            </select>
-            <Slider label="매력도" value={objAp} onChange={setObjAp} />
-          </>}
+      {/* Action */}
+      <div className="section">
+        <div className="section-header">
+          <input type="checkbox" checked={hasAction} onChange={e=>setHasAction(e.target.checked)} />
+          <span className="title">Action (행동)</span>
         </div>
+        {hasAction && <div className="section-body">
+          <input type="text" value={acDesc} onChange={e=>setAcDesc(e.target.value)} placeholder="행동 설명..." />
+          <label style={{fontSize:11}}>행위자</label>
+          <select value={agentId} onChange={e=>setAgentId(e.target.value)}>
+            <option value="">자기 (NPC 본인)</option>
+            {npcIds.map(id=><option key={id} value={id}>{id}</option>)}
+          </select>
+          <Slider label="도덕성" value={pw} onChange={setPw} />
+        </div>}
+      </div>
 
-        <div className="btn-row">
-          <button className="btn primary" onClick={runAppraise} style={{flex:1}}>감정 평가 실행</button>
+      {/* Object */}
+      <div className="section">
+        <div className="section-header">
+          <input type="checkbox" checked={hasObject} onChange={e=>setHasObject(e.target.checked)} />
+          <span className="title">Object (대상)</span>
         </div>
+        {hasObject && <div className="section-body">
+          <select value={objTarget} onChange={e=>setObjTarget(e.target.value)}>
+            <option value="">대상 선택...</option>
+            {objects.map(o=><option key={o.id} value={o.id}>{o.id} — {o.description?.substring(0,20)}</option>)}
+            {npcIds.map(id=><option key={'npc_'+id} value={id}>{id} (NPC)</option>)}
+          </select>
+          <Slider label="매력도" value={objAp} onChange={setObjAp} />
+        </div>}
+      </div>
 
-        {/* PAD 자극 */}
-        <div className="card">
-          <h3 style={{margin:'0 0 6px',color:'var(--warn)'}}>PAD 자극 적용</h3>
+      {/* Appraise button */}
+      <button className="btn primary btn-full" disabled={loading} style={{marginTop:4}}
+        onClick={()=>onAppraise(buildSituation())}>{loading ? '처리 중...' : '감정 평가 실행'}</button>
+
+      {/* PAD Stimulus */}
+      <div className="section" style={{marginTop:8}}>
+        <div className="section-header"><span className="title" style={{color:'var(--warn)'}}>PAD 자극 적용</span></div>
+        <div className="section-body">
           <Slider label="P (쾌)" value={padP} onChange={setPadP} />
           <Slider label="A (각성)" value={padA} onChange={setPadA} />
           <Slider label="D (지배)" value={padD} onChange={setPadD} />
-          <div className="btn-row">
-            <button className="btn primary" onClick={runStimulus} style={{flex:1}}>자극 적용</button>
-          </div>
-        </div>
-
-        {/* 대화 종료 */}
-        <div className="btn-row" style={{marginTop:4}}>
-          <button className="btn danger" onClick={runAfterDialogue} style={{flex:1}}>대화 종료 (관계 갱신)</button>
+          <button className="btn btn-full" style={{marginTop:4}}
+            onClick={()=>onStimulus({pleasure:padP,arousal:padA,dominance:padD,situation_description:desc||null})}>자극 적용</button>
         </div>
       </div>
 
-      {/* 오른쪽: 결과 표시 */}
-      <div className="panel">
-        <h2>결과</h2>
-        {!result ? (
-          <div style={{color:'var(--fg3)',padding:20,textAlign:'center'}}>감정 평가를 실행하세요</div>
-        ) : (<>
-          <div className="tabs">
-            <div className={`tab ${tab==='emotions'?'active':''}`} onClick={()=>setTab('emotions')}>감정 상태</div>
-            <div className={`tab ${tab==='prompt'?'active':''}`} onClick={()=>setTab('prompt')}>프롬프트</div>
-            <div className={`tab ${tab==='trace'?'active':''}`} onClick={()=>setTab('trace')}>Trace</div>
+      {/* After dialogue */}
+      <button className="btn danger btn-full" style={{marginTop:4}} onClick={onAfterDialogue}>대화 종료 (관계 갱신)</button>
+    </div>
+  );
+}
+// --- Right: Result Panel ---
+function ResultPanel({result, history}) {
+  const [tab, setTab] = useState('emotions');
+
+  return (
+    <div className="right">
+      <div className="result-tabs">
+        <div className={`result-tab ${tab==='emotions'?'active':''}`} onClick={()=>setTab('emotions')}>감정 상태</div>
+        <div className={`result-tab ${tab==='prompt'?'active':''}`} onClick={()=>setTab('prompt')}>프롬프트</div>
+        <div className={`result-tab ${tab==='trace'?'active':''}`} onClick={()=>setTab('trace')}>Trace</div>
+        <div className={`result-tab ${tab==='history'?'active':''}`} onClick={()=>setTab('history')}>히스토리 ({history.length})</div>
+      </div>
+      <div className="result-content">
+        {!result && tab !== 'history' ? (
+          <div className="empty">
+            <div style={{fontSize:24,marginBottom:8}}>🎭</div>
+            NPC와 대화 상대를 선택하고<br/>상황을 설정한 뒤 감정 평가를 실행하세요
           </div>
-
-          {tab==='emotions' && (
-            <div>
-              {result.dominant && (
-                <div className="card" style={{borderColor:'var(--accent)'}}>
-                  <div style={{fontSize:12,color:'var(--fg2)'}}>지배 감정</div>
-                  <div style={{fontSize:15,fontWeight:500,color:'var(--accent)'}}>
-                    {result.dominant.emotion_type} ({result.dominant.intensity.toFixed(3)})
-                  </div>
-                  {result.dominant.context && <div style={{fontSize:11,color:'var(--fg2)',marginTop:2}}>— {result.dominant.context}</div>}
-                </div>
-              )}
-              <h3>활성 감정</h3>
-              {result.emotions.map((e,i) => (
-                <div key={i} style={{display:'flex',alignItems:'center',gap:8,margin:'3px 0'}}>
-                  <span style={{width:100,fontSize:12,color:'var(--fg)'}}>{e.emotion_type}</span>
-                  <div style={{flex:1,height:14,background:'var(--bg2)',borderRadius:3,overflow:'hidden'}}>
-                    <div style={{width:`${e.intensity*100}%`,height:'100%',background:e.intensity>0.5?'var(--accent)':'var(--fg3)',borderRadius:3}} />
-                  </div>
-                  <span style={{width:40,fontSize:11,fontFamily:'monospace',textAlign:'right'}}>{e.intensity.toFixed(3)}</span>
-                  {e.context && <span style={{fontSize:10,color:'var(--fg3)',maxWidth:120,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>— {e.context}</span>}
-                </div>
-              ))}
-              <div style={{marginTop:8,fontSize:12,color:'var(--fg2)'}}>전반적 기분: {result.mood.toFixed(3)}</div>
-            </div>
-          )}
-
-          {tab==='prompt' && (
-            <div>
-              <div className="result-box prompt-box">{result.prompt}</div>
-              <button className="btn small" style={{marginTop:6}} onClick={()=>{navigator.clipboard.writeText(result.prompt);alert('복사됨')}}>프롬프트 복사</button>
-            </div>
-          )}
-
-          {tab==='trace' && (
-            <div>
-              <div className="result-box trace-box">{result.trace.join('\n')}</div>
-            </div>
-          )}
-        </>)}
+        ) : (
+          <>
+            {tab==='emotions' && result && <EmotionView result={result} />}
+            {tab==='prompt' && result && <PromptView prompt={result.prompt} />}
+            {tab==='trace' && result && <TraceView trace={result.trace} />}
+            {tab==='history' && <HistoryView history={history} />}
+          </>
+        )}
       </div>
     </div>
   );
 }
+function EmotionView({result}) {
+  return (
+    <div>
+      {result.dominant && (
+        <div className="dominant-card">
+          <div className="d-type">{result.dominant.emotion_type}</div>
+          <div className="d-intensity">강도: {result.dominant.intensity.toFixed(3)}</div>
+          {result.dominant.context && <div className="d-ctx">— {result.dominant.context}</div>}
+        </div>
+      )}
+      <div className="mood-bar">전반적 분위기: <span style={{color: result.mood >= 0 ? 'var(--green)' : 'var(--err)', fontWeight:600}}>{result.mood.toFixed(3)}</span></div>
+      {result.emotions.map((e,i) => (
+        <div key={i} className="emotion-row">
+          <span className="etype">{e.emotion_type}</span>
+          <div className="bar-bg">
+            <div className="bar-fill" style={{width:`${Math.min(e.intensity*100,100)}%`, background:emotionColor(e.emotion_type)}} />
+          </div>
+          <span className="intensity">{e.intensity.toFixed(3)}</span>
+          {e.context && <span className="ctx" title={e.context}>— {e.context}</span>}
+        </div>
+      ))}
+    </div>
+  );
+}
 
-// --- App 루트 ---
+function PromptView({prompt}) {
+  return (
+    <div>
+      <div className="prompt-box">{prompt}</div>
+      <button className="btn small" style={{marginTop:8}} onClick={()=>{navigator.clipboard.writeText(prompt);alert('프롬프트가 클립보드에 복사되었습니다')}}>📋 프롬프트 복사</button>
+    </div>
+  );
+}
+function TraceView({trace}) {
+  return <div className="trace-box">{trace?.length ? trace.join('\n') : '(trace 없음)'}</div>;
+}
+
+function HistoryView({history}) {
+  const [expanded, setExpanded] = useState(null);
+  if (!history.length) return <div className="empty">아직 턴 기록이 없습니다</div>;
+  return (
+    <div>
+      {history.slice().reverse().map((h,i) => (
+        <div key={i} className="history-item" onClick={()=>setExpanded(expanded===i?null:i)}>
+          <div className="hlabel">{h.label}</div>
+          <div className="haction">{h.action}</div>
+          {expanded===i && (
+            <div className="trace-box" style={{marginTop:6,fontSize:10,maxHeight:200,overflow:'auto'}}>
+              {JSON.stringify(h.response, null, 2)}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+// --- App ---
 function App() {
   const [npcs, setNpcs] = useState([]);
   const [rels, setRels] = useState([]);
   const [objects, setObjects] = useState([]);
-  const [selectedNpc, setSelectedNpc] = useState(null);
-  const [result, setResult] = useState(null);
+  const [scenarios, setScenarios] = useState([]);
   const [connected, setConnected] = useState(false);
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Selection state
+  const [selectedNpcId, setSelectedNpcId] = useState('');
+  const [npcId, setNpcId] = useState('');
+  const [partnerId, setPartnerId] = useState('');
+
+  // Modal state
+  const [editNpc, setEditNpc] = useState(null); // null=closed, {}=new, {id:...}=edit
+  const [editRel, setEditRel] = useState(null);
+  const [editObj, setEditObj] = useState(null);
+  const [showNpcModal, setShowNpcModal] = useState(false);
+  const [showRelModal, setShowRelModal] = useState(false);
+  const [showObjModal, setShowObjModal] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const [n, r, o] = await Promise.all([
-        api.get('/api/npcs'),
-        api.get('/api/relationships'),
-        api.get('/api/objects'),
+      const [n, r, o, h] = await Promise.all([
+        api.get('/api/npcs'), api.get('/api/relationships'),
+        api.get('/api/objects'), api.get('/api/history'),
       ]);
-      setNpcs(n); setRels(r); setObjects(o);
+      setNpcs(n); setRels(r); setObjects(o); setHistory(h);
       setConnected(true);
     } catch(e) { setConnected(false); }
   }, []);
+  const refreshScenarios = useCallback(async () => {
+    try { setScenarios(await api.get('/api/scenarios')); } catch(e) {}
+  }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => { refresh(); refreshScenarios(); }, [refresh, refreshScenarios]);
 
+  // Sidebar → NPC selection syncs to situation panel
+  const handleSelectNpc = (id) => {
+    setSelectedNpcId(id);
+    setNpcId(id);
+  };
+
+  // --- CRUD handlers ---
+  const saveNpc = async (data) => {
+    await api.post('/api/npcs', data);
+    setShowNpcModal(false); refresh();
+  };
+  const deleteNpc = async (id) => {
+    await api.del('/api/npcs/'+id);
+    setShowNpcModal(false); if(selectedNpcId===id) setSelectedNpcId(''); refresh();
+  };
+  const saveRel = async (data) => {
+    await api.post('/api/relationships', data);
+    setShowRelModal(false); refresh();
+  };
+  const deleteRel = async (ownerId, targetId) => {
+    await api.del('/api/relationships/'+ownerId+'/'+targetId);
+    setShowRelModal(false); refresh();
+  };
+  const saveObj = async (data) => {
+    await api.post('/api/objects', data);
+    setShowObjModal(false); refresh();
+  };
+  const deleteObj = async (id) => {
+    await api.del('/api/objects/'+id);
+    setShowObjModal(false); refresh();
+  };
+  // --- Pipeline handlers ---
+  const handleAppraise = async (situation) => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, situation})});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      const data = await res.json();
+      setResult(data);
+      refresh(); // history updated
+    } catch(e) { alert('요청 실패: '+e); }
+    finally { setLoading(false); }
+  };
+
+  const handleStimulus = async ({pleasure, arousal, dominance, situation_description}) => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    if(!result) return alert('감정 평가를 먼저 실행하세요');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, pleasure, arousal, dominance, situation_description})});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      setResult(await res.json());
+      refresh();
+    } catch(e) { alert('요청 실패: '+e); }
+    finally { setLoading(false); }
+  };
+  const handleAfterDialogue = async () => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    const pwStr = prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '');
+    const pw = pwStr ? parseFloat(pwStr) : null;
+    try {
+      const res = await fetch('/api/after-dialogue', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: isNaN(pw) ? null : pw})});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      const data = await res.json();
+      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
+      setResult(null);
+      refresh();
+    } catch(e) { alert('요청 실패: '+e); }
+  };
+
+  // --- Save / Load ---
   const saveState = async () => {
-    const sub = prompt('저장 경로 (data/ 기준, 예: huckleberry_finn/ch8_jackson_island_meeting/session_002/scenario):', '');
+    const sub = prompt('저장 경로 (data/ 기준):', '');
     if(!sub) return;
-    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${sub.replace(/\//g,'\\\\')}${sub.endsWith('.json')?'':'.json'}`;
+    const path = 'C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\' + sub.replace(/\//g,'\\\\') + (sub.endsWith('.json')?'':'.json');
     const res = await fetch('/api/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { alert(`저장 완료: ${sub}`); refreshScenarios(); }
-    else alert('저장 실패: ' + await res.text());
+    if(res.ok) { alert('저장 완료'); refreshScenarios(); } else alert('저장 실패: '+await res.text());
   };
 
   const loadScenario = async (scenPath) => {
     if(!scenPath) return;
-    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${scenPath.replace(/\//g,'\\\\')}\\scenario.json`;
+    const path = 'C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\' + scenPath.replace(/\//g,'\\\\') + '\\scenario.json';
     const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { refresh(); setResult(null); }
-    else alert('로드 실패: ' + await res.text());
+    if(res.ok) { refresh(); setResult(null); } else alert('로드 실패: '+await res.text());
   };
-
-  const [scenarios, setScenarios] = useState([]);
-  const refreshScenarios = useCallback(async () => {
-    try { const s = await api.get('/api/scenarios'); setScenarios(s); } catch(e) {}
-  }, []);
-  useEffect(() => { refreshScenarios(); }, [refreshScenarios]);
-
   return (
-    <div>
+    <div className="app">
+      {/* Header */}
       <div className="header">
         <h1>NPC Mind Engine</h1>
-        <span className={`status ${connected?'ok':''}`}>{connected?'서버 연결됨':'연결 실패'} — NPC {npcs.length}개, 관계 {rels.length}개, 오브젝트 {objects.length}개</span>
-        <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center'}}>
-          <select style={{background:'var(--bg2)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'2px 8px',fontSize:12,maxWidth:280}}
+        <span className={`status ${connected?'ok':''}`}>
+          {connected ? `NPC ${npcs.length} · 관계 ${rels.length} · 오브젝트 ${objects.length}` : '연결 실패'}
+        </span>
+        <div className="actions">
+          <select style={{background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'3px 8px',fontSize:11,maxWidth:220}}
             onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
             <option value="">시나리오 로드...</option>
             {scenarios.map(s => <option key={s.path} value={s.path}>{s.label}</option>)}
@@ -573,12 +703,36 @@ function App() {
           <button className="btn small" onClick={refresh}>새로고침</button>
         </div>
       </div>
+
+      {/* Main 3-column */}
       <div className="main">
-        <NpcPanel npcs={npcs} selectedNpc={selectedNpc} onSelect={setSelectedNpc} onRefresh={refresh} />
-        <RelPanel rels={rels} npcs={npcs} onRefresh={refresh} />
-        <ObjPanel objects={objects} onRefresh={refresh} />
+        <Sidebar
+          npcs={npcs} rels={rels} objects={objects}
+          selectedNpcId={selectedNpcId}
+          onSelectNpc={handleSelectNpc}
+          onEditNpc={(n)=>{setEditNpc(n);setShowNpcModal(true)}}
+          onEditRel={(r)=>{setEditRel(r);setShowRelModal(true)}}
+          onEditObj={(o)=>{setEditObj(o);setShowObjModal(true)}}
+          onNewNpc={()=>{setEditNpc(null);setShowNpcModal(true)}}
+          onNewRel={()=>{setEditRel(null);setShowRelModal(true)}}
+          onNewObj={()=>{setEditObj(null);setShowObjModal(true)}}
+        />
+        <SituationPanel
+          npcs={npcs} objects={objects}
+          npcId={npcId} setNpcId={setNpcId}
+          partnerId={partnerId} setPartnerId={setPartnerId}
+          onAppraise={handleAppraise}
+          onStimulus={handleStimulus}
+          onAfterDialogue={handleAfterDialogue}
+          loading={loading}
+        />
+        <ResultPanel result={result} history={history} />
       </div>
-      <SituationPanel npcs={npcs} objects={objects} result={result} setResult={setResult} />
+
+      {/* Modals */}
+      {showNpcModal && <NpcModal npc={editNpc} onSave={saveNpc} onDelete={deleteNpc} onClose={()=>setShowNpcModal(false)} />}
+      {showRelModal && <RelModal rel={editRel} npcIds={npcs.map(n=>n.id)} onSave={saveRel} onDelete={deleteRel} onClose={()=>setShowRelModal(false)} />}
+      {showObjModal && <ObjModal obj={editObj} onSave={saveObj} onDelete={deleteObj} onClose={()=>setShowObjModal(false)} />}
     </div>
   );
 }
@@ -587,3 +741,69 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
 </body>
 </html>
+// --- App ---
+function App() {
+  const [npcs, setNpcs] = useState([]);
+  const [rels, setRels] = useState([]);
+  const [objects, setObjects] = useState([]);
+  const [scenarios, setScenarios] = useState([]);
+  const [connected, setConnected] = useState(false);
+  const [result, setResult] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Selection state
+  const [npcId, setNpcId] = useState('');
+  const [partnerId, setPartnerId] = useState('');
+
+  // Modal state
+  const [modal, setModal] = useState(null); // {type:'npc'|'rel'|'obj', data:...}
+
+  const refresh = useCallback(async () => {
+    try {
+      const [n, r, o, s, h] = await Promise.all([
+        api.get('/api/npcs'), api.get('/api/relationships'), api.get('/api/objects'),
+        api.get('/api/scenarios'), api.get('/api/history'),
+      ]);
+      setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
+      setConnected(true);
+    } catch(e) { setConnected(false); }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+  // --- CRUD handlers ---
+  const saveNpc = async (data) => { await api.post('/api/npcs', data); setModal(null); refresh(); };
+  const deleteNpc = async (id) => { await api.del(`/api/npcs/${id}`); setModal(null); if(npcId===id) setNpcId(''); refresh(); };
+  const saveRel = async (data) => { await api.post('/api/relationships', data); setModal(null); refresh(); };
+  const deleteRel = async (oid,tid) => { await api.del(`/api/relationships/${oid}/${tid}`); setModal(null); refresh(); };
+  const saveObj = async (data) => { await api.post('/api/objects', data); setModal(null); refresh(); };
+  const deleteObj = async (id) => { await api.del(`/api/objects/${id}`); setModal(null); refresh(); };
+
+  // --- Pipeline handlers ---
+  const handleAppraise = async (situation) => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, situation})});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      const data = await res.json();
+      setResult(data);
+      const h = await api.get('/api/history');
+      setHistory(h);
+    } catch(e) { alert('요청 실패: '+e); }
+    finally { setLoading(false); }
+  };
+
+  const handleStimulus = async ({pleasure,arousal,dominance,situation_description}) => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    if(!result) return alert('감정 평가를 먼저 실행하세요');
+    setLoading(true);
+    try {
+      const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, pleasure, arousal, dominance, situation_description})});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      setResult(await res.json());
+      setHistory(await api.get('/api/history'));
+    } catch(e) { alert('요청 실패: '+e); }
+    finally { setLoading(false); }
+  };
