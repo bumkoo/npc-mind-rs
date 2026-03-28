@@ -807,3 +807,94 @@ function App() {
     } catch(e) { alert('요청 실패: '+e); }
     finally { setLoading(false); }
   };
+
+  const handleAfterDialogue = async () => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    const pwVal = prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '');
+    const pw = pwVal ? parseFloat(pwVal) : null;
+    try {
+      const res = await fetch('/api/after-dialogue', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: isNaN(pw) ? null : pw})
+      });
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      const data = await res.json();
+      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
+      setResult(null);
+      refresh();
+    } catch(e) { alert('요청 실패: '+e); }
+  };
+
+  const saveState = async () => {
+    const sub = prompt('저장 경로 (data/ 기준):', '');
+    if(!sub) return;
+    const path = `data/${sub}${sub.endsWith('.json')?'':'.json'}`;
+    const res = await fetch('/api/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+    if(res.ok) { alert('저장 완료'); refresh(); }
+    else alert('저장 실패: ' + await res.text());
+  };
+
+  const loadScenario = async (scenPath) => {
+    if(!scenPath) return;
+    const path = `data/${scenPath}/scenario.json`;
+    const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
+    if(res.ok) { refresh(); setResult(null); }
+    else alert('로드 실패: ' + await res.text());
+  };
+
+  return (
+    <div className="app">
+      {/* Header */}
+      <div className="header">
+        <h1>NPC Mind Engine</h1>
+        <span className={`status ${connected?'ok':''}`}>
+          {connected?'연결됨':'연결 실패'} — NPC {npcs.length} · 관계 {rels.length} · 오브젝트 {objects.length}
+        </span>
+        <div className="actions">
+          <select style={{background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'3px 8px',fontSize:11,maxWidth:240}}
+            onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
+            <option value="">시나리오 로드...</option>
+            {scenarios.map(s => <option key={s.path} value={s.path}>{s.label}</option>)}
+          </select>
+          <button className="btn small" onClick={saveState}>저장</button>
+          <button className="btn small" onClick={refresh}>새로고침</button>
+        </div>
+      </div>
+
+      {/* Main 3-column */}
+      <div className="main">
+        <Sidebar
+          npcs={npcs} rels={rels} objects={objects}
+          selectedNpcId={npcId}
+          onSelectNpc={(id) => setNpcId(id)}
+          onEditNpc={(n) => setModal({type:'npc',data:n})}
+          onEditRel={(r) => setModal({type:'rel',data:r})}
+          onEditObj={(o) => setModal({type:'obj',data:o})}
+          onNewNpc={() => setModal({type:'npc',data:null})}
+          onNewRel={() => setModal({type:'rel',data:null})}
+          onNewObj={() => setModal({type:'obj',data:null})}
+        />
+        <SituationPanel
+          npcs={npcs} objects={objects}
+          npcId={npcId} setNpcId={setNpcId}
+          partnerId={partnerId} setPartnerId={setPartnerId}
+          onAppraise={handleAppraise}
+          onStimulus={handleStimulus}
+          onAfterDialogue={handleAfterDialogue}
+          loading={loading}
+        />
+        <ResultPanel result={result} history={history} />
+      </div>
+
+      {/* Modals */}
+      {modal?.type==='npc' && <NpcModal npc={modal.data} onSave={saveNpc} onDelete={deleteNpc} onClose={()=>setModal(null)} />}
+      {modal?.type==='rel' && <RelModal rel={modal.data} npcIds={npcs.map(n=>n.id)} onSave={saveRel} onDelete={deleteRel} onClose={()=>setModal(null)} />}
+      {modal?.type==='obj' && <ObjModal obj={modal.data} onSave={saveObj} onDelete={deleteObj} onClose={()=>setModal(null)} />}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
