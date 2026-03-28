@@ -10,6 +10,7 @@
 
 mod types;
 mod situation;
+mod appraisal;
 mod engine;
 mod stimulus;
 
