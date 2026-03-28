@@ -64,12 +64,15 @@
   "npc_name": "교룡",
   "npc_description": "야심적인 여검객...",
   "personality": {
-    "traits": ["교활하고 야심적이며 자기과시적인 성격"],
-    "speech_styles": ["속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다"]
+    "traits": "교활하고 야심적이며 자기과시적인 성격이다...",
+    "speech_style": "속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다..."
   },
   "emotion": {
-    "dominant": "분노(극도로 강함)",
-    "active_emotions": ["분노(극도로 강함)", "비난(강함)"],
+    "dominant": "분노(극도로 강한) — 교룡의 밀고 행위",
+    "active_emotions": [
+      "분노(극도로 강한) — 교룡의 밀고 행위",
+      "비난(강한) — 밀고로 인한 추방 위기"
+    ],
     "mood": -0.75,
     "mood_label": "매우 부정적"
   },
@@ -78,6 +81,13 @@
     "attitude": "적대적이고 공격적인 태도",
     "behavioral_tendency": "화를 표출하되, 상황을 지켜본다",
     "restrictions": ["농담이나 가벼운 말투를 사용하지 않는다"]
+  },
+  "situation_description": "동료 무사가 적에게 아군의 위치를 밀고했다",
+  "relationship": {
+    "target_name": "mu_baek",
+    "closeness": "가까운",
+    "trust": "가까운",
+    "power": "대등한 관계"
   }
 }
 ```
@@ -88,3 +98,4 @@
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
 | 0.3.0 | 2026-03-26 | **최종 리뷰 반영**: 5단계 강도 라벨링, Mood 임계값, TRAIT_THRESHOLD 발동 조건 및 실제 JSON 필드명 일치 완료. |
+| 0.4.0 | 2026-03-28 | JSON 예시에 Emotion context("분노 — 교룡의 밀고 행위"), situation_description, relationship 추가. personality 필드 현행화(traits/speech_style String). |
