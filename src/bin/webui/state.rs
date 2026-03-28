@@ -38,6 +38,22 @@ pub struct StateInner {
     pub emotions: HashMap<String, EmotionState>,
     /// 시나리오 메타데이터
     pub scenario: ScenarioMeta,
+    /// 턴별 기록 (장면 설정 + 감정 평가 + 프롬프트)
+    #[serde(default)]
+    pub turn_history: Vec<TurnRecord>,
+}
+
+/// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존
+#[derive(Clone, Serialize, Deserialize)]
+pub struct TurnRecord {
+    /// 턴 라벨 (예: "Turn 1: 유령 공포")
+    pub label: String,
+    /// 파이프라인 종류 ("appraise" | "stimulus" | "after_dialogue")
+    pub action: String,
+    /// 요청 파라미터 (SituationInput 등)
+    pub request: serde_json::Value,
+    /// 응답 결과 (감정, 프롬프트, trace 등)
+    pub response: serde_json::Value,
 }
 
 /// 시나리오 메타데이터

@@ -39,6 +39,11 @@ async fn main() {
         .route("/api/objects", get(handlers::list_objects).post(handlers::upsert_object))
         .route("/api/objects/{id}", delete(handlers::delete_object))
         .route("/api/appraise", post(handlers::appraise))
+        .route("/api/stimulus", post(handlers::stimulus))
+        .route("/api/guide", post(handlers::guide))
+        .route("/api/after-dialogue", post(handlers::after_dialogue))
+        .route("/api/scenarios", get(handlers::list_scenarios))
+        .route("/api/history", get(handlers::get_history))
         .route("/api/save", post(handlers::save_state))
         .route("/api/load", post(handlers::load_state))
         // --- 정적 파일 (SPA) ---

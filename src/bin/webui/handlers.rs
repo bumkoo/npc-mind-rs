@@ -6,6 +6,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use npc_mind::domain::emotion::*;
+use npc_mind::domain::pad::Pad;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::presentation::korean::KoreanFormatter;
 use npc_mind::ports::GuideFormatter;
@@ -115,14 +116,14 @@ pub async fn delete_object(
 // 파이프라인: 감정 평가
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AppraiseRequest {
     pub npc_id: String,
     pub partner_id: String,
     pub situation: SituationInput,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SituationInput {
     pub description: String,
     pub event: Option<EventInput>,
@@ -130,7 +131,7 @@ pub struct SituationInput {
     pub object: Option<ObjectInput>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct EventInput {
     pub description: String,
     pub desirability_for_self: f32,
@@ -138,20 +139,20 @@ pub struct EventInput {
     pub prospect: Option<String>, // "anticipation", "hope_fulfilled", etc.
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct EventOtherInput {
     pub target_id: String,
     pub desirability: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ActionInput {
     pub description: String,
     pub agent_id: Option<String>, // None=자기, Some=타인
     pub praiseworthiness: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ObjectInput {
     pub target_id: String,
     pub appealingness: f32,
@@ -224,20 +225,34 @@ pub async fn appraise(
 
     let mood = emotion_state.overall_valence();
 
-    // 7. 감정 상태 저장
+    // 7. 감정 상태 저장 + 턴 기록
     drop(inner);
     {
         let mut inner = state.inner.write().await;
         inner.emotions.insert(req.npc_id.clone(), emotion_state);
     }
 
-    Ok(Json(AppraiseResponse {
+    let response = AppraiseResponse {
         emotions,
         dominant,
         mood,
         prompt,
         trace,
-    }))
+    };
+
+    // 턴 기록 저장
+    {
+        let mut inner = state.inner.write().await;
+        let turn_num = inner.turn_history.len() + 1;
+        inner.turn_history.push(TurnRecord {
+            label: format!("Turn {}: appraise ({}→{})", turn_num, req.npc_id, req.partner_id),
+            action: "appraise".into(),
+            request: serde_json::to_value(&req).unwrap_or_default(),
+            response: serde_json::to_value(&response).unwrap_or_default(),
+        });
+    }
+
+    Ok(Json(response))
 }
 
 // ---------------------------------------------------------------------------
@@ -323,10 +338,240 @@ fn build_situation(
 }
 
 // ---------------------------------------------------------------------------
+// 파이프라인: PAD 자극 적용
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+pub struct StimulusRequest {
+    pub npc_id: String,
+    pub partner_id: String,
+    /// 상황 설명 (가이드 재생성 시 사용)
+    pub situation_description: Option<String>,
+    /// PAD 수동 입력
+    pub pleasure: f32,
+    pub arousal: f32,
+    pub dominance: f32,
+}
+
+/// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + 프롬프트 재생성
+pub async fn stimulus(
+    State(state): State<AppState>,
+    Json(req): Json<StimulusRequest>,
+) -> Result<Json<AppraiseResponse>, (StatusCode, String)> {
+    let inner = state.inner.read().await;
+
+    // 1. NPC + 관계 조회
+    let npc_profile = inner.npcs.get(&req.npc_id)
+        .ok_or((StatusCode::NOT_FOUND, format!("NPC '{}' not found", req.npc_id)))?;
+    let npc = npc_profile.to_npc();
+
+    let rel_data = inner.find_relationship(&req.npc_id, &req.partner_id)
+        .ok_or((StatusCode::NOT_FOUND,
+            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?;
+    let relationship = rel_data.to_relationship();
+
+    // 2. 현재 감정 상태 조회
+    let current = inner.emotions.get(&req.npc_id)
+        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?
+        .clone();
+
+    // 3. PAD 자극 적용
+    let pad = Pad { pleasure: req.pleasure, arousal: req.arousal, dominance: req.dominance };
+    let new_state = StimulusEngine::apply_stimulus(npc.personality(), &current, &pad);
+
+    // 4. 가이드 + 프롬프트 재생성
+    let guide = ActingGuide::build(&npc, &new_state,
+        req.situation_description.clone(), Some(&relationship));
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
+
+    // 5. 응답 구성
+    let emotions: Vec<EmotionOutput> = new_state.emotions().iter()
+        .map(|e| EmotionOutput {
+            emotion_type: format!("{:?}", e.emotion_type()),
+            intensity: e.intensity(),
+            context: e.context().map(|s| s.to_string()),
+        })
+        .collect();
+    let dominant = new_state.dominant().map(|e| EmotionOutput {
+        emotion_type: format!("{:?}", e.emotion_type()),
+        intensity: e.intensity(),
+        context: e.context().map(|s| s.to_string()),
+    });
+    let mood = new_state.overall_valence();
+
+    // 6. 감정 상태 갱신 + 턴 기록
+    drop(inner);
+    {
+        let mut inner = state.inner.write().await;
+        inner.emotions.insert(req.npc_id.clone(), new_state);
+    }
+
+    let response = AppraiseResponse { emotions, dominant, mood, prompt, trace: vec![] };
+
+    {
+        let mut inner = state.inner.write().await;
+        let turn_num = inner.turn_history.len() + 1;
+        inner.turn_history.push(TurnRecord {
+            label: format!("Turn {}: stimulus ({})", turn_num, req.npc_id),
+            action: "stimulus".into(),
+            request: serde_json::to_value(&req).unwrap_or_default(),
+            response: serde_json::to_value(&response).unwrap_or_default(),
+        });
+    }
+
+    Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// 파이프라인: 가이드 재생성 (현재 감정 상태 기준)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+pub struct GuideRequest {
+    pub npc_id: String,
+    pub partner_id: String,
+    pub situation_description: Option<String>,
+}
+
+/// POST /api/guide — 현재 감정 상태에서 가이드 재생성
+pub async fn guide(
+    State(state): State<AppState>,
+    Json(req): Json<GuideRequest>,
+) -> Result<Json<GuideResponse>, (StatusCode, String)> {
+    let inner = state.inner.read().await;
+
+    let npc_profile = inner.npcs.get(&req.npc_id)
+        .ok_or((StatusCode::NOT_FOUND, format!("NPC '{}' not found", req.npc_id)))?;
+    let npc = npc_profile.to_npc();
+
+    let rel_data = inner.find_relationship(&req.npc_id, &req.partner_id)
+        .ok_or((StatusCode::NOT_FOUND,
+            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?;
+    let relationship = rel_data.to_relationship();
+
+    let emotion_state = inner.emotions.get(&req.npc_id)
+        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?;
+
+    let guide = ActingGuide::build(&npc, emotion_state,
+        req.situation_description.clone(), Some(&relationship));
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
+    let json = formatter.format_json(&guide).unwrap_or_default();
+
+    Ok(Json(GuideResponse { prompt, json }))
+}
+
+#[derive(Serialize)]
+pub struct GuideResponse {
+    pub prompt: String,
+    pub json: String,
+}
+
+// ---------------------------------------------------------------------------
+// 파이프라인: 대화 종료 → 관계 갱신
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize)]
+pub struct AfterDialogueRequest {
+    pub npc_id: String,
+    pub partner_id: String,
+    /// 대화 중 있었던 행동의 도덕성 (None이면 행동 없음)
+    pub praiseworthiness: Option<f32>,
+}
+
+#[derive(Serialize)]
+pub struct AfterDialogueResponse {
+    pub before: RelationshipValues,
+    pub after: RelationshipValues,
+}
+
+#[derive(Serialize)]
+pub struct RelationshipValues {
+    pub closeness: f32,
+    pub trust: f32,
+    pub power: f32,
+}
+
+/// POST /api/after-dialogue — 대화 종료 → 관계 갱신
+pub async fn after_dialogue(
+    State(state): State<AppState>,
+    Json(req): Json<AfterDialogueRequest>,
+) -> Result<Json<AfterDialogueResponse>, (StatusCode, String)> {
+    let mut inner = state.inner.write().await;
+
+    // 1. 현재 관계 조회
+    let rel_key = format!("{}:{}", req.npc_id, req.partner_id);
+    let rel_data = inner.relationships.get(&rel_key)
+        .or_else(|| inner.relationships.get(&format!("{}:{}", req.partner_id, req.npc_id)))
+        .ok_or((StatusCode::NOT_FOUND,
+            format!("Relationship '{}↔{}' not found", req.npc_id, req.partner_id)))?
+        .clone();
+    let relationship = rel_data.to_relationship();
+
+    // 2. 현재 감정 상태
+    let emotion_state = inner.emotions.get(&req.npc_id)
+        .ok_or((StatusCode::BAD_REQUEST, "감정 평가를 먼저 실행하세요".into()))?;
+
+    // 3. before 값
+    let before = RelationshipValues {
+        closeness: relationship.closeness().value(),
+        trust: relationship.trust().value(),
+        power: relationship.power().value(),
+    };
+
+    // 4. 관계 갱신
+    let new_rel = relationship.after_dialogue(emotion_state, req.praiseworthiness);
+
+    // 5. after 값
+    let after = RelationshipValues {
+        closeness: new_rel.closeness().value(),
+        trust: new_rel.trust().value(),
+        power: new_rel.power().value(),
+    };
+
+    // 6. 레지스트리 업데이트
+    let key = rel_data.key();
+    inner.relationships.insert(key, RelationshipData {
+        owner_id: rel_data.owner_id.clone(),
+        target_id: rel_data.target_id.clone(),
+        closeness: new_rel.closeness().value(),
+        trust: new_rel.trust().value(),
+        power: new_rel.power().value(),
+    });
+
+    // 7. 감정 상태 초기화 (대화 종료)
+    inner.emotions.remove(&req.npc_id);
+
+    let response = AfterDialogueResponse { before, after };
+
+    // 턴 기록
+    let turn_num = inner.turn_history.len() + 1;
+    inner.turn_history.push(TurnRecord {
+        label: format!("Turn {}: after_dialogue ({}→{})", turn_num, req.npc_id, req.partner_id),
+        action: "after_dialogue".into(),
+        request: serde_json::to_value(&req).unwrap_or_default(),
+        response: serde_json::to_value(&response).unwrap_or_default(),
+    });
+
+    Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// 턴 히스토리 조회
+// ---------------------------------------------------------------------------
+
+/// GET /api/history — 턴별 기록 조회
+pub async fn get_history(State(state): State<AppState>) -> Json<Vec<TurnRecord>> {
+    let inner = state.inner.read().await;
+    Json(inner.turn_history.clone())
+}
+
+// ---------------------------------------------------------------------------
 // 저장/로드
 // ---------------------------------------------------------------------------
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SaveRequest {
     pub path: String,
 }
@@ -352,4 +597,46 @@ pub async fn load_state(
     let mut inner = state.inner.write().await;
     *inner = loaded;
     Ok(StatusCode::OK)
+}
+
+
+// ---------------------------------------------------------------------------
+// 시나리오 목록 (data/ 폴더 스캔)
+// ---------------------------------------------------------------------------
+
+/// GET /api/scenarios — data/ 폴더에서 scenario.json 파일 목록 반환
+pub async fn list_scenarios() -> Json<Vec<ScenarioInfo>> {
+    let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
+    let mut scenarios = Vec::new();
+    scan_scenarios(&data_dir, &data_dir, &mut scenarios);
+    scenarios.sort_by(|a, b| a.path.cmp(&b.path));
+    Json(scenarios)
+}
+
+#[derive(Serialize)]
+pub struct ScenarioInfo {
+    /// data/ 기준 상대 경로 (슬래시 구분)
+    pub path: String,
+    /// 표시용 이름 (폴더 구조에서 추출)
+    pub label: String,
+}
+
+fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<ScenarioInfo>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                scan_scenarios(base, &path, out);
+            } else if path.file_name().map(|f| f == "scenario.json").unwrap_or(false) {
+                if let Ok(rel) = path.parent().unwrap_or(&path).strip_prefix(base) {
+                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                    let label = rel_str.replace('/', " / ");
+                    out.push(ScenarioInfo {
+                        path: rel_str,
+                        label,
+                    });
+                }
+            }
+        }
+    }
 }

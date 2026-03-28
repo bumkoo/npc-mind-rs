@@ -278,6 +278,11 @@ function SituationPanel({npcs, objects, result, setResult}) {
   const [objTarget, setObjTarget] = useState('');
   const [objAp, setObjAp] = useState(0);
 
+  // PAD 자극
+  const [padP, setPadP] = useState(0);
+  const [padA, setPadA] = useState(0);
+  const [padD, setPadD] = useState(0);
+
   const [tab, setTab] = useState('prompt');
 
   const runAppraise = async () => {
@@ -308,6 +313,38 @@ function SituationPanel({npcs, objects, result, setResult}) {
       const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!res.ok) { const t=await res.text(); alert('오류: '+t); return; }
       setResult(await res.json());
+    } catch(e) { alert('요청 실패: '+e); }
+  };
+
+  const runStimulus = async () => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    if(!result) return alert('감정 평가를 먼저 실행하세요');
+    const body = {
+      npc_id: npcId, partner_id: partnerId,
+      situation_description: desc || null,
+      pleasure: padP, arousal: padA, dominance: padD,
+    };
+    try {
+      const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      setResult(await res.json());
+      setTab('emotions');
+    } catch(e) { alert('요청 실패: '+e); }
+  };
+
+  const runAfterDialogue = async () => {
+    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    const pw = hasAction ? parseFloat(prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '') || '') : NaN;
+    const body = {
+      npc_id: npcId, partner_id: partnerId,
+      praiseworthiness: isNaN(pw) ? null : pw,
+    };
+    try {
+      const res = await fetch('/api/after-dialogue', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      const data = await res.json();
+      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
+      setResult(null);
     } catch(e) { alert('요청 실패: '+e); }
   };
   return (
@@ -401,6 +438,22 @@ function SituationPanel({npcs, objects, result, setResult}) {
         <div className="btn-row">
           <button className="btn primary" onClick={runAppraise} style={{flex:1}}>감정 평가 실행</button>
         </div>
+
+        {/* PAD 자극 */}
+        <div className="card">
+          <h3 style={{margin:'0 0 6px',color:'var(--warn)'}}>PAD 자극 적용</h3>
+          <Slider label="P (쾌)" value={padP} onChange={setPadP} />
+          <Slider label="A (각성)" value={padA} onChange={setPadA} />
+          <Slider label="D (지배)" value={padD} onChange={setPadD} />
+          <div className="btn-row">
+            <button className="btn primary" onClick={runStimulus} style={{flex:1}}>자극 적용</button>
+          </div>
+        </div>
+
+        {/* 대화 종료 */}
+        <div className="btn-row" style={{marginTop:4}}>
+          <button className="btn danger" onClick={runAfterDialogue} style={{flex:1}}>대화 종료 (관계 갱신)</button>
+        </div>
       </div>
 
       {/* 오른쪽: 결과 표시 */}
@@ -483,31 +536,40 @@ function App() {
   useEffect(() => { refresh(); }, [refresh]);
 
   const saveState = async () => {
-    const name = prompt('저장 파일명 (확장자 없이):', 'scenario');
-    if(!name) return;
-    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${name}.json`;
+    const sub = prompt('저장 경로 (data/ 기준, 예: huckleberry_finn/ch8_jackson_island_meeting/session_002/scenario):', '');
+    if(!sub) return;
+    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${sub.replace(/\//g,'\\\\')}${sub.endsWith('.json')?'':'.json'}`;
     const res = await fetch('/api/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) alert(`저장 완료: ${path}`);
+    if(res.ok) { alert(`저장 완료: ${sub}`); refreshScenarios(); }
     else alert('저장 실패: ' + await res.text());
   };
 
-  const loadState = async () => {
-    const name = prompt('로드 파일명 (확장자 없이):', 'scenario');
-    if(!name) return;
-    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${name}.json`;
+  const loadScenario = async (scenPath) => {
+    if(!scenPath) return;
+    const path = `C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\${scenPath.replace(/\//g,'\\\\')}\\scenario.json`;
     const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { alert('로드 완료'); refresh(); }
+    if(res.ok) { refresh(); setResult(null); }
     else alert('로드 실패: ' + await res.text());
   };
+
+  const [scenarios, setScenarios] = useState([]);
+  const refreshScenarios = useCallback(async () => {
+    try { const s = await api.get('/api/scenarios'); setScenarios(s); } catch(e) {}
+  }, []);
+  useEffect(() => { refreshScenarios(); }, [refreshScenarios]);
 
   return (
     <div>
       <div className="header">
         <h1>NPC Mind Engine</h1>
         <span className={`status ${connected?'ok':''}`}>{connected?'서버 연결됨':'연결 실패'} — NPC {npcs.length}개, 관계 {rels.length}개, 오브젝트 {objects.length}개</span>
-        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+        <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center'}}>
+          <select style={{background:'var(--bg2)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'2px 8px',fontSize:12,maxWidth:280}}
+            onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
+            <option value="">시나리오 로드...</option>
+            {scenarios.map(s => <option key={s.path} value={s.path}>{s.label}</option>)}
+          </select>
           <button className="btn small" onClick={saveState}>저장</button>
-          <button className="btn small" onClick={loadState}>로드</button>
           <button className="btn small" onClick={refresh}>새로고침</button>
         </div>
       </div>
