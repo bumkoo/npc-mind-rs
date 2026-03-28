@@ -327,3 +327,55 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
    - 모달 열고 닫기, CRUD 동작 확인
    - appraise → stimulus → after-dialogue 전체 워크플로우 테스트
    - 감정 바 색상, 지배 감정 카드, 프롬프트 복사 등 시각적 확인
+
+---
+
+## 개발 완료 내역 (2026-03-28)
+
+### 브랜치
+
+- `claude/flamboyant-kirch` → CSS + 모든 React 컴포넌트 + App 70% (커밋 `518a9cb`)
+- `claude/flamboyant-kirch-Wg3zv` → App 나머지 30% 완성 (커밋 `c8fdfbb`)
+
+### 1차: 프론트엔드 전면 재작성 (커밋 `518a9cb`)
+
+| 카테고리 | 완료 항목 |
+|---|---|
+| **CSS** | 다크 테마(CSS 변수), 3-column 레이아웃, 사이드바, 폼, 버튼, 섹션 카드, 감정 바, 결과(프롬프트/trace), 히스토리, 모달 |
+| **Slider** | 공용 슬라이더 컴포넌트 (`label`, `value`, `onChange`, `min/max/step`) |
+| **NpcModal** | HEXACO 6차원 24facet 편집 모달 |
+| **RelModal** | 관계 편집 모달 (closeness/trust/power) |
+| **ObjModal** | 오브젝트 편집 모달 |
+| **Sidebar** | NPC/관계/오브젝트 아코디언 목록 + 클릭→NPC 선택 연동 |
+| **SituationPanel** | 상황 설정 (Event/Action/Object/PAD 자극/대화종료 전부 포함) |
+| **ResultPanel** | 결과 탭 컨테이너 (감정│프롬프트│Trace│히스토리) |
+| **EmotionView** | 감정 바 시각화 + 지배 감정 카드 + 분위기 |
+| **PromptView** | 프롬프트 표시 + 클립보드 복사 |
+| **TraceView** | 엔진 trace 표시 |
+| **HistoryView** | 턴별 히스토리 (접이식 JSON) |
+| **emotionColor()** | 감정 타입별 고유 색상 22개 |
+| **App (70%)** | state 선언, `refresh()`, CRUD 핸들러 6종, `handleAppraise`, `handleStimulus` |
+
+### 2차: App 컴포넌트 완성 (커밋 `c8fdfbb`)
+
+| 항목 | 설명 |
+|---|---|
+| **`handleAfterDialogue`** | 대화 종료 → 도덕성 입력 → 관계 갱신 결과 표시 (친밀도/신뢰도/상하 before→after) |
+| **`saveState`** | `data/` 기준 상대 경로로 시나리오 JSON 저장 |
+| **`loadScenario`** | 시나리오 목록에서 선택 → JSON 로드 → 상태 초기화 |
+| **App return JSX** | Header(타이틀/상태/시나리오 드롭다운/저장/새로고침) + 3-column(Sidebar/SituationPanel/ResultPanel) + Modals(NPC/관계/오브젝트) |
+| **ReactDOM 마운트** | `createRoot` → `<App />` 렌더링 |
+
+### 변경 사항 (원본 대비)
+
+- `saveState`/`loadScenario`의 경로를 Windows 절대 경로(`C:\Users\bumko\...`)에서 **상대 경로**(`data/...`)로 변경
+  - 서버 핸들러가 상대 경로를 올바르게 처리하는지 로컬 확인 필요
+
+### 미확인 (로컬 브라우저 테스트 필요)
+
+- [ ] 사이드바 NPC 클릭 → 중앙 패널 NPC 드롭다운 반영
+- [ ] 모달 열기/닫기, NPC·관계·오브젝트 CRUD
+- [ ] appraise → stimulus → after-dialogue 전체 워크플로우
+- [ ] 감정 바 색상 22종, 지배 감정 카드, 프롬프트 복사
+- [ ] 시나리오 저장/로드 경로 동작
+- [ ] 스크롤 없이 전체 워크플로우 한 화면 표시 (`100vh`)
