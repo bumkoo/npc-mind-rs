@@ -53,80 +53,38 @@ impl AppraisalEngine {
         let d = event.desirability_for_self;
         let ctx = &event.description;
 
-        // 1. 전망 확인
+        // 1. 전망 확인 (Satisfaction, Disappointment, Relief, FearsConfirmed)
         if let Some(Prospect::Confirmation(result)) = &event.prospect {
             let w = p.desirability_confirmation_weight(d);
-            let val = d.abs() * w;
-            let etype = match result {
-                ProspectResult::HopeFulfilled => EmotionType::Satisfaction,
-                ProspectResult::HopeUnfulfilled => EmotionType::Disappointment,
-                ProspectResult::FearUnrealized => EmotionType::Relief,
-                ProspectResult::FearConfirmed => EmotionType::FearsConfirmed,
-            };
-            trace!(emotion = ?etype, base_val = d, weight = w, result = val, context = %ctx);
-            state.add(Emotion::with_context(etype, val, ctx));
+            Self::add_confirmation(state, result, d, w, ctx);
             return;
         }
 
-        // 2. 미래 전망
+        // 2. 미래 전망 (Hope, Fear)
         if let Some(Prospect::Anticipation) = &event.prospect {
             let w = p.desirability_prospect_weight(d);
-            if d > 0.0 {
-                let val = d * w;
-                trace!(emotion = ?EmotionType::Hope, base_val = d, weight = w, result = val, context = %ctx);
-                state.add(Emotion::with_context(EmotionType::Hope, val, ctx));
-            } else if d < 0.0 {
-                let val = d.abs() * w;
-                trace!(emotion = ?EmotionType::Fear, base_val = d, weight = w, result = val, context = %ctx);
-                state.add(Emotion::with_context(EmotionType::Fear, val, ctx));
-            }
+            Self::add_valence(state, EmotionType::Hope, EmotionType::Fear, d, w, 1.0, ctx);
             return;
         }
 
-        // 3. 자기 복지
+        // 3. 자기 복지 (Joy, Distress)
         let w = p.desirability_self_weight(d);
-        if d > 0.0 {
-            let val = d * w;
-            trace!(emotion = ?EmotionType::Joy, base_val = d, weight = w, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Joy, val, ctx));
-        } else if d < 0.0 {
-            let val = d.abs() * w;
-            trace!(emotion = ?EmotionType::Distress, base_val = d, weight = w, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Distress, val, ctx));
-        }
+        Self::add_valence(state, EmotionType::Joy, EmotionType::Distress, d, w, 1.0, ctx);
 
-        // 4. 타인의 운
+        // 4. 타인의 운 (HappyFor, Pity, Resentment, Gloating)
         if let Some(other) = &event.desirability_for_other {
             let d_other = other.desirability;
             let other_ctx = format!("{} (대상: {})", ctx, other.target_id);
 
+            // 공감 기반 (HappyFor, Pity)
             let emp_w = p.empathy_weight(d_other);
-            if emp_w > 0.0 {
-                let rel_mod = other.relationship.empathy_rel_modifier();
-                if d_other > 0.0 {
-                    let val = d_other * emp_w * rel_mod;
-                    trace!(emotion = ?EmotionType::HappyFor, base_val = d_other, weight = emp_w, multiplier = rel_mod, result = val, context = %other_ctx);
-                    state.add(Emotion::with_context(EmotionType::HappyFor, val, &other_ctx));
-                } else if d_other < 0.0 {
-                    let val = d_other.abs() * emp_w * rel_mod;
-                    trace!(emotion = ?EmotionType::Pity, base_val = d_other, weight = emp_w, multiplier = rel_mod, result = val, context = %other_ctx);
-                    state.add(Emotion::with_context(EmotionType::Pity, val, &other_ctx));
-                }
-            }
+            let emp_mod = other.relationship.empathy_rel_modifier();
+            Self::add_valence(state, EmotionType::HappyFor, EmotionType::Pity, d_other, emp_w, emp_mod, &other_ctx);
 
+            // 적대 기반 (Resentment, Gloating)
             let hos_w = p.hostility_weight(d_other);
-            if hos_w > 0.0 {
-                let rel_mod = other.relationship.hostility_rel_modifier();
-                if d_other > 0.0 {
-                    let val = d_other * hos_w * rel_mod;
-                    trace!(emotion = ?EmotionType::Resentment, base_val = d_other, weight = hos_w, multiplier = rel_mod, result = val, context = %other_ctx);
-                    state.add(Emotion::with_context(EmotionType::Resentment, val, &other_ctx));
-                } else if d_other < 0.0 {
-                    let val = d_other.abs() * hos_w * rel_mod;
-                    trace!(emotion = ?EmotionType::Gloating, base_val = d_other, weight = hos_w, multiplier = rel_mod, result = val, context = %other_ctx);
-                    state.add(Emotion::with_context(EmotionType::Gloating, val, &other_ctx));
-                }
-            }
+            let hos_mod = other.relationship.hostility_rel_modifier();
+            Self::add_valence(state, EmotionType::Resentment, EmotionType::Gloating, d_other, hos_w, hos_mod, &other_ctx);
         }
     }
 
@@ -136,87 +94,32 @@ impl AppraisalEngine {
         dialogue_relationship: &Relationship,
         action: &ActionFocus,
     ) {
+        let pw = action.praiseworthiness;
         let ctx = &action.description;
 
         match (&action.agent_id, &action.relationship) {
             (None, _) => {
-                let pw = action.praiseworthiness;
+                // 자기 행동 (Pride, Shame)
                 let w = p.praiseworthiness_weight(true, pw);
-                if pw > 0.0 {
-                    let val = pw * w;
-                    trace!(emotion = ?EmotionType::Pride, base_val = pw, weight = w, result = val, context = %ctx);
-                    state.add(Emotion::with_context(EmotionType::Pride, val, ctx));
-                } else if pw < 0.0 {
-                    let val = pw.abs() * w;
-                    trace!(emotion = ?EmotionType::Shame, base_val = pw, weight = w, result = val, context = %ctx);
-                    state.add(Emotion::with_context(EmotionType::Shame, val, ctx));
-                }
+                Self::add_valence(state, EmotionType::Pride, EmotionType::Shame, pw, w, 1.0, ctx);
             }
-            (Some(_), Some(third_party_rel)) => {
-                let rel_mul = third_party_rel.emotion_intensity_multiplier();
-                let trust_mod = third_party_rel.trust_emotion_modifier();
-                Self::apply_other_action(p, state, action, rel_mul, trust_mod);
+            (Some(_), rel) => {
+                // 타인 행동 (Admiration, Reproach)
+                let relationship = rel.as_ref().unwrap_or(dialogue_relationship);
+                let w = p.praiseworthiness_weight(false, pw);
+                let modifier = relationship.emotion_intensity_multiplier() * relationship.trust_emotion_modifier();
+                Self::add_valence(state, EmotionType::Admiration, EmotionType::Reproach, pw, w, modifier, ctx);
             }
-            (Some(_), None) => {
-                let rel_mul = dialogue_relationship.emotion_intensity_multiplier();
-                let trust_mod = dialogue_relationship.trust_emotion_modifier();
-                Self::apply_other_action(p, state, action, rel_mul, trust_mod);
-            }
-        }
-    }
-
-    fn apply_other_action<P: AppraisalWeights>(
-        p: &P,
-        state: &mut EmotionState,
-        action: &ActionFocus,
-        rel_mul: f32,
-        trust_mod: f32,
-    ) {
-        let pw = action.praiseworthiness;
-        let w = p.praiseworthiness_weight(false, pw);
-        let ctx = &action.description;
-        if pw > 0.0 {
-            let val = pw * w * trust_mod * rel_mul;
-            trace!(emotion = ?EmotionType::Admiration, base_val = pw, weight = w, rel_mul = rel_mul, trust_mod = trust_mod, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Admiration, val, ctx));
-        } else if pw < 0.0 {
-            let val = pw.abs() * w * trust_mod * rel_mul;
-            trace!(emotion = ?EmotionType::Reproach, base_val = pw, weight = w, rel_mul = rel_mul, trust_mod = trust_mod, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Reproach, val, ctx));
         }
     }
 
     fn appraise_compound(state: &mut EmotionState, is_self: bool, situation_desc: &str) {
         if is_self {
-            let pride = state.intensity_of(EmotionType::Pride);
-            let joy = state.intensity_of(EmotionType::Joy);
-            if pride > 0.0 && joy > 0.0 {
-                let val = (pride + joy) / 2.0;
-                trace!(emotion = ?EmotionType::Gratification, comp1_type = ?EmotionType::Pride, comp1_val = pride, comp2_type = ?EmotionType::Joy, comp2_val = joy, result = val);
-                state.add(Emotion::with_context(EmotionType::Gratification, val, situation_desc));
-            }
-            let shame = state.intensity_of(EmotionType::Shame);
-            let distress = state.intensity_of(EmotionType::Distress);
-            if shame > 0.0 && distress > 0.0 {
-                let val = (shame + distress) / 2.0;
-                trace!(emotion = ?EmotionType::Remorse, comp1_type = ?EmotionType::Shame, comp1_val = shame, comp2_type = ?EmotionType::Distress, comp2_val = distress, result = val);
-                state.add(Emotion::with_context(EmotionType::Remorse, val, situation_desc));
-            }
+            Self::add_compound(state, EmotionType::Gratification, EmotionType::Pride, EmotionType::Joy, situation_desc);
+            Self::add_compound(state, EmotionType::Remorse, EmotionType::Shame, EmotionType::Distress, situation_desc);
         } else {
-            let admiration = state.intensity_of(EmotionType::Admiration);
-            let joy = state.intensity_of(EmotionType::Joy);
-            if admiration > 0.0 && joy > 0.0 {
-                let val = (admiration + joy) / 2.0;
-                trace!(emotion = ?EmotionType::Gratitude, comp1_type = ?EmotionType::Admiration, comp1_val = admiration, comp2_type = ?EmotionType::Joy, comp2_val = joy, result = val);
-                state.add(Emotion::with_context(EmotionType::Gratitude, val, situation_desc));
-            }
-            let reproach = state.intensity_of(EmotionType::Reproach);
-            let distress = state.intensity_of(EmotionType::Distress);
-            if reproach > 0.0 && distress > 0.0 {
-                let val = (reproach + distress) / 2.0;
-                trace!(emotion = ?EmotionType::Anger, comp1_type = ?EmotionType::Reproach, comp1_val = reproach, comp2_type = ?EmotionType::Distress, comp2_val = distress, result = val);
-                state.add(Emotion::with_context(EmotionType::Anger, val, situation_desc));
-            }
+            Self::add_compound(state, EmotionType::Gratitude, EmotionType::Admiration, EmotionType::Joy, situation_desc);
+            Self::add_compound(state, EmotionType::Anger, EmotionType::Reproach, EmotionType::Distress, situation_desc);
         }
     }
 
@@ -228,15 +131,71 @@ impl AppraisalEngine {
         let ap = object.appealingness;
         let w = p.appealingness_weight(ap);
         let ctx = &object.target_description;
+        
+        Self::add_valence(state, EmotionType::Love, EmotionType::Hate, ap, w, 1.0, ctx);
+    }
 
-        if ap > 0.0 {
-            let val = ap * w;
-            trace!(emotion = ?EmotionType::Love, base_val = ap, weight = w, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Love, val, ctx));
-        } else if ap < 0.0 {
-            let val = ap.abs() * w;
-            trace!(emotion = ?EmotionType::Hate, base_val = ap, weight = w, result = val, context = %ctx);
-            state.add(Emotion::with_context(EmotionType::Hate, val, ctx));
+    // -----------------------------------------------------------------------
+    // 감정 생성 헬퍼 (DRY)
+    // -----------------------------------------------------------------------
+
+    /// 밸런스 페어 (Positive/Negative) 감정 추가 헬퍼
+    fn add_valence(
+        state: &mut EmotionState,
+        pos_type: EmotionType,
+        neg_type: EmotionType,
+        base_val: f32,
+        weight: f32,
+        modifier: f32,
+        ctx: &str,
+    ) {
+        if weight <= 0.0 { return; }
+
+        if base_val > 0.0 {
+            let val = base_val * weight * modifier;
+            trace!(emotion = ?pos_type, base_val, weight, modifier, result = val, context = %ctx);
+            state.add(Emotion::with_context(pos_type, val, ctx));
+        } else if base_val < 0.0 {
+            let val = base_val.abs() * weight * modifier;
+            trace!(emotion = ?neg_type, base_val = base_val.abs(), weight, modifier, result = val, context = %ctx);
+            state.add(Emotion::with_context(neg_type, val, ctx));
+        }
+    }
+
+    /// 전망 확인 (4종) 감정 추가 헬퍼
+    fn add_confirmation(
+        state: &mut EmotionState,
+        result: &ProspectResult,
+        base_val: f32,
+        weight: f32,
+        ctx: &str,
+    ) {
+        let etype = match result {
+            ProspectResult::HopeFulfilled => EmotionType::Satisfaction,
+            ProspectResult::HopeUnfulfilled => EmotionType::Disappointment,
+            ProspectResult::FearUnrealized => EmotionType::Relief,
+            ProspectResult::FearConfirmed => EmotionType::FearsConfirmed,
+        };
+        let val = base_val.abs() * weight;
+        trace!(emotion = ?etype, base_val = base_val.abs(), weight, result = val, context = %ctx);
+        state.add(Emotion::with_context(etype, val, ctx));
+    }
+
+    /// 복합 감정 (두 감정의 조합) 생성 헬퍼
+    fn add_compound(
+        state: &mut EmotionState,
+        target_type: EmotionType,
+        comp1_type: EmotionType,
+        comp2_type: EmotionType,
+        ctx: &str,
+    ) {
+        let val1 = state.intensity_of(comp1_type);
+        let val2 = state.intensity_of(comp2_type);
+
+        if val1 > 0.0 && val2 > 0.0 {
+            let val = (val1 + val2) / 2.0;
+            trace!(emotion = ?target_type, comp1_type = ?comp1_type, comp1_val = val1, comp2_type = ?comp2_type, comp2_val = val2, result = val, context = %ctx);
+            state.add(Emotion::with_context(target_type, val, ctx));
         }
     }
 }

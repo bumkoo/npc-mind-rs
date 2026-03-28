@@ -2,6 +2,7 @@
 
 use axum::extract::State;
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
@@ -13,6 +14,45 @@ use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
 
 use crate::state::*;
+
+// ---------------------------------------------------------------------------
+// WebUI 전용 에러 타입
+// ---------------------------------------------------------------------------
+pub enum AppError {
+    Service(MindServiceError),
+    Internal(String),
+    #[allow(dead_code)]
+    NotFound(String),
+}
+
+impl From<MindServiceError> for AppError {
+    fn from(e: MindServiceError) -> Self {
+        AppError::Service(e)
+    }
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let (status, message) = match self {
+            AppError::Service(e) => match e {
+                MindServiceError::NpcNotFound(_) | MindServiceError::RelationshipNotFound(_, _) => {
+                    (StatusCode::NOT_FOUND, e.to_string())
+                }
+                MindServiceError::InvalidSituation(_) | MindServiceError::EmotionStateNotFound => {
+                    (StatusCode::BAD_REQUEST, e.to_string())
+                }
+            },
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+        };
+
+        let body = Json(serde_json::json!({
+            "error": message
+        }));
+
+        (status, body).into_response()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Repository Wrapper for WebUI State
@@ -67,20 +107,6 @@ impl<'a> MindRepository for AppStateRepository<'a> {
             trust: rel.trust().value(),
             power: rel.power().value(),
         });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Helper Error Conversion
-// ---------------------------------------------------------------------------
-fn map_service_error(e: MindServiceError) -> (StatusCode, String) {
-    match e {
-        MindServiceError::NpcNotFound(_) | MindServiceError::RelationshipNotFound(_, _) => {
-            (StatusCode::NOT_FOUND, e.to_string())
-        }
-        MindServiceError::InvalidSituation(_) | MindServiceError::EmotionStateNotFound => {
-            (StatusCode::BAD_REQUEST, e.to_string())
-        }
     }
 }
 
@@ -190,7 +216,7 @@ pub async fn delete_object(
 pub async fn appraise(
     State(state): State<AppState>,
     Json(req): Json<AppraiseRequest>,
-) -> Result<Json<AppraiseResponse>, (StatusCode, String)> {
+) -> Result<Json<AppraiseResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
     
@@ -200,7 +226,7 @@ pub async fn appraise(
         req.clone(),
         || { collector.take_entries(); }, // before
         || collector.take_entries(),      // after
-    ).map_err(map_service_error)?;
+    )?;
 
     // 턴 기록 저장
     let turn_num = inner.turn_history.len() + 1;
@@ -222,11 +248,11 @@ pub async fn appraise(
 pub async fn stimulus(
     State(state): State<AppState>,
     Json(req): Json<StimulusRequest>,
-) -> Result<Json<AppraiseResponse>, (StatusCode, String)> {
+) -> Result<Json<AppraiseResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    let response = service.apply_stimulus(req.clone()).map_err(map_service_error)?;
+    let response = service.apply_stimulus(req.clone())?;
 
     // 턴 기록 저장
     let turn_num = inner.turn_history.len() + 1;
@@ -248,11 +274,11 @@ pub async fn stimulus(
 pub async fn guide(
     State(state): State<AppState>,
     Json(req): Json<GuideRequest>,
-) -> Result<Json<GuideResponse>, (StatusCode, String)> {
+) -> Result<Json<GuideResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    let response = service.generate_guide(req).map_err(map_service_error)?;
+    let response = service.generate_guide(req)?;
     Ok(Json(response))
 }
 
@@ -264,11 +290,11 @@ pub async fn guide(
 pub async fn after_dialogue(
     State(state): State<AppState>,
     Json(req): Json<AfterDialogueRequest>,
-) -> Result<Json<AfterDialogueResponse>, (StatusCode, String)> {
+) -> Result<Json<AfterDialogueResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    let response = service.after_dialogue(req.clone()).map_err(map_service_error)?;
+    let response = service.after_dialogue(req.clone())?;
 
     // 턴 기록
     let turn_num = inner.turn_history.len() + 1;
@@ -305,10 +331,10 @@ pub struct SaveRequest {
 pub async fn save_state(
     State(state): State<AppState>,
     Json(req): Json<SaveRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let inner = state.inner.read().await;
     inner.save_to_file(std::path::Path::new(&req.path))
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(|e| AppError::Internal(e))?;
     Ok(StatusCode::OK)
 }
 
@@ -316,9 +342,9 @@ pub async fn save_state(
 pub async fn load_state(
     State(state): State<AppState>,
     Json(req): Json<SaveRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+        .map_err(|e| AppError::Internal(e))?;
     let mut inner = state.inner.write().await;
     *inner = loaded;
     Ok(StatusCode::OK)
