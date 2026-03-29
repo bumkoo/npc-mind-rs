@@ -253,9 +253,12 @@ pub async fn stimulus(
     Json(req): Json<StimulusRequest>,
 ) -> Result<Json<AppraiseResponse>, AppError> {
     let mut inner = state.inner.write().await;
+    let collector = state.collector.clone();
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-    let response = service.apply_stimulus(req.clone())?;
+    collector.take_entries(); // 이전 로그 클리어
+    let mut response = service.apply_stimulus(req.clone())?;
+    response.trace = collector.take_entries();
 
     // 턴 기록 저장
     let turn_num = inner.turn_history.len() + 1;
