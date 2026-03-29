@@ -16,6 +16,34 @@ mod trace_collector;
 
 use state::AppState;
 
+/// embed feature 활성 시 PadAnalyzer 초기화
+#[cfg(feature = "embed")]
+fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
+    use npc_mind::adapter::ort_embedder::OrtEmbedder;
+    use npc_mind::domain::pad::PadAnalyzer;
+
+    let model_dir = std::env::var("NPC_MIND_MODEL_DIR")
+        .unwrap_or_else(|_| "models/bge-m3".to_string());
+    let model_path = std::path::Path::new(&model_dir).join("model_quantized.onnx");
+    let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
+
+    match OrtEmbedder::new(&model_path, &tokenizer_path) {
+        Ok(embedder) => match PadAnalyzer::new(Box::new(embedder)) {
+            Ok(analyzer) => {
+                println!("PAD Analyzer: 초기화 완료 (embed 활성)");
+                Some(analyzer)
+            }
+            Err(e) => { eprintln!("PAD Analyzer 앵커 초기화 실패: {e:?}"); None }
+        }
+        Err(e) => { eprintln!("OrtEmbedder 초기화 실패: {e:?}"); None }
+    }
+}
+
+#[cfg(not(feature = "embed"))]
+fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
+    None
+}
+
 #[tokio::main]
 async fn main() {
     // tracing 초기화
@@ -24,7 +52,8 @@ async fn main() {
         .with(collector.clone())
         .init();
 
-    let state = AppState::new(collector);
+    let analyzer = init_analyzer();
+    let state = AppState::new(collector, analyzer);
 
     // 정적 파일 경로
     let static_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -44,6 +73,7 @@ async fn main() {
         .route("/api/after-dialogue", post(handlers::after_dialogue))
         .route("/api/scenarios", get(handlers::list_scenarios))
         .route("/api/scenario-meta", get(handlers::get_scenario_meta))
+        .route("/api/analyze-utterance", post(handlers::analyze_utterance))
         .route("/api/history", get(handlers::get_history))
         .route("/api/situation", get(handlers::get_situation).put(handlers::put_situation))
         .route("/api/save", post(handlers::save_state))

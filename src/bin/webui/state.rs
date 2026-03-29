@@ -2,10 +2,11 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
 use npc_mind::domain::emotion::EmotionState;
+use npc_mind::domain::pad::PadAnalyzer;
 use crate::trace_collector::AppraisalCollector;
 
 /// 서버 공유 상태
@@ -13,13 +14,16 @@ use crate::trace_collector::AppraisalCollector;
 pub struct AppState {
     pub inner: Arc<RwLock<StateInner>>,
     pub collector: AppraisalCollector,
+    /// 대사 → PAD 분석기 (embed feature 활성 시에만 Some)
+    pub analyzer: Option<Arc<Mutex<PadAnalyzer>>>,
 }
 
 impl AppState {
-    pub fn new(collector: AppraisalCollector) -> Self {
+    pub fn new(collector: AppraisalCollector, analyzer: Option<PadAnalyzer>) -> Self {
         Self {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
+            analyzer: analyzer.map(|a| Arc::new(Mutex::new(a))),
         }
     }
 }

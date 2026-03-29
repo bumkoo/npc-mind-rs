@@ -12,6 +12,7 @@ use npc_mind::domain::personality::Npc;
 
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
+use npc_mind::ports::UtteranceAnalyzer;
 
 use crate::state::*;
 
@@ -23,6 +24,7 @@ pub enum AppError {
     Internal(String),
     #[allow(dead_code)]
     NotFound(String),
+    NotImplemented(String),
 }
 
 impl From<MindServiceError> for AppError {
@@ -43,6 +45,7 @@ impl IntoResponse for AppError {
                 }
             },
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::NotImplemented(msg) => (StatusCode::NOT_IMPLEMENTED, msg),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
@@ -273,11 +276,22 @@ pub async fn stimulus(
 /// POST /api/guide — 현재 감정 상태에서 가이드 재생성
 pub async fn guide(
     State(state): State<AppState>,
-    Json(req): Json<GuideRequest>,
+    Json(mut req): Json<GuideRequest>,
 ) -> Result<Json<GuideResponse>, AppError> {
     let mut inner = state.inner.write().await;
-    let service = MindService::new(AppStateRepository { inner: &mut *inner });
 
+    // 저장된 상황 설명을 fallback으로 사용
+    if req.situation_description.is_none() {
+        if let Some(ref sit) = inner.current_situation {
+            req.situation_description = sit
+                .get("description")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+        }
+    }
+
+    let service = MindService::new(AppStateRepository { inner: &mut *inner });
     let response = service.generate_guide(req)?;
     Ok(Json(response))
 }
@@ -306,6 +320,41 @@ pub async fn after_dialogue(
     });
 
     Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// 대사 → PAD 분석
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct AnalyzeUtteranceRequest {
+    pub utterance: String,
+}
+
+#[derive(Serialize)]
+pub struct AnalyzeUtteranceResponse {
+    pub pleasure: f32,
+    pub arousal: f32,
+    pub dominance: f32,
+}
+
+/// POST /api/analyze-utterance — 대사 텍스트를 PAD 값으로 변환
+pub async fn analyze_utterance(
+    State(state): State<AppState>,
+    Json(req): Json<AnalyzeUtteranceRequest>,
+) -> Result<Json<AnalyzeUtteranceResponse>, AppError> {
+    let analyzer = state.analyzer.as_ref()
+        .ok_or_else(|| AppError::NotImplemented("embed feature가 비활성 상태입니다".into()))?;
+
+    let mut analyzer = analyzer.lock().await;
+    let pad = analyzer.analyze(&req.utterance)
+        .map_err(|e| AppError::Internal(format!("PAD 분석 실패: {e:?}")))?;
+
+    Ok(Json(AnalyzeUtteranceResponse {
+        pleasure: pad.pleasure,
+        arousal: pad.arousal,
+        dominance: pad.dominance,
+    }))
 }
 
 // ---------------------------------------------------------------------------
