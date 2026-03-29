@@ -587,7 +587,7 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   );
 }
 // --- Right: Result Panel ---
-function ResultPanel({result, history, onGuide, toast}) {
+function ResultPanel({result, history, traceHistory, onGuide, toast}) {
   const [tab, setTab] = useState('emotions');
 
   return (
@@ -610,7 +610,7 @@ function ResultPanel({result, history, onGuide, toast}) {
               ? <AfterDialogueView data={result} />
               : <EmotionView result={result} />)}
             {tab==='prompt' && result && !result.afterDialogue && <PromptView prompt={result.prompt} onRegenerate={onGuide} onCopy={()=>toast&&toast('클립보드에 복사됨','success')} />}
-            {tab==='trace' && result && !result.afterDialogue && <TraceView trace={result.trace} />}
+            {tab==='trace' && result && !result.afterDialogue && <TraceView traceHistory={traceHistory} />}
             {tab==='history' && <HistoryView history={history} />}
           </>
         )}
@@ -654,8 +654,16 @@ function PromptView({prompt, onRegenerate, onCopy}) {
     </div>
   );
 }
-function TraceView({trace}) {
-  return <div className="trace-box">{trace?.length ? trace.join('\n') : '(trace 없음)'}</div>;
+function TraceView({traceHistory}) {
+  if(!traceHistory?.length) return <div className="trace-box">(trace 없음)</div>;
+  return <div style={{display:'flex',flexDirection:'column',gap:6}}>
+    {[...traceHistory].reverse().map((entry,i) => (
+      <div key={i}>
+        <div style={{fontSize:10,color:'var(--fg2)',marginBottom:2}}>#{traceHistory.length - i} {entry.label}</div>
+        <div className="trace-box">{entry.trace.join('\n')}</div>
+      </div>
+    ))}
+  </div>;
 }
 
 function AfterDialogueView({data}) {
@@ -723,6 +731,7 @@ function App() {
   const [scenarioMeta, setScenarioMeta] = useState(null);
   const [connected, setConnected] = useState(false);
   const [result, setResult] = useState(null);
+  const [traceHistory, setTraceHistory] = useState([]);
   const [history, setHistory] = useState([]);
   const [savedSituation, setSavedSituation] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -770,6 +779,7 @@ function App() {
       if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
       const data = await res.json();
       setResult(data);
+      setTraceHistory([{label:'appraise',trace:data.trace||[]}]);
       refresh(); // history updated
     } catch(e) { toast('요청 실패: '+e,'error'); }
     finally { setLoading(false); }
@@ -783,7 +793,9 @@ function App() {
       const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({npc_id:npcId, partner_id:partnerId, pleasure, arousal, dominance, situation_description})});
       if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
-      setResult(await res.json());
+      const data = await res.json();
+      setResult(data);
+      setTraceHistory(prev => [...prev, {label:'stimulus',trace:data.trace||[]}]);
       refresh();
     } catch(e) { toast('요청 실패: '+e,'error'); }
     finally { setLoading(false); }
@@ -831,7 +843,7 @@ function App() {
           setSavedSituation(sit);
         }
       } catch(e) {}
-      setResult(null);
+      setResult(null); setTraceHistory([]);
     } else toast('로드 실패: '+await res.text(),'error');
   };
   return (
@@ -880,7 +892,7 @@ function App() {
           savedSituation={savedSituation}
           toast={toast}
         />
-        <ResultPanel result={result} history={history} onGuide={handleGuide} toast={toast} />
+        <ResultPanel result={result} history={history} traceHistory={traceHistory} onGuide={handleGuide} toast={toast} />
       </div>
 
       {/* Modals */}
