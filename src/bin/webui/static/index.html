@@ -368,7 +368,7 @@ function Sidebar({npcs, rels, objects, selectedNpcId, onSelectNpc, onEditNpc, on
   );
 }
 // --- Center: Situation Setup ---
-function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId, onAppraise, onStimulus, onAfterDialogue, loading}) {
+function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId, onAppraise, onStimulus, onAfterDialogue, loading, savedSituation}) {
   const npcIds = ['player', ...npcs.map(n=>n.id)];
   const [desc, setDesc] = useState('');
   // Event
@@ -395,6 +395,52 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   // After-dialogue praiseworthiness
   const [hasPw, setHasPw] = useState(false);
   const [adPw, setAdPw] = useState(0);
+
+  // --- 시나리오 로드 시 상황설정 복원 ---
+  const restoreKeyRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!savedSituation || savedSituation === restoreKeyRef.current) return;
+    restoreKeyRef.current = savedSituation;
+    const s = savedSituation;
+    if (s.desc != null) setDesc(s.desc);
+    if (s.npcId != null) setNpcId(s.npcId);
+    if (s.partnerId != null) setPartnerId(s.partnerId);
+    // Event
+    setHasEvent(s.hasEvent ?? true);
+    if (s.evDesc != null) setEvDesc(s.evDesc);
+    if (s.evSelf != null) setEvSelf(s.evSelf);
+    setHasOther(s.hasOther ?? false);
+    if (s.otherTarget != null) setOtherTarget(s.otherTarget);
+    if (s.otherD != null) setOtherD(s.otherD);
+    if (s.prospect != null) setProspect(s.prospect);
+    // Action
+    setHasAction(s.hasAction ?? false);
+    if (s.acDesc != null) setAcDesc(s.acDesc);
+    if (s.agentId != null) setAgentId(s.agentId);
+    if (s.pw != null) setPw(s.pw);
+    // Object
+    setHasObject(s.hasObject ?? false);
+    if (s.objTarget != null) setObjTarget(s.objTarget);
+    if (s.objAp != null) setObjAp(s.objAp);
+    // PAD
+    if (s.padP != null) setPadP(s.padP);
+    if (s.padA != null) setPadA(s.padA);
+    if (s.padD != null) setPadD(s.padD);
+    // After-dialogue
+    setHasPw(s.hasPw ?? false);
+    if (s.adPw != null) setAdPw(s.adPw);
+  }, [savedSituation]);
+
+  // --- 상황설정 변경 시 자동 저장 (debounced) ---
+  const saveTimerRef = React.useRef(null);
+  React.useEffect(() => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const data = {desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw};
+      fetch('/api/situation', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}).catch(()=>{});
+    }, 500);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw]);
 
   const buildSituation = () => ({
     description: desc,
@@ -651,9 +697,11 @@ function App() {
   const [rels, setRels] = useState([]);
   const [objects, setObjects] = useState([]);
   const [scenarios, setScenarios] = useState([]);
+  const [scenarioMeta, setScenarioMeta] = useState(null);
   const [connected, setConnected] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
+  const [savedSituation, setSavedSituation] = useState(null);
   const [loading, setLoading] = useState(false);
   const {toasts, toast} = useToast();
 
@@ -666,11 +714,13 @@ function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [n, r, o, s, h] = await Promise.all([
+      const [n, r, o, s, h, sm] = await Promise.all([
         api.get('/api/npcs'), api.get('/api/relationships'),
         api.get('/api/objects'), api.get('/api/scenarios'), api.get('/api/history'),
+        api.get('/api/scenario-meta'),
       ]);
       setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
+      setScenarioMeta(sm && sm.name ? sm : null);
       setConnected(true);
     } catch(e) { setConnected(false); }
   }, []);
@@ -748,7 +798,18 @@ function App() {
     if(!scenPath) return;
     const path = `data/${scenPath}/scenario.json`;
     const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { toast('시나리오 로드 완료','success'); refresh(); setResult(null); } else toast('로드 실패: '+await res.text(),'error');
+    if(res.ok) {
+      toast('시나리오 로드 완료','success');
+      await refresh();
+      // 상황설정 복원
+      try {
+        const sit = await api.get('/api/situation');
+        if (sit && typeof sit === 'object' && Object.keys(sit).length > 0) {
+          setSavedSituation(sit);
+        }
+      } catch(e) {}
+      setResult(null);
+    } else toast('로드 실패: '+await res.text(),'error');
   };
   return (
     <div className="app">
@@ -758,6 +819,9 @@ function App() {
         <span className={`status ${connected?'ok':''}`}>
           {connected ? `NPC ${npcs.length} · 관계 ${rels.length} · 오브젝트 ${objects.length}` : '연결 실패'}
         </span>
+        {scenarioMeta && <span style={{fontSize:11,color:'var(--accent2)',padding:'2px 8px',background:'var(--bg3)',borderRadius:'var(--radius)'}}
+          title={[scenarioMeta.description, ...(scenarioMeta.notes||[])].filter(Boolean).join('\n')}
+        >{scenarioMeta.name}</span>}
         <div className="actions">
           <select style={{background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'3px 8px',fontSize:11,maxWidth:220}}
             onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
@@ -790,6 +854,7 @@ function App() {
           onStimulus={handleStimulus}
           onAfterDialogue={handleAfterDialogue}
           loading={loading}
+          savedSituation={savedSituation}
         />
         <ResultPanel result={result} history={history} onGuide={handleGuide} toast={toast} />
       </div>

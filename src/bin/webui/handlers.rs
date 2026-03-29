@@ -309,6 +309,16 @@ pub async fn after_dialogue(
 }
 
 // ---------------------------------------------------------------------------
+// 시나리오 메타 조회
+// ---------------------------------------------------------------------------
+
+/// GET /api/scenario-meta — 현재 로드된 시나리오 메타 정보
+pub async fn get_scenario_meta(State(state): State<AppState>) -> Json<ScenarioMeta> {
+    let inner = state.inner.read().await;
+    Json(inner.scenario.clone())
+}
+
+// ---------------------------------------------------------------------------
 // 턴 히스토리 조회
 // ---------------------------------------------------------------------------
 
@@ -316,6 +326,26 @@ pub async fn after_dialogue(
 pub async fn get_history(State(state): State<AppState>) -> Json<Vec<TurnRecord>> {
     let inner = state.inner.read().await;
     Json(inner.turn_history.clone())
+}
+
+// ---------------------------------------------------------------------------
+// 상황 설정 패널 상태 저장/조회
+// ---------------------------------------------------------------------------
+
+/// GET /api/situation — 현재 상황 설정 패널 상태 조회
+pub async fn get_situation(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let inner = state.inner.read().await;
+    Json(inner.current_situation.clone().unwrap_or(serde_json::Value::Null))
+}
+
+/// PUT /api/situation — 상황 설정 패널 상태 저장
+pub async fn put_situation(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> StatusCode {
+    let mut inner = state.inner.write().await;
+    inner.current_situation = Some(body);
+    StatusCode::OK
 }
 
 // ---------------------------------------------------------------------------

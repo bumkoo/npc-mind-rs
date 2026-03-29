@@ -41,6 +41,9 @@ pub struct StateInner {
     /// 턴별 기록 (장면 설정 + 감정 평가 + 프롬프트)
     #[serde(default)]
     pub turn_history: Vec<TurnRecord>,
+    /// 현재 상황 설정 패널 상태 (프론트엔드 폼 값 보존용)
+    #[serde(default)]
+    pub current_situation: Option<serde_json::Value>,
 }
 
 /// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존
