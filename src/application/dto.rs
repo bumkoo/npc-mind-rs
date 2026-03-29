@@ -171,6 +171,16 @@ pub struct EmotionOutput {
     pub context: Option<String>,
 }
 
+impl EmotionOutput {
+    pub fn from_emotion(e: &crate::domain::emotion::Emotion) -> Self {
+        Self {
+            emotion_type: format!("{:?}", e.emotion_type()),
+            intensity: e.intensity(),
+            context: e.context().map(|s| s.to_string()),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StimulusRequest {
     pub npc_id: String,

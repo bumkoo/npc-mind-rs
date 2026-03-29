@@ -7,12 +7,58 @@
 use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::EmotionState;
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus};
 use npc_mind::application::mind_service::{MindRepository, MindService};
 
 pub fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
 }
+
+// ---------------------------------------------------------------------------
+// 감정 헬퍼
+// ---------------------------------------------------------------------------
+
+pub fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
+    state.emotions().iter()
+        .find(|e| e.emotion_type() == etype)
+        .map(|e| e.intensity())
+}
+
+pub fn has_emotion(state: &EmotionState, etype: EmotionType) -> bool {
+    find_emotion(state, etype).is_some()
+}
+
+// ---------------------------------------------------------------------------
+// 시나리오 헬퍼
+// ---------------------------------------------------------------------------
+
+/// 배신 상황 (desirability: -0.6, praiseworthiness: -0.7)
+pub fn 배신_상황() -> Situation {
+    배신_상황_with_desc("배신")
+}
+
+pub fn 배신_상황_with_desc(description: &str) -> Situation {
+    Situation::new(
+        description,
+        Some(EventFocus {
+            description: "".into(),
+            desirability_for_self: -0.6,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        Some(ActionFocus {
+            description: "".into(),
+            agent_id: Some("partner".into()),
+            relationship: None,
+            praiseworthiness: -0.7,
+        }),
+        None,
+    ).unwrap()
+}
+
+// ---------------------------------------------------------------------------
+// 관계 / 저장소 헬퍼
+// ---------------------------------------------------------------------------
 
 /// 테스트용 중립 관계 (감정 엔진에 Relationship 필수이므로 기본값 역할)
 pub fn neutral_rel() -> Relationship {

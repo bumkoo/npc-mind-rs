@@ -2,77 +2,11 @@
 
 mod common;
 
-use std::collections::HashMap;
 use npc_mind::application::dto::*;
-use npc_mind::application::mind_service::{MindRepository, MindService};
-use npc_mind::domain::emotion::EmotionState;
-use npc_mind::domain::personality::Npc;
+use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::relationship::Relationship;
 
 use common::*;
-
-/// 테스트용 인메모리 저장소
-struct MockRepository {
-    npcs: HashMap<String, Npc>,
-    relationships: HashMap<String, Relationship>,
-    emotions: HashMap<String, EmotionState>,
-}
-
-impl MockRepository {
-    fn new() -> Self {
-        Self {
-            npcs: HashMap::new(),
-            relationships: HashMap::new(),
-            emotions: HashMap::new(),
-        }
-    }
-    
-    fn add_npc(&mut self, npc: Npc) {
-        self.npcs.insert(npc.id().0.clone(), npc);
-    }
-
-    fn add_relationship(&mut self, rel: Relationship) {
-        let key = format!("{}:{}", rel.owner_id(), rel.target_id());
-        self.relationships.insert(key, rel);
-    }
-}
-
-impl MindRepository for MockRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        self.npcs.get(id).cloned()
-    }
-
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        let key = format!("{}:{}", owner_id, target_id);
-        self.relationships.get(&key).cloned()
-            .or_else(|| {
-                // 반대 방향도 시뮬레이션
-                let rev_key = format!("{}:{}", target_id, owner_id);
-                self.relationships.get(&rev_key).cloned()
-            })
-    }
-
-    fn get_object_description(&self, _object_id: &str) -> Option<String> {
-        None
-    }
-
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.emotions.get(npc_id).cloned()
-    }
-
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        self.emotions.insert(npc_id.to_string(), state);
-    }
-
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        self.emotions.remove(npc_id);
-    }
-
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        let key = format!("{}:{}", owner_id, target_id);
-        self.relationships.insert(key, rel);
-    }
-}
 
 #[test]
 fn test_mind_service_full_flow() {

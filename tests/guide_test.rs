@@ -9,26 +9,7 @@ use npc_mind::domain::guide::*;
 use npc_mind::domain::relationship::RelationshipBuilder;
 use npc_mind::ports::GuideFormatter;
 use npc_mind::presentation::korean::KoreanFormatter;
-use common::{make_무백, make_교룡, score as s, neutral_rel};
-
-/// 배신 상황 헬퍼 (Action + Event)
-fn 배신_상황() -> Situation {
-    Situation::new(
-        "동료 무사가 적에게 아군의 위치를 밀고했다",
-        Some(EventFocus {
-            description: "".into(),
-            desirability_for_self: -0.6,
-            desirability_for_other: None,
-            prospect: None,
-        }),
-        Some(ActionFocus {
-            description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
-            praiseworthiness: -0.7,
-        }),
-        None,
-    ).unwrap()
-}
+use common::{make_무백, make_교룡, score as s, neutral_rel, 배신_상황_with_desc};
 
 // ---------------------------------------------------------------------------
 // 성격 스냅샷 테스트 (도메인)
@@ -68,7 +49,7 @@ fn 교룡_성격_스냅샷_교활_비판적() {
 #[test]
 fn 배신_무백_가이드_절제된_분노() {
     let li = make_무백();
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
@@ -85,7 +66,7 @@ fn 배신_무백_가이드_절제된_분노() {
 #[test]
 fn 배신_교룡_가이드_폭발적_분노() {
     let yu = make_교룡();
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
@@ -133,7 +114,7 @@ fn 가이드_프롬프트_구조_검증() {
 #[test]
 fn 가이드_json_출력() {
     let yu = make_교룡();
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()), None);
     let formatter = KoreanFormatter::new();
@@ -151,7 +132,7 @@ fn 가이드_json_출력() {
 fn 같은_상황_무백과_교룡_어조가_다름() {
     let li = make_무백();
     let yu = make_교룡();
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
 
     let li_state = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
     let yu_state = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
@@ -187,7 +168,7 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
 #[test]
 fn 관계_포함_가이드_프롬프트에_관계_섹션() {
     let li = make_무백();
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
 
     let brother = RelationshipBuilder::new("mu_baek", "gyo_ryong")
         .closeness(s(0.9))
@@ -217,7 +198,7 @@ fn 관계_포함_json에_관계_데이터() {
         .power(s(0.0))
         .build();
 
-    let situation = 배신_상황();
+    let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &enemy);
 
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()), Some(&enemy));

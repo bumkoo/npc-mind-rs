@@ -10,33 +10,7 @@ mod common;
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
 use npc_mind::domain::relationship::*;
-use common::{make_무백, make_교룡, score as s};
-
-fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    // state.emotions()는 이제 Vec<Emotion>을 반환하므로 직접 순회 가능
-    state.emotions().into_iter()
-        .find(|e| e.emotion_type() == etype)
-        .map(|e| e.intensity())
-}
-
-/// 배신 상황 (Action + Event)
-fn 배신_상황() -> Situation {
-    Situation::new(
-        "동료의 배신",
-        Some(EventFocus {
-            description: "".into(),
-            desirability_for_self: -0.6,
-            desirability_for_other: None,
-            prospect: None,
-        }),
-        Some(ActionFocus {
-            description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
-            praiseworthiness: -0.7,
-        }),
-        None,
-    ).unwrap()
-}
+use common::{make_무백, make_교룡, score as s, find_emotion, 배신_상황};
 
 /// 갈등 상황 (Action + Event, 중간 강도)
 fn 갈등_상황() -> Situation {
