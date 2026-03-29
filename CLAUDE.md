@@ -21,7 +21,8 @@ cargo test --test stimulus_test       # 대사 자극 감정 변동 (8개)
 cargo test --test dialogue_flow_test  # 대화 흐름 통합 테스트 (7개)
 
 # webui 빌드 & 실행
-cargo run --features webui --bin npc-webui   # http://127.0.0.1:3000
+cargo run --features webui --bin npc-webui          # http://127.0.0.1:3000
+cargo run --features webui,embed --bin npc-webui    # 대사→PAD 분석 포함
 ```
 
 ### 빌드 주의사항 (Windows)
@@ -95,4 +96,12 @@ tests/
 
 Claude(API)와 Bekay(브라우저)가 동시에 사용하는 심리 엔진 시뮬레이터입니다.
 - 서버: `cargo run --features webui --bin npc-webui` → http://127.0.0.1:3000
+- 임베딩 포함: `cargo run --features webui,embed --bin npc-webui` (대사→PAD 자동 분석 활성화)
 - 턴 히스토리: 각 API 호출 결과가 `TurnRecord`로 기록되어 시각화됩니다.
+
+### WebUI 주요 기능
+- NPC/관계/오브젝트 CRUD
+- OCC 감정 평가 (appraise) 및 LLM 연기 가이드 생성
+- **대사 기반 PAD 자극 분석**: 상대 대사 입력 → PadAnalyzer(BGE-M3)로 PAD 자동 추출 → 슬라이더 반영 (embed feature 필요, 없으면 수동 입력)
+- 시나리오 로드/세이브 및 현재 시나리오명 헤더 표시
+- 턴별 히스토리, Appraisal Trace 로그

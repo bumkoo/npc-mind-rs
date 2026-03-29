@@ -71,7 +71,10 @@ tests/            # [Refactored] TestContext 기반 통합 테스트
 ### 주요 실행 명령
 ```bash
 # Web UI 실행 (http://127.0.0.1:3000)
-cargo run --features webui
+cargo run --features webui --bin npc-webui
+
+# Web UI + 대사→PAD 자동 분석 (embed 포함)
+cargo run --features webui,embed --bin npc-webui
 
 # 모든 테스트 실행 (TestContext 기반 80여 건)
 cargo test
@@ -82,7 +85,13 @@ cargo test
 - `tests/emotion_test.rs`: 35개 시나리오 기반 OCC 감정 로직 검증
 - `tests/relationship_test.rs`: 관계 변동 및 배율 규칙 검증
 
-## 6. 특이 사항
+## 6. WebUI 주요 기능
+- NPC/관계/오브젝트 CRUD 및 OCC 감정 평가
+- **대사 기반 PAD 자극 분석**: 상대 대사 입력 → `PadAnalyzer`(BGE-M3)로 PAD 자동 추출 → 슬라이더 반영 (`embed` feature 필요, 없으면 수동 입력 fallback)
+- 시나리오 로드/세이브 및 현재 시나리오명 헤더 표시
+- LLM 연기 가이드 생성/재생성 (상황 컨텍스트 자동 반영)
+
+## 7. 특이 사항
 - **라이브러리 지향:** 이 프로젝트는 라이브러리 형태로 배포되는 것을 목표로 하며, `MindService`가 유일한 진입점 역할을 합니다.
 - **Windows 환경:** 임베딩 기능 사용 시 `ort` 라이브러리의 정적 링크 설정을 확인해야 합니다.
 
