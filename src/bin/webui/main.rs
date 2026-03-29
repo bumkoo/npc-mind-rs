@@ -23,7 +23,7 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     use npc_mind::domain::pad::PadAnalyzer;
 
     let model_dir = std::env::var("NPC_MIND_MODEL_DIR")
-        .unwrap_or_else(|_| "models/bge-m3".to_string());
+        .unwrap_or_else(|_| "../models/bge-m3".to_string());
     let model_path = std::path::Path::new(&model_dir).join("model_quantized.onnx");
     let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
 
