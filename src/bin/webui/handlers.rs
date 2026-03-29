@@ -12,6 +12,7 @@ use npc_mind::domain::personality::Npc;
 
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
+use npc_mind::ports::UtteranceAnalyzer;
 
 use crate::state::*;
 
@@ -23,6 +24,7 @@ pub enum AppError {
     Internal(String),
     #[allow(dead_code)]
     NotFound(String),
+    NotImplemented(String),
 }
 
 impl From<MindServiceError> for AppError {
@@ -43,6 +45,7 @@ impl IntoResponse for AppError {
                 }
             },
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
+            AppError::NotImplemented(msg) => (StatusCode::NOT_IMPLEMENTED, msg),
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
         };
 
@@ -317,6 +320,41 @@ pub async fn after_dialogue(
     });
 
     Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// 대사 → PAD 분석
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct AnalyzeUtteranceRequest {
+    pub utterance: String,
+}
+
+#[derive(Serialize)]
+pub struct AnalyzeUtteranceResponse {
+    pub pleasure: f32,
+    pub arousal: f32,
+    pub dominance: f32,
+}
+
+/// POST /api/analyze-utterance — 대사 텍스트를 PAD 값으로 변환
+pub async fn analyze_utterance(
+    State(state): State<AppState>,
+    Json(req): Json<AnalyzeUtteranceRequest>,
+) -> Result<Json<AnalyzeUtteranceResponse>, AppError> {
+    let analyzer = state.analyzer.as_ref()
+        .ok_or_else(|| AppError::NotImplemented("embed feature가 비활성 상태입니다".into()))?;
+
+    let mut analyzer = analyzer.lock().await;
+    let pad = analyzer.analyze(&req.utterance)
+        .map_err(|e| AppError::Internal(format!("PAD 분석 실패: {e:?}")))?;
+
+    Ok(Json(AnalyzeUtteranceResponse {
+        pleasure: pad.pleasure,
+        arousal: pad.arousal,
+        dominance: pad.dominance,
+    }))
 }
 
 // ---------------------------------------------------------------------------

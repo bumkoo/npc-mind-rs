@@ -368,7 +368,7 @@ function Sidebar({npcs, rels, objects, selectedNpcId, onSelectNpc, onEditNpc, on
   );
 }
 // --- Center: Situation Setup ---
-function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId, onAppraise, onStimulus, onAfterDialogue, loading, savedSituation}) {
+function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId, onAppraise, onStimulus, onAfterDialogue, loading, savedSituation, toast}) {
   const npcIds = ['player', ...npcs.map(n=>n.id)];
   const [desc, setDesc] = useState('');
   // Event
@@ -392,6 +392,8 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   const [padP, setPadP] = useState(0);
   const [padA, setPadA] = useState(0);
   const [padD, setPadD] = useState(0);
+  const [utterance, setUtterance] = useState('');
+  const [analyzing, setAnalyzing] = useState(false);
   // After-dialogue praiseworthiness
   const [hasPw, setHasPw] = useState(false);
   const [adPw, setAdPw] = useState(0);
@@ -542,6 +544,27 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
       <div className="section" style={{marginTop:8}}>
         <div className="section-header"><span className="title" style={{color:'var(--warn)'}}>PAD 자극 적용</span></div>
         <div className="section-body">
+          <label style={{fontSize:11,color:'var(--fg2)'}}>상대 대사</label>
+          <div style={{display:'flex',gap:4,marginBottom:6}}>
+            <input type="text" value={utterance} onChange={e=>setUtterance(e.target.value)}
+              placeholder="상대방의 대사를 입력..."
+              style={{flex:1,background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'4px 8px',fontSize:12}} />
+            <button className="btn small" disabled={!utterance.trim()||analyzing}
+              onClick={async()=>{
+                setAnalyzing(true);
+                try {
+                  const res = await fetch('/api/analyze-utterance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({utterance:utterance.trim()})});
+                  if(res.status===501){toast('임베딩 미지원 — PAD를 수동 입력하세요','warn');return;}
+                  if(!res.ok){toast('분석 실패: '+await res.text(),'error');return;}
+                  const pad=await res.json();
+                  setPadP(Math.round(pad.pleasure*100)/100);
+                  setPadA(Math.round(pad.arousal*100)/100);
+                  setPadD(Math.round(pad.dominance*100)/100);
+                  toast('PAD 분석 완료','success');
+                }catch(e){toast('분석 오류','error');}
+                finally{setAnalyzing(false);}
+              }}>{analyzing?'분석중...':'분석'}</button>
+          </div>
           <Slider label="P (쾌)" value={padP} onChange={setPadP} />
           <Slider label="A (각성)" value={padA} onChange={setPadA} />
           <Slider label="D (지배)" value={padD} onChange={setPadD} />
@@ -855,6 +878,7 @@ function App() {
           onAfterDialogue={handleAfterDialogue}
           loading={loading}
           savedSituation={savedSituation}
+          toast={toast}
         />
         <ResultPanel result={result} history={history} onGuide={handleGuide} toast={toast} />
       </div>
