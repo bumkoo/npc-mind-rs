@@ -273,11 +273,22 @@ pub async fn stimulus(
 /// POST /api/guide — 현재 감정 상태에서 가이드 재생성
 pub async fn guide(
     State(state): State<AppState>,
-    Json(req): Json<GuideRequest>,
+    Json(mut req): Json<GuideRequest>,
 ) -> Result<Json<GuideResponse>, AppError> {
     let mut inner = state.inner.write().await;
-    let service = MindService::new(AppStateRepository { inner: &mut *inner });
 
+    // 저장된 상황 설명을 fallback으로 사용
+    if req.situation_description.is_none() {
+        if let Some(ref sit) = inner.current_situation {
+            req.situation_description = sit
+                .get("description")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string());
+        }
+    }
+
+    let service = MindService::new(AppStateRepository { inner: &mut *inner });
     let response = service.generate_guide(req)?;
     Ok(Json(response))
 }
