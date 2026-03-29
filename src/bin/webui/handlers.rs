@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::personality::Npc;
+use npc_mind::domain::guide::ActingGuide;
+use npc_mind::domain::tuning::BEAT_MERGE_THRESHOLD;
+use npc_mind::ports::GuideFormatter;
+use npc_mind::presentation::korean::KoreanFormatter;
 
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
@@ -247,23 +251,123 @@ pub async fn appraise(
 // 파이프라인: PAD 자극 적용
 // ---------------------------------------------------------------------------
 
-/// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + 프롬프트 재생성
+/// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + Focus 전환 판단
 pub async fn stimulus(
     State(state): State<AppState>,
     Json(req): Json<StimulusRequest>,
-) -> Result<Json<AppraiseResponse>, AppError> {
+) -> Result<Json<StimulusResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
+
+    // 1. 기존 감정 강도 조정 (관성 적용)
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+    collector.take_entries();
+    let stimulus_result = service.apply_stimulus(req.clone())?;
+    let trace = collector.take_entries();
+    drop(service);
 
-    collector.take_entries(); // 이전 로그 클리어
-    let mut response = service.apply_stimulus(req.clone())?;
-    response.trace = collector.take_entries();
+    // 2. Focus 전환 판단
+    let mut beat_changed = false;
+    let mut active_focus_id: Option<String> = None;
+    let mut final_response = None;
 
-    // 턴 기록 저장
+    if !inner.scene_focuses.is_empty() {
+        if let Some(emotion_state) = inner.emotions.get(&req.npc_id) {
+            // 대기 중 Focus (Initial 제외)에서 조건 충족 확인 — 순서가 우선순위
+            let triggered_idx = inner.scene_focuses.iter().position(|f| {
+                f.trigger.is_met(emotion_state)
+            });
+
+            if let Some(idx) = triggered_idx {
+                let focus = inner.scene_focuses[idx].clone();
+
+                // 2a. after_beat — 현재 감정으로 관계 갱신 (clear 안 함)
+                if let (Some(npc_id), Some(partner_id)) = (&inner.scene_npc_id, &inner.scene_partner_id) {
+                    let beat_req = AfterDialogueRequest {
+                        npc_id: npc_id.clone(),
+                        partner_id: partner_id.clone(),
+                        praiseworthiness: req.situation_description.as_ref().and(Some(0.0)),
+                        significance: Some(0.5),
+                    };
+                    let mut svc = MindService::new(AppStateRepository { inner: &mut *inner });
+                    let _ = svc.after_beat(beat_req);
+                    drop(svc);
+                }
+
+                // 2b. 새 Focus로 appraise → merge_from_beat
+                let situation = focus.to_situation()
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+
+                let npc = inner.npcs.get(&req.npc_id)
+                    .ok_or_else(|| AppError::Internal(format!("NPC '{}' not found", req.npc_id)))?
+                    .to_npc();
+
+                let rel = inner.find_relationship(&req.npc_id, &req.partner_id)
+                    .ok_or_else(|| AppError::Internal("Relationship not found".into()))?
+                    .to_relationship();
+
+                let previous = inner.emotions.get(&req.npc_id).cloned()
+                    .unwrap_or_else(EmotionState::new);
+
+                collector.take_entries();
+                let new_state = AppraisalEngine::appraise(npc.personality(), &situation, &rel);
+                let beat_trace = collector.take_entries();
+
+                // 합치기: 이전 감정 중 threshold 이상 + 새 감정 (같은 종류는 max)
+                let merged = EmotionState::merge_from_beat(
+                    &previous,
+                    &new_state,
+                    npc_mind::domain::tuning::BEAT_MERGE_THRESHOLD,
+                );
+
+                inner.emotions.insert(req.npc_id.clone(), merged.clone());
+
+                let response = build_emotion_response(
+                    &npc, &merged, Some(focus.description.clone()), Some(&rel), beat_trace,
+                );
+
+                beat_changed = true;
+                active_focus_id = Some(focus.id.clone());
+                inner.active_focus_id = Some(focus.id.clone());
+                final_response = Some(response);
+            }
+        }
+    }
+
+    // 3. 응답 구성
+    let response = if let Some(resp) = final_response {
+        // Beat 전환이 발생한 경우
+        StimulusResponse {
+            emotions: resp.emotions,
+            dominant: resp.dominant,
+            mood: resp.mood,
+            prompt: resp.prompt,
+            trace: resp.trace,
+            beat_changed: true,
+            active_focus_id,
+        }
+    } else {
+        // Beat 전환 없음 — 기존 stimulus 결과 반환
+        StimulusResponse {
+            emotions: stimulus_result.emotions,
+            dominant: stimulus_result.dominant,
+            mood: stimulus_result.mood,
+            prompt: stimulus_result.prompt,
+            trace,
+            beat_changed: false,
+            active_focus_id: None,
+        }
+    };
+
+    // 턴 기록
     let turn_num = inner.turn_history.len() + 1;
+    let label = if response.beat_changed {
+        format!("Turn {}: stimulus+beat [{}] ({})", turn_num, response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
+    } else {
+        format!("Turn {}: stimulus ({})", turn_num, req.npc_id)
+    };
     inner.turn_history.push(TurnRecord {
-        label: format!("Turn {}: stimulus ({})", turn_num, req.npc_id),
+        label,
         action: "stimulus".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
@@ -371,6 +475,75 @@ pub async fn get_scenario_meta(State(state): State<AppState>) -> Json<ScenarioMe
 }
 
 // ---------------------------------------------------------------------------
+// Scene 정보 조회 (프론트엔드 읽기 전용 패널용)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize)]
+pub struct SceneInfo {
+    pub has_scene: bool,
+    pub npc_id: Option<String>,
+    pub partner_id: Option<String>,
+    pub active_focus_id: Option<String>,
+    pub focuses: Vec<FocusInfo>,
+}
+
+#[derive(Serialize)]
+pub struct FocusInfo {
+    pub id: String,
+    pub description: String,
+    pub is_active: bool,
+    pub trigger_display: String,
+}
+
+/// GET /api/scene-info — 현재 Scene Focus 상태 조회
+pub async fn get_scene_info(State(state): State<AppState>) -> Json<SceneInfo> {
+    let inner = state.inner.read().await;
+
+    if inner.scene_focuses.is_empty() {
+        return Json(SceneInfo {
+            has_scene: false,
+            npc_id: None,
+            partner_id: None,
+            active_focus_id: None,
+            focuses: vec![],
+        });
+    }
+
+    let active_id = inner.active_focus_id.as_deref();
+    let focuses = inner.scene_focuses.iter().map(|f| {
+        let trigger_display = match &f.trigger {
+            npc_mind::domain::emotion::FocusTrigger::Initial => "initial".to_string(),
+            npc_mind::domain::emotion::FocusTrigger::Conditions(or_groups) => {
+                or_groups.iter().map(|and_group| {
+                    and_group.iter().map(|c| {
+                        let threshold = match c.threshold {
+                            npc_mind::domain::emotion::ConditionThreshold::Below(v) => format!("< {:.1}", v),
+                            npc_mind::domain::emotion::ConditionThreshold::Above(v) => format!("> {:.1}", v),
+                            npc_mind::domain::emotion::ConditionThreshold::Absent => "absent".to_string(),
+                        };
+                        format!("{:?} {}", c.emotion, threshold)
+                    }).collect::<Vec<_>>().join(" AND ")
+                }).collect::<Vec<_>>().join(" OR ")
+            }
+        };
+        FocusInfo {
+            id: f.id.clone(),
+            description: f.description.clone(),
+            is_active: active_id == Some(f.id.as_str()),
+            trigger_display,
+        }
+    }).collect();
+
+    Json(SceneInfo {
+        has_scene: true,
+        npc_id: inner.scene_npc_id.clone(),
+        partner_id: inner.scene_partner_id.clone(),
+        active_focus_id: inner.active_focus_id.clone(),
+        focuses,
+    })
+}
+
+// ---------------------------------------------------------------------------
 // 턴 히스토리 조회
 // ---------------------------------------------------------------------------
 
@@ -420,13 +593,93 @@ pub async fn save_state(
     Ok(StatusCode::OK)
 }
 
-/// POST /api/load — JSON 파일에서 로드
+/// POST /api/load — JSON 파일에서 로드 (scene 필드가 있으면 자동 Focus 등록)
 pub async fn load_state(
     State(state): State<AppState>,
     Json(req): Json<SaveRequest>,
 ) -> Result<StatusCode, AppError> {
-    let loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
         .map_err(|e| AppError::Internal(e))?;
+
+    // scene 필드가 있으면 Focus 자동 등록
+    if let Some(ref scene_val) = loaded.scene {
+        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
+            let repo = AppStateRepository { inner: &mut loaded };
+            let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req.focuses.iter()
+                .filter_map(|f| f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id).ok())
+                .collect();
+            drop(repo);
+
+            // Initial Focus 자동 appraise
+            let initial_focus = focuses.iter().find(|f| {
+                matches!(f.trigger, npc_mind::domain::emotion::FocusTrigger::Initial)
+            });
+
+            if let Some(focus) = initial_focus {
+                if let Ok(situation) = focus.to_situation() {
+                    if let Some(npc_profile) = loaded.npcs.get(&scene_req.npc_id) {
+                        let npc = npc_profile.to_npc();
+                        if let Some(rel_data) = loaded.find_relationship(&scene_req.npc_id, &scene_req.partner_id) {
+                            let rel = rel_data.to_relationship();
+                            let emotion_state = AppraisalEngine::appraise(npc.personality(), &situation, &rel);
+                            loaded.emotions.insert(scene_req.npc_id.clone(), emotion_state);
+                        }
+                    }
+                }
+                loaded.active_focus_id = Some(focus.id.clone());
+            }
+
+            // Initial Focus에서 current_situation 자동 생성 (UI 폼 복원용)
+            let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
+            if let Some(fi) = initial_input {
+                let mut sit = serde_json::Map::new();
+                sit.insert("desc".into(), serde_json::json!(fi.description));
+                sit.insert("npcId".into(), serde_json::json!(scene_req.npc_id));
+                sit.insert("partnerId".into(), serde_json::json!(scene_req.partner_id));
+
+                // Event
+                if let Some(ref ev) = fi.event {
+                    sit.insert("hasEvent".into(), serde_json::json!(true));
+                    sit.insert("evDesc".into(), serde_json::json!(ev.description));
+                    sit.insert("evSelf".into(), serde_json::json!(ev.desirability_for_self));
+                    sit.insert("hasOther".into(), serde_json::json!(ev.other.is_some()));
+                    if let Some(ref o) = ev.other {
+                        sit.insert("otherTarget".into(), serde_json::json!(o.target_id));
+                        sit.insert("otherD".into(), serde_json::json!(o.desirability));
+                    }
+                    sit.insert("prospect".into(), serde_json::json!(ev.prospect));
+                } else {
+                    sit.insert("hasEvent".into(), serde_json::json!(false));
+                }
+
+                // Action
+                if let Some(ref ac) = fi.action {
+                    sit.insert("hasAction".into(), serde_json::json!(true));
+                    sit.insert("acDesc".into(), serde_json::json!(ac.description));
+                    sit.insert("agentId".into(), serde_json::json!(ac.agent_id));
+                    sit.insert("pw".into(), serde_json::json!(ac.praiseworthiness));
+                } else {
+                    sit.insert("hasAction".into(), serde_json::json!(false));
+                }
+
+                // Object
+                if let Some(ref obj) = fi.object {
+                    sit.insert("hasObject".into(), serde_json::json!(true));
+                    sit.insert("objTarget".into(), serde_json::json!(obj.target_id));
+                    sit.insert("objAp".into(), serde_json::json!(obj.appealingness));
+                } else {
+                    sit.insert("hasObject".into(), serde_json::json!(false));
+                }
+
+                loaded.current_situation = Some(serde_json::Value::Object(sit));
+            }
+
+            loaded.scene_npc_id = Some(scene_req.npc_id);
+            loaded.scene_partner_id = Some(scene_req.partner_id);
+            loaded.scene_focuses = focuses;
+        }
+    }
+
     let mut inner = state.inner.write().await;
     *inner = loaded;
     Ok(StatusCode::OK)
@@ -472,4 +725,123 @@ fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<S
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// 헬퍼: EmotionState → 응답 DTO 변환
+// ---------------------------------------------------------------------------
+
+fn build_emotion_response(
+    npc: &Npc,
+    emotion_state: &EmotionState,
+    situation_desc: Option<String>,
+    relationship: Option<&npc_mind::domain::relationship::Relationship>,
+    trace: Vec<String>,
+) -> AppraiseResponse {
+    use npc_mind::domain::guide::ActingGuide;
+    use npc_mind::ports::GuideFormatter;
+    use npc_mind::presentation::korean::KoreanFormatter;
+
+    let guide = ActingGuide::build(npc, emotion_state, situation_desc, relationship);
+    let formatter = KoreanFormatter::new();
+    let prompt = formatter.format_prompt(&guide);
+
+    let emotions: Vec<EmotionOutput> = emotion_state.emotions().iter()
+        .map(|e| EmotionOutput {
+            emotion_type: format!("{:?}", e.emotion_type()),
+            intensity: e.intensity(),
+            context: e.context().map(|s| s.to_string()),
+        })
+        .collect();
+
+    let dominant = emotion_state.dominant().map(|e| EmotionOutput {
+        emotion_type: format!("{:?}", e.emotion_type()),
+        intensity: e.intensity(),
+        context: e.context().map(|s| s.to_string()),
+    });
+
+    let mood = emotion_state.overall_valence();
+
+    AppraiseResponse {
+        emotions,
+        dominant,
+        mood,
+        prompt,
+        trace,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Scene: Focus 옵션 등록 + 초기 Focus appraise
+// ---------------------------------------------------------------------------
+
+/// POST /api/scene — Scene 시작: Focus 목록 등록 + 초기 Focus 자동 appraise
+pub async fn scene(
+    State(state): State<AppState>,
+    Json(req): Json<SceneRequest>,
+) -> Result<Json<SceneResponse>, AppError> {
+    let mut inner = state.inner.write().await;
+    let collector = state.collector.clone();
+
+    // Focus 목록을 도메인으로 변환
+    let repo = AppStateRepository { inner: &mut *inner };
+    let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = req.focuses.iter()
+        .map(|f| f.to_domain(&repo, &req.npc_id, &req.partner_id))
+        .collect::<Result<Vec<_>, _>>()?;
+    drop(repo);
+
+    let focus_count = focuses.len();
+
+    // Initial trigger인 Focus 찾기
+    let initial_focus = focuses.iter().find(|f| {
+        matches!(f.trigger, npc_mind::domain::emotion::FocusTrigger::Initial)
+    });
+
+    let mut initial_appraise = None;
+    let mut active_focus_id = None;
+
+    // Initial Focus가 있으면 자동 appraise
+    if let Some(focus) = initial_focus {
+        let situation = focus.to_situation()
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        let npc = inner.npcs.get(&req.npc_id)
+            .ok_or_else(|| AppError::Internal(format!("NPC '{}' not found", req.npc_id)))?
+            .to_npc();
+
+        let rel = inner.find_relationship(&req.npc_id, &req.partner_id)
+            .ok_or_else(|| AppError::Internal(format!("Relationship not found")))?
+            .to_relationship();
+
+        collector.take_entries();
+        let emotion_state = AppraisalEngine::appraise(npc.personality(), &situation, &rel);
+        let trace = collector.take_entries();
+
+        let response = build_emotion_response(&npc, &emotion_state, Some(focus.description.clone()), Some(&rel), trace);
+
+        inner.emotions.insert(req.npc_id.clone(), emotion_state);
+
+        // 턴 기록
+        let turn_num = inner.turn_history.len() + 1;
+        inner.turn_history.push(TurnRecord {
+            label: format!("Turn {}: scene/appraise [{}] ({}→{})", turn_num, focus.id, req.npc_id, req.partner_id),
+            action: "scene".into(),
+            request: serde_json::to_value(&req).unwrap_or_default(),
+            response: serde_json::to_value(&response).unwrap_or_default(),
+        });
+
+        active_focus_id = Some(focus.id.clone());
+        initial_appraise = Some(response);
+    }
+
+    // Scene 상태 저장
+    inner.scene_focuses = focuses;
+    inner.scene_npc_id = Some(req.npc_id.clone());
+    inner.scene_partner_id = Some(req.partner_id.clone());
+
+    Ok(Json(SceneResponse {
+        focus_count,
+        initial_appraise,
+        active_focus_id,
+    }))
 }

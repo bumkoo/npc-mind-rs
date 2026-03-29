@@ -6,6 +6,7 @@ use tokio::sync::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 
 use npc_mind::domain::emotion::EmotionState;
+use npc_mind::domain::emotion::SceneFocus;
 use npc_mind::domain::pad::PadAnalyzer;
 use crate::trace_collector::AppraisalCollector;
 
@@ -48,6 +49,21 @@ pub struct StateInner {
     /// 현재 상황 설정 패널 상태 (프론트엔드 폼 값 보존용)
     #[serde(default)]
     pub current_situation: Option<serde_json::Value>,
+    /// Scene 정보 (시나리오 JSON에 저장됨)
+    #[serde(default)]
+    pub scene: Option<serde_json::Value>,
+    /// Scene Focus 옵션 목록 (런타임 — 직렬화 제외)
+    #[serde(skip)]
+    pub scene_focuses: Vec<SceneFocus>,
+    /// 현재 활성 Focus ID (런타임)
+    #[serde(skip)]
+    pub active_focus_id: Option<String>,
+    /// 현재 Scene의 NPC ID (런타임)
+    #[serde(skip)]
+    pub scene_npc_id: Option<String>,
+    /// 현재 Scene의 대화 상대 ID (런타임)
+    #[serde(skip)]
+    pub scene_partner_id: Option<String>,
 }
 
 /// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존

@@ -68,9 +68,8 @@
     "speech_style": "속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다..."
   },
   "emotion": {
-    "dominant": "분노(극도로 강한) — 교룡의 밀고 행위",
-    "active_emotions": [
-      "분노(극도로 강한) — 교룡의 밀고 행위",
+    "composition": [
+      "분노(극도로 강한, 지배) — 교룡의 밀고 행위",
       "비난(강한) — 밀고로 인한 추방 위기"
     ],
     "mood": -0.75,
@@ -86,7 +85,7 @@
   "relationship": {
     "target_name": "mu_baek",
     "closeness": "가까운",
-    "trust": "가까운",
+    "trust": "신뢰하는",
     "power": "대등한 관계"
   }
 }

@@ -338,4 +338,33 @@ impl EmotionState {
         if count == 0 { return 0.0; }
         (sum / count as f32).clamp(-1.0, 1.0)
     }
+
+    /// Beat 전환 시 이전 감정과 새 감정을 합친다.
+    ///
+    /// - 이전 감정 중 threshold 미만: 소멸
+    /// - 같은 감정이 양쪽에 있으면: max 기준 (강도 + context 모두 max 쪽)
+    /// - 이전에만 있는 감정: 그대로 유지 (threshold 이상인 것만)
+    /// - 새로운 감정에만 있는 감정: 그대로 추가
+    pub fn merge_from_beat(previous: &EmotionState, new: &EmotionState, threshold: f32) -> EmotionState {
+        let mut result = new.clone();
+
+        for idx in 0..22 {
+            let prev_val = previous.intensities[idx];
+            let new_val = new.intensities[idx];
+
+            // 이전 감정이 threshold 미만이면 무시
+            if prev_val < threshold {
+                continue;
+            }
+
+            // 이전 감정이 새 감정보다 강하면 이전 것으로 덮어씀
+            if prev_val > new_val {
+                result.intensities[idx] = prev_val;
+                result.contexts[idx] = previous.contexts[idx].clone();
+            }
+            // 새 감정이 같거나 더 크면 이미 result에 있으니 그대로
+        }
+
+        result
+    }
 }

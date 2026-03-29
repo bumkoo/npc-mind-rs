@@ -25,13 +25,7 @@ use super::personality::Score;
 // 갱신 속도 상수
 // ---------------------------------------------------------------------------
 
-/// trust 갱신 계수 (대화 후, praiseworthiness 기반)
-const TRUST_UPDATE_RATE: f32 = 0.1;
-/// closeness 갱신 계수 (대화 후, 전체 감정 valence 기반)
-const CLOSENESS_UPDATE_RATE: f32 = 0.05;
-/// 상황 중요도(significance)에 의한 최대 배율 증가분.
-/// significance=1.0일 때 변동 폭이 (1 + SIGNIFICANCE_SCALE)배 = 4배.
-const SIGNIFICANCE_SCALE: f32 = 3.0;
+use crate::domain::tuning::{TRUST_UPDATE_RATE, CLOSENESS_UPDATE_RATE, SIGNIFICANCE_SCALE};
 
 // ---------------------------------------------------------------------------
 // Relationship (Value Object)

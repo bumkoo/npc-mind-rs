@@ -23,6 +23,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::relationship::Relationship;
 
+use super::EmotionType;
+use super::EmotionState;
+
 // ---------------------------------------------------------------------------
 // SituationError
 // ---------------------------------------------------------------------------
@@ -227,4 +230,108 @@ pub struct ObjectFocus {
     pub appealingness: f32,
 }
 
+// ---------------------------------------------------------------------------
+// Scene Focus — Beat 전환을 위한 Focus 옵션
+// ---------------------------------------------------------------------------
 
+/// 장면(Scene) 내에서 사용 가능한 Focus 옵션
+///
+/// 게임 시스템이 Scene 시작 시 Focus 목록을 제공하고,
+/// 엔진이 stimulus 처리 중 조건을 평가하여 Beat 전환을 판단한다.
+/// 목록의 순서가 우선순위 — 복수 조건 충족 시 앞에 있는 것이 적용된다.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SceneFocus {
+    /// Focus 식별자 (예: "betrayal", "apology")
+    pub id: String,
+    /// Focus 설명 (LLM 가이드의 상황 설명에 사용)
+    pub description: String,
+    /// 전환 조건
+    pub trigger: FocusTrigger,
+    /// 사건 초점
+    pub event: Option<EventFocus>,
+    /// 행동 초점
+    pub action: Option<ActionFocus>,
+    /// 대상 초점
+    pub object: Option<ObjectFocus>,
+}
+
+impl SceneFocus {
+    /// SceneFocus → Situation 변환
+    pub fn to_situation(&self) -> Result<Situation, SituationError> {
+        Situation::new(
+            &self.description,
+            self.event.clone(),
+            self.action.clone(),
+            self.object.clone(),
+        )
+    }
+}
+
+/// Focus 전환 조건
+///
+/// - Initial: Scene 시작 시 바로 적용
+/// - Conditions: OR [ AND[...], AND[...] ] 구조
+///   외부 배열의 원소 중 하나만 충족하면 전환 (OR),
+///   내부 배열의 조건은 모두 충족해야 함 (AND).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FocusTrigger {
+    /// Scene 시작 시 바로 적용
+    Initial,
+    /// 감정 상태 기반 조건 — OR [ AND[...], AND[...] ]
+    Conditions(Vec<Vec<EmotionCondition>>),
+}
+
+/// 개별 감정 상태 조건
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmotionCondition {
+    /// 대상 감정 유형
+    pub emotion: EmotionType,
+    /// 임계값 조건
+    pub threshold: ConditionThreshold,
+}
+
+/// 감정 강도 임계값 조건
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ConditionThreshold {
+    /// 이 강도 미만이면 충족
+    Below(f32),
+    /// 이 강도 초과이면 충족
+    Above(f32),
+    /// 이 감정이 없으면 충족
+    Absent,
+}
+
+
+
+// ---------------------------------------------------------------------------
+// 조건 평가 로직
+// ---------------------------------------------------------------------------
+
+impl EmotionCondition {
+    /// 현재 감정 상태에서 이 조건이 충족되는지 평가
+    pub fn is_met(&self, state: &EmotionState) -> bool {
+        let intensity = state.intensity_of(self.emotion);
+        match self.threshold {
+            ConditionThreshold::Below(v) => intensity < v,
+            ConditionThreshold::Above(v) => intensity > v,
+            ConditionThreshold::Absent => intensity == 0.0,
+        }
+    }
+}
+
+impl FocusTrigger {
+    /// 현재 감정 상태에서 전환 조건이 충족되는지 평가
+    ///
+    /// - Initial: 항상 false (이미 적용됐으므로)
+    /// - Conditions: OR [ AND[...], AND[...] ] 구조
+    pub fn is_met(&self, state: &EmotionState) -> bool {
+        match self {
+            FocusTrigger::Initial => false,
+            FocusTrigger::Conditions(or_groups) => {
+                or_groups.iter().any(|and_group| {
+                    and_group.iter().all(|cond| cond.is_met(state))
+                })
+            }
+        }
+    }
+}

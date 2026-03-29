@@ -165,9 +165,22 @@ impl<R: MindRepository> MindService<R> {
     }
 
     /// 대화가 종료된 후, 현재 감정 상태를 바탕으로 관계를 갱신합니다.
+    /// 감정 상태를 초기화합니다.
     pub fn after_dialogue(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
+        let response = self.update_relationship(&req)?;
+        self.repository.clear_emotion_state(&req.npc_id);
+        Ok(response)
+    }
+
+    /// Beat 종료 시 관계를 갱신합니다.
+    /// 감정 상태는 초기화하지 않습니다 (같은 Scene 내에서 계속 사용).
+    pub fn after_beat(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
+        self.update_relationship(&req)
+    }
+
+    /// 관계 갱신 공통 로직
+    fn update_relationship(&mut self, req: &AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
         let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
-            // 양방향 관계 조회 (A->B 가 없으면 B->A 시도) -> 웹 환경의 로직과 유사하게
             .or_else(|| self.repository.get_relationship(&req.partner_id, &req.npc_id))
             .ok_or_else(|| MindServiceError::RelationshipNotFound(req.npc_id.clone(), req.partner_id.clone()))?;
 
@@ -189,9 +202,7 @@ impl<R: MindRepository> MindService<R> {
             power: new_rel.power().value(),
         };
 
-        // 관계 갱신 및 상태 초기화
         self.repository.save_relationship(&req.npc_id, &req.partner_id, new_rel);
-        self.repository.clear_emotion_state(&req.npc_id);
 
         Ok(AfterDialogueResponse { before, after })
     }

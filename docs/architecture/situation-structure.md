@@ -106,3 +106,37 @@ let situation = input.to_domain(&repository, "my_id", "friend_id")?;
 let state = AppraisalEngine::appraise(&personality, &situation, &relationship);
 // 결과: Reproach(비난) + Distress(고통) → Compound Anger(분노) 발생
 ```
+
+
+---
+
+## SceneFocus — Beat 전환을 위한 Focus 옵션 (v2.0 추가)
+
+`SceneFocus`는 Situation의 확장으로, 장면(Scene) 내에서 **자동 Beat 전환**을 지원한다.
+게임이 Scene 시작 시 여러 Focus 옵션을 제공하면, 엔진이 stimulus 처리 중 감정 조건을 평가하여 Beat 전환을 판단한다.
+
+```rust
+pub struct SceneFocus {
+    pub id: String,                    // Focus 식별자
+    pub description: String,           // LLM 가이드의 [상황] 섹션에 사용
+    pub trigger: FocusTrigger,         // 전환 조건
+    pub event: Option<EventFocus>,     // Situation과 동일한 구조
+    pub action: Option<ActionFocus>,
+    pub object: Option<ObjectFocus>,
+}
+
+pub enum FocusTrigger {
+    Initial,                           // Scene 시작 시 바로 적용
+    Conditions(Vec<Vec<EmotionCondition>>),  // OR [ AND[...], AND[...] ]
+}
+
+pub struct EmotionCondition {
+    pub emotion: EmotionType,          // 대상 감정
+    pub threshold: ConditionThreshold, // Below(f32) | Above(f32) | Absent
+}
+```
+
+### 전환 흐름
+1. stimulus 호출 → 감정 강도 조정 (관성 적용)
+2. 대기 중 Focus의 trigger 조건 체크 (목록 순서 = 우선순위)
+3. 조건 충족 시 → after_beat (관계 갱신) → 새 Focus로 appraise → merge_from_beat

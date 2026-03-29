@@ -7,6 +7,33 @@
 
 ---
 
+## 용어 정의
+
+| 용어 | 영문 | 정의 | 엔진 호출 |
+|------|------|------|----------|
+| **장면** | Scene | 하나의 연속된 대화 단위. 시작과 끝이 있음. | `after_dialogue()` 1회 |
+| **비트** | Beat | 장면 안에서 감정 흐름이 전환되는 시점. (각본 용어) | `appraise()` 1회 |
+| **대사** | Utterance | 실제 캐릭터가 말하는 한 줄의 대사. | `stimulus()` 입력 |
+
+**관계:**
+```
+도서 (허클베리 핀)
+ └── 챕터 (Ch.15)
+      └── Scene (안개/Trash)    ← 하나의 대화 단위
+           ├── Beat 1          ← 감정 전환 비트, appraise 1회
+           │    ├── Utterance   ← 대사, stimulus 입력
+           │    └── Utterance
+           ├── Beat 2
+           │    └── Utterance
+           └── Scene 종료      ← after_dialogue
+```
+
+**Beat 전환 주체:**
+- 게임 외부 이벤트 (적 습격, 보물 발견 등) → 게임이 직접 새 Scene 또는 appraise 호출
+- 대화 중 감정/의도 변화 → 엔진이 Focus 조건 기반으로 자동 판단
+
+---
+
 ## 개선 루프 (Improvement Loop)
 
 ```
@@ -93,8 +120,9 @@
 
 **상황 설계 프로세스**:
 
-1. **대화 턴 분할**: 장면을 3-5개 턴으로 분할
-2. **각 턴마다 Situation 구성**:
+**방법 A: 수동 Beat 실행 (기존 방식)**
+1. **Beat 분할**: 장면을 3-5개 Beat(감정 전환 시점)으로 분할
+2. **각 Beat마다 Situation 구성**:
    - `description`: 전체 상황 맥락 (Compound 감정의 context)
    - `event.description`: 사건 설명 (Joy/Distress 등의 context)
    - `event.desirability_for_self`: -1.0~1.0
@@ -106,6 +134,13 @@
 3. **감정 평가**: Claude가 `POST /api/appraise` 호출
 4. **PAD 자극 적용**: 대사의 감정 톤을 PAD로 변환하여 `POST /api/stimulus`
 5. **대화 종료**: `POST /api/after-dialogue`로 관계 갱신
+
+**방법 B: Scene Focus 자동 전환 (신규)**
+1. **시나리오 JSON에 scene 필드 작성**: Focus 옵션 목록 + trigger 조건 정의
+2. **시나리오 로드**: `/api/load` → scene 필드 자동 파싱 → Initial Focus 자동 appraise
+3. **stimulus 반복**: 상대 대사 PAD를 반복 적용 → 엔진이 감정 조건 체크 → 자동 Beat 전환
+4. **결과 관찰**: WebUI Scene Focus 패널에서 활성/대기 Focus 상태 + Beat 전환 배너 확인
+5. **대화 종료**: `POST /api/after-dialogue`로 최종 관계 갱신
 
 
 ---
@@ -125,6 +160,7 @@
 | **성격 반영** | 성격이 감정에 영향을 미쳤는가? | trace에서 weight 확인 |
 | **프롬프트 품질** | LLM이 이 프롬프트로 좋은 대사를 만들 수 있는가? | context가 구체적인가, 연기 지시가 일관적인가 |
 | **관계 변동** | 대화 후 관계 변동이 합리적인가? | before/after 비교 |
+| **Beat 전환** | 전환 시점이 자연스러운가? 감정 합치기 결과가 적절한가? | trigger 조건 임계값, merge 후 잔여 감정 확인 |
 
 ---
 
@@ -190,14 +226,16 @@
 **초점**: 감정 유형 선택 정확성, 성격 반영 여부
 
 현재 발견된 이슈:
-- Gratitude 미생성 (Compound 감정 조건)
-- 관계 변동 계수 과소
-- power 라벨 오류
+- ~~Gratitude 미생성 (Compound 감정 조건)~~ ✅ 해결 — HopeFulfilled/FearConfirmed fall-through
+- ~~관계 변동 계수 과소~~ ✅ 해결 — significance 파라미터 추가 (배율 1x~4x)
+- ~~power 라벨 오류~~ ✅ 해결 — 5단계 확장 + 행동 지시 포함
+- ~~턴 간 감정 누적 없음~~ ✅ 해결 — Scene Focus 시스템 + Beat 전환 + stimulus 관성
 
-### Phase 2: 감정 정밀도 (다음)
-**목표**: 감정 강도와 복합 감정의 정밀 튜닝
-**장면**: 감정 전환이 극적인 장면들 (Ch.15 안개, Ch.31 도덕적 위기)
-**초점**: Compound 감정 생성, 턴 간 감정 누적, 관계 변동 곡선
+### Phase 2: 감정 정밀도 (현재)
+**목표**: 감정 강도와 복합 감정의 정밀 튜닝 + Scene/Beat 시스템 검증
+**장면**: Ch.15 안개 (신뢰 파열/회복 — 완료), Ch.31 도덕적 위기
+**초점**: Beat 전환 자동 판단, stimulus 관성 밸런스, merge_from_beat 동작 검증
+**달성**: Scene Focus 시스템 구현, Ch.15에서 5회 stimulus → 자동 Beat 전환 검증 완료
 
 ### Phase 3: PAD 앵커 최적화
 **목표**: 대사 텍스트에서 정확한 감정 톤 추출

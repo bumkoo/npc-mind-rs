@@ -590,7 +590,7 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   );
 }
 // --- Right: Result Panel ---
-function ResultPanel({result, history, traceHistory, onGuide, toast}) {
+function ResultPanel({result, history, traceHistory, onGuide, toast, sceneInfo}) {
   const [tab, setTab] = useState('emotions');
 
   return (
@@ -602,10 +602,12 @@ function ResultPanel({result, history, traceHistory, onGuide, toast}) {
         <div className={`result-tab ${tab==='history'?'active':''}`} onClick={()=>setTab('history')}>히스토리 ({history.length})</div>
       </div>
       <div className="result-content">
+        {tab==='emotions' && <ScenePanel sceneInfo={sceneInfo} />}
         {!result && tab !== 'history' ? (
           <div className="empty">
-            <div style={{fontSize:24,marginBottom:8}}>🎭</div>
-            NPC와 대화 상대를 선택하고<br/>상황을 설정한 뒤 감정 평가를 실행하세요
+            {!sceneInfo && <div style={{fontSize:24,marginBottom:8}}>🎭</div>}
+            {!sceneInfo ? <>NPC와 대화 상대를 선택하고<br/>상황을 설정한 뒤 감정 평가를 실행하세요</>
+              : <div style={{fontSize:11,color:'var(--fg3)',marginTop:8}}>Scene이 로드됨 — stimulus를 적용하세요</div>}
           </div>
         ) : (
           <>
@@ -621,9 +623,38 @@ function ResultPanel({result, history, traceHistory, onGuide, toast}) {
     </div>
   );
 }
+function ScenePanel({sceneInfo}) {
+  if (!sceneInfo) return null;
+  return (
+    <div className="section" style={{marginBottom:8}}>
+      <div className="section-header"><span className="title" style={{color:'var(--accent2)'}}>Scene Focus</span></div>
+      <div className="section-body" style={{padding:'6px 10px'}}>
+        {sceneInfo.focuses.map((f,i) => (
+          <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4,fontSize:11}}>
+            <span style={{color:f.is_active?'var(--green)':'var(--fg3)',fontWeight:f.is_active?700:400}}>
+              {f.is_active ? '●' : '○'}
+            </span>
+            <span style={{color:f.is_active?'var(--fg)':'var(--fg3)',fontWeight:f.is_active?600:400}}>
+              {f.id}
+            </span>
+            <span style={{color:'var(--fg3)',flex:1}}>— {f.description}</span>
+            <span style={{color:'var(--fg3)',fontSize:10,fontFamily:'monospace'}}>
+              {f.trigger_display}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 function EmotionView({result}) {
   return (
     <div>
+      {result.beat_changed && (
+        <div style={{background:'var(--accent2)',color:'var(--bg)',padding:'6px 12px',borderRadius:'var(--radius)',marginBottom:8,fontSize:12,fontWeight:600}}>
+          ★ Beat 전환! → {result.active_focus_id || '?'}
+        </div>
+      )}
       {result.dominant && (
         <div className="dominant-card">
           <div className="d-type">{result.dominant.emotion_type}</div>
@@ -738,6 +769,7 @@ function App() {
   const [history, setHistory] = useState([]);
   const [savedSituation, setSavedSituation] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [sceneInfo, setSceneInfo] = useState(null);
   const {toasts, toast} = useToast();
 
   // Selection state
@@ -749,13 +781,14 @@ function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [n, r, o, s, h, sm] = await Promise.all([
+      const [n, r, o, s, h, sm, si] = await Promise.all([
         api.get('/api/npcs'), api.get('/api/relationships'),
         api.get('/api/objects'), api.get('/api/scenarios'), api.get('/api/history'),
-        api.get('/api/scenario-meta'),
+        api.get('/api/scenario-meta'), api.get('/api/scene-info'),
       ]);
       setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
       setScenarioMeta(sm && sm.name ? sm : null);
+      setSceneInfo(si && si.has_scene ? si : null);
       setConnected(true);
     } catch(e) { setConnected(false); }
   }, []);
@@ -895,7 +928,7 @@ function App() {
           savedSituation={savedSituation}
           toast={toast}
         />
-        <ResultPanel result={result} history={history} traceHistory={traceHistory} onGuide={handleGuide} toast={toast} />
+        <ResultPanel result={result} history={history} traceHistory={traceHistory} onGuide={handleGuide} toast={toast} sceneInfo={sceneInfo} />
       </div>
 
       {/* Modals */}

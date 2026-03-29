@@ -12,13 +12,9 @@ use tracing::trace;
 
 use crate::ports::StimulusWeights;
 use crate::domain::pad::{Pad, pad_dot, emotion_to_pad};
+use crate::domain::tuning::{STIMULUS_IMPACT_RATE, STIMULUS_FADE_THRESHOLD, STIMULUS_MIN_INERTIA};
 
 use super::types::EmotionState;
-
-/// 한 턴의 감정 변동량 제한 계수
-const IMPACT_RATE: f32 = 0.1;
-/// 감정 자연 소멸 기준 (이 이하면 제거)
-const FADE_THRESHOLD: f32 = 0.05;
 
 /// 대사 자극에 의한 감정 변동 처리
 pub struct StimulusEngine;
@@ -42,11 +38,12 @@ impl StimulusEngine {
         for emotion in current_state.emotions() {
             let emotion_pad = emotion_to_pad(emotion.emotion_type());
             let alignment = pad_dot(&emotion_pad, stimulus);
-            let delta = alignment * absorb * IMPACT_RATE;
+            let inertia = (1.0 - emotion.intensity()).max(STIMULUS_MIN_INERTIA);
+            let delta = alignment * absorb * STIMULUS_IMPACT_RATE * inertia;
             let old_intensity = emotion.intensity();
             let new_intensity = (old_intensity + delta).clamp(0.0, 1.0);
 
-            if new_intensity < FADE_THRESHOLD {
+            if new_intensity < STIMULUS_FADE_THRESHOLD {
                 trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, result = "faded");
                 new_state.remove(emotion.emotion_type());
             } else {

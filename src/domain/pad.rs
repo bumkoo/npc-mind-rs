@@ -26,6 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionType;
+use super::tuning::PAD_D_SCALE_WEIGHT;
 
 // ---------------------------------------------------------------------------
 // PAD 구조체
@@ -61,9 +62,6 @@ impl Pad {
 // PAD 연산
 // ---------------------------------------------------------------------------
 
-/// D축 격차의 스케일러 가중치
-const D_SCALE_WEIGHT: f32 = 0.3;
-
 /// P·A 공명 × D 격차 스케일러
 ///
 /// P·A 내적이 공명 방향(증폭/감소)을 결정하고,
@@ -81,7 +79,7 @@ const D_SCALE_WEIGHT: f32 = 0.3;
 pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
     let pa = a.pleasure * b.pleasure + a.arousal * b.arousal;
     let d_gap = (a.dominance - b.dominance).abs();
-    pa * (1.0 + d_gap * D_SCALE_WEIGHT)
+    pa * (1.0 + d_gap * PAD_D_SCALE_WEIGHT)
 }
 
 // ---------------------------------------------------------------------------

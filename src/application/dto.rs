@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use crate::domain::emotion::{ActionFocus, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation};
+use crate::domain::emotion::{ActionFocus, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation, SceneFocus, FocusTrigger, EmotionCondition, ConditionThreshold, EmotionType};
 use super::mind_service::{MindRepository, MindServiceError};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -150,6 +150,20 @@ pub struct AppraiseResponse {
     pub trace: Vec<String>,
 }
 
+/// Stimulus 응답 — Beat 전환 여부 포함
+#[derive(Serialize, Deserialize, Clone)]
+pub struct StimulusResponse {
+    pub emotions: Vec<EmotionOutput>,
+    pub dominant: Option<EmotionOutput>,
+    pub mood: f32,
+    pub prompt: String,
+    pub trace: Vec<String>,
+    /// Beat 전환이 발생했는지 여부
+    pub beat_changed: bool,
+    /// 현재 활성 Focus ID (전환 시 새 Focus ID)
+    pub active_focus_id: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EmotionOutput {
     pub emotion_type: String,
@@ -201,4 +215,111 @@ pub struct GuideRequest {
 pub struct GuideResponse {
     pub prompt: String,
     pub json: String,
+}
+
+// ---------------------------------------------------------------------------
+// Scene (Focus 옵션 목록)
+// ---------------------------------------------------------------------------
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SceneRequest {
+    pub npc_id: String,
+    pub partner_id: String,
+    pub description: String,
+    pub focuses: Vec<SceneFocusInput>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SceneFocusInput {
+    pub id: String,
+    pub description: String,
+    /// None이면 Initial, Some이면 Conditions (OR[AND[...]])
+    pub trigger: Option<Vec<Vec<ConditionInput>>>,
+    pub event: Option<EventInput>,
+    pub action: Option<ActionInput>,
+    pub object: Option<ObjectInput>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ConditionInput {
+    pub emotion: String,
+    pub below: Option<f32>,
+    pub above: Option<f32>,
+    pub absent: Option<bool>,
+}
+
+impl ConditionInput {
+    fn to_domain(&self) -> Result<EmotionCondition, MindServiceError> {
+        let emotion: EmotionType = serde_json::from_str(&format!("\"{}\"", self.emotion))
+            .map_err(|_| MindServiceError::InvalidSituation(
+                format!("알 수 없는 감정 유형: {}", self.emotion)
+            ))?;
+
+        let threshold = if let Some(v) = self.below {
+            ConditionThreshold::Below(v)
+        } else if let Some(v) = self.above {
+            ConditionThreshold::Above(v)
+        } else if self.absent == Some(true) {
+            ConditionThreshold::Absent
+        } else {
+            return Err(MindServiceError::InvalidSituation(
+                "조건에 below, above, absent 중 하나가 필요합니다".into()
+            ));
+        };
+
+        Ok(EmotionCondition { emotion, threshold })
+    }
+}
+
+impl SceneFocusInput {
+    pub fn to_domain<R: MindRepository>(
+        &self,
+        repo: &R,
+        npc_id: &str,
+        partner_id: &str,
+    ) -> Result<SceneFocus, MindServiceError> {
+        let trigger = match &self.trigger {
+            None => FocusTrigger::Initial,
+            Some(or_groups) => {
+                let conditions = or_groups.iter()
+                    .map(|and_group| {
+                        and_group.iter()
+                            .map(|c| c.to_domain())
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                FocusTrigger::Conditions(conditions)
+            }
+        };
+
+        let event = self.event.as_ref()
+            .map(|e| e.to_domain(repo, npc_id))
+            .transpose()?;
+        let action = self.action.as_ref()
+            .map(|a| a.to_domain(repo, npc_id, partner_id))
+            .transpose()?;
+        let object = self.object.as_ref()
+            .map(|o| o.to_domain(repo))
+            .transpose()?;
+
+        Ok(SceneFocus {
+            id: self.id.clone(),
+            description: self.description.clone(),
+            trigger,
+            event,
+            action,
+            object,
+        })
+    }
+}
+
+/// Scene 등록 응답
+#[derive(Serialize, Deserialize, Clone)]
+pub struct SceneResponse {
+    /// 등록된 Focus 수
+    pub focus_count: usize,
+    /// 초기 Focus에 의한 appraise 결과 (있으면)
+    pub initial_appraise: Option<AppraiseResponse>,
+    /// 현재 활성 Focus ID
+    pub active_focus_id: Option<String>,
 }

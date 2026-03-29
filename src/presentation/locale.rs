@@ -112,8 +112,10 @@ pub struct LocaleBundle {
     pub personality_trait: HashMap<String, String>,
     /// 말투 스타일 번역 (SpeechStyle variant name → 번역)
     pub speech_style: HashMap<String, String>,
-    /// 관계 수준 번역 (RelationshipLevel variant name → 번역)
-    pub relationship_level: HashMap<String, String>,
+    /// 친밀도 수준 번역 (RelationshipLevel variant name → 번역)
+    pub closeness_level: HashMap<String, String>,
+    /// 신뢰도 수준 번역 (RelationshipLevel variant name → 번역)
+    pub trust_level: HashMap<String, String>,
     /// 상하 관계 수준 번역 (PowerLevel variant name → 번역)
     pub power_level: HashMap<String, String>,
     /// 폴백 텍스트 (특성/말투가 없을 때)
@@ -189,10 +191,8 @@ pub struct TemplateStrings {
     pub section_speech: String,
     /// 금지 사항 섹션: "[금지 사항]"
     pub section_restriction: String,
-    /// 지배 감정: "지배 감정: {emotion}({intensity})"
-    pub dominant_emotion: String,
-    /// 활성 감정: "활성 감정: {list}"
-    pub active_emotions: String,
+    /// 감정 구성: "감정 구성:"
+    pub emotion_composition: String,
     /// 전체 분위기: "전체 분위기: {mood}"
     pub overall_mood: String,
     /// 어조: "어조: {tone}"
@@ -283,10 +283,16 @@ impl LocaleBundle {
         self.speech_style.get(key).map(|s| s.as_str()).unwrap_or(key)
     }
 
-    /// RelationshipLevel → 번역된 설명
-    pub fn relationship_level_label(&self, level: &RelationshipLevel) -> &str {
+    /// RelationshipLevel → 친밀도 번역
+    pub fn closeness_level_label(&self, level: &RelationshipLevel) -> &str {
         let key = level.variant_name();
-        self.relationship_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.closeness_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+    }
+
+    /// RelationshipLevel → 신뢰도 번역
+    pub fn trust_level_label(&self, level: &RelationshipLevel) -> &str {
+        let key = level.variant_name();
+        self.trust_level.get(key).map(|s| s.as_str()).unwrap_or(key)
     }
 
     /// PowerLevel → 번역된 설명

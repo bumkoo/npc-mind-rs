@@ -217,3 +217,101 @@ fn test_dto_transformation_to_domain() {
     let res = bad_input.to_domain(&repo, "me", "partner");
     assert!(matches!(res, Err(npc_mind::application::mind_service::MindServiceError::RelationshipNotFound(_, _))));
 }
+
+
+// ===========================================================================
+// after_beat vs after_dialogue 검증
+// ===========================================================================
+
+#[test]
+fn after_beat_감정_유지() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+
+    let mut service = MindService::new(repo);
+
+    // appraise로 감정 생성
+    let req = AppraiseRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation: SituationInput {
+            description: "좋은 소식".to_string(),
+            event: Some(EventInput {
+                description: "좋은 일".to_string(),
+                desirability_for_self: 0.6,
+                other: None,
+                prospect: None,
+            }),
+            action: None,
+            object: None,
+        },
+    };
+
+    service.appraise(req, || {}, || vec![]).expect("appraise failed");
+
+    // after_beat — 관계 갱신하되 감정 유지
+    let beat_req = AfterDialogueRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        praiseworthiness: Some(0.5),
+        significance: None,
+    };
+    service.after_beat(beat_req).expect("after_beat failed");
+
+    // 감정 상태가 여전히 존재해야 함
+    let guide_req = GuideRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation_description: None,
+    };
+    let guide_res = service.generate_guide(guide_req);
+    assert!(guide_res.is_ok(), "after_beat 후 감정 상태 존재 → 가이드 생성 성공");
+}
+
+#[test]
+fn after_dialogue_감정_초기화() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+
+    let mut service = MindService::new(repo);
+
+    // appraise로 감정 생성
+    let req = AppraiseRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation: SituationInput {
+            description: "좋은 소식".to_string(),
+            event: Some(EventInput {
+                description: "좋은 일".to_string(),
+                desirability_for_self: 0.6,
+                other: None,
+                prospect: None,
+            }),
+            action: None,
+            object: None,
+        },
+    };
+    service.appraise(req, || {}, || vec![]).expect("appraise failed");
+
+    // after_dialogue — 관계 갱신 + 감정 초기화
+    let dialogue_req = AfterDialogueRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        praiseworthiness: Some(0.5),
+        significance: None,
+    };
+    service.after_dialogue(dialogue_req).expect("after_dialogue failed");
+
+    // 감정 상태가 없어야 함 → 가이드 생성 실패
+    let guide_req = GuideRequest {
+        npc_id: "mu_baek".to_string(),
+        partner_id: "gyo_ryong".to_string(),
+        situation_description: None,
+    };
+    let guide_res = service.generate_guide(guide_req);
+    assert!(guide_res.is_err(), "after_dialogue 후 감정 상태 없음 → 가이드 생성 실패");
+}

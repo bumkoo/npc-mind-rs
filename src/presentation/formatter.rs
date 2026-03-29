@@ -51,34 +51,29 @@ impl GuideFormatter for LocaleFormatter {
 
         // --- 현재 감정 ---
         lines.push(t.section_emotion.clone());
-        if let Some(ref entry) = guide.emotion.dominant {
-            let emotion = l.emotion_name(&entry.emotion_type);
-            let intensity_str = l.intensity_label(entry.intensity);
-            let mut dominant_str = l.render_template(&t.dominant_emotion, &[
-                ("emotion", emotion),
-                ("intensity", intensity_str),
-            ]);
-            if let Some(ref ctx) = entry.context {
-                if !ctx.is_empty() {
-                    dominant_str.push_str(&format!(" — {}", ctx));
-                }
-            }
-            lines.push(dominant_str);
-        }
+
+        // 상위 3개 감정을 줄바꿈으로 표시, 지배 감정에 "(지배)" 표시
         if !guide.emotion.active_emotions.is_empty() {
-            let emotions_str: Vec<String> = guide.emotion.active_emotions.iter()
-                .map(|entry| {
-                    let emotion = l.emotion_name(&entry.emotion_type);
-                    let intensity_str = l.intensity_label(entry.intensity);
-                    let base = format!("{}({})", emotion, intensity_str);
-                    match &entry.context {
-                        Some(ctx) if !ctx.is_empty() => format!("{} — {}", base, ctx),
-                        _ => base,
-                    }
-                })
-                .collect();
-            let list = emotions_str.join(", ");
-            lines.push(l.render_template(&t.active_emotions, &[("list", &list)]));
+            lines.push(t.emotion_composition.clone());
+
+            let dominant_type = guide.emotion.dominant.as_ref().map(|d| d.emotion_type);
+            let top3 = guide.emotion.active_emotions.iter().take(3);
+
+            for entry in top3 {
+                let emotion = l.emotion_name(&entry.emotion_type);
+                let intensity_str = l.intensity_label(entry.intensity);
+                let is_dominant = dominant_type == Some(entry.emotion_type);
+                let label = if is_dominant {
+                    format!("- {}({}, 지배)", emotion, intensity_str)
+                } else {
+                    format!("- {}({})", emotion, intensity_str)
+                };
+                let line = match &entry.context {
+                    Some(ctx) if !ctx.is_empty() => format!("{} — {}", label, ctx),
+                    _ => label,
+                };
+                lines.push(line);
+            }
         }
         let mood_str = l.mood_label(guide.emotion.mood);
         lines.push(l.render_template(&t.overall_mood, &[("mood", mood_str)]));
@@ -124,10 +119,10 @@ impl GuideFormatter for LocaleFormatter {
         if let Some(ref rel) = guide.relationship {
             lines.push(l.render_template(&t.section_relationship, &[]));
             lines.push(l.render_template(&t.relationship_closeness, &[
-                ("level", l.relationship_level_label(&rel.closeness_level)),
+                ("level", l.closeness_level_label(&rel.closeness_level)),
             ]));
             lines.push(l.render_template(&t.relationship_trust, &[
-                ("level", l.relationship_level_label(&rel.trust_level)),
+                ("level", l.trust_level_label(&rel.trust_level)),
             ]));
             lines.push(l.render_template(&t.relationship_power, &[
                 ("level", l.power_level_label(&rel.power_level)),
@@ -169,8 +164,8 @@ impl GuideFormatter for LocaleFormatter {
             situation_description: guide.situation_description.clone(),
             relationship: guide.relationship.as_ref().map(|rel| LocaleRelationshipOutput {
                 target_name: rel.target_name.clone(),
-                closeness: l.relationship_level_label(&rel.closeness_level).to_string(),
-                trust: l.relationship_level_label(&rel.trust_level).to_string(),
+                closeness: l.closeness_level_label(&rel.closeness_level).to_string(),
+                trust: l.trust_level_label(&rel.trust_level).to_string(),
                 power: l.power_level_label(&rel.power_level).to_string(),
             }),
         };

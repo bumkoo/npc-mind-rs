@@ -43,6 +43,7 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 라이브러리의 유일한 진입점으로, 복잡한 도메인 로직의 실행 순서를 관리한다.
 - **오케스트레이션**: NPC/관계 로드 → 상황 평가 → 감정 갱신 → 가이드 생성의 흐름을 제어.
 - **저장소 추상화**: `MindRepository` 포트를 통해 외부 저장소(DB, Memory)에 의존하지 않고 상태를 관리.
+- **관계 갱신 분리**: `after_beat()` (Beat 종료, 감정 유지) vs `after_dialogue()` (Scene 종료, 감정 초기화).
 
 ### 2. AppraisalEngine (Modularized)
 기존의 거대했던 감정 평가 로직을 관심사에 따라 물리적인 서브 모듈로 분리하였다.
@@ -52,6 +53,20 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - **Compound Module**: 기초 감정의 결합 (Anger, Gratitude 등).
 - **Helpers**: 중복된 감정 생성 및 Tracing 로직을 `add_valence` 등의 헬퍼로 통합.
 
+### 2.5. StimulusEngine (관성 적용)
+대사 자극에 의한 감정 변동 처리. 관성 공식으로 강한 감정은 자극에 덜 흔들린다.
+- **관성**: `inertia = max(1.0 - intensity, MIN_INERTIA)` — intensity=1.0이어도 최소 반응 보장.
+- **새 감정 생성 안 함**: 기존 감정의 강도만 조정. 새 감정은 appraise의 역할.
+
+### 2.6. Scene Focus 시스템
+장면(Scene) 내에서 자동 Beat 전환을 관리한다.
+- **SceneFocus**: Focus 옵션 (id, description, trigger, event/action/object).
+- **FocusTrigger**: Initial (즉시 적용) 또는 Conditions (감정 상태 조건, `OR[AND[...]]` 구조).
+- **merge_from_beat**: Beat 전환 시 이전 감정과 새 감정 합치기 (같은 감정은 max, threshold 미만 소멸).
+
+### 2.7. 튜닝 상수 (`tuning.rs`)
+모든 조정 가능한 파라미터를 한 파일에 중앙 관리. 플레이테스트 시 이 파일만 수정.
+
 ### 3. DTO & Mapping (Standardized)
 외부 입력(JSON 등)과 도메인 모델 간의 변환 책임을 명확히 분리한다.
 - **to_domain 패턴**: DTO가 직접 도메인 모델로 변환되는 메서드를 가지며, 이때 필요한 컨텍스트(관계, 객체 정보 등)를 `MindRepository`로부터 주입받는다.
@@ -60,6 +75,8 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - **rel_mul**: `(1.0 + closeness × 0.5).max(0.0)` — Admiration/Reproach에만 적용.
 - **trust_mod**: `1.0 + trust × 0.3` — Action 감정 가중치로 작용.
 - **Social Modifiers**: 타인의 운에 대한 공감(`empathy`) 및 적대(`hostility`) 배율 별도 관리.
+- **significance**: 상황 중요도 (0.0~1.0). 관계 갱신 배율 = `1.0 + significance × 3.0` (최대 4배).
+- **PowerLevel**: 5단계 (VeryHigh/High/Neutral/Low/VeryLow) + 행동 지시 포함 라벨.
 
 ---
 
@@ -83,6 +100,14 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - [x] AppraisalEngine 리팩터링: 물리적 모듈 분리 및 중복 로직 통합
 - [x] 에러 처리 표준화: `AppError`, `IntoResponse` 도입
 - [x] 테스트 인프라 혁신: `TestContext` 기반의 표준화된 테스트 Fixture 구축
+- [x] HopeFulfilled/FearConfirmed 시 Joy/Distress 동시 생성 (Gratitude 등 Compound 정상화)
+- [x] PowerLevel 3→5단계 확장 + 행동 지시 라벨
+- [x] significance 파라미터: 상황 중요도에 따른 관계 변동 배율
+- [x] stimulus 관성 공식: 강한 감정은 자극에 덜 흔들림
+- [x] Scene Focus 시스템: Focus 옵션 목록 + 감정 조건 기반 자동 Beat 전환
+- [x] merge_from_beat: Beat 전환 시 이전/새 감정 합치기
+- [x] after_beat vs after_dialogue 분리
+- [x] 튜닝 상수 중앙 관리 (tuning.rs)
 
 ### 예정
 - [ ] PAD 앵커 동적 관리 (앵커 편집 + 재임베딩)
@@ -98,3 +123,4 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 0.1.0 | 2026-03-24 | 초기 설계안 |
 | 1.0.0 | 2026-03-28 | Situation→Option 전환, Action 3분기, Emotion context 반영 |
 | 1.1.0 | 2026-03-29 | Application 계층 도입, AppraisalEngine 모듈화, TestContext 인프라 구축 반영 |
+| 2.0.0 | 2026-03-30 | Scene Focus 시스템, Beat 전환, stimulus 관성, merge_from_beat, significance, PowerLevel 5단계, tuning.rs 중앙 관리 |

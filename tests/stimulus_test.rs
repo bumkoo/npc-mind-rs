@@ -87,7 +87,10 @@ fn 교룡이_무백보다_부정_자극에_더_크게_반응() {
 #[test]
 fn 부정_자극_반복이면_분노_계속_증폭() {
     let yu = make_교룡();
-    let initial = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    // 교룡이 중간 수준 분노(0.5)인 상태에서 강한 도발 반복
+    let mut initial = EmotionState::new();
+    initial.add(Emotion::new(EmotionType::Anger, 0.5));
+
     let provocation = Pad::new(-0.6, 0.7, 0.5);
 
     let after1 = StimulusEngine::apply_stimulus(yu.personality(), &initial, &provocation);
@@ -188,4 +191,44 @@ fn 중립_자극은_감정_변동_없음() {
 
     assert!((anger_before - anger_after).abs() < 0.001,
         "중립 자극: 변동 없음 {} → {}", anger_before, anger_after);
+}
+
+
+// ===========================================================================
+// 관성(inertia) 검증
+// ===========================================================================
+
+#[test]
+fn 강한_감정은_약한_감정보다_변동_작음() {
+    let yu = make_교룡();
+    let apology = Pad::new(0.5, -0.3, -0.4);
+
+    // 강한 Anger (0.8)
+    let mut strong = EmotionState::new();
+    strong.add(Emotion::new(EmotionType::Anger, 0.8));
+    let strong_after = StimulusEngine::apply_stimulus(yu.personality(), &strong, &apology);
+    let strong_delta = (find_emotion(&strong_after, EmotionType::Anger).unwrap() - 0.8).abs();
+
+    // 약한 Anger (0.3)
+    let mut weak = EmotionState::new();
+    weak.add(Emotion::new(EmotionType::Anger, 0.3));
+    let weak_after = StimulusEngine::apply_stimulus(yu.personality(), &weak, &apology);
+    let weak_delta = (find_emotion(&weak_after, EmotionType::Anger).unwrap() - 0.3).abs();
+
+    assert!(strong_delta < weak_delta,
+        "강한 감정(0.8) 변동={:.4} < 약한 감정(0.3) 변동={:.4}", strong_delta, weak_delta);
+}
+
+#[test]
+fn intensity_1에서도_최소_관성으로_변동() {
+    let yu = make_교룡();
+    let apology = Pad::new(0.5, -0.3, -0.4);
+
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 1.0));
+    let after = StimulusEngine::apply_stimulus(yu.personality(), &state, &apology);
+    let anger_after = find_emotion(&after, EmotionType::Anger).unwrap();
+
+    assert!(anger_after < 1.0,
+        "intensity=1.0에서도 최소 관성으로 변동: {} → {}", 1.0, anger_after);
 }

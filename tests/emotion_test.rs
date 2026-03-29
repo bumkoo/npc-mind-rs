@@ -1086,3 +1086,177 @@ fn hope_fulfilled와_타인_action_결합_시_gratitude_생성() {
     assert!(find_emotion(&state, EmotionType::Joy).is_some(), "Joy가 있어야 함 (HopeFulfilled fall-through)");
     assert!(find_emotion(&state, EmotionType::Gratitude).is_some(), "Gratitude가 생성되어야 함 (Admiration + Joy)");
 }
+
+
+// ===========================================================================
+// merge_from_beat 검증
+// ===========================================================================
+
+#[test]
+fn merge_같은_감정은_max_유지_context도_max쪽() {
+    let mut prev = EmotionState::new();
+    prev.add(Emotion::with_context(EmotionType::Distress, 0.5, "거짓말에 속았다"));
+
+    let mut new_state = EmotionState::new();
+    new_state.add(Emotion::with_context(EmotionType::Distress, 0.3, "사과가 미흡하다"));
+
+    let merged = EmotionState::merge_from_beat(&prev, &new_state, 0.2);
+
+    let distress = merged.intensity_of(EmotionType::Distress);
+    let context = merged.context_of(EmotionType::Distress);
+    assert!((distress - 0.5).abs() < 0.001, "max 값(0.5) 유지: {}", distress);
+    assert_eq!(context, Some("거짓말에 속았다"), "max 쪽 context 유지");
+}
+
+#[test]
+fn merge_이전_감정_threshold_미만은_소멸() {
+    let mut prev = EmotionState::new();
+    prev.add(Emotion::new(EmotionType::Anger, 0.15));
+
+    let new_state = EmotionState::new();
+
+    let merged = EmotionState::merge_from_beat(&prev, &new_state, 0.2);
+
+    assert_eq!(merged.intensity_of(EmotionType::Anger), 0.0,
+        "threshold(0.2) 미만인 0.15는 소멸");
+}
+
+#[test]
+fn merge_새_감정만_있으면_그대로_추가() {
+    let prev = EmotionState::new();
+
+    let mut new_state = EmotionState::new();
+    new_state.add(Emotion::new(EmotionType::Gratitude, 0.9));
+
+    let merged = EmotionState::merge_from_beat(&prev, &new_state, 0.2);
+
+    assert!((merged.intensity_of(EmotionType::Gratitude) - 0.9).abs() < 0.001,
+        "새 감정 Gratitude 0.9 그대로 추가");
+}
+
+#[test]
+fn merge_이전_감정_threshold_이상은_유지() {
+    let mut prev = EmotionState::new();
+    prev.add(Emotion::with_context(EmotionType::Reproach, 0.8, "배신 행위"));
+
+    let mut new_state = EmotionState::new();
+    new_state.add(Emotion::new(EmotionType::Joy, 0.7));
+
+    let merged = EmotionState::merge_from_beat(&prev, &new_state, 0.2);
+
+    assert!((merged.intensity_of(EmotionType::Reproach) - 0.8).abs() < 0.001,
+        "threshold 이상인 Reproach 0.8 유지");
+    assert!((merged.intensity_of(EmotionType::Joy) - 0.7).abs() < 0.001,
+        "새 감정 Joy 0.7도 존재");
+    assert_eq!(merged.context_of(EmotionType::Reproach), Some("배신 행위"),
+        "이전 context 유지");
+}
+
+// ===========================================================================
+// FocusTrigger::is_met 검증
+// ===========================================================================
+
+#[test]
+fn trigger_initial은_항상_false() {
+    let state = EmotionState::new();
+    assert!(!FocusTrigger::Initial.is_met(&state));
+}
+
+#[test]
+fn trigger_below_조건_충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.3));
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Below(0.4),
+        }]
+    ]);
+    assert!(trigger.is_met(&state), "Anger 0.3 < 0.4 → 충족");
+}
+
+#[test]
+fn trigger_below_조건_미충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.5));
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Below(0.4),
+        }]
+    ]);
+    assert!(!trigger.is_met(&state), "Anger 0.5 >= 0.4 → 미충족");
+}
+
+#[test]
+fn trigger_above_조건_충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.95));
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Above(0.9),
+        }]
+    ]);
+    assert!(trigger.is_met(&state), "Anger 0.95 > 0.9 → 충족");
+}
+
+#[test]
+fn trigger_absent_조건_충족() {
+    let state = EmotionState::new();
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Absent,
+        }]
+    ]);
+    assert!(trigger.is_met(&state), "Anger 없음 → 충족");
+}
+
+#[test]
+fn trigger_and_조건_모두_충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.3));
+    state.add(Emotion::new(EmotionType::Distress, 0.2));
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![
+            EmotionCondition { emotion: EmotionType::Anger, threshold: ConditionThreshold::Below(0.4) },
+            EmotionCondition { emotion: EmotionType::Distress, threshold: ConditionThreshold::Below(0.3) },
+        ]
+    ]);
+    assert!(trigger.is_met(&state), "Anger<0.4 AND Distress<0.3 → 충족");
+}
+
+#[test]
+fn trigger_and_조건_하나_미충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.3));
+    state.add(Emotion::new(EmotionType::Distress, 0.5));
+
+    let trigger = FocusTrigger::Conditions(vec![
+        vec![
+            EmotionCondition { emotion: EmotionType::Anger, threshold: ConditionThreshold::Below(0.4) },
+            EmotionCondition { emotion: EmotionType::Distress, threshold: ConditionThreshold::Below(0.3) },
+        ]
+    ]);
+    assert!(!trigger.is_met(&state), "Anger<0.4 OK but Distress>=0.3 → 미충족");
+}
+
+#[test]
+fn trigger_or_조건_하나만_충족() {
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.5)); // 그룹A 미충족
+
+    let trigger = FocusTrigger::Conditions(vec![
+        // 그룹 A: Anger < 0.4 → 미충족
+        vec![EmotionCondition { emotion: EmotionType::Anger, threshold: ConditionThreshold::Below(0.4) }],
+        // 그룹 B: Anger > 0.3 → 충족
+        vec![EmotionCondition { emotion: EmotionType::Anger, threshold: ConditionThreshold::Above(0.3) }],
+    ]);
+    assert!(trigger.is_met(&state), "그룹A 미충족, 그룹B 충족 → OR이므로 충족");
+}
