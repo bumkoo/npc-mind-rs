@@ -319,6 +319,26 @@ pub async fn get_history(State(state): State<AppState>) -> Json<Vec<TurnRecord>>
 }
 
 // ---------------------------------------------------------------------------
+// 상황 설정 패널 상태 저장/조회
+// ---------------------------------------------------------------------------
+
+/// GET /api/situation — 현재 상황 설정 패널 상태 조회
+pub async fn get_situation(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let inner = state.inner.read().await;
+    Json(inner.current_situation.clone().unwrap_or(serde_json::Value::Null))
+}
+
+/// PUT /api/situation — 상황 설정 패널 상태 저장
+pub async fn put_situation(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> StatusCode {
+    let mut inner = state.inner.write().await;
+    inner.current_situation = Some(body);
+    StatusCode::OK
+}
+
+// ---------------------------------------------------------------------------
 // 저장/로드
 // ---------------------------------------------------------------------------
 

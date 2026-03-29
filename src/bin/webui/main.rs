@@ -44,6 +44,7 @@ async fn main() {
         .route("/api/after-dialogue", post(handlers::after_dialogue))
         .route("/api/scenarios", get(handlers::list_scenarios))
         .route("/api/history", get(handlers::get_history))
+        .route("/api/situation", get(handlers::get_situation).put(handlers::put_situation))
         .route("/api/save", post(handlers::save_state))
         .route("/api/load", post(handlers::load_state))
         // --- 정적 파일 (SPA) ---
