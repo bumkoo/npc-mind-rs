@@ -397,6 +397,7 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   // After-dialogue praiseworthiness
   const [hasPw, setHasPw] = useState(false);
   const [adPw, setAdPw] = useState(0);
+  const [significance, setSignificance] = useState(0);
 
   // --- 시나리오 로드 시 상황설정 복원 ---
   const restoreKeyRef = React.useRef(null);
@@ -431,6 +432,7 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
     // After-dialogue
     setHasPw(s.hasPw ?? false);
     if (s.adPw != null) setAdPw(s.adPw);
+    if (s.significance != null) setSignificance(s.significance);
   }, [savedSituation]);
 
   // --- 상황설정 변경 시 자동 저장 (debounced) ---
@@ -438,11 +440,11 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   React.useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const data = {desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw};
+      const data = {desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw, significance};
       fetch('/api/situation', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)}).catch(()=>{});
     }, 500);
     return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw]);
+  }, [desc, npcId, partnerId, hasEvent, evDesc, evSelf, hasOther, otherTarget, otherD, prospect, hasAction, acDesc, agentId, pw, hasObject, objTarget, objAp, padP, padA, padD, hasPw, adPw, significance]);
 
   const buildSituation = () => ({
     description: desc,
@@ -579,8 +581,9 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
         <div className="section-body">
           <label style={{display:'inline',fontSize:11}}><input type="checkbox" checked={hasPw} onChange={e=>setHasPw(e.target.checked)} /> 도덕성 평가 포함</label>
           {hasPw && <Slider label="도덕성" value={adPw} onChange={setAdPw} />}
+          <Slider label="상황 중요도" value={significance} onChange={setSignificance} min={0} max={1} step={0.1} />
           <button className="btn danger btn-full" style={{marginTop:4}}
-            onClick={()=>onAfterDialogue(hasPw ? adPw : null)}>대화 종료 (관계 갱신)</button>
+            onClick={()=>onAfterDialogue(hasPw ? adPw : null, significance)}>대화 종료 (관계 갱신)</button>
         </div>
       </div>
     </div>
@@ -808,11 +811,11 @@ function App() {
     } catch(e) { toast('가이드 재생성 실패: '+e,'error'); }
   };
 
-  const handleAfterDialogue = async (pw) => {
+  const handleAfterDialogue = async (pw, sig) => {
     if(!npcId||!partnerId) return toast('NPC와 대화 상대를 선택하세요','error');
     try {
       const res = await fetch('/api/after-dialogue', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: pw})});
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: pw, significance: sig})});
       if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
       const data = await res.json();
       setResult({afterDialogue: true, npc_id: npcId, partner_id: partnerId, ...data});

@@ -258,3 +258,32 @@ fn 관계_없으면_json에_관계_없음() {
     assert!(parsed.get("relationship").is_none(),
         "관계 없으면 JSON에서 생략");
 }
+
+// ===========================================================================
+// 이슈 4: PowerLevel 5단계 분류 검증
+// ===========================================================================
+
+#[test]
+fn power_minus03은_low() {
+    assert_eq!(PowerLevel::from_score(-0.3), PowerLevel::Low);
+}
+
+#[test]
+fn power_0은_neutral() {
+    assert_eq!(PowerLevel::from_score(0.0), PowerLevel::Neutral);
+}
+
+#[test]
+fn power_05는_high() {
+    assert_eq!(PowerLevel::from_score(0.5), PowerLevel::High);
+}
+
+#[test]
+fn power_07은_very_high() {
+    assert_eq!(PowerLevel::from_score(0.7), PowerLevel::VeryHigh);
+}
+
+#[test]
+fn power_minus07은_very_low() {
+    assert_eq!(PowerLevel::from_score(-0.7), PowerLevel::VeryLow);
+}

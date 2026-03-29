@@ -129,6 +129,7 @@ fn test_mind_service_full_flow() {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
         praiseworthiness: Some(0.5), // 좋은 행동으로 마무리
+        significance: None,
     };
 
     let after_res = service.after_dialogue(after_req).expect("After dialogue failed");

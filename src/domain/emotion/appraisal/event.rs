@@ -1,6 +1,6 @@
 //! 사건(Event)에 대한 감정 평가 로직
 
-use crate::domain::emotion::{EmotionState, EmotionType, EventFocus, Prospect};
+use crate::domain::emotion::{EmotionState, EmotionType, EventFocus, Prospect, ProspectResult};
 use crate::ports::AppraisalWeights;
 use super::helpers::*;
 
@@ -12,7 +12,13 @@ pub fn appraise<P: AppraisalWeights>(p: &P, state: &mut EmotionState, event: &Ev
     if let Some(Prospect::Confirmation(result)) = &event.prospect {
         let w = p.desirability_confirmation_weight(d);
         add_confirmation(state, result, d, w, ctx);
-        return;
+
+        // 사건이 발생하지 않은 경우: 확인 감정만 생성
+        // 사건이 발생한 경우(HopeFulfilled, FearConfirmed): Joy/Distress도 필요 → fall-through
+        match result {
+            ProspectResult::HopeUnfulfilled | ProspectResult::FearUnrealized => return,
+            _ => {} // HopeFulfilled, FearConfirmed → 아래 Joy/Distress 로직 계속
+        }
     }
 
     // 2. 미래 전망 (Hope, Fear)

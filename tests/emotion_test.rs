@@ -979,3 +979,110 @@ fn 타인_compound_anger는_closeness에_증폭() {
 
     assert!(anger_close > anger_distant);
 }
+
+// ===========================================================================
+// 이슈 1: 전망 확인 시 기초 감정 동시 생성
+// ===========================================================================
+
+#[test]
+fn hope_fulfilled_시_satisfaction과_joy_동시_생성() {
+    let ctx = TestContext::new();
+    let situation = Situation::new(
+        "헉이 비밀을 지키겠다고 약속했다",
+        Some(EventFocus {
+            description: "약속을 지켜줬다".into(),
+            desirability_for_self: 0.8,
+            desirability_for_other: None,
+            prospect: Some(Prospect::Confirmation(ProspectResult::HopeFulfilled)),
+        }),
+        None, None,
+    ).unwrap();
+
+    let state = AppraisalEngine::appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    assert!(find_emotion(&state, EmotionType::Satisfaction).is_some(), "Satisfaction이 있어야 함");
+    assert!(find_emotion(&state, EmotionType::Joy).is_some(), "Joy도 함께 생성되어야 함");
+}
+
+#[test]
+fn fear_confirmed_시_fears_confirmed와_distress_동시_생성() {
+    let ctx = TestContext::new();
+    let situation = Situation::new(
+        "두려워하던 추격자가 실제로 나타났다",
+        Some(EventFocus {
+            description: "추격자 출현".into(),
+            desirability_for_self: -0.8,
+            desirability_for_other: None,
+            prospect: Some(Prospect::Confirmation(ProspectResult::FearConfirmed)),
+        }),
+        None, None,
+    ).unwrap();
+
+    let state = AppraisalEngine::appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    assert!(find_emotion(&state, EmotionType::FearsConfirmed).is_some(), "FearsConfirmed가 있어야 함");
+    assert!(find_emotion(&state, EmotionType::Distress).is_some(), "Distress도 함께 생성되어야 함");
+}
+
+#[test]
+fn hope_unfulfilled_시_disappointment만_생성_joy_없음() {
+    let ctx = TestContext::new();
+    let situation = Situation::new(
+        "해독약을 구하지 못했다",
+        Some(EventFocus {
+            description: "해독약 실패".into(),
+            desirability_for_self: -0.8,
+            desirability_for_other: None,
+            prospect: Some(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
+        }),
+        None, None,
+    ).unwrap();
+
+    let state = AppraisalEngine::appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    assert!(find_emotion(&state, EmotionType::Disappointment).is_some(), "Disappointment이 있어야 함");
+    assert!(find_emotion(&state, EmotionType::Joy).is_none(), "Joy는 없어야 함");
+    assert!(find_emotion(&state, EmotionType::Distress).is_none(), "Distress도 없어야 함");
+}
+
+#[test]
+fn fear_unrealized_시_relief만_생성_distress_없음() {
+    let ctx = TestContext::new();
+    let situation = Situation::new(
+        "추격자가 지나갔다",
+        Some(EventFocus {
+            description: "추격자 회피".into(),
+            desirability_for_self: -0.7,
+            desirability_for_other: None,
+            prospect: Some(Prospect::Confirmation(ProspectResult::FearUnrealized)),
+        }),
+        None, None,
+    ).unwrap();
+
+    let state = AppraisalEngine::appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    assert!(find_emotion(&state, EmotionType::Relief).is_some(), "Relief가 있어야 함");
+    assert!(find_emotion(&state, EmotionType::Distress).is_none(), "Distress는 없어야 함");
+    assert!(find_emotion(&state, EmotionType::Joy).is_none(), "Joy도 없어야 함");
+}
+
+#[test]
+fn hope_fulfilled와_타인_action_결합_시_gratitude_생성() {
+    let ctx = TestContext::new();
+    let situation = Situation::new(
+        "헉이 비밀을 지키겠다고 약속했다",
+        Some(EventFocus {
+            description: "약속을 지켜줬다".into(),
+            desirability_for_self: 0.8,
+            desirability_for_other: None,
+            prospect: Some(Prospect::Confirmation(ProspectResult::HopeFulfilled)),
+        }),
+        Some(ActionFocus {
+            description: "비밀을 지키겠다는 약속".into(),
+            agent_id: Some("huck".into()), relationship: None,
+            praiseworthiness: 0.7,
+        }),
+        None,
+    ).unwrap();
+
+    let state = AppraisalEngine::appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    assert!(find_emotion(&state, EmotionType::Admiration).is_some(), "Admiration이 있어야 함");
+    assert!(find_emotion(&state, EmotionType::Joy).is_some(), "Joy가 있어야 함 (HopeFulfilled fall-through)");
+    assert!(find_emotion(&state, EmotionType::Gratitude).is_some(), "Gratitude가 생성되어야 함 (Admiration + Joy)");
+}

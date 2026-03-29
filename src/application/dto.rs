@@ -172,6 +172,9 @@ pub struct AfterDialogueRequest {
     pub npc_id: String,
     pub partner_id: String,
     pub praiseworthiness: Option<f32>,
+    /// 상황 중요도 (0.0~1.0). 중대한 사건일수록 관계 변동 폭이 커진다.
+    /// None이면 기본값 0.0 (일상 대화 수준).
+    pub significance: Option<f32>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

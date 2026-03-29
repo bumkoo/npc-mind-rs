@@ -180,7 +180,8 @@ impl<R: MindRepository> MindService<R> {
             power: relationship.power().value(),
         };
 
-        let new_rel = relationship.after_dialogue(&emotion_state, req.praiseworthiness);
+        let significance = req.significance.unwrap_or(0.0).clamp(0.0, 1.0);
+        let new_rel = relationship.after_dialogue(&emotion_state, req.praiseworthiness, significance);
 
         let after = RelationshipValues {
             closeness: new_rel.closeness().value(),

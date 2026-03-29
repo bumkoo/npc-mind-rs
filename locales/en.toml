@@ -186,6 +186,8 @@ Low = "distant"
 VeryLow = "hostile"
 
 [power_level]
-Superior = "superior"
-Equal = "equal"
-Subordinate = "subordinate"
+VeryHigh = "absolute superior — use extreme honorifics, do not speak unless spoken to"
+High = "superior — speak respectfully, but personal exchange and opinions are allowed"
+Neutral = "equal — speak comfortably and exchange opinions freely"
+Low = "subordinate — instructive tone, giving orders and corrections is natural"
+VeryLow = "absolute subordinate — commanding tone, little regard for the other's dignity"

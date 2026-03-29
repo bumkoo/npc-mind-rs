@@ -135,7 +135,7 @@ fn 대화후_배신하면_trust_하락() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
-    let updated = rel.with_updated_trust(-0.7);
+    let updated = rel.with_updated_trust(-0.7, 0.0);
     assert!(updated.trust().value() < rel.trust().value());
 }
 
@@ -144,7 +144,7 @@ fn 대화후_의로운_행동하면_trust_상승() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.0))
         .build();
-    let updated = rel.with_updated_trust(0.8);
+    let updated = rel.with_updated_trust(0.8, 0.0);
     assert!(updated.trust().value() > rel.trust().value());
 }
 
@@ -153,7 +153,7 @@ fn 대화후_부정_감정이면_closeness_하락() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.5))
         .build();
-    let updated = rel.with_updated_closeness(-0.6);
+    let updated = rel.with_updated_closeness(-0.6, 0.0);
     assert!(updated.closeness().value() < rel.closeness().value());
 }
 
@@ -162,7 +162,7 @@ fn 대화후_긍정_감정이면_closeness_상승() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.0))
         .build();
-    let updated = rel.with_updated_closeness(0.7);
+    let updated = rel.with_updated_closeness(0.7, 0.0);
     assert!(updated.closeness().value() > rel.closeness().value());
 }
 
@@ -171,7 +171,7 @@ fn closeness_갱신은_매우_점진적() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .closeness(s(0.5))
         .build();
-    let updated = rel.with_updated_closeness(-0.6);
+    let updated = rel.with_updated_closeness(-0.6, 0.0);
     let expected = 0.5 - 0.03;
     assert!((updated.closeness().value() - expected).abs() < 0.001);
 }
@@ -181,7 +181,7 @@ fn trust_갱신은_중간_속도() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
         .trust(s(0.5))
         .build();
-    let updated = rel.with_updated_trust(-0.7);
+    let updated = rel.with_updated_trust(-0.7, 0.0);
     let expected = 0.5 - 0.07;
     assert!((updated.trust().value() - expected).abs() < 0.001);
 }
@@ -192,7 +192,7 @@ fn 원본_불변_검증() {
         .trust(s(0.5))
         .closeness(s(0.5))
         .build();
-    let _updated = original.with_updated_trust(-0.7);
+    let _updated = original.with_updated_trust(-0.7, 0.0);
 
     assert!((original.trust().value() - 0.5).abs() < 0.001);
     assert!((original.closeness().value() - 0.5).abs() < 0.001);
@@ -205,8 +205,8 @@ fn 갱신_체이닝() {
         .closeness(s(0.0))
         .build();
     let updated = rel
-        .with_updated_trust(0.8)
-        .with_updated_closeness(0.5);
+        .with_updated_trust(0.8, 0.0)
+        .with_updated_closeness(0.5, 0.0);
 
     assert!(updated.trust().value() > 0.0);
     assert!(updated.closeness().value() > 0.0);
@@ -303,7 +303,42 @@ fn after_dialogue_종합_갱신() {
     let mut state = EmotionState::new();
     state.add(npc_mind::domain::emotion::Emotion::new(npc_mind::domain::emotion::EmotionType::Joy, 0.8));
     
-    let updated = rel.after_dialogue(&state, Some(0.7));
+    let updated = rel.after_dialogue(&state, Some(0.7), 0.0);
     assert!(updated.closeness().value() > 0.0);
     assert!(updated.trust().value() > 0.0);
+}
+
+// ===========================================================================
+// 이슈 2: significance 배율 검증
+// ===========================================================================
+
+#[test]
+fn significance_0이면_기존과_동일() {
+    let rel = RelationshipBuilder::new("mu_baek", "target")
+        .trust(s(0.0))
+        .build();
+    let updated = rel.with_updated_trust(0.8, 0.0);
+    let expected = 0.8 * 0.1; // pw × TRUST_UPDATE_RATE
+    assert!((updated.trust().value() - expected).abs() < 0.001);
+}
+
+#[test]
+fn significance_1이면_4배_변동() {
+    let rel = RelationshipBuilder::new("mu_baek", "target")
+        .trust(s(0.0))
+        .build();
+    let updated = rel.with_updated_trust(0.8, 1.0);
+    let expected = 0.8 * 0.1 * 4.0; // pw × TRUST_UPDATE_RATE × (1 + 1.0 × 3.0)
+    assert!((updated.trust().value() - expected).abs() < 0.001);
+}
+
+#[test]
+fn significance_closeness에도_적용() {
+    let rel = RelationshipBuilder::new("mu_baek", "target")
+        .closeness(s(0.0))
+        .build();
+    let base = rel.with_updated_closeness(0.5, 0.0);
+    let amplified = rel.with_updated_closeness(0.5, 1.0);
+    // amplified = base × 4배
+    assert!((amplified.closeness().value() / base.closeness().value() - 4.0).abs() < 0.01);
 }

@@ -29,6 +29,9 @@ use super::personality::Score;
 const TRUST_UPDATE_RATE: f32 = 0.1;
 /// closeness 갱신 계수 (대화 후, 전체 감정 valence 기반)
 const CLOSENESS_UPDATE_RATE: f32 = 0.05;
+/// 상황 중요도(significance)에 의한 최대 배율 증가분.
+/// significance=1.0일 때 변동 폭이 (1 + SIGNIFICANCE_SCALE)배 = 4배.
+const SIGNIFICANCE_SCALE: f32 = 3.0;
 
 // ---------------------------------------------------------------------------
 // Relationship (Value Object)
@@ -136,18 +139,20 @@ impl Relationship {
 
     /// trust를 갱신한 새 Relationship 반환
     /// Action 분기의 praiseworthiness 기반. 점진적 변화.
-    pub fn with_updated_trust(&self, praiseworthiness: f32) -> Self {
+    pub fn with_updated_trust(&self, praiseworthiness: f32, significance: f32) -> Self {
+        let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
         Self {
-            trust: updated_score(self.trust, praiseworthiness * TRUST_UPDATE_RATE),
+            trust: updated_score(self.trust, praiseworthiness * TRUST_UPDATE_RATE * multiplier),
             ..self.clone()
         }
     }
 
     /// closeness를 갱신한 새 Relationship 반환
     /// 대화의 전체 감정 결과(overall_valence) 기반. 매우 점진적.
-    pub fn with_updated_closeness(&self, overall_valence: f32) -> Self {
+    pub fn with_updated_closeness(&self, overall_valence: f32, significance: f32) -> Self {
+        let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
         Self {
-            closeness: updated_score(self.closeness, overall_valence * CLOSENESS_UPDATE_RATE),
+            closeness: updated_score(self.closeness, overall_valence * CLOSENESS_UPDATE_RATE * multiplier),
             ..self.clone()
         }
     }
@@ -166,20 +171,22 @@ impl Relationship {
     /// - trust: praiseworthiness 기반 (점진적). None이면 미갱신.
     /// - closeness: 대화 최종 감정 결과 기반 (매우 점진적)
     /// - power: 변경 없음 (서사 이벤트에서만)
+    /// - significance: 상황 중요도 (0.0~1.0). 클수록 변동 폭 증가.
     pub fn after_dialogue(
         &self,
         final_state: &EmotionState,
         praiseworthiness: Option<f32>,
+        significance: f32,
     ) -> Self {
         let mut result = self.clone();
 
         // trust: praiseworthiness가 있을 때만 갱신
         if let Some(pw) = praiseworthiness {
-            result = result.with_updated_trust(pw);
+            result = result.with_updated_trust(pw, significance);
         }
 
         // closeness: 항상 갱신 (전체 감정 결과 기반)
-        result = result.with_updated_closeness(final_state.overall_valence());
+        result = result.with_updated_closeness(final_state.overall_valence(), significance);
 
         result
     }

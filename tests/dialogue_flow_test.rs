@@ -76,7 +76,7 @@ fn 배신_대화_후_trust_하락() {
     let state2 = StimulusEngine::apply_stimulus(yu.personality(), &state1, &provocation);
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &state2, &provocation);
 
-    let updated = rel.after_dialogue(&final_state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&final_state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!(updated.trust().value() < rel.trust().value(),
         "배신 대화 후 trust 하락: {} → {}", rel.trust().value(), updated.trust().value());
@@ -95,7 +95,7 @@ fn 부정_대화_후_closeness_하락() {
     let situation = 갈등_상황();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
-    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!(updated.closeness().value() < rel.closeness().value(),
         "부정 대화 후 closeness 하락: {} → {}",
@@ -126,7 +126,7 @@ fn 긍정_대화_후_closeness_상승() {
     ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
-    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!(updated.closeness().value() > rel.closeness().value(),
         "긍정 대화 후 closeness 상승: {} → {}",
@@ -157,7 +157,7 @@ fn event_분기는_trust_변경_없음() {
     ).unwrap();
 
     let state = AppraisalEngine::appraise(li.personality(), &situation, &rel);
-    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!((rel.trust().value() - updated.trust().value()).abs() < 0.001,
         "Event 분기 → trust 미변경: {} → {}",
@@ -177,7 +177,7 @@ fn 대화_후_power_변경_없음() {
     let situation = 배신_상황();
 
     let state = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
-    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!((updated.power().value() - -0.7).abs() < 0.001,
         "power는 대화로 변하지 않음: {}", updated.power().value());
@@ -224,7 +224,7 @@ fn 시나리오_의형제_배신_후_관계_악화() {
     let final_state = StimulusEngine::apply_stimulus(yu.personality(), &s2, &provocation);
 
     // 3. 대화 종료
-    let updated = rel.after_dialogue(&final_state, situation.action.as_ref().map(|a| a.praiseworthiness));
+    let updated = rel.after_dialogue(&final_state, situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     assert!(updated.trust().value() < rel.trust().value(),
         "trust 급락: {} → {}", rel.trust().value(), updated.trust().value());
@@ -272,11 +272,11 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
         None,
     ).unwrap();
     let state1 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel0);
-    let rel1 = rel0.after_dialogue(&state1, good_situation.action.as_ref().map(|a| a.praiseworthiness));
+    let rel1 = rel0.after_dialogue(&state1, good_situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     // 대화 2: 또 긍정
     let state2 = AppraisalEngine::appraise(li.personality(), &good_situation, &rel1);
-    let rel2 = rel1.after_dialogue(&state2, good_situation.action.as_ref().map(|a| a.praiseworthiness));
+    let rel2 = rel1.after_dialogue(&state2, good_situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     // 대화 3: 부정 (배신)
     let bad_situation = Situation::new(
@@ -295,7 +295,7 @@ fn 여러_대화에_걸쳐_관계_누적_변화() {
         None,
     ).unwrap();
     let state3 = AppraisalEngine::appraise(li.personality(), &bad_situation, &rel2);
-    let rel3 = rel2.after_dialogue(&state3, bad_situation.action.as_ref().map(|a| a.praiseworthiness));
+    let rel3 = rel2.after_dialogue(&state3, bad_situation.action.as_ref().map(|a| a.praiseworthiness), 0.0);
 
     // 검증: 긍정 대화로 관계 개선
     assert!(rel1.closeness().value() > 0.0,

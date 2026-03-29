@@ -192,12 +192,16 @@ pub enum RelationshipLevel {
 /// 상하 관계 수준
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PowerLevel {
-    /// > 0.4: 상위자 (사부, 문주 등)
-    Superior,
-    /// > -0.4: 대등
-    Equal,
-    /// <= -0.4: 하위자 (제자 등)
-    Subordinate,
+    /// > 0.6: 절대 상위자 (문주, 장문인 등)
+    VeryHigh,
+    /// > 0.2: 상위자 (사부 등)
+    High,
+    /// > -0.2: 대등
+    Neutral,
+    /// > -0.6: 하위자 (제자 등)
+    Low,
+    /// <= -0.6: 절대 하위자 (하인, 종 등)
+    VeryLow,
 }
 
 impl RelationshipLevel {
@@ -212,9 +216,11 @@ impl RelationshipLevel {
 
 impl PowerLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > 0.4 { Self::Superior }
-        else if value > -0.4 { Self::Equal }
-        else { Self::Subordinate }
+        if value > 0.6 { Self::VeryHigh }
+        else if value > 0.2 { Self::High }
+        else if value > -0.2 { Self::Neutral }
+        else if value > -0.6 { Self::Low }
+        else { Self::VeryLow }
     }
 }
 

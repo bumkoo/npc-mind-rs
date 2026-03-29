@@ -68,7 +68,7 @@ impl_variant_name!(RelationshipLevel, {
 });
 
 impl_variant_name!(PowerLevel, {
-    Superior, Equal, Subordinate,
+    VeryHigh, High, Neutral, Low, VeryLow,
 });
 
 impl_variant_name!(PersonalityTrait, {
