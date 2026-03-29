@@ -136,6 +136,24 @@ textarea { resize:vertical; min-height:36px; font-family:inherit; }
 
 /* Empty state */
 .empty { color:var(--fg3); text-align:center; padding:40px 20px; font-size:12px; }
+
+/* After-Dialogue result */
+.rel-change { margin:6px 0; }
+.rel-change .rc-label { font-size:11px; color:var(--fg2); margin-bottom:2px; display:flex; justify-content:space-between; }
+.rel-change .rc-bar { height:20px; background:var(--bg3); border-radius:3px; position:relative; overflow:hidden; }
+.rel-change .rc-fill { height:100%; border-radius:3px; transition:width 0.3s; position:absolute; top:0; }
+.rel-change .rc-before { background:var(--fg3); opacity:0.4; }
+.rel-change .rc-after { }
+.rel-change .rc-delta { font-size:10px; font-family:monospace; margin-top:1px; }
+
+/* Toast */
+.toast-container { position:fixed; top:12px; right:12px; z-index:200; display:flex; flex-direction:column; gap:6px; pointer-events:none; }
+.toast { padding:8px 14px; border-radius:var(--radius); font-size:12px; color:#fff; pointer-events:auto; animation:toastIn 0.25s ease-out, toastOut 0.3s ease-in 2.7s forwards; max-width:320px; }
+.toast.success { background:var(--green); }
+.toast.error { background:var(--err); }
+.toast.info { background:var(--accent); }
+@keyframes toastIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+@keyframes toastOut { from { opacity:1; } to { opacity:0; transform:translateY(-10px); } }
 </style>
 </head>
 <body>
@@ -150,6 +168,24 @@ const api = {
   del: (url) => fetch(url, { method:'DELETE' }),
   postJson: (url, data) => fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) }).then(r => r.json()),
 };
+
+// --- Toast ---
+function ToastContainer({toasts}) {
+  return (
+    <div className="toast-container">
+      {toasts.map(t => <div key={t.id} className={`toast ${t.type}`}>{t.msg}</div>)}
+    </div>
+  );
+}
+function useToast() {
+  const [toasts, setToasts] = useState([]);
+  const show = useCallback((msg, type='info') => {
+    const id = Date.now() + Math.random();
+    setToasts(prev => [...prev, {id, msg, type}]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  }, []);
+  return {toasts, toast: show};
+}
 
 // --- Helpers ---
 const emotionColor = (type) => {
@@ -356,6 +392,9 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
   const [padP, setPadP] = useState(0);
   const [padA, setPadA] = useState(0);
   const [padD, setPadD] = useState(0);
+  // After-dialogue praiseworthiness
+  const [hasPw, setHasPw] = useState(false);
+  const [adPw, setAdPw] = useState(0);
 
   const buildSituation = () => ({
     description: desc,
@@ -466,12 +505,20 @@ function SituationPanel({npcs, objects, npcId, setNpcId, partnerId, setPartnerId
       </div>
 
       {/* After dialogue */}
-      <button className="btn danger btn-full" style={{marginTop:4}} onClick={onAfterDialogue}>대화 종료 (관계 갱신)</button>
+      <div className="section" style={{marginTop:8}}>
+        <div className="section-header"><span className="title" style={{color:'var(--err)'}}>대화 종료</span></div>
+        <div className="section-body">
+          <label style={{display:'inline',fontSize:11}}><input type="checkbox" checked={hasPw} onChange={e=>setHasPw(e.target.checked)} /> 도덕성 평가 포함</label>
+          {hasPw && <Slider label="도덕성" value={adPw} onChange={setAdPw} />}
+          <button className="btn danger btn-full" style={{marginTop:4}}
+            onClick={()=>onAfterDialogue(hasPw ? adPw : null)}>대화 종료 (관계 갱신)</button>
+        </div>
+      </div>
     </div>
   );
 }
 // --- Right: Result Panel ---
-function ResultPanel({result, history}) {
+function ResultPanel({result, history, onGuide, toast}) {
   const [tab, setTab] = useState('emotions');
 
   return (
@@ -490,9 +537,11 @@ function ResultPanel({result, history}) {
           </div>
         ) : (
           <>
-            {tab==='emotions' && result && <EmotionView result={result} />}
-            {tab==='prompt' && result && <PromptView prompt={result.prompt} />}
-            {tab==='trace' && result && <TraceView trace={result.trace} />}
+            {tab==='emotions' && result && (result.afterDialogue
+              ? <AfterDialogueView data={result} />
+              : <EmotionView result={result} />)}
+            {tab==='prompt' && result && !result.afterDialogue && <PromptView prompt={result.prompt} onRegenerate={onGuide} onCopy={()=>toast&&toast('클립보드에 복사됨','success')} />}
+            {tab==='trace' && result && !result.afterDialogue && <TraceView trace={result.trace} />}
             {tab==='history' && <HistoryView history={history} />}
           </>
         )}
@@ -525,16 +574,56 @@ function EmotionView({result}) {
   );
 }
 
-function PromptView({prompt}) {
+function PromptView({prompt, onRegenerate, onCopy}) {
   return (
     <div>
       <div className="prompt-box">{prompt}</div>
-      <button className="btn small" style={{marginTop:8}} onClick={()=>{navigator.clipboard.writeText(prompt);alert('프롬프트가 클립보드에 복사되었습니다')}}>📋 프롬프트 복사</button>
+      <div className="btn-row" style={{marginTop:8}}>
+        <button className="btn small" onClick={()=>{navigator.clipboard.writeText(prompt);if(onCopy)onCopy();}}>클립보드 복사</button>
+        {onRegenerate && <button className="btn small" onClick={onRegenerate}>가이드 재생성</button>}
+      </div>
     </div>
   );
 }
 function TraceView({trace}) {
   return <div className="trace-box">{trace?.length ? trace.join('\n') : '(trace 없음)'}</div>;
+}
+
+function AfterDialogueView({data}) {
+  const metrics = [
+    {key:'closeness', label:'친밀도', color:'var(--accent2)'},
+    {key:'trust', label:'신뢰도', color:'var(--accent)'},
+    {key:'power', label:'상하관계', color:'var(--purple)'},
+  ];
+  const toPercent = (v) => ((v + 1) / 2 * 100); // -1~1 → 0~100%
+  return (
+    <div>
+      <div className="dominant-card" style={{borderColor:'var(--accent2)'}}>
+        <div className="d-type" style={{color:'var(--accent2)'}}>대화 종료 — 관계 변화</div>
+        <div className="d-ctx">{data.npc_id} → {data.partner_id}</div>
+      </div>
+      {metrics.map(m => {
+        const before = data.before[m.key];
+        const after = data.after[m.key];
+        const delta = after - before;
+        return (
+          <div key={m.key} className="rel-change">
+            <div className="rc-label">
+              <span>{m.label}</span>
+              <span style={{fontFamily:'monospace'}}>{before.toFixed(3)} → {after.toFixed(3)}</span>
+            </div>
+            <div className="rc-bar">
+              <div className="rc-fill rc-before" style={{width:`${toPercent(before)}%`}} />
+              <div className="rc-fill rc-after" style={{width:`${toPercent(after)}%`, background:m.color}} />
+            </div>
+            <div className="rc-delta" style={{color: delta > 0 ? 'var(--green)' : delta < 0 ? 'var(--err)' : 'var(--fg3)'}}>
+              {delta > 0 ? '+' : ''}{delta.toFixed(3)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function HistoryView({history}) {
@@ -566,124 +655,100 @@ function App() {
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const {toasts, toast} = useToast();
 
   // Selection state
-  const [selectedNpcId, setSelectedNpcId] = useState('');
   const [npcId, setNpcId] = useState('');
   const [partnerId, setPartnerId] = useState('');
 
-  // Modal state
-  const [editNpc, setEditNpc] = useState(null); // null=closed, {}=new, {id:...}=edit
-  const [editRel, setEditRel] = useState(null);
-  const [editObj, setEditObj] = useState(null);
-  const [showNpcModal, setShowNpcModal] = useState(false);
-  const [showRelModal, setShowRelModal] = useState(false);
-  const [showObjModal, setShowObjModal] = useState(false);
+  // Modal state: {type:'npc'|'rel'|'obj', data:...} or null
+  const [modal, setModal] = useState(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [n, r, o, h] = await Promise.all([
+      const [n, r, o, s, h] = await Promise.all([
         api.get('/api/npcs'), api.get('/api/relationships'),
-        api.get('/api/objects'), api.get('/api/history'),
+        api.get('/api/objects'), api.get('/api/scenarios'), api.get('/api/history'),
       ]);
-      setNpcs(n); setRels(r); setObjects(o); setHistory(h);
+      setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
       setConnected(true);
     } catch(e) { setConnected(false); }
   }, []);
-  const refreshScenarios = useCallback(async () => {
-    try { setScenarios(await api.get('/api/scenarios')); } catch(e) {}
-  }, []);
 
-  useEffect(() => { refresh(); refreshScenarios(); }, [refresh, refreshScenarios]);
+  useEffect(() => { refresh(); }, [refresh]);
 
   // Sidebar → NPC selection syncs to situation panel
-  const handleSelectNpc = (id) => {
-    setSelectedNpcId(id);
-    setNpcId(id);
-  };
+  const handleSelectNpc = (id) => setNpcId(id);
 
   // --- CRUD handlers ---
-  const saveNpc = async (data) => {
-    await api.post('/api/npcs', data);
-    setShowNpcModal(false); refresh();
-  };
-  const deleteNpc = async (id) => {
-    await api.del('/api/npcs/'+id);
-    setShowNpcModal(false); if(selectedNpcId===id) setSelectedNpcId(''); refresh();
-  };
-  const saveRel = async (data) => {
-    await api.post('/api/relationships', data);
-    setShowRelModal(false); refresh();
-  };
-  const deleteRel = async (ownerId, targetId) => {
-    await api.del('/api/relationships/'+ownerId+'/'+targetId);
-    setShowRelModal(false); refresh();
-  };
-  const saveObj = async (data) => {
-    await api.post('/api/objects', data);
-    setShowObjModal(false); refresh();
-  };
-  const deleteObj = async (id) => {
-    await api.del('/api/objects/'+id);
-    setShowObjModal(false); refresh();
-  };
+  const saveNpc = async (data) => { await api.post('/api/npcs', data); setModal(null); refresh(); };
+  const deleteNpc = async (id) => { await api.del(`/api/npcs/${id}`); setModal(null); if(npcId===id) setNpcId(''); refresh(); };
+  const saveRel = async (data) => { await api.post('/api/relationships', data); setModal(null); refresh(); };
+  const deleteRel = async (oid, tid) => { await api.del(`/api/relationships/${oid}/${tid}`); setModal(null); refresh(); };
+  const saveObj = async (data) => { await api.post('/api/objects', data); setModal(null); refresh(); };
+  const deleteObj = async (id) => { await api.del(`/api/objects/${id}`); setModal(null); refresh(); };
   // --- Pipeline handlers ---
   const handleAppraise = async (situation) => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
+    if(!npcId||!partnerId) return toast('NPC와 대화 상대를 선택하세요','error');
     setLoading(true);
     try {
       const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({npc_id:npcId, partner_id:partnerId, situation})});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
       const data = await res.json();
       setResult(data);
       refresh(); // history updated
-    } catch(e) { alert('요청 실패: '+e); }
+    } catch(e) { toast('요청 실패: '+e,'error'); }
     finally { setLoading(false); }
   };
 
   const handleStimulus = async ({pleasure, arousal, dominance, situation_description}) => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    if(!result) return alert('감정 평가를 먼저 실행하세요');
+    if(!npcId||!partnerId) return toast('NPC와 대화 상대를 선택하세요','error');
+    if(!result) return toast('감정 평가를 먼저 실행하세요','error');
     setLoading(true);
     try {
       const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({npc_id:npcId, partner_id:partnerId, pleasure, arousal, dominance, situation_description})});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
+      if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
       setResult(await res.json());
       refresh();
-    } catch(e) { alert('요청 실패: '+e); }
+    } catch(e) { toast('요청 실패: '+e,'error'); }
     finally { setLoading(false); }
   };
-  const handleAfterDialogue = async () => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    const pwStr = prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '');
-    const pw = pwStr ? parseFloat(pwStr) : null;
+  const handleGuide = async () => {
+    if(!npcId||!partnerId) return;
+    try {
+      const data = await api.postJson('/api/guide', {npc_id:npcId, partner_id:partnerId, situation_description:null});
+      setResult(prev => prev && !prev.afterDialogue ? {...prev, prompt: data.prompt} : prev);
+    } catch(e) { toast('가이드 재생성 실패: '+e,'error'); }
+  };
+
+  const handleAfterDialogue = async (pw) => {
+    if(!npcId||!partnerId) return toast('NPC와 대화 상대를 선택하세요','error');
     try {
       const res = await fetch('/api/after-dialogue', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: isNaN(pw) ? null : pw})});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
+        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: pw})});
+      if(!res.ok) { toast('오류: '+await res.text(),'error'); return; }
       const data = await res.json();
-      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
-      setResult(null);
+      setResult({afterDialogue: true, npc_id: npcId, partner_id: partnerId, ...data});
       refresh();
-    } catch(e) { alert('요청 실패: '+e); }
+    } catch(e) { toast('요청 실패: '+e,'error'); }
   };
 
   // --- Save / Load ---
   const saveState = async () => {
     const sub = prompt('저장 경로 (data/ 기준):', '');
     if(!sub) return;
-    const path = 'C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\' + sub.replace(/\//g,'\\\\') + (sub.endsWith('.json')?'':'.json');
+    const path = `data/${sub}${sub.endsWith('.json')?'':'.json'}`;
     const res = await fetch('/api/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { alert('저장 완료'); refreshScenarios(); } else alert('저장 실패: '+await res.text());
+    if(res.ok) { toast('저장 완료','success'); refresh(); } else toast('저장 실패: '+await res.text(),'error');
   };
 
   const loadScenario = async (scenPath) => {
     if(!scenPath) return;
-    const path = 'C:\\Users\\bumko\\projects\\npc-mind-rs\\data\\' + scenPath.replace(/\//g,'\\\\') + '\\scenario.json';
+    const path = `data/${scenPath}/scenario.json`;
     const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { refresh(); setResult(null); } else alert('로드 실패: '+await res.text());
+    if(res.ok) { toast('시나리오 로드 완료','success'); refresh(); setResult(null); } else toast('로드 실패: '+await res.text(),'error');
   };
   return (
     <div className="app">
@@ -708,171 +773,14 @@ function App() {
       <div className="main">
         <Sidebar
           npcs={npcs} rels={rels} objects={objects}
-          selectedNpcId={selectedNpcId}
-          onSelectNpc={handleSelectNpc}
-          onEditNpc={(n)=>{setEditNpc(n);setShowNpcModal(true)}}
-          onEditRel={(r)=>{setEditRel(r);setShowRelModal(true)}}
-          onEditObj={(o)=>{setEditObj(o);setShowObjModal(true)}}
-          onNewNpc={()=>{setEditNpc(null);setShowNpcModal(true)}}
-          onNewRel={()=>{setEditRel(null);setShowRelModal(true)}}
-          onNewObj={()=>{setEditObj(null);setShowObjModal(true)}}
-        />
-        <SituationPanel
-          npcs={npcs} objects={objects}
-          npcId={npcId} setNpcId={setNpcId}
-          partnerId={partnerId} setPartnerId={setPartnerId}
-          onAppraise={handleAppraise}
-          onStimulus={handleStimulus}
-          onAfterDialogue={handleAfterDialogue}
-          loading={loading}
-        />
-        <ResultPanel result={result} history={history} />
-      </div>
-
-      {/* Modals */}
-      {showNpcModal && <NpcModal npc={editNpc} onSave={saveNpc} onDelete={deleteNpc} onClose={()=>setShowNpcModal(false)} />}
-      {showRelModal && <RelModal rel={editRel} npcIds={npcs.map(n=>n.id)} onSave={saveRel} onDelete={deleteRel} onClose={()=>setShowRelModal(false)} />}
-      {showObjModal && <ObjModal obj={editObj} onSave={saveObj} onDelete={deleteObj} onClose={()=>setShowObjModal(false)} />}
-    </div>
-  );
-}
-
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
-</script>
-</body>
-</html>
-// --- App ---
-function App() {
-  const [npcs, setNpcs] = useState([]);
-  const [rels, setRels] = useState([]);
-  const [objects, setObjects] = useState([]);
-  const [scenarios, setScenarios] = useState([]);
-  const [connected, setConnected] = useState(false);
-  const [result, setResult] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  // Selection state
-  const [npcId, setNpcId] = useState('');
-  const [partnerId, setPartnerId] = useState('');
-
-  // Modal state
-  const [modal, setModal] = useState(null); // {type:'npc'|'rel'|'obj', data:...}
-
-  const refresh = useCallback(async () => {
-    try {
-      const [n, r, o, s, h] = await Promise.all([
-        api.get('/api/npcs'), api.get('/api/relationships'), api.get('/api/objects'),
-        api.get('/api/scenarios'), api.get('/api/history'),
-      ]);
-      setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
-      setConnected(true);
-    } catch(e) { setConnected(false); }
-  }, []);
-  useEffect(() => { refresh(); }, [refresh]);
-  // --- CRUD handlers ---
-  const saveNpc = async (data) => { await api.post('/api/npcs', data); setModal(null); refresh(); };
-  const deleteNpc = async (id) => { await api.del(`/api/npcs/${id}`); setModal(null); if(npcId===id) setNpcId(''); refresh(); };
-  const saveRel = async (data) => { await api.post('/api/relationships', data); setModal(null); refresh(); };
-  const deleteRel = async (oid,tid) => { await api.del(`/api/relationships/${oid}/${tid}`); setModal(null); refresh(); };
-  const saveObj = async (data) => { await api.post('/api/objects', data); setModal(null); refresh(); };
-  const deleteObj = async (id) => { await api.del(`/api/objects/${id}`); setModal(null); refresh(); };
-
-  // --- Pipeline handlers ---
-  const handleAppraise = async (situation) => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/appraise', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, situation})});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
-      const data = await res.json();
-      setResult(data);
-      const h = await api.get('/api/history');
-      setHistory(h);
-    } catch(e) { alert('요청 실패: '+e); }
-    finally { setLoading(false); }
-  };
-
-  const handleStimulus = async ({pleasure,arousal,dominance,situation_description}) => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    if(!result) return alert('감정 평가를 먼저 실행하세요');
-    setLoading(true);
-    try {
-      const res = await fetch('/api/stimulus', {method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, pleasure, arousal, dominance, situation_description})});
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
-      setResult(await res.json());
-      setHistory(await api.get('/api/history'));
-    } catch(e) { alert('요청 실패: '+e); }
-    finally { setLoading(false); }
-  };
-
-  const handleAfterDialogue = async () => {
-    if(!npcId||!partnerId) return alert('NPC와 대화 상대를 선택하세요');
-    const pwVal = prompt('도덕성 값 (-1.0~1.0, 없으면 빈칸):', '');
-    const pw = pwVal ? parseFloat(pwVal) : null;
-    try {
-      const res = await fetch('/api/after-dialogue', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({npc_id:npcId, partner_id:partnerId, praiseworthiness: isNaN(pw) ? null : pw})
-      });
-      if(!res.ok) { alert('오류: '+await res.text()); return; }
-      const data = await res.json();
-      alert(`대화 종료\n친밀도: ${data.before.closeness.toFixed(3)} → ${data.after.closeness.toFixed(3)}\n신뢰도: ${data.before.trust.toFixed(3)} → ${data.after.trust.toFixed(3)}\n상하: ${data.before.power.toFixed(3)} → ${data.after.power.toFixed(3)}`);
-      setResult(null);
-      refresh();
-    } catch(e) { alert('요청 실패: '+e); }
-  };
-
-  const saveState = async () => {
-    const sub = prompt('저장 경로 (data/ 기준):', '');
-    if(!sub) return;
-    const path = `data/${sub}${sub.endsWith('.json')?'':'.json'}`;
-    const res = await fetch('/api/save', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { alert('저장 완료'); refresh(); }
-    else alert('저장 실패: ' + await res.text());
-  };
-
-  const loadScenario = async (scenPath) => {
-    if(!scenPath) return;
-    const path = `data/${scenPath}/scenario.json`;
-    const res = await fetch('/api/load', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path})});
-    if(res.ok) { refresh(); setResult(null); }
-    else alert('로드 실패: ' + await res.text());
-  };
-
-  return (
-    <div className="app">
-      {/* Header */}
-      <div className="header">
-        <h1>NPC Mind Engine</h1>
-        <span className={`status ${connected?'ok':''}`}>
-          {connected?'연결됨':'연결 실패'} — NPC {npcs.length} · 관계 {rels.length} · 오브젝트 {objects.length}
-        </span>
-        <div className="actions">
-          <select style={{background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'3px 8px',fontSize:11,maxWidth:240}}
-            onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
-            <option value="">시나리오 로드...</option>
-            {scenarios.map(s => <option key={s.path} value={s.path}>{s.label}</option>)}
-          </select>
-          <button className="btn small" onClick={saveState}>저장</button>
-          <button className="btn small" onClick={refresh}>새로고침</button>
-        </div>
-      </div>
-
-      {/* Main 3-column */}
-      <div className="main">
-        <Sidebar
-          npcs={npcs} rels={rels} objects={objects}
           selectedNpcId={npcId}
-          onSelectNpc={(id) => setNpcId(id)}
-          onEditNpc={(n) => setModal({type:'npc',data:n})}
-          onEditRel={(r) => setModal({type:'rel',data:r})}
-          onEditObj={(o) => setModal({type:'obj',data:o})}
-          onNewNpc={() => setModal({type:'npc',data:null})}
-          onNewRel={() => setModal({type:'rel',data:null})}
-          onNewObj={() => setModal({type:'obj',data:null})}
+          onSelectNpc={handleSelectNpc}
+          onEditNpc={(n)=>setModal({type:'npc',data:n})}
+          onEditRel={(r)=>setModal({type:'rel',data:r})}
+          onEditObj={(o)=>setModal({type:'obj',data:o})}
+          onNewNpc={()=>setModal({type:'npc',data:null})}
+          onNewRel={()=>setModal({type:'rel',data:null})}
+          onNewObj={()=>setModal({type:'obj',data:null})}
         />
         <SituationPanel
           npcs={npcs} objects={objects}
@@ -883,10 +791,12 @@ function App() {
           onAfterDialogue={handleAfterDialogue}
           loading={loading}
         />
-        <ResultPanel result={result} history={history} />
+        <ResultPanel result={result} history={history} onGuide={handleGuide} toast={toast} />
       </div>
 
       {/* Modals */}
+      <ToastContainer toasts={toasts} />
+
       {modal?.type==='npc' && <NpcModal npc={modal.data} onSave={saveNpc} onDelete={deleteNpc} onClose={()=>setModal(null)} />}
       {modal?.type==='rel' && <RelModal rel={modal.data} npcIds={npcs.map(n=>n.id)} onSave={saveRel} onDelete={deleteRel} onClose={()=>setModal(null)} />}
       {modal?.type==='obj' && <ObjModal obj={modal.data} onSave={saveObj} onDelete={deleteObj} onClose={()=>setModal(null)} />}
