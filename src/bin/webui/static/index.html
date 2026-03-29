@@ -697,6 +697,7 @@ function App() {
   const [rels, setRels] = useState([]);
   const [objects, setObjects] = useState([]);
   const [scenarios, setScenarios] = useState([]);
+  const [scenarioMeta, setScenarioMeta] = useState(null);
   const [connected, setConnected] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
@@ -713,11 +714,13 @@ function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [n, r, o, s, h] = await Promise.all([
+      const [n, r, o, s, h, sm] = await Promise.all([
         api.get('/api/npcs'), api.get('/api/relationships'),
         api.get('/api/objects'), api.get('/api/scenarios'), api.get('/api/history'),
+        api.get('/api/scenario-meta'),
       ]);
       setNpcs(n); setRels(r); setObjects(o); setScenarios(s); setHistory(h);
+      setScenarioMeta(sm && sm.name ? sm : null);
       setConnected(true);
     } catch(e) { setConnected(false); }
   }, []);
@@ -816,6 +819,9 @@ function App() {
         <span className={`status ${connected?'ok':''}`}>
           {connected ? `NPC ${npcs.length} · 관계 ${rels.length} · 오브젝트 ${objects.length}` : '연결 실패'}
         </span>
+        {scenarioMeta && <span style={{fontSize:11,color:'var(--accent2)',padding:'2px 8px',background:'var(--bg3)',borderRadius:'var(--radius)'}}
+          title={[scenarioMeta.description, ...(scenarioMeta.notes||[])].filter(Boolean).join('\n')}
+        >{scenarioMeta.name}</span>}
         <div className="actions">
           <select style={{background:'var(--bg3)',color:'var(--fg)',border:'1px solid var(--border)',borderRadius:'var(--radius)',padding:'3px 8px',fontSize:11,maxWidth:220}}
             onChange={e=>{if(e.target.value)loadScenario(e.target.value);e.target.value=''}}>
