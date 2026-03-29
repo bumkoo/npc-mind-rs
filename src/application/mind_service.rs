@@ -74,18 +74,8 @@ impl<R: MindRepository> MindService<R> {
         let prompt = formatter.format_prompt(&guide);
 
         let emotions: Vec<EmotionOutput> = emotion_state.emotions().iter()
-            .map(|e| EmotionOutput {
-                emotion_type: format!("{:?}", e.emotion_type()),
-                intensity: e.intensity(),
-                context: e.context().map(|s| s.to_string()),
-            })
-            .collect();
-
-        let dominant = emotion_state.dominant().map(|e| EmotionOutput {
-            emotion_type: format!("{:?}", e.emotion_type()),
-            intensity: e.intensity(),
-            context: e.context().map(|s| s.to_string()),
-        });
+            .map(EmotionOutput::from_emotion).collect();
+        let dominant = emotion_state.dominant().map(|e| EmotionOutput::from_emotion(&e));
 
         let mood = emotion_state.overall_valence();
 
@@ -119,18 +109,8 @@ impl<R: MindRepository> MindService<R> {
         let prompt = formatter.format_prompt(&guide);
 
         let emotions: Vec<EmotionOutput> = new_state.emotions().iter()
-            .map(|e| EmotionOutput {
-                emotion_type: format!("{:?}", e.emotion_type()),
-                intensity: e.intensity(),
-                context: e.context().map(|s| s.to_string()),
-            })
-            .collect();
-
-        let dominant = new_state.dominant().map(|e| EmotionOutput {
-            emotion_type: format!("{:?}", e.emotion_type()),
-            intensity: e.intensity(),
-            context: e.context().map(|s| s.to_string()),
-        });
+            .map(EmotionOutput::from_emotion).collect();
+        let dominant = new_state.dominant().map(|e| EmotionOutput::from_emotion(&e));
 
         let mood = new_state.overall_valence();
 

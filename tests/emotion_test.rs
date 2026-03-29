@@ -6,21 +6,8 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
-use common::{TestContext, score as s, neutral_rel};
+use common::{TestContext, score as s, neutral_rel, find_emotion, has_emotion, 배신_상황};
 
-// ---------------------------------------------------------------------------
-// 헬퍼: 감정 상태에서 특정 감정 찾기
-// ---------------------------------------------------------------------------
-
-fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    state.emotions().into_iter()
-        .find(|e| e.emotion_type() == etype)
-        .map(|e| e.intensity())
-}
-
-fn has_emotion(state: &EmotionState, etype: EmotionType) -> bool {
-    find_emotion(state, etype).is_some()
-}
 
 // ===========================================================================
 // 시나리오 1: "동료에게 배신당함" (Action + Event → Compound Anger)
@@ -251,30 +238,12 @@ fn 해독약_실패_실망_강도_비교() {
 // EmotionState 기능 테스트
 // ===========================================================================
 
-/// 배신 상황 (Action + Event) 헬퍼
-fn 배신_상황_기본() -> Situation {
-    Situation::new(
-        "배신",
-        Some(EventFocus {
-            description: "".into(),
-            desirability_for_self: -0.6,
-            desirability_for_other: None,
-            prospect: None,
-        }),
-        Some(ActionFocus {
-            description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
-            praiseworthiness: -0.7,
-        }),
-        None,
-    ).unwrap()
-}
 
 #[test]
 fn 감정_상태_전체_valence() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
-    let state = AppraisalEngine::appraise(yu.personality(), &배신_상황_기본(), &neutral_rel());
+    let state = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let valence = state.overall_valence();
     assert!(valence < 0.0);
 }
@@ -283,7 +252,7 @@ fn 감정_상태_전체_valence() {
 fn 감정_상태_dominant_감정() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
-    let state = AppraisalEngine::appraise(yu.personality(), &배신_상황_기본(), &neutral_rel());
+    let state = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let dom = state.dominant().unwrap();
     assert!(
         dom.emotion_type() == EmotionType::Anger
@@ -296,7 +265,7 @@ fn 감정_상태_dominant_감정() {
 fn 감정_significant_필터링() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
-    let state = AppraisalEngine::appraise(li.personality(), &배신_상황_기본(), &neutral_rel());
+    let state = AppraisalEngine::appraise(li.personality(), &배신_상황(), &neutral_rel());
     let significant = state.significant(0.2);
     assert!(!significant.is_empty());
 }
@@ -309,7 +278,7 @@ fn 감정_significant_필터링() {
 fn 의형제의_배신이_남의_배신보다_분노가_큼() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
-    let situation = 배신_상황_기본();
+    let situation = 배신_상황();
 
     let brother = RelationshipBuilder::new("gyo_ryong", "brother")
         .closeness(s(0.9))
@@ -330,7 +299,7 @@ fn 의형제의_배신이_남의_배신보다_분노가_큼() {
 fn 신뢰하던_상대의_배신이_더_강한_분노() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
-    let situation = 배신_상황_기본();
+    let situation = 배신_상황();
 
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
         .trust(s(0.8))
@@ -573,24 +542,6 @@ fn 중립_관계는_closeness_방향_영향_없음() {
 // 시나리오 8: trust 방향이 Action 감정 강도를 조절
 // ===========================================================================
 
-/// 타인의 부정 행동 (배신) — Reproach, Anger 발동
-fn 배신_상황() -> Situation {
-    Situation::new(
-        "상대가 적에게 아군 위치를 밀고했다",
-        Some(EventFocus {
-            description: "".into(),
-            desirability_for_self: -0.6,
-            desirability_for_other: None,
-            prospect: None,
-        }),
-        Some(ActionFocus {
-            description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
-            praiseworthiness: -0.7,
-        }),
-        None,
-    ).unwrap()
-}
 
 /// 타인의 긍정 행동 (도움) — Admiration, Gratitude 발동
 fn 도움_상황() -> Situation {

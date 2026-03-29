@@ -6,32 +6,7 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
-use common::{make_무백, make_교룡, neutral_rel};
-
-fn find_emotion(state: &EmotionState, etype: EmotionType) -> Option<f32> {
-    state.emotions().iter()
-        .find(|e| e.emotion_type() == etype)
-        .map(|e| e.intensity())
-}
-
-/// 배신 상황 (Action + Event)
-fn 배신_상황() -> Situation {
-    Situation::new(
-        "배신",
-        Some(EventFocus {
-            description: "".into(),
-            desirability_for_self: -0.6,
-            desirability_for_other: None,
-            prospect: None,
-        }),
-        Some(ActionFocus {
-            description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
-            praiseworthiness: -0.7,
-        }),
-        None,
-    ).unwrap()
-}
+use common::{make_무백, make_교룡, neutral_rel, find_emotion, 배신_상황};
 
 #[test]
 fn 도발_자극이_anger를_증폭() {
