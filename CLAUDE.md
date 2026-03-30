@@ -51,9 +51,10 @@ src/
     dto.rs                        # API 데이터 전송 객체 (Result/Response 분리)
   domain/
     tuning.rs                     # 튜닝 상수 — 모든 조정 가능 파라미터 중앙 관리
-    personality.rs                # HEXACO 성격 모델
+    personality.rs                # HEXACO 성격 모델 + 성격→감정 가중치 상수
     relationship.rs               # 관계 모델 (closeness, trust, power) + significance
     pad.rs                        # PAD 감정 공간 분석
+    pad_table.rs                  # OCC → PAD 좌표 매핑 테이블 (Gebhard 2005 기반)
     emotion/
       appraisal/                  # 세부 평가 모듈 (event, action, object, compound)
       engine.rs                   # AppraisalEngine (Appraiser 포트 구현)
@@ -151,7 +152,7 @@ docs/
 - `object`: 대상의 매력도 평가 (Love, Hate)
 - `compound`: 기초 감정 결합 (Gratitude, Remorse 등)
 
-성격 가중치 기본 패턴: `1.0 + (Score * 0.3)` — 성격 점수에 따라 감정을 증폭/억제합니다.
+성격 가중치 패턴: `BASE + (Score × W)` — personality.rs 내부 상수(`W_STANDARD=0.3`, `W_STRONG=0.4`, `W_DOMINANT=0.7`, `W_MILD=0.2`)로 관리됩니다.
 
 ### 복합 감정 (Compound Emotions)
 기초 감정들이 결합하여 고차원 감정을 생성합니다:
@@ -252,12 +253,32 @@ apply_stimulus 호출
 | STIMULUS_FADE_THRESHOLD | 0.05 | 감정 자연 소멸 기준 |
 | STIMULUS_MIN_INERTIA | 0.30 | 관성 최소값 (intensity=1.0에서도 반응) |
 | BEAT_MERGE_THRESHOLD | 0.2 | Beat 합치기 시 이전 감정 소멸 기준 |
+| BEAT_DEFAULT_SIGNIFICANCE | 0.5 | Beat 전환 시 기본 significance |
 | TRUST_UPDATE_RATE | 0.1 | 신뢰 갱신 계수 |
 | CLOSENESS_UPDATE_RATE | 0.05 | 친밀도 갱신 계수 |
 | SIGNIFICANCE_SCALE | 3.0 | 상황 중요도 배율 (sig=1.0 → 4배) |
 | PAD_D_SCALE_WEIGHT | 0.3 | PAD D축 격차 스케일러 |
 | MOOD_THRESHOLD | 0.3 | 기분 분기 임계값 |
 | HONESTY_RESTRICTION_THRESHOLD | 0.5 | 정직성 제약 임계값 |
+| EMOTION_THRESHOLD | 0.2 | 감정 유의미 판단 기준 (가이드 반영) |
+| TRAIT_THRESHOLD | 0.3 | 성격 특성 추출 임계값 |
+| REL_CLOSENESS_INTENSITY_WEIGHT | 0.5 | closeness → 감정 강도 배율 |
+| REL_TRUST_EMOTION_WEIGHT | 0.3 | trust → 행동 평가 배율 |
+| REL_CLOSENESS_EMPATHY_WEIGHT | 0.3 | closeness → 공감 배율 |
+| REL_CLOSENESS_HOSTILITY_WEIGHT | 0.3 | closeness → 적대 배율 |
+| LEVEL_VERY_HIGH_THRESHOLD | 0.6 | 레벨 분류: VeryHigh 기준 |
+| LEVEL_HIGH_THRESHOLD | 0.2 | 레벨 분류: High 기준 |
+| LEVEL_LOW_THRESHOLD | -0.2 | 레벨 분류: Low 기준 |
+| LEVEL_VERY_LOW_THRESHOLD | -0.6 | 레벨 분류: VeryLow 기준 |
+
+### 파일별 로컬 상수
+
+| 파일 | 상수 | 용도 |
+|------|------|------|
+| `personality.rs` | W_STANDARD(0.3), W_STRONG(0.4), W_DOMINANT(0.7), W_MILD(0.2) | 성격→감정 가중치 |
+| `personality.rs` | BASE_SELF(1.0), BASE_EMPATHY(0.5), BASE_HOSTILITY(0.0) | 가중치 기저값 |
+| `personality.rs` | CLAMP_STANDARD(0.5,1.5), CLAMP_OPTIONAL(0.0,1.5), CLAMP_STIMULUS(0.1,2.0) | 가중치 범위 |
+| `pad_table.rs` | 22개 감정별 PAD 좌표 (Gebhard 2005 기반, 커스텀 조정 포함) | OCC→PAD 매핑 |
 
 ## stimulus 관성 공식
 
