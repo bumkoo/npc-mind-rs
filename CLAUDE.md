@@ -59,7 +59,8 @@ src/
       appraisal/                  # 세부 평가 모듈 (event, action, object, compound)
       engine.rs                   # AppraisalEngine (Appraiser 포트 구현)
       types.rs                    # OCC 감정 타입, EmotionState, merge_from_beat
-      situation.rs                # 상황 모델 + SceneFocus, FocusTrigger, EmotionCondition
+      situation.rs                # 상황 모델 + Event/Action/Object Focus
+      scene.rs                    # 장면(Scene) 애그리거트 + FocusTrigger
       stimulus.rs                 # StimulusEngine (StimulusProcessor 포트 구현)
     guide/                        # LLM 연기 가이드 생성 로직
       enums.rs                    # Tone, Attitude, BehavioralTendency 등

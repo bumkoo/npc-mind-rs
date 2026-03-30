@@ -1,4 +1,4 @@
-use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState, SceneFocus, FocusTrigger};
+use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState, Scene, SceneFocus};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::Npc;
@@ -127,11 +127,12 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         self.repository.save_emotion_state(&req.npc_id, stimulated_state.clone());
 
         // 2. Scene Focus trigger 체크 → Beat 전환
-        let focuses = self.repository.get_scene_focuses().to_vec();
-        if let Some(focus) = focuses.iter().find(|f| f.trigger.is_met(&stimulated_state)) {
-            return self.transition_beat(
-                &req.npc_id, &npc, &relationship, focus, before_eval, after_eval,
-            );
+        if let Some(mut scene) = self.repository.get_scene() {
+            if let Some(focus) = scene.check_trigger(&stimulated_state).cloned() {
+                return self.transition_beat(
+                    &req.npc_id, &npc, &relationship, &mut scene, focus, before_eval, after_eval,
+                );
+            }
         }
 
         // 3. Beat 전환 없음 — 기존 stimulus 결과 반환
@@ -155,12 +156,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         npc_id: &str,
         npc: &Npc,
         relationship: &Relationship,
-        focus: &SceneFocus,
+        scene: &mut Scene,
+        focus: SceneFocus,
         mut before_eval: impl FnMut(),
         mut after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<StimulusResult, MindServiceError> {
         // 관계 갱신 (감정 유지)
-        self.update_beat_relationship();
+        self.update_beat_relationship(scene);
 
         // 새 Focus appraise → merge
         let situation = focus.to_situation()
@@ -180,7 +182,8 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let guide = ActingGuide::build(npc, &merged, Some(focus.description.clone()), Some(relationship));
 
         let focus_id = focus.id.clone();
-        self.repository.set_active_focus_id(Some(focus_id.clone()));
+        scene.set_active_focus(focus_id.clone());
+        self.repository.save_scene(scene.clone());
 
         Ok(StimulusResult {
             emotions,
@@ -194,19 +197,14 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
     }
 
     /// Beat 종료 시 Scene의 NPC/파트너 관계를 갱신합니다.
-    fn update_beat_relationship(&mut self) {
-        if let (Some(npc_id), Some(partner_id)) = (
-            self.repository.get_scene_npc_id().map(|s| s.to_string()),
-            self.repository.get_scene_partner_id().map(|s| s.to_string()),
-        ) {
-            let beat_req = AfterDialogueRequest {
-                npc_id,
-                partner_id,
-                praiseworthiness: Some(0.0),
-                significance: Some(BEAT_DEFAULT_SIGNIFICANCE),
-            };
-            let _ = self.update_relationship(&beat_req);
-        }
+    fn update_beat_relationship(&mut self, scene: &Scene) {
+        let beat_req = AfterDialogueRequest {
+            npc_id: scene.npc_id().to_string(),
+            partner_id: scene.partner_id().to_string(),
+            praiseworthiness: Some(0.0),
+            significance: Some(BEAT_DEFAULT_SIGNIFICANCE),
+        };
+        let _ = self.update_relationship(&beat_req);
     }
 
     /// Scene 시작: Focus 목록 등록 + 초기 Focus 자동 appraise
@@ -221,21 +219,20 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             .collect::<Result<Vec<_>, _>>()?;
 
         let focus_count = focuses.len();
-
-        self.save_scene_state(focuses, &req.npc_id, &req.partner_id);
+        let mut scene = Scene::new(req.npc_id.clone(), req.partner_id.clone(), focuses);
 
         let (initial_appraise, active_focus_id) = self.appraise_initial_focus(
-            &req.npc_id, &req.partner_id,
-            || before_eval(), || after_eval(),
+            &mut scene, || before_eval(), || after_eval(),
         )?;
+
+        self.repository.save_scene(scene);
 
         Ok(SceneResult { focus_count, initial_appraise, active_focus_id })
     }
 
     /// 현재 Scene Focus 상태를 조회합니다.
     pub fn scene_info(&self) -> SceneInfoResult {
-        let focuses = self.repository.get_scene_focuses();
-        if focuses.is_empty() {
+        let Some(scene) = self.repository.get_scene() else {
             return SceneInfoResult {
                 has_scene: false,
                 npc_id: None,
@@ -243,13 +240,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 active_focus_id: None,
                 focuses: vec![],
             };
-        }
+        };
 
-        let active_id = self.repository.get_active_focus_id();
-        let focus_infos = focuses.iter().map(|f| {
+        let active_id = scene.active_focus_id();
+        let focus_infos = scene.focuses().iter().map(|f| {
             let trigger_display = match &f.trigger {
-                FocusTrigger::Initial => "initial".to_string(),
-                FocusTrigger::Conditions(or_groups) => {
+                crate::domain::emotion::FocusTrigger::Initial => "initial".to_string(),
+                crate::domain::emotion::FocusTrigger::Conditions(or_groups) => {
                     or_groups.iter().map(|and_group| {
                         and_group.iter().map(|c| {
                             let threshold = match c.threshold {
@@ -272,9 +269,9 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
 
         SceneInfoResult {
             has_scene: true,
-            npc_id: self.repository.get_scene_npc_id().map(|s| s.to_string()),
-            partner_id: self.repository.get_scene_partner_id().map(|s| s.to_string()),
-            active_focus_id: self.repository.get_active_focus_id().map(|s| s.to_string()),
+            npc_id: Some(scene.npc_id().to_string()),
+            partner_id: Some(scene.partner_id().to_string()),
+            active_focus_id: scene.active_focus_id().map(|s| s.to_string()),
             focuses: focus_infos,
         }
     }
@@ -288,30 +285,23 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         npc_id: String,
         partner_id: String,
     ) -> Result<Option<AppraiseResult>, MindServiceError> {
-        self.save_scene_state(focuses, &npc_id, &partner_id);
-        let (result, _) = self.appraise_initial_focus(&npc_id, &partner_id, || {}, Vec::new)?;
+        let mut scene = Scene::new(npc_id, partner_id, focuses);
+        let (result, _) = self.appraise_initial_focus(&mut scene, || {}, Vec::new)?;
+        self.repository.save_scene(scene);
         Ok(result)
-    }
-
-    /// Scene 상태를 저장합니다 (Focus 목록 + NPC/파트너 ID).
-    fn save_scene_state(&mut self, focuses: Vec<SceneFocus>, npc_id: &str, partner_id: &str) {
-        self.repository.set_scene_focuses(focuses);
-        self.repository.set_scene_ids(npc_id.to_string(), partner_id.to_string());
     }
 
     /// Initial Focus를 찾아 appraise합니다. 없으면 (None, None) 반환.
     fn appraise_initial_focus(
         &mut self,
-        npc_id: &str,
-        partner_id: &str,
+        scene: &mut Scene,
         mut before_eval: impl FnMut(),
         mut after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<(Option<AppraiseResult>, Option<String>), MindServiceError> {
-        let focuses = self.repository.get_scene_focuses().to_vec();
-        let initial = focuses.into_iter()
-            .find(|f| matches!(f.trigger, FocusTrigger::Initial));
+        let npc_id = scene.npc_id();
+        let partner_id = scene.partner_id();
 
-        let Some(focus) = initial else {
+        let Some(focus) = scene.initial_focus().cloned() else {
             return Ok((None, None));
         };
 
@@ -336,7 +326,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         );
 
         self.repository.save_emotion_state(npc_id, emotion_state);
-        self.repository.set_active_focus_id(Some(focus.id.clone()));
+        scene.set_active_focus(focus.id.clone());
 
         Ok((Some(result), Some(focus.id)))
     }
@@ -362,6 +352,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
     pub fn after_dialogue(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
         let response = self.update_relationship(&req)?;
         self.repository.clear_emotion_state(&req.npc_id);
+        self.repository.clear_scene();
         Ok(response)
     }
 

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus, RelationshipModifiers};
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, Scene, RelationshipModifiers};
 use npc_mind::{NpcWorld, EmotionStore, SceneStore};
 use npc_mind::application::mind_service::MindService;
 
@@ -76,10 +76,7 @@ pub struct MockRepository {
     pub npcs: HashMap<String, Npc>,
     pub relationships: HashMap<String, Relationship>,
     pub emotions: HashMap<String, EmotionState>,
-    pub scene_focuses: Vec<SceneFocus>,
-    pub active_focus_id: Option<String>,
-    pub scene_npc_id: Option<String>,
-    pub scene_partner_id: Option<String>,
+    pub scene: Option<Scene>,
 }
 
 impl MockRepository {
@@ -88,10 +85,7 @@ impl MockRepository {
             npcs: HashMap::new(),
             relationships: HashMap::new(),
             emotions: HashMap::new(),
-            scene_focuses: Vec::new(),
-            active_focus_id: None,
-            scene_npc_id: None,
-            scene_partner_id: None,
+            scene: None,
         }
     }
     
@@ -144,16 +138,9 @@ impl EmotionStore for MockRepository {
 }
 
 impl SceneStore for MockRepository {
-    fn get_scene_focuses(&self) -> &[SceneFocus] { &self.scene_focuses }
-    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { self.scene_focuses = focuses; }
-    fn get_active_focus_id(&self) -> Option<&str> { self.active_focus_id.as_deref() }
-    fn set_active_focus_id(&mut self, id: Option<String>) { self.active_focus_id = id; }
-    fn get_scene_npc_id(&self) -> Option<&str> { self.scene_npc_id.as_deref() }
-    fn get_scene_partner_id(&self) -> Option<&str> { self.scene_partner_id.as_deref() }
-    fn set_scene_ids(&mut self, npc_id: String, partner_id: String) {
-        self.scene_npc_id = Some(npc_id);
-        self.scene_partner_id = Some(partner_id);
-    }
+    fn get_scene(&self) -> Option<Scene> { self.scene.clone() }
+    fn save_scene(&mut self, scene: Scene) { self.scene = Some(scene); }
+    fn clear_scene(&mut self) { self.scene = None; }
 }
 
 /// MindService가 가변 참조를 통해서도 작동할 수 있도록 구현
@@ -183,13 +170,9 @@ impl EmotionStore for &mut MockRepository {
 }
 
 impl SceneStore for &mut MockRepository {
-    fn get_scene_focuses(&self) -> &[SceneFocus] { (**self).get_scene_focuses() }
-    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { (**self).set_scene_focuses(focuses) }
-    fn get_active_focus_id(&self) -> Option<&str> { (**self).get_active_focus_id() }
-    fn set_active_focus_id(&mut self, id: Option<String>) { (**self).set_active_focus_id(id) }
-    fn get_scene_npc_id(&self) -> Option<&str> { (**self).get_scene_npc_id() }
-    fn get_scene_partner_id(&self) -> Option<&str> { (**self).get_scene_partner_id() }
-    fn set_scene_ids(&mut self, npc_id: String, partner_id: String) { (**self).set_scene_ids(npc_id, partner_id) }
+    fn get_scene(&self) -> Option<Scene> { (**self).get_scene() }
+    fn save_scene(&mut self, scene: Scene) { (**self).save_scene(scene) }
+    fn clear_scene(&mut self) { (**self).clear_scene() }
 }
 
 /// 표준 테스트 컨텍스트
