@@ -193,6 +193,8 @@ pub struct TemplateStrings {
     pub section_restriction: String,
     /// 감정 구성: "감정 구성:"
     pub emotion_composition: String,
+    /// 지배 감정 라벨: "지배" / "dominant"
+    pub dominant_label: String,
     /// 전체 분위기: "전체 분위기: {mood}"
     pub overall_mood: String,
     /// 어조: "어조: {tone}"
