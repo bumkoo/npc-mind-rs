@@ -40,10 +40,12 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 ## 핵심 컴포넌트 설계
 
 ### 1. MindService (Application Entry Point)
-라이브러리의 유일한 진입점으로, 복잡한 도메인 로직의 실행 순서를 관리한다.
-- **오케스트레이션**: NPC/관계 로드 → 상황 평가 → 감정 갱신 → 가이드 생성의 흐름을 제어.
+라이브러리의 핵심 진입점으로, 복잡한 도메인 로직의 실행 순서를 관리한다.
+- **제네릭 엔진 주입**: `MindService<R, A: Appraiser, S: StimulusProcessor>`. 기본값으로 `AppraisalEngine`, `StimulusEngine` 제공.
 - **저장소 추상화**: `MindRepository` 포트를 통해 외부 저장소(DB, Memory)에 의존하지 않고 상태를 관리.
+- **Scene/Beat 통합**: `apply_stimulus()` 내부에서 Beat 전환을 자동 처리. `start_scene()`, `scene_info()`, `load_scene_focuses()` 제공.
 - **관계 갱신 분리**: `after_beat()` (Beat 종료, 감정 유지) vs `after_dialogue()` (Scene 종료, 감정 초기화).
+- **포맷팅 분리**: `MindService`는 도메인 결과(`*Result`)만 반환. 포맷팅은 `FormattedMindService` 또는 `result.format()` 사용.
 
 ### 2. AppraisalEngine (Modularized)
 기존의 거대했던 감정 평가 로직을 관심사에 따라 물리적인 서브 모듈로 분리하였다.
@@ -87,8 +89,8 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 구분 | 컴포넌트 | 역할 |
 |------|----------|------|
 | **도메인** | `AppraisalEngine`, `StimulusEngine` | 순수 심리 연산 (I/O 없음) |
-| **포트** | `MindRepository`, `TextEmbedder` | 외부 세계와의 인터페이스 정의 |
-| **어댑터** | `OrtEmbedder`, `AppStateRepository` | 구체적인 기술 구현 (ONNX, InMemory 등) |
+| **포트** | `MindRepository`, `Appraiser`, `StimulusProcessor`, `GuideFormatter`, `TextEmbedder` | 외부 세계와의 인터페이스 정의 (모두 `ports.rs`에 위치) |
+| **어댑터** | `OrtEmbedder`, `AppStateRepository`, `LocaleFormatter`, `KoreanFormatter` | 구체적인 기술 구현 (ONNX, InMemory, TOML 등) |
 
 ---
 
@@ -108,6 +110,14 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - [x] merge_from_beat: Beat 전환 시 이전/새 감정 합치기
 - [x] after_beat vs after_dialogue 분리
 - [x] 튜닝 상수 중앙 관리 (tuning.rs)
+- [x] 플러거블 포맷터: MindService에서 Presentation 분리, FormattedMindService 도입
+- [x] 다국어 로케일: 빌트인 (ko/en) + 커스텀 오버라이드 + TOML deep merge
+- [x] 포트 주입: Appraiser/StimulusProcessor 제네릭 주입 (기본값 제공)
+- [x] Scene/Beat 로직 MindService 이동: WebUI handlers에서 도메인 엔진 직접 호출 제거
+- [x] MindRepository ports.rs 이동 + RelationshipRepository 제거 (중복)
+- [x] NpcId newtype 제거: String으로 통일
+- [x] AppraisalEngineImpl 트레이트 제거: 단순 함수로 대체
+- [x] directive 감정 조회 반복 제거 + significant() 불필요 할당 제거
 
 ### 예정
 - [ ] PAD 앵커 동적 관리 (앵커 편집 + 재임베딩)
@@ -124,3 +134,4 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 1.0.0 | 2026-03-28 | Situation→Option 전환, Action 3분기, Emotion context 반영 |
 | 1.1.0 | 2026-03-29 | Application 계층 도입, AppraisalEngine 모듈화, TestContext 인프라 구축 반영 |
 | 2.0.0 | 2026-03-30 | Scene Focus 시스템, Beat 전환, stimulus 관성, merge_from_beat, significance, PowerLevel 5단계, tuning.rs 중앙 관리 |
+| 2.1.0 | 2026-03-30 | 플러거블 포맷터, 다국어 로케일, 포트 주입, Scene/Beat MindService 이동, 코드 정리 |

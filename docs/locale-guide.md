@@ -280,12 +280,17 @@ relationship_power = "Power dynamic: {level}"
 
 ```
 FormattedMindService
-├── ::new(repo, "ko")                          빌트인 언어
+├── ::new(repo, "ko")                          빌트인 언어 (기본 엔진)
 ├── ::with_overrides(repo, "ko", override_toml) 빌트인 + 부분 교체
 ├── ::with_custom_locale(repo, full_toml)       완전 커스텀 TOML
 └── ::with_formatter(repo, impl GuideFormatter) 트레이트 직접 구현
 
 MindService
-└── ::new(repo)                                 도메인 데이터만 (포맷팅 없음)
-    └── result.format(&formatter)               필요 시 나중에 포맷팅
+├── ::new(repo)                                 기본 엔진 (포맷팅 없음)
+├── ::with_engines(repo, appraiser, stimulus)   커스텀 엔진 주입
+└── result.format(&formatter)                   필요 시 나중에 포맷팅
 ```
+
+참고: `MindService`와 `FormattedMindService` 모두 감정 평가 엔진(`Appraiser`)과
+자극 처리 엔진(`StimulusProcessor`)을 제네릭으로 받으며, 기본값으로
+`AppraisalEngine`과 `StimulusEngine`이 사용됩니다.
