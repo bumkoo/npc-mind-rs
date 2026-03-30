@@ -2,8 +2,6 @@
 //!
 //! 세부 평가는 `appraisal/` 하위 모듈에서 처리한다.
 
-use super::appraisal::{AppraisalProcessor, AppraisalEngineImpl};
-
 use crate::ports::AppraisalWeights;
 use crate::domain::relationship::Relationship;
 use crate::domain::emotion::types::EmotionState;
@@ -22,6 +20,6 @@ impl crate::ports::Appraiser for AppraisalEngine {
         situation: &Situation,
         relationship: &Relationship,
     ) -> EmotionState {
-        AppraisalProcessor::process(personality, situation, relationship)
+        super::appraisal::process(personality, situation, relationship)
     }
 }
