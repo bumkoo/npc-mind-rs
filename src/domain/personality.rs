@@ -261,16 +261,12 @@ fn avg4(a: Score, b: Score, c: Score, d: Score) -> Score {
 // NPC 엔티티
 // ---------------------------------------------------------------------------
 
-/// NPC 식별자
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NpcId(pub String);
-
 /// NPC 엔티티 — 이름, 설명, 성격 프로필을 가진다
 ///
 /// 생성 후 필드 직접 변경 불가 — NpcBuilder 또는 Npc::new()를 통해 생성한다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Npc {
-    id: NpcId,
+    id: String,
     name: String,
     description: String,
     personality: HexacoProfile,
@@ -284,14 +280,14 @@ impl Npc {
         personality: HexacoProfile,
     ) -> Self {
         Self {
-            id: NpcId(id.into()),
+            id: id.into(),
             name: name.into(),
             description: description.into(),
             personality,
         }
     }
 
-    pub fn id(&self) -> &NpcId { &self.id }
+    pub fn id(&self) -> &str { &self.id }
     pub fn name(&self) -> &str { &self.name }
     pub fn description(&self) -> &str { &self.description }
     pub fn personality(&self) -> &HexacoProfile { &self.personality }
@@ -356,7 +352,7 @@ impl NpcBuilder {
 
     pub fn build(self) -> Npc {
         Npc {
-            id: NpcId(self.id),
+            id: self.id,
             name: self.name,
             description: self.description,
             personality: self.profile,
