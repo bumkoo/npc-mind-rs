@@ -83,48 +83,41 @@ pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
 }
 
 // ---------------------------------------------------------------------------
-// OCC → PAD 매핑 테이블 (Gebhard 2005, ALMA 모델 참고)
+// OCC → PAD 매핑 테이블 (Gebhard 2005, ALMA 모델)
 // ---------------------------------------------------------------------------
+//
+// 좌표 값은 pad_table.rs에서 중앙 관리한다.
+
+use super::pad_table::*;
 
 /// OCC 22개 감정 유형을 PAD 좌표로 변환
 ///
-/// 대표값이며 플레이테스트로 튜닝 대상.
+/// 좌표 값은 `pad_table` 모듈의 상수를 참조한다.
 /// P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
 pub fn emotion_to_pad(emotion: EmotionType) -> Pad {
     match emotion {
-        // --- Event: Well-being ---
-        EmotionType::Joy             => Pad::new( 0.40,  0.20,  0.10),
-        EmotionType::Distress        => Pad::new(-0.40,  0.20, -0.50),
-
-        // --- Event: Fortune-of-others ---
-        EmotionType::HappyFor        => Pad::new( 0.40,  0.20,  0.20),
-        EmotionType::Pity            => Pad::new(-0.40, -0.20, -0.50),
-        EmotionType::Gloating        => Pad::new( 0.30,  0.30,  0.30),
-        EmotionType::Resentment      => Pad::new(-0.20,  0.30, -0.20),
-
-        // --- Event: Prospect-based ---
-        EmotionType::Hope            => Pad::new( 0.20,  0.20, -0.10),
-        EmotionType::Fear            => Pad::new(-0.64,  0.60, -0.43),
-        EmotionType::Satisfaction    => Pad::new( 0.30, -0.20,  0.40),
-        EmotionType::Disappointment  => Pad::new(-0.30, -0.40, -0.40),
-        EmotionType::Relief          => Pad::new( 0.20, -0.30,  0.20),
-        EmotionType::FearsConfirmed  => Pad::new(-0.50,  0.30, -0.60),
-
-        // --- Action: Attribution ---
-        EmotionType::Pride           => Pad::new( 0.40,  0.30,  0.30),
-        EmotionType::Shame           => Pad::new(-0.30,  0.10, -0.60),
-        EmotionType::Admiration      => Pad::new( 0.50,  0.30, -0.20),
-        EmotionType::Reproach        => Pad::new(-0.30,  0.20,  0.40),
-
-        // --- Action: Compound ---
-        EmotionType::Gratification   => Pad::new( 0.50,  0.40,  0.40),
-        EmotionType::Remorse         => Pad::new(-0.30,  0.10, -0.60),
-        EmotionType::Gratitude       => Pad::new( 0.40,  0.20, -0.30),
-        EmotionType::Anger           => Pad::new(-0.51,  0.59,  0.25),
-
-        // --- Object ---
-        EmotionType::Love            => Pad::new( 0.30,  0.10,  0.20),
-        EmotionType::Hate            => Pad::new(-0.60,  0.60,  0.30),
+        EmotionType::Joy             => JOY_PAD,
+        EmotionType::Distress        => DISTRESS_PAD,
+        EmotionType::HappyFor        => HAPPY_FOR_PAD,
+        EmotionType::Pity            => PITY_PAD,
+        EmotionType::Gloating        => GLOATING_PAD,
+        EmotionType::Resentment      => RESENTMENT_PAD,
+        EmotionType::Hope            => HOPE_PAD,
+        EmotionType::Fear            => FEAR_PAD,
+        EmotionType::Satisfaction    => SATISFACTION_PAD,
+        EmotionType::Disappointment  => DISAPPOINTMENT_PAD,
+        EmotionType::Relief          => RELIEF_PAD,
+        EmotionType::FearsConfirmed  => FEARS_CONFIRMED_PAD,
+        EmotionType::Pride           => PRIDE_PAD,
+        EmotionType::Shame           => SHAME_PAD,
+        EmotionType::Admiration      => ADMIRATION_PAD,
+        EmotionType::Reproach        => REPROACH_PAD,
+        EmotionType::Gratification   => GRATIFICATION_PAD,
+        EmotionType::Remorse         => REMORSE_PAD,
+        EmotionType::Gratitude       => GRATITUDE_PAD,
+        EmotionType::Anger           => ANGER_PAD,
+        EmotionType::Love            => LOVE_PAD,
+        EmotionType::Hate            => HATE_PAD,
     }
 }
 

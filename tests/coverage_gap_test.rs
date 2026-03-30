@@ -196,26 +196,26 @@ fn emotion_to_pad_22개_전수_검증() {
     let expected: Vec<(EmotionType, f32, f32, f32)> = vec![
         // Event: Well-being
         (EmotionType::Joy,             0.40,  0.20,  0.10),
-        (EmotionType::Distress,       -0.40,  0.20, -0.50),
+        (EmotionType::Distress,       -0.40, -0.20, -0.50),
         // Event: Fortune-of-others
         (EmotionType::HappyFor,        0.40,  0.20,  0.20),
         (EmotionType::Pity,           -0.40, -0.20, -0.50),
-        (EmotionType::Gloating,        0.30,  0.30,  0.30),
-        (EmotionType::Resentment,     -0.20,  0.30, -0.20),
+        (EmotionType::Gloating,        0.30, -0.30, -0.10),
+        (EmotionType::Resentment,     -0.20, -0.30, -0.20),
         // Event: Prospect-based
         (EmotionType::Hope,            0.20,  0.20, -0.10),
         (EmotionType::Fear,           -0.64,  0.60, -0.43),
         (EmotionType::Satisfaction,    0.30, -0.20,  0.40),
-        (EmotionType::Disappointment, -0.30, -0.40, -0.40),
-        (EmotionType::Relief,          0.20, -0.30,  0.20),
+        (EmotionType::Disappointment, -0.30,  0.10, -0.40),
+        (EmotionType::Relief,          0.20, -0.30,  0.40),
         (EmotionType::FearsConfirmed, -0.50,  0.30, -0.60),
         // Action: Attribution
         (EmotionType::Pride,           0.40,  0.30,  0.30),
-        (EmotionType::Shame,          -0.30,  0.10, -0.60),
+        (EmotionType::Shame,          -0.30,  0.10, -0.90),
         (EmotionType::Admiration,      0.50,  0.30, -0.20),
-        (EmotionType::Reproach,       -0.30,  0.20,  0.40),
+        (EmotionType::Reproach,       -0.30, -0.10,  0.40),
         // Action: Compound
-        (EmotionType::Gratification,   0.50,  0.40,  0.40),
+        (EmotionType::Gratification,   0.60,  0.50,  0.40),
         (EmotionType::Remorse,        -0.30,  0.10, -0.60),
         (EmotionType::Gratitude,       0.40,  0.20, -0.30),
         (EmotionType::Anger,          -0.51,  0.59,  0.25),

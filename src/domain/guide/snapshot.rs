@@ -4,9 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::relationship::Relationship;
+use crate::domain::tuning::{
+    EMOTION_THRESHOLD, TRAIT_THRESHOLD,
+    LEVEL_VERY_HIGH_THRESHOLD, LEVEL_HIGH_THRESHOLD,
+    LEVEL_LOW_THRESHOLD, LEVEL_VERY_LOW_THRESHOLD,
+};
 use crate::ports::PersonalityProfile;
-
-use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD};
 use super::enums::{PersonalityTrait, SpeechStyle};
 
 // ---------------------------------------------------------------------------
@@ -185,20 +188,20 @@ pub enum PowerLevel {
 
 impl RelationshipLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > 0.6 { Self::VeryHigh }
-        else if value > 0.2 { Self::High }
-        else if value > -0.2 { Self::Neutral }
-        else if value > -0.6 { Self::Low }
+        if value > LEVEL_VERY_HIGH_THRESHOLD { Self::VeryHigh }
+        else if value > LEVEL_HIGH_THRESHOLD { Self::High }
+        else if value > LEVEL_LOW_THRESHOLD { Self::Neutral }
+        else if value > LEVEL_VERY_LOW_THRESHOLD { Self::Low }
         else { Self::VeryLow }
     }
 }
 
 impl PowerLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > 0.6 { Self::VeryHigh }
-        else if value > 0.2 { Self::High }
-        else if value > -0.2 { Self::Neutral }
-        else if value > -0.6 { Self::Low }
+        if value > LEVEL_VERY_HIGH_THRESHOLD { Self::VeryHigh }
+        else if value > LEVEL_HIGH_THRESHOLD { Self::High }
+        else if value > LEVEL_LOW_THRESHOLD { Self::Neutral }
+        else if value > LEVEL_VERY_LOW_THRESHOLD { Self::Low }
         else { Self::VeryLow }
     }
 }

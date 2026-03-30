@@ -19,12 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::emotion::EmotionState;
 use super::personality::Npc;
 use super::relationship::Relationship;
-use super::tuning::{MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD};
-
-/// 감정의 유의미 판단 기준 (이 이상이면 연기에 반영)
-pub const EMOTION_THRESHOLD: f32 = 0.2;
-/// 성격 특성 추출 임계값 (차원 평균이 이 이상이면 두드러진 특성으로 판단)
-pub const TRAIT_THRESHOLD: f32 = 0.3;
+use super::tuning::{MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, EMOTION_THRESHOLD, TRAIT_THRESHOLD};
 
 // ---------------------------------------------------------------------------
 // LLM 연기 가이드 (최종 산출물)

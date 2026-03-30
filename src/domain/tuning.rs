@@ -53,3 +53,48 @@ pub const MOOD_THRESHOLD: f32 = 0.3;
 
 /// 정직-겸손 차원이 이 이하면 "거짓말 금지" 제약 해제
 pub const HONESTY_RESTRICTION_THRESHOLD: f32 = 0.5;
+
+/// 감정의 유의미 판단 기준 (이 이상이면 연기에 반영)
+pub const EMOTION_THRESHOLD: f32 = 0.2;
+
+/// 성격 특성 추출 임계값 (차원 평균이 이 이상이면 두드러진 특성으로 판단)
+pub const TRAIT_THRESHOLD: f32 = 0.3;
+
+// ---------------------------------------------------------------------------
+// 관계 변조 계수
+// ---------------------------------------------------------------------------
+
+/// closeness → 감정 강도 배율 (1.0 + closeness × 이 값)
+pub const REL_CLOSENESS_INTENSITY_WEIGHT: f32 = 0.5;
+
+/// trust → 행동 평가 배율 (1.0 + trust × 이 값)
+pub const REL_TRUST_EMOTION_WEIGHT: f32 = 0.3;
+
+/// closeness → 공감(HappyFor/Pity) 배율 (1.0 + closeness × 이 값)
+pub const REL_CLOSENESS_EMPATHY_WEIGHT: f32 = 0.3;
+
+/// closeness → 적대(Resentment/Gloating) 배율 (1.0 - closeness × 이 값)
+pub const REL_CLOSENESS_HOSTILITY_WEIGHT: f32 = 0.3;
+
+// ---------------------------------------------------------------------------
+// 레벨 분류 임계값 (RelationshipLevel, PowerLevel)
+// ---------------------------------------------------------------------------
+
+/// VeryHigh 분기 기준 (이 초과)
+pub const LEVEL_VERY_HIGH_THRESHOLD: f32 = 0.6;
+
+/// High 분기 기준 (이 초과)
+pub const LEVEL_HIGH_THRESHOLD: f32 = 0.2;
+
+/// Low 분기 기준 (이 초과)
+pub const LEVEL_LOW_THRESHOLD: f32 = -0.2;
+
+/// VeryLow 분기 기준 (이 이하)
+pub const LEVEL_VERY_LOW_THRESHOLD: f32 = -0.6;
+
+// ---------------------------------------------------------------------------
+// Beat 전환
+// ---------------------------------------------------------------------------
+
+/// Beat 전환 시 기본 significance 값
+pub const BEAT_DEFAULT_SIGNIFICANCE: f32 = 0.5;
