@@ -4,8 +4,8 @@ use crate::domain::pad::Pad;
 use crate::domain::tuning::BEAT_MERGE_THRESHOLD;
 use crate::ports::{Appraiser, StimulusProcessor};
 
-// MindRepository를 이 모듈에서도 재노출 (기존 코드 호환)
-pub use crate::ports::MindRepository;
+// 저장소 포트 재노출
+pub use crate::ports::{MindRepository, NpcWorld, EmotionStore, SceneStore};
 
 use super::dto::*;
 

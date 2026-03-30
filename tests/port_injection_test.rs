@@ -9,7 +9,8 @@
 mod common;
 
 use npc_mind::application::dto::*;
-use npc_mind::application::mind_service::{MindService, MindRepository};
+use npc_mind::application::mind_service::MindService;
+use npc_mind::{EmotionStore, SceneStore};
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
 use npc_mind::domain::relationship::Relationship;
