@@ -1,16 +1,12 @@
 //! 한국어 연기 가이드 포맷터 — LocaleFormatter + ko.toml 기반
 //!
-//! `KoreanFormatter`는 `locales/ko.toml`을 내장(include_str!)하여
-//! 별도 파일 로드 없이 한국어 포맷을 제공하는 편의 래퍼다.
-//!
-//! 다른 언어는 `LocaleFormatter::from_toml()`로 직접 생성하면 된다.
+//! `KoreanFormatter`는 빌트인 한국어 로케일을 사용하는 편의 래퍼다.
+//! 다른 언어나 커스텀 로케일은 `FormattedMindService`를 통해 사용하세요.
 
 use crate::domain::guide::ActingGuide;
 use crate::ports::GuideFormatter;
 use super::formatter::LocaleFormatter;
-
-/// 내장 한국어 로케일 TOML
-const KO_TOML: &str = include_str!("../../locales/ko.toml");
+use super::builtin_toml;
 
 /// 한국어 연기 가이드 포맷터 — ko.toml 내장 래퍼
 pub struct KoreanFormatter {
@@ -18,9 +14,10 @@ pub struct KoreanFormatter {
 }
 
 impl KoreanFormatter {
-    /// 새 한국어 포맷터 생성 (ko.toml 내장 로드)
+    /// 새 한국어 포맷터 생성 (빌트인 ko.toml 로드)
     pub fn new() -> Self {
-        let inner = LocaleFormatter::from_toml(KO_TOML)
+        let ko_toml = builtin_toml("ko").expect("빌트인 ko.toml이 등록되어 있어야 합니다");
+        let inner = LocaleFormatter::from_toml(ko_toml)
             .expect("내장 ko.toml 파싱 실패 — TOML 구조 확인 필요");
         Self { inner }
     }

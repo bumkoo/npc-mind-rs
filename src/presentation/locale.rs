@@ -223,6 +223,22 @@ impl LocaleBundle {
         toml::from_str(content)
     }
 
+    /// base TOML 위에 override TOML을 부분 덮어쓰기하여 번들 생성
+    ///
+    /// override TOML에 정의된 키만 교체되고, 나머지는 base 값이 유지됩니다.
+    /// ```toml
+    /// # override.toml — 일부 키만 정의
+    /// [emotion]
+    /// Anger = "살기"
+    /// Joy = "환희"
+    /// ```
+    pub fn from_toml_with_overrides(base: &str, overrides: &str) -> Result<Self, toml::de::Error> {
+        let mut base_val: toml::Value = toml::from_str(base)?;
+        let over_val: toml::Value = toml::from_str(overrides)?;
+        deep_merge(&mut base_val, over_val);
+        base_val.try_into()
+    }
+
     /// 감정 강도 → 라벨 변환
     pub fn intensity_label(&self, intensity: f32) -> &str {
         if intensity >= 0.8 { &self.intensity.extreme }
@@ -332,5 +348,25 @@ impl LocaleBundle {
             result = result.replace(&format!("{{{}}}", key), value);
         }
         result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TOML 값 deep merge
+// ---------------------------------------------------------------------------
+
+/// base 위에 over를 재귀적으로 덮어씁니다.
+/// Table 끼리는 키별로 병합하고, 그 외 값은 over가 덮어씁니다.
+fn deep_merge(base: &mut toml::Value, over: toml::Value) {
+    match (base, over) {
+        (toml::Value::Table(base_t), toml::Value::Table(over_t)) => {
+            for (k, v) in over_t {
+                match base_t.get_mut(&k) {
+                    Some(existing) => deep_merge(existing, v),
+                    None => { base_t.insert(k, v); }
+                }
+            }
+        }
+        (base, over) => *base = over,
     }
 }

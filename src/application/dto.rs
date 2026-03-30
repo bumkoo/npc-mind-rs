@@ -1,5 +1,9 @@
 use serde::{Deserialize, Serialize};
-use crate::domain::emotion::{ActionFocus, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation, SceneFocus, FocusTrigger, EmotionCondition, ConditionThreshold, EmotionType};
+use crate::domain::emotion::{ActionFocus, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation, SceneFocus, FocusTrigger, EmotionCondition, ConditionThreshold, EmotionType, EmotionState};
+use crate::domain::guide::ActingGuide;
+use crate::domain::personality::Npc;
+use crate::domain::relationship::Relationship;
+use crate::ports::GuideFormatter;
 use super::mind_service::{MindRepository, MindServiceError};
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -179,6 +183,98 @@ impl EmotionOutput {
             context: e.context().map(|s| s.to_string()),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Domain Result 타입 — 포맷팅 전 도메인 데이터
+// ---------------------------------------------------------------------------
+
+/// Appraise 도메인 결과 — ActingGuide 포함, 포맷팅 전
+pub struct AppraiseResult {
+    pub emotions: Vec<EmotionOutput>,
+    pub dominant: Option<EmotionOutput>,
+    pub mood: f32,
+    pub guide: ActingGuide,
+    pub trace: Vec<String>,
+}
+
+impl AppraiseResult {
+    /// GuideFormatter를 적용하여 AppraiseResponse로 변환
+    pub fn format(self, formatter: &dyn GuideFormatter) -> AppraiseResponse {
+        AppraiseResponse {
+            emotions: self.emotions,
+            dominant: self.dominant,
+            mood: self.mood,
+            prompt: formatter.format_prompt(&self.guide),
+            trace: self.trace,
+        }
+    }
+}
+
+/// Stimulus 도메인 결과 — Beat 전환 정보 포함
+pub struct StimulusResult {
+    pub emotions: Vec<EmotionOutput>,
+    pub dominant: Option<EmotionOutput>,
+    pub mood: f32,
+    pub guide: ActingGuide,
+    pub trace: Vec<String>,
+    pub beat_changed: bool,
+    pub active_focus_id: Option<String>,
+}
+
+impl StimulusResult {
+    /// GuideFormatter를 적용하여 StimulusResponse로 변환
+    pub fn format(self, formatter: &dyn GuideFormatter) -> StimulusResponse {
+        StimulusResponse {
+            emotions: self.emotions,
+            dominant: self.dominant,
+            mood: self.mood,
+            prompt: formatter.format_prompt(&self.guide),
+            trace: self.trace,
+            beat_changed: self.beat_changed,
+            active_focus_id: self.active_focus_id,
+        }
+    }
+}
+
+/// Guide 도메인 결과 — ActingGuide만 포함
+pub struct GuideResult {
+    pub guide: ActingGuide,
+}
+
+impl GuideResult {
+    /// GuideFormatter를 적용하여 GuideResponse로 변환
+    pub fn format(self, formatter: &dyn GuideFormatter) -> GuideResponse {
+        let prompt = formatter.format_prompt(&self.guide);
+        let json = formatter.format_json(&self.guide).unwrap_or_default();
+        GuideResponse { prompt, json }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 헬퍼: EmotionState → 응답 필드 변환
+// ---------------------------------------------------------------------------
+
+/// EmotionState에서 공통 응답 필드를 추출합니다.
+pub(crate) fn build_emotion_fields(state: &EmotionState) -> (Vec<EmotionOutput>, Option<EmotionOutput>, f32) {
+    let emotions: Vec<EmotionOutput> = state.emotions().iter()
+        .map(EmotionOutput::from_emotion).collect();
+    let dominant = state.dominant().map(|e| EmotionOutput::from_emotion(&e));
+    let mood = state.overall_valence();
+    (emotions, dominant, mood)
+}
+
+/// NPC + EmotionState + 관계 → AppraiseResult 생성 헬퍼
+pub(crate) fn build_appraise_result(
+    npc: &Npc,
+    state: &EmotionState,
+    situation_desc: Option<String>,
+    relationship: Option<&Relationship>,
+    trace: Vec<String>,
+) -> AppraiseResult {
+    let (emotions, dominant, mood) = build_emotion_fields(state);
+    let guide = ActingGuide::build(npc, state, situation_desc, relationship);
+    AppraiseResult { emotions, dominant, mood, guide, trace }
 }
 
 #[derive(Serialize, Deserialize, Clone)]

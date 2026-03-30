@@ -17,6 +17,8 @@ pub struct AppState {
     pub collector: AppraisalCollector,
     /// 대사 → PAD 분석기 (embed feature 활성 시에만 Some)
     pub analyzer: Option<Arc<Mutex<PadAnalyzer>>>,
+    /// 연기 가이드 포맷터 (서버 시작 시 한 번 생성, 모든 핸들러에서 공유)
+    pub formatter: Arc<dyn npc_mind::ports::GuideFormatter>,
 }
 
 impl AppState {
@@ -25,6 +27,7 @@ impl AppState {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a))),
+            formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
         }
     }
 }
