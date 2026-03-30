@@ -90,7 +90,7 @@ impl MockRepository {
     }
     
     pub fn add_npc(&mut self, npc: Npc) {
-        self.npcs.insert(npc.id().0.clone(), npc);
+        self.npcs.insert(npc.id().to_string(), npc);
     }
 
     pub fn add_relationship(&mut self, rel: Relationship) {

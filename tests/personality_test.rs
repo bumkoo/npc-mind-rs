@@ -238,7 +238,7 @@ fn npc_json_직렬화_역직렬화() {
     let json = serde_json::to_string_pretty(&npc).unwrap();
     let restored: Npc = serde_json::from_str(&json).unwrap();
 
-    assert_eq!(*restored.id(), NpcId("test_npc".to_string()));
+    assert_eq!(restored.id(), "test_npc");
     assert_eq!(restored.name(), "테스트");
     assert_eq!(restored.personality().honesty_humility.sincerity.value(), 0.8);
     assert_eq!(restored.personality().agreeableness.forgiveness.value(), -0.5);

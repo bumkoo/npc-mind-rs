@@ -1,10 +1,11 @@
 use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState, SceneFocus, FocusTrigger};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
-use crate::domain::personality::Npc;
-use crate::domain::relationship::Relationship;
 use crate::domain::tuning::BEAT_MERGE_THRESHOLD;
 use crate::ports::{Appraiser, StimulusProcessor};
+
+// MindRepository를 이 모듈에서도 재노출 (기존 코드 호환)
+pub use crate::ports::MindRepository;
 
 use super::dto::*;
 
@@ -21,32 +22,6 @@ pub enum MindServiceError {
     EmotionStateNotFound,
     #[error("로케일 초기화 실패: {0}")]
     LocaleError(String),
-}
-
-/// 라이브러리 사용자가 제공해야 할 저장소 트레이트
-///
-/// 웹 서버의 StateInner나 데이터베이스를 통해 NPC/관계/감정을 조회하고 저장하는 역할을 합니다.
-pub trait MindRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc>;
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
-    fn get_object_description(&self, object_id: &str) -> Option<String>;
-
-    // 상태 관리 (현재 턴의 감정 상태)
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState>;
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState);
-    fn clear_emotion_state(&mut self, npc_id: &str);
-
-    // 관계 갱신
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship);
-
-    // Scene 상태 관리
-    fn get_scene_focuses(&self) -> &[SceneFocus];
-    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>);
-    fn get_active_focus_id(&self) -> Option<&str>;
-    fn set_active_focus_id(&mut self, id: Option<String>);
-    fn get_scene_npc_id(&self) -> Option<&str>;
-    fn get_scene_partner_id(&self) -> Option<&str>;
-    fn set_scene_ids(&mut self, npc_id: String, partner_id: String);
 }
 
 /// Mind 엔진의 핵심 진입점 (Application Service)

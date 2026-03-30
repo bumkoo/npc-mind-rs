@@ -3,9 +3,10 @@
 //! 도메인 핵심 로직의 추상화 경계를 정의한다.
 //! 외부 어댑터는 이 트레이트를 구현하여 도메인과 연결된다.
 
-use crate::domain::emotion::{EmotionState, Situation};
+use crate::domain::emotion::{EmotionState, Situation, SceneFocus};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
+use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 
 // ---------------------------------------------------------------------------
@@ -116,20 +117,35 @@ pub trait UtteranceAnalyzer {
     fn analyze(&mut self, utterance: &str) -> Result<Pad, EmbedError>;
 }
 
-/// 관계 저장소 포트 — NPC 간 관계의 영속화
+// ---------------------------------------------------------------------------
+// 저장소 포트
+// ---------------------------------------------------------------------------
+
+/// 라이브러리 사용자가 제공해야 할 저장소 트레이트
 ///
-/// 대화 종료 후 갱신된 Relationship를 저장하고,
-/// 다음 대화 시작 시 로드하는 책임.
-/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정.
-pub trait RelationshipRepository {
-    /// NPC→상대 관계 조회. 없으면 None.
-    fn find(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
+/// NPC/관계/감정/Scene 상태를 조회하고 저장하는 역할을 합니다.
+/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정합니다.
+pub trait MindRepository {
+    fn get_npc(&self, id: &str) -> Option<Npc>;
+    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
+    fn get_object_description(&self, object_id: &str) -> Option<String>;
 
-    /// NPC→상대 관계 저장 (생성 또는 갱신)
-    fn save(&mut self, owner_id: &str, relationship: &Relationship);
+    // 감정 상태 관리
+    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState>;
+    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState);
+    fn clear_emotion_state(&mut self, npc_id: &str);
 
-    /// 특정 NPC의 모든 관계 조회
-    fn find_all(&self, owner_id: &str) -> Vec<Relationship>;
+    // 관계 갱신
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship);
+
+    // Scene 상태 관리
+    fn get_scene_focuses(&self) -> &[SceneFocus];
+    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>);
+    fn get_active_focus_id(&self) -> Option<&str>;
+    fn set_active_focus_id(&mut self, id: Option<String>);
+    fn get_scene_npc_id(&self) -> Option<&str>;
+    fn get_scene_partner_id(&self) -> Option<&str>;
+    fn set_scene_ids(&mut self, npc_id: String, partner_id: String);
 }
 
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환

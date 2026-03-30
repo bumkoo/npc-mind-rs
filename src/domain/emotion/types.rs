@@ -293,8 +293,17 @@ impl EmotionState {
 
     /// threshold 이상의 유의미한 감정들만 반환 (강도 내림차순)
     pub fn significant(&self, threshold: f32) -> Vec<Emotion> {
-        let mut result = self.emotions();
-        result.retain(|e| e.is_significant(threshold));
+        let mut result: Vec<Emotion> = self.intensities.iter().enumerate()
+            .filter(|(_, &i)| i >= threshold)
+            .filter_map(|(idx, &i)| {
+                EmotionType::from_index(idx).map(|t| {
+                    match &self.contexts[idx] {
+                        Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                        None => Emotion::new(t, i),
+                    }
+                })
+            })
+            .collect();
         result.sort_by(|a, b| b.intensity().partial_cmp(&a.intensity()).unwrap_or(std::cmp::Ordering::Equal));
         result
     }
