@@ -1,0 +1,302 @@
+# npc-mind-rs
+
+> **NPC Psychology Engine** — Give your game characters a mind, not just a script.
+
+---
+
+## What is this?
+
+`npc-mind-rs` is a Rust library that generates **LLM acting directives** for NPCs based on their personality and situation.
+
+Instead of writing "speak angrily here" in your game script, you define *who the NPC is* and *what's happening* — and the engine tells the LLM exactly how to perform the scene.
+
+```
+NPC Personality (HEXACO)  +  Game Scene  →  LLM System Prompt
+```
+
+The output is a structured prompt that instructs an LLM how to voice the NPC: tone, attitude, behavioral tendency, restrictions, and relationship context — all derived from personality theory and the current emotional state.
+
+---
+
+## The Core Idea
+
+Real characters don't react the same way to the same event.
+
+A proud, impatient warrior and a humble, patient monk will respond *very differently* to betrayal by a trusted ally. `npc-mind-rs` models that difference using:
+
+- **HEXACO** personality model (6 dimensions, 24 facets) — *who this person is*
+- **OCC** emotion theory (22 emotion types) — *what they feel right now*
+- **PAD** emotional space — *how spoken words shift their mood in real-time*
+
+The engine combines these to generate a directive that makes each NPC feel like a distinct person.
+
+---
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│  1. Define NPC personality (HEXACO 24 facets, –1.0 ~ 1.0) │
+│                                                             │
+│  2. Define the scene (Event / Action / Object focus)        │
+│                                                             │
+│  3. Engine evaluates emotion  →  Joy 0.72, Gratitude 0.55  │
+│                                                             │
+│  4. Engine generates directive:                             │
+│     • Tone:      "A sincerely warm tone"                   │
+│     • Attitude:  "Friendly and open"                       │
+│     • Behavior:  "Actively participates and cooperates"    │
+│     • Restrict:  "Do not lie or exaggerate"                │
+│                                                             │
+│  5. Full system prompt → your LLM                          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+As dialogue progresses, `apply_stimulus()` adjusts emotional intensity turn-by-turn using the PAD model — so NPCs don't stay frozen in a single mood.
+
+---
+
+## Key Features
+
+### 🎭 Personality-Driven Emotion
+Every scene evaluation is weighted by the NPC's HEXACO profile. A patient character (high `A.patience`) suppresses anger that an impatient one would explode with. A humble character (high `H.modesty`) feels less pride after the same achievement.
+
+### 🎬 Scene & Beat System
+Define a scene as a sequence of **beats** — emotional turning points. The engine can automatically transition between beats based on emotional conditions:
+
+```json
+"trigger": [
+  [{ "emotion": "Fear", "above": 0.6 }]
+]
+```
+When the NPC's Fear exceeds 0.6, the scene shifts to the next beat.
+
+### 🗣️ Real-Time Dialogue Stimulus
+Each line of dialogue is analyzed as a PAD vector (Pleasure / Arousal / Dominance) and applied to the current emotional state. A comforting word from a superior has more impact than the same words from a peer.
+
+### 🌍 Multilingual Directives
+Built-in Korean and English directive text. Every label — tone descriptions, attitude labels, behavioral tendencies — is loaded from TOML locale files.
+
+You can override any phrase to fit your game's world:
+
+```toml
+# Override for a wuxia RPG setting
+[emotion]
+Anger = "살기(殺氣)"
+Gratitude = "은혜"
+
+[tone]
+RoughAggressive = "내공이 실린 거친 목소리로"
+```
+
+### 🔗 Relationship Modeling
+Three-axis relationship model (closeness / trust / power) modulates how strongly actions land emotionally and determines the NPC's honorific register.
+
+---
+
+## Output Example
+
+Given a scene where a close ally has betrayed the NPC:
+
+```
+[NPC: 무백]
+야심 없이 의리를 지키는 정직한 검객.
+
+[성격]
+진실되고 공정하며 겸손한 성격이다. 체계적이고 근면하며 신중하게 행동한다.
+
+[현재 감정]
+감정 구성:
+- 분노(뚜렷한, 지배) — 의형제의 밀고 행위
+- 비난(약한) — 배신으로 인한 아군 피해
+전체 분위기: 부정적
+
+[상황]
+믿었던 의형제가 적에게 아군의 위치를 넘겼다.
+
+[연기 지시]
+어조: 억누른 분노가 느껴지는 차가운 어조
+태도: 불만을 억누르지만 불편함이 드러나는 태도
+행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.
+
+[말투]
+솔직하고 꾸밈없이 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.
+
+[금지 사항]
+- 농담이나 가벼운 말투를 사용하지 않는다.
+- 상대에게 호의적으로 대하지 않는다.
+- 거짓말이나 과장을 하지 않는다.
+
+[상대와의 관계]
+친밀도: 매우 깊은
+신뢰도: 매우 높은 신뢰
+상하 관계: 대등한 관계
+```
+
+---
+
+## Quick Start
+
+### Library Usage
+
+```rust
+use npc_mind::{FormattedMindService, AppraiseRequest};
+
+// 1. Create service with Korean locale
+let mut service = FormattedMindService::new(my_repository, "ko")?;
+
+// 2. Evaluate a scene
+let response = service.appraise(AppraiseRequest {
+    npc_id: "mu_baek".into(),
+    partner_id: "player".into(),
+    situation: SituationInput {
+        description: "동료가 적에게 아군 위치를 밀고했다".into(),
+        event: Some(EventInput {
+            desirability_for_self: -0.8,
+            description: "배신으로 인한 피해".into(),
+            ..Default::default()
+        }),
+        action: Some(ActionInput {
+            agent_id: Some("jo_ryong".into()),
+            praiseworthiness: -0.9,
+            description: "밀고 행위".into(),
+        }),
+        object: None,
+    },
+}, || {}, Vec::new)?;
+
+// 3. Send response.prompt to your LLM
+println!("{}", response.prompt);
+```
+
+### With Custom Locale
+
+```rust
+let overrides = r#"
+[tone]
+SuppressedCold = "차갑게 내공을 억누르며"
+RoughAggressive = "광폭한 검기를 실어"
+"#;
+
+let service = FormattedMindService::with_overrides(repo, "ko", overrides)?;
+```
+
+---
+
+## Mind Studio (Development Tool)
+
+A browser-based simulator for designing and testing NPC personalities and scenes — without writing code.
+
+```bash
+cargo run --features mind-studio --bin npc-mind-studio
+# Opens at http://127.0.0.1:3000
+```
+
+**What you can do:**
+- Create and edit NPC personality profiles (24 HEXACO facets via sliders)
+- Define relationships between characters (closeness / trust / power)
+- Set up scenes and beats with emotion trigger conditions
+- Run emotion evaluations and inspect the generated prompt
+- Apply PAD stimuli turn-by-turn and watch emotional state shift
+- Save/load scenario files for iterative testing
+
+![Mind Studio showing NPC emotion bars and generated prompt](docs/assets/mind-studio-preview.png)
+
+---
+
+## Architecture
+
+```
+Application Layer
+  MindService / FormattedMindService
+       │
+Domain Layer
+  ├── AppraisalEngine   HEXACO × Situation → OCC emotions
+  ├── StimulusEngine    PAD stimulus → emotional drift
+  └── ActingGuide       emotions + personality → directive
+       │
+Ports (interfaces)
+  MindRepository · Appraiser · GuideFormatter · TextEmbedder
+       │
+Adapters
+  OrtEmbedder (BGE-M3 ONNX) · LocaleFormatter · WebUI
+```
+
+Domain-Driven Design + Hexagonal Architecture. The core emotion logic has zero external dependencies.
+
+---
+
+## Tech Stack
+
+| | |
+|---|---|
+| Language | Rust (Edition 2024) |
+| Personality Model | HEXACO (6 dimensions, 24 facets) |
+| Emotion Model | OCC (22 types across Event / Action / Object) |
+| Emotional Space | PAD (Pleasure–Arousal–Dominance) |
+| Embedding Model | BGE-M3 INT8 ONNX (for dialogue → PAD analysis) |
+| Web Server | Axum |
+| Locale Format | TOML |
+
+---
+
+## Build
+
+```bash
+# Core library (no embedding)
+cargo build
+cargo test
+
+# With BGE-M3 embedding (enables auto PAD analysis from dialogue text)
+cargo build --features embed
+
+# mind-studio
+cargo run --features mind-studio --bin npc-mind-studio
+```
+
+> **Windows note:** Requires `.cargo/config.toml` for dynamic CRT linking when using `--features embed`. See [embedding setup](docs/infra/embedding-adapter-migration.md).
+
+---
+
+## Locale Customization
+
+All directive text lives in TOML files under `locales/`. Built-in: `ko` (Korean), `en` (English).
+
+To add a new language or override phrases for your game's setting:
+
+```rust
+// Partial override — only listed keys are replaced
+FormattedMindService::with_overrides(repo, "ko", override_toml)?;
+
+// Full custom locale
+FormattedMindService::with_custom_locale(repo, my_full_toml)?;
+
+// Or implement GuideFormatter directly for total control
+FormattedMindService::with_formatter(repo, MyGameFormatter)?;
+```
+
+See [locale guide](docs/locale-guide.md) for the full TOML schema.
+
+---
+
+## Project Status
+
+This is an active solo development project building toward a wuxia martial-arts RPG focused on character conflict and growth — think *Crouching Tiger, Hidden Dragon* as an interactive narrative.
+
+The engine is being validated against real literary scenes (currently: *Adventures of Huckleberry Finn* as a character psychology benchmark).
+
+- ✅ Core emotion pipeline complete (245 passing tests)
+- ✅ Mind Studio with scenario save/load
+- ✅ Scene/Beat system with automatic transitions  
+- ✅ Korean + English locale
+- 🔄 Literary validation sessions ongoing
+- 🔜 Power → tone mapping refinement
+- 🔜 Multi-NPC dialogue context
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE)
