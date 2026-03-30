@@ -3,7 +3,7 @@
 //! 도메인 핵심 로직의 추상화 경계를 정의한다.
 //! 외부 어댑터는 이 트레이트를 구현하여 도메인과 연결된다.
 
-use crate::domain::emotion::{EmotionState, Situation, SceneFocus};
+use crate::domain::emotion::{EmotionState, Situation, SceneFocus, RelationshipModifiers};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::{Npc, DimensionAverages};
@@ -67,16 +67,16 @@ pub trait AppraisalWeights {
 // 감정 평가 엔진 포트
 // ---------------------------------------------------------------------------
 
-/// 감정 평가 포트 — 성격 × 상황 × 관계 기반 OCC 감정 생성
+/// 감정 평가 포트 — 성격 × 상황 × 관계 modifier 기반 OCC 감정 생성
 ///
 /// 상황 진입 시 1회 평가. 대화 중 감정 변동은 StimulusProcessor가 담당.
 pub trait Appraiser {
-    /// 성격(가중치) + 상황 + 관계 → 감정 상태 (상황 진입 시 1회)
+    /// 성격(가중치) + 상황 + 관계 modifier → 감정 상태 (상황 진입 시 1회)
     fn appraise<P: AppraisalWeights>(
         &self,
         personality: &P,
         situation: &Situation,
-        relationship: &Relationship,
+        dialogue_modifiers: &RelationshipModifiers,
     ) -> EmotionState;
 }
 

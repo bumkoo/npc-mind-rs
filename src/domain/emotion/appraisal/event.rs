@@ -39,12 +39,12 @@ pub fn appraise<P: AppraisalWeights>(p: &P, state: &mut EmotionState, event: &Ev
 
         // 공감 기반 (HappyFor, Pity)
         let emp_w = p.empathy_weight(d_other);
-        let emp_mod = other.relationship.empathy_rel_modifier();
+        let emp_mod = other.modifiers.empathy_modifier;
         add_valence(state, EmotionType::HappyFor, EmotionType::Pity, d_other, emp_w, emp_mod, &other_ctx);
 
         // 적대 기반 (Resentment, Gloating)
         let hos_w = p.hostility_weight(d_other);
-        let hos_mod = other.relationship.hostility_rel_modifier();
+        let hos_mod = other.modifiers.hostility_modifier;
         add_valence(state, EmotionType::Resentment, EmotionType::Gloating, d_other, hos_w, hos_mod, &other_ctx);
     }
 }

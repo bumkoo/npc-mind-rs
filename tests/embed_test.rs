@@ -105,12 +105,12 @@ fn 전체_흐름_대사분석_후_자극_적용() {
             description: "배신 행위".into(),
             agent_id: Some("partner".into()),
             praiseworthiness: -0.7,
-            relationship: None,
+            modifiers: None,
         }),
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine.appraise(yu.personality(), &situation, &rel);
+    let initial = AppraisalEngine.appraise(yu.personality(), &situation, &rel.modifiers());
     let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &stimulus);
 
     let anger_before = initial.emotions().iter()

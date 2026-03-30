@@ -85,7 +85,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let situation = req.situation.to_domain(&self.repository, &req.npc_id, &req.partner_id)?;
 
         before_eval();
-        let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship);
+        let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
         let trace = after_eval();
 
         let result = build_appraise_result(
@@ -153,7 +153,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 .unwrap_or_else(EmotionState::new);
 
             before_eval();
-            let new_state = self.appraiser.appraise(npc.personality(), &situation, &relationship);
+            let new_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
             let beat_trace = after_eval();
 
             let merged = EmotionState::merge_from_beat(&previous, &new_state, BEAT_MERGE_THRESHOLD);
@@ -229,7 +229,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))?;
 
             before_eval();
-            let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship);
+            let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
             let trace = after_eval();
 
             let result = build_appraise_result(
@@ -329,7 +329,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             let situation = focus.to_situation()
                 .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))?;
 
-            let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship);
+            let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
 
             let result = build_appraise_result(
                 &npc, &emotion_state,

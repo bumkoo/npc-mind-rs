@@ -6,15 +6,14 @@ pub mod object;
 pub mod compound;
 pub mod helpers;
 
-use crate::domain::emotion::{EmotionState, Situation};
-use crate::domain::relationship::Relationship;
+use crate::domain::emotion::{EmotionState, Situation, RelationshipModifiers};
 use crate::ports::AppraisalWeights;
 
 /// 감정 평가의 각 분기를 처리하는 내부 통합 함수
 pub fn process<P: AppraisalWeights>(
     personality: &P,
     situation: &Situation,
-    relationship: &Relationship,
+    dialogue_modifiers: &RelationshipModifiers,
 ) -> EmotionState {
     let mut state = EmotionState::new();
 
@@ -22,7 +21,7 @@ pub fn process<P: AppraisalWeights>(
         event::appraise(personality, &mut state, event);
     }
     if let Some(action) = &situation.action {
-        action::appraise(personality, &mut state, relationship, action);
+        action::appraise(personality, &mut state, dialogue_modifiers, action);
     }
     if let Some(object) = &situation.object {
         object::appraise(personality, &mut state, object);

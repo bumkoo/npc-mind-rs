@@ -18,7 +18,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::emotion::EmotionState;
+use super::emotion::{EmotionState, RelationshipModifiers};
 use super::personality::Score;
 
 // ---------------------------------------------------------------------------
@@ -90,6 +90,19 @@ impl Relationship {
     pub fn power(&self) -> Score { self.power }
 
     // --- 감정 엔진 연동 (읽기 전용) ---
+
+    /// 감정 평가에 필요한 modifier 값을 사전 계산하여 반환
+    ///
+    /// 감정 도메인이 Relationship의 내부 구조를 알 필요 없이
+    /// 이 메서드로 추출한 RelationshipModifiers만 사용한다.
+    pub fn modifiers(&self) -> RelationshipModifiers {
+        RelationshipModifiers {
+            intensity_multiplier: self.emotion_intensity_multiplier(),
+            trust_modifier: self.trust_emotion_modifier(),
+            empathy_modifier: self.empathy_rel_modifier(),
+            hostility_modifier: self.hostility_rel_modifier(),
+        }
+    }
 
     /// 감정 반응 배율: closeness 방향에 따라 강화/약화
     /// 가까운 사이(+)면 감정 반응 강화, 적대적(-)이면 감정 절제/경계

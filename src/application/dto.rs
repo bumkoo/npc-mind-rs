@@ -65,7 +65,7 @@ impl EventInput {
             Some(DesirabilityForOther {
                 target_id: o.target_id.clone(),
                 desirability: o.desirability,
-                relationship: rel,
+                modifiers: rel.modifiers(),
             })
         } else {
             None
@@ -109,9 +109,9 @@ impl ActionInput {
         npc_id: &str,
         partner_id: &str,
     ) -> Result<ActionFocus, MindServiceError> {
-        let relationship = match &self.agent_id {
+        let modifiers = match &self.agent_id {
             Some(agent) if agent != partner_id => {
-                repo.get_relationship(npc_id, agent)
+                repo.get_relationship(npc_id, agent).map(|r| r.modifiers())
             }
             _ => None,
         };
@@ -119,7 +119,7 @@ impl ActionInput {
             description: self.description.clone(),
             agent_id: self.agent_id.clone(),
             praiseworthiness: self.praiseworthiness,
-            relationship,
+            modifiers,
         })
     }
 }

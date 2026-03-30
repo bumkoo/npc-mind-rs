@@ -29,7 +29,7 @@ impl Appraiser for AlwaysJoyAppraiser {
         &self,
         _personality: &P,
         _situation: &Situation,
-        _relationship: &Relationship,
+        _dialogue_modifiers: &RelationshipModifiers,
     ) -> EmotionState {
         let mut state = EmotionState::new();
         state.add(Emotion::with_context(EmotionType::Joy, 0.9, "mock"));

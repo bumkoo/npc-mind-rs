@@ -21,10 +21,42 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::relationship::Relationship;
-
 use super::EmotionType;
 use super::EmotionState;
+
+// ---------------------------------------------------------------------------
+// RelationshipModifiers (Value Object)
+// ---------------------------------------------------------------------------
+
+/// 관계가 감정 평가에 미치는 영향의 사전 계산 값
+///
+/// `Relationship` Aggregate의 내부 구조를 감정 도메인에 노출하지 않기 위해
+/// 필요한 modifier 값만 추출한 경량 Value Object.
+///
+/// `Relationship::modifiers()`로 생성한다.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct RelationshipModifiers {
+    /// 감정 반응 배율 — closeness 기반 (가까울수록 감정 반응 강화)
+    pub intensity_multiplier: f32,
+    /// 신뢰도 감정 배율 — trust 기반 (신뢰할수록 감정 증폭)
+    pub trust_modifier: f32,
+    /// 공감 관계 배율 — closeness 기반 (가까울수록 공감 증폭)
+    pub empathy_modifier: f32,
+    /// 적대 관계 배율 — closeness 기반 (적대적일수록 적대감 증폭)
+    pub hostility_modifier: f32,
+}
+
+impl RelationshipModifiers {
+    /// 중립 관계의 modifier (모든 배율 1.0)
+    pub fn neutral() -> Self {
+        Self {
+            intensity_multiplier: 1.0,
+            trust_modifier: 1.0,
+            empathy_modifier: 1.0,
+            hostility_modifier: 1.0,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // SituationError
@@ -136,15 +168,15 @@ pub struct EventFocus {
 /// 대화 상대와 사건의 영향 대상이 다를 수 있다.
 /// "무백이 교룡과 대화 중, 소호가 비무에서 패했다" →
 ///   대화 상대 관계: 무백→교룡 (appraise의 relationship)
-///   사건 대상 관계: 무백→소호 (여기의 relationship)
+///   사건 대상 관계: 무백→소호 (여기의 modifiers)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesirabilityForOther {
     /// 사건의 영향을 받는 타인의 ID
     pub target_id: String,
     /// 그 사람에게 얼마나 좋은/나쁜 일인가 (-1.0 ~ 1.0)
     pub desirability: f32,
-    /// 나와 그 사람의 관계 (호출자가 조회하여 제공)
-    pub relationship: Relationship,
+    /// 나와 그 사람의 관계에서 도출된 감정 배율
+    pub modifiers: RelationshipModifiers,
 }
 
 // ---------------------------------------------------------------------------
@@ -204,10 +236,10 @@ pub struct ActionFocus {
     pub agent_id: Option<String>,
     /// 행동의 칭찬받을만한 정도 (-1.0=비난, +1.0=칭찬)
     pub praiseworthiness: f32,
-    /// 행위자와의 관계 — 제3자 행동 평가 시 제공
-    /// None이면 대화 상대의 행동 (appraise의 relationship 파라미터 사용)
-    /// Some이면 제3자의 행동 (이 relationship 사용)
-    pub relationship: Option<Relationship>,
+    /// 행위자와의 관계에서 도출된 감정 배율 — 제3자 행동 평가 시 제공
+    /// None이면 대화 상대의 행동 (appraise의 dialogue modifiers 사용)
+    /// Some이면 제3자의 행동 (이 modifiers 사용)
+    pub modifiers: Option<RelationshipModifiers>,
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus};
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus, RelationshipModifiers};
 use npc_mind::application::mind_service::{MindRepository, MindService};
 
 pub fn score(v: f32) -> Score {
@@ -49,7 +49,7 @@ pub fn 배신_상황_with_desc(description: &str) -> Situation {
         Some(ActionFocus {
             description: "".into(),
             agent_id: Some("partner".into()),
-            relationship: None,
+            modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -60,9 +60,14 @@ pub fn 배신_상황_with_desc(description: &str) -> Situation {
 // 관계 / 저장소 헬퍼
 // ---------------------------------------------------------------------------
 
-/// 테스트용 중립 관계 (감정 엔진에 Relationship 필수이므로 기본값 역할)
+/// 테스트용 중립 관계 (관계 갱신 테스트 등에서 사용)
 pub fn neutral_rel() -> Relationship {
     Relationship::neutral("npc", "test")
+}
+
+/// 테스트용 중립 modifier (감정 평가 시 기본값)
+pub fn neutral_mods() -> RelationshipModifiers {
+    RelationshipModifiers::neutral()
 }
 
 /// 테스트용 인메모리 저장소

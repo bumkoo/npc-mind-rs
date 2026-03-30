@@ -12,7 +12,7 @@ use common::{make_무백, make_교룡, neutral_rel, find_emotion, 배신_상황}
 #[test]
 fn 도발_자극이_anger를_증폭() {
     let yu = make_교룡();
-    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let anger_before = find_emotion(&initial, EmotionType::Anger).unwrap();
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
@@ -26,7 +26,7 @@ fn 도발_자극이_anger를_증폭() {
 #[test]
 fn 사과_자극이_anger를_감소() {
     let yu = make_교룡();
-    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let anger_before = find_emotion(&initial, EmotionType::Anger).unwrap();
 
     let apology = Pad::new(0.5, -0.3, -0.4);
@@ -43,8 +43,8 @@ fn 교룡이_무백보다_부정_자극에_더_크게_반응() {
     let li = make_무백();
     let situation = 배신_상황();
 
-    let yu_initial = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
-    let li_initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let yu_initial = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
+    let li_initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
     let yu_after = StimulusEngine.apply_stimulus(yu.personality(), &yu_initial, &provocation);
@@ -98,7 +98,7 @@ fn 긍정_자극이_joy를_증폭() {
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     let joy_before = find_emotion(&initial, EmotionType::Joy).unwrap();
 
     let positive = Pad::new(0.7, 0.3, 0.2);
@@ -124,7 +124,7 @@ fn 반대_자극_반복이면_감정_소멸() {
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&initial, EmotionType::Distress).is_some(),
         "초기 Distress 존재");
 
@@ -141,7 +141,7 @@ fn 반대_자극_반복이면_감정_소멸() {
 #[test]
 fn 자극으로_새_감정이_생기지_않음() {
     let yu = make_교룡();
-    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let initial_types: Vec<_> = initial.emotions().iter()
         .map(|e| e.emotion_type())
         .collect();
@@ -158,7 +158,7 @@ fn 자극으로_새_감정이_생기지_않음() {
 #[test]
 fn 중립_자극은_감정_변동_없음() {
     let yu = make_교룡();
-    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let neutral = Pad::neutral();
     let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &neutral);
 
