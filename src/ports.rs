@@ -135,7 +135,8 @@ pub trait RelationshipRepository {
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환
 ///
 /// 다국어 지원, 다른 LLM 포맷 등 다양한 출력 형식을 제공할 수 있다.
-pub trait GuideFormatter {
+/// `Send + Sync`를 요구하여 `Arc<dyn GuideFormatter>`로 공유 가능.
+pub trait GuideFormatter: Send + Sync {
     /// 프롬프트 텍스트 생성
     fn format_prompt(&self, guide: &ActingGuide) -> String;
 

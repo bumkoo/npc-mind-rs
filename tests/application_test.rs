@@ -42,7 +42,7 @@ fn test_mind_service_full_flow() {
     // 무백은 정의로우므로 Admiration(감탄)이 발생해야 함
     assert!(res.emotions.iter().any(|e| e.emotion_type == "Admiration"));
     assert!(res.mood > 0.0);
-    assert!(!res.prompt.is_empty());
+    assert!(!res.guide.npc_name.is_empty());
 
     // 2. 자극 적용 (Stimulus)
     // 교룡이 겸손하게 대답함 (Pleasure 자극)

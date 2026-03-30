@@ -9,10 +9,7 @@ use serde::{Deserialize, Serialize};
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::personality::Npc;
-use npc_mind::domain::guide::ActingGuide;
-use npc_mind::domain::tuning::BEAT_MERGE_THRESHOLD;
 use npc_mind::ports::GuideFormatter;
-use npc_mind::presentation::korean::KoreanFormatter;
 
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
@@ -46,6 +43,9 @@ impl IntoResponse for AppError {
                 }
                 MindServiceError::InvalidSituation(_) | MindServiceError::EmotionStateNotFound => {
                     (StatusCode::BAD_REQUEST, e.to_string())
+                }
+                MindServiceError::LocaleError(_) => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 }
             },
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
@@ -226,14 +226,16 @@ pub async fn appraise(
 ) -> Result<Json<AppraiseResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
-    
+
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-    
-    let response = service.appraise(
+
+    let result = service.appraise(
         req.clone(),
         || { collector.take_entries(); }, // before
         || collector.take_entries(),      // after
     )?;
+
+    let response = result.format(&*state.formatter);
 
     // 턴 기록 저장
     let turn_num = inner.turn_history.len() + 1;
@@ -263,6 +265,7 @@ pub async fn stimulus(
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
     collector.take_entries();
     let stimulus_result = service.apply_stimulus(req.clone())?;
+    let stimulus_response = stimulus_result.format(&*state.formatter);
     let trace = collector.take_entries();
     drop(service);
 
@@ -324,6 +327,7 @@ pub async fn stimulus(
 
                 let response = build_emotion_response(
                     &npc, &merged, Some(focus.description.clone()), Some(&rel), beat_trace,
+                    &*state.formatter,
                 );
 
                 beat_changed = true;
@@ -349,10 +353,10 @@ pub async fn stimulus(
     } else {
         // Beat 전환 없음 — 기존 stimulus 결과 반환
         StimulusResponse {
-            emotions: stimulus_result.emotions,
-            dominant: stimulus_result.dominant,
-            mood: stimulus_result.mood,
-            prompt: stimulus_result.prompt,
+            emotions: stimulus_response.emotions,
+            dominant: stimulus_response.dominant,
+            mood: stimulus_response.mood,
+            prompt: stimulus_response.prompt,
             trace,
             beat_changed: false,
             active_focus_id: None,
@@ -399,8 +403,8 @@ pub async fn guide(
     }
 
     let service = MindService::new(AppStateRepository { inner: &mut *inner });
-    let response = service.generate_guide(req)?;
-    Ok(Json(response))
+    let result = service.generate_guide(req)?;
+    Ok(Json(result.format(&*state.formatter)))
 }
 
 // ---------------------------------------------------------------------------
@@ -737,28 +741,17 @@ fn build_emotion_response(
     situation_desc: Option<String>,
     relationship: Option<&npc_mind::domain::relationship::Relationship>,
     trace: Vec<String>,
+    formatter: &dyn GuideFormatter,
 ) -> AppraiseResponse {
-    use npc_mind::domain::guide::ActingGuide;
-    use npc_mind::ports::GuideFormatter;
-    use npc_mind::presentation::korean::KoreanFormatter;
-
-    let guide = ActingGuide::build(npc, emotion_state, situation_desc, relationship);
-    let formatter = KoreanFormatter::new();
+    let guide = npc_mind::domain::guide::ActingGuide::build(npc, emotion_state, situation_desc, relationship);
     let prompt = formatter.format_prompt(&guide);
 
     let emotions: Vec<EmotionOutput> = emotion_state.emotions().iter()
         .map(EmotionOutput::from_emotion).collect();
     let dominant = emotion_state.dominant().map(|e| EmotionOutput::from_emotion(&e));
-
     let mood = emotion_state.overall_valence();
 
-    AppraiseResponse {
-        emotions,
-        dominant,
-        mood,
-        prompt,
-        trace,
-    }
+    AppraiseResponse { emotions, dominant, mood, prompt, trace }
 }
 
 // ---------------------------------------------------------------------------
@@ -807,7 +800,7 @@ pub async fn scene(
         let emotion_state = AppraisalEngine::appraise(npc.personality(), &situation, &rel);
         let trace = collector.take_entries();
 
-        let response = build_emotion_response(&npc, &emotion_state, Some(focus.description.clone()), Some(&rel), trace);
+        let response = build_emotion_response(&npc, &emotion_state, Some(focus.description.clone()), Some(&rel), trace, &*state.formatter);
 
         inner.emotions.insert(req.npc_id.clone(), emotion_state);
 
