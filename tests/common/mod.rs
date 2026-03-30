@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus};
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus};
 use npc_mind::application::mind_service::{MindRepository, MindService};
 
 pub fn score(v: f32) -> Score {
@@ -70,6 +70,10 @@ pub struct MockRepository {
     pub npcs: HashMap<String, Npc>,
     pub relationships: HashMap<String, Relationship>,
     pub emotions: HashMap<String, EmotionState>,
+    pub scene_focuses: Vec<SceneFocus>,
+    pub active_focus_id: Option<String>,
+    pub scene_npc_id: Option<String>,
+    pub scene_partner_id: Option<String>,
 }
 
 impl MockRepository {
@@ -78,6 +82,10 @@ impl MockRepository {
             npcs: HashMap::new(),
             relationships: HashMap::new(),
             emotions: HashMap::new(),
+            scene_focuses: Vec::new(),
+            active_focus_id: None,
+            scene_npc_id: None,
+            scene_partner_id: None,
         }
     }
     
@@ -125,6 +133,17 @@ impl MindRepository for MockRepository {
         let key = format!("{}:{}", owner_id, target_id);
         self.relationships.insert(key, rel);
     }
+
+    fn get_scene_focuses(&self) -> &[SceneFocus] { &self.scene_focuses }
+    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { self.scene_focuses = focuses; }
+    fn get_active_focus_id(&self) -> Option<&str> { self.active_focus_id.as_deref() }
+    fn set_active_focus_id(&mut self, id: Option<String>) { self.active_focus_id = id; }
+    fn get_scene_npc_id(&self) -> Option<&str> { self.scene_npc_id.as_deref() }
+    fn get_scene_partner_id(&self) -> Option<&str> { self.scene_partner_id.as_deref() }
+    fn set_scene_ids(&mut self, npc_id: String, partner_id: String) {
+        self.scene_npc_id = Some(npc_id);
+        self.scene_partner_id = Some(partner_id);
+    }
 }
 
 /// MindService가 가변 참조를 통해서도 작동할 수 있도록 구현
@@ -150,6 +169,14 @@ impl MindRepository for &mut MockRepository {
     fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
         (**self).save_relationship(owner_id, target_id, rel)
     }
+
+    fn get_scene_focuses(&self) -> &[SceneFocus] { (**self).get_scene_focuses() }
+    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { (**self).set_scene_focuses(focuses) }
+    fn get_active_focus_id(&self) -> Option<&str> { (**self).get_active_focus_id() }
+    fn set_active_focus_id(&mut self, id: Option<String>) { (**self).set_active_focus_id(id) }
+    fn get_scene_npc_id(&self) -> Option<&str> { (**self).get_scene_npc_id() }
+    fn get_scene_partner_id(&self) -> Option<&str> { (**self).get_scene_partner_id() }
+    fn set_scene_ids(&mut self, npc_id: String, partner_id: String) { (**self).set_scene_ids(npc_id, partner_id) }
 }
 
 /// 표준 테스트 컨텍스트

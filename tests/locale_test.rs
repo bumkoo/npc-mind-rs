@@ -323,7 +323,7 @@ fn mind_service_stimulus_결과_포맷팅() {
         arousal: 0.2,
         dominance: 0.0,
     };
-    let result = service.apply_stimulus(stim_req).unwrap();
+    let result = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
 
     // StimulusResult 필드 확인
     assert!(!result.beat_changed);
@@ -383,7 +383,7 @@ fn formatted_service_전체_흐름() {
         arousal: 0.2,
         dominance: 0.0,
     };
-    let res2 = service.apply_stimulus(stim_req).unwrap();
+    let res2 = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
     assert!(!res2.prompt.is_empty());
 
     // 3. Generate Guide

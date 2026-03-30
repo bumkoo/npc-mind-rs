@@ -22,6 +22,6 @@ pub use application::dto::{
     AfterDialogueRequest, AfterDialogueResponse,
     SceneRequest, SceneResponse,
 };
-pub use ports::GuideFormatter;
+pub use ports::{GuideFormatter, Appraiser, StimulusProcessor};
 pub use presentation::formatter::LocaleFormatter;
 pub use presentation::builtin_toml;

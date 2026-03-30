@@ -6,16 +6,17 @@ mod common;
 
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
+use npc_mind::ports::{Appraiser, StimulusProcessor};
 use common::{make_무백, make_교룡, neutral_rel, find_emotion, 배신_상황};
 
 #[test]
 fn 도발_자극이_anger를_증폭() {
     let yu = make_교룡();
-    let initial = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let anger_before = find_emotion(&initial, EmotionType::Anger).unwrap();
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &provocation);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &provocation);
     let anger_after = find_emotion(&after, EmotionType::Anger).unwrap();
 
     assert!(anger_after > anger_before,
@@ -25,11 +26,11 @@ fn 도발_자극이_anger를_증폭() {
 #[test]
 fn 사과_자극이_anger를_감소() {
     let yu = make_교룡();
-    let initial = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let anger_before = find_emotion(&initial, EmotionType::Anger).unwrap();
 
     let apology = Pad::new(0.5, -0.3, -0.4);
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &apology);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &apology);
     let anger_after = find_emotion(&after, EmotionType::Anger).unwrap();
 
     assert!(anger_after < anger_before,
@@ -42,12 +43,12 @@ fn 교룡이_무백보다_부정_자극에_더_크게_반응() {
     let li = make_무백();
     let situation = 배신_상황();
 
-    let yu_initial = AppraisalEngine::appraise(yu.personality(), &situation, &neutral_rel());
-    let li_initial = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let yu_initial = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let li_initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
-    let yu_after = StimulusEngine::apply_stimulus(yu.personality(), &yu_initial, &provocation);
-    let li_after = StimulusEngine::apply_stimulus(li.personality(), &li_initial, &provocation);
+    let yu_after = StimulusEngine.apply_stimulus(yu.personality(), &yu_initial, &provocation);
+    let li_after = StimulusEngine.apply_stimulus(li.personality(), &li_initial, &provocation);
 
     let yu_delta = find_emotion(&yu_after, EmotionType::Anger).unwrap()
         - find_emotion(&yu_initial, EmotionType::Anger).unwrap();
@@ -68,9 +69,9 @@ fn 부정_자극_반복이면_분노_계속_증폭() {
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
 
-    let after1 = StimulusEngine::apply_stimulus(yu.personality(), &initial, &provocation);
-    let after2 = StimulusEngine::apply_stimulus(yu.personality(), &after1, &provocation);
-    let after3 = StimulusEngine::apply_stimulus(yu.personality(), &after2, &provocation);
+    let after1 = StimulusEngine.apply_stimulus(yu.personality(), &initial, &provocation);
+    let after2 = StimulusEngine.apply_stimulus(yu.personality(), &after1, &provocation);
+    let after3 = StimulusEngine.apply_stimulus(yu.personality(), &after2, &provocation);
 
     let anger0 = find_emotion(&initial, EmotionType::Anger).unwrap();
     let anger1 = find_emotion(&after1, EmotionType::Anger).unwrap();
@@ -97,11 +98,11 @@ fn 긍정_자극이_joy를_증폭() {
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
     let joy_before = find_emotion(&initial, EmotionType::Joy).unwrap();
 
     let positive = Pad::new(0.7, 0.3, 0.2);
-    let after = StimulusEngine::apply_stimulus(li.personality(), &initial, &positive);
+    let after = StimulusEngine.apply_stimulus(li.personality(), &initial, &positive);
     let joy_after = find_emotion(&after, EmotionType::Joy).unwrap();
 
     assert!(joy_after > joy_before,
@@ -123,14 +124,14 @@ fn 반대_자극_반복이면_감정_소멸() {
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine::appraise(li.personality(), &situation, &neutral_rel());
+    let initial = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
     assert!(find_emotion(&initial, EmotionType::Distress).is_some(),
         "초기 Distress 존재");
 
     let positive = Pad::new(0.8, -0.3, 0.3);
     let mut state = initial;
     for _ in 0..20 {
-        state = StimulusEngine::apply_stimulus(li.personality(), &state, &positive);
+        state = StimulusEngine.apply_stimulus(li.personality(), &state, &positive);
     }
 
     assert!(find_emotion(&state, EmotionType::Distress).is_none(),
@@ -140,13 +141,13 @@ fn 반대_자극_반복이면_감정_소멸() {
 #[test]
 fn 자극으로_새_감정이_생기지_않음() {
     let yu = make_교룡();
-    let initial = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let initial_types: Vec<_> = initial.emotions().iter()
         .map(|e| e.emotion_type())
         .collect();
 
     let positive = Pad::new(0.9, 0.5, 0.3);
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &positive);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &positive);
 
     for emotion in after.emotions() {
         assert!(initial_types.contains(&emotion.emotion_type()),
@@ -157,9 +158,9 @@ fn 자극으로_새_감정이_생기지_않음() {
 #[test]
 fn 중립_자극은_감정_변동_없음() {
     let yu = make_교룡();
-    let initial = AppraisalEngine::appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let initial = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
     let neutral = Pad::neutral();
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &neutral);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &neutral);
 
     let anger_before = find_emotion(&initial, EmotionType::Anger).unwrap();
     let anger_after = find_emotion(&after, EmotionType::Anger).unwrap();
@@ -181,13 +182,13 @@ fn 강한_감정은_약한_감정보다_변동_작음() {
     // 강한 Anger (0.8)
     let mut strong = EmotionState::new();
     strong.add(Emotion::new(EmotionType::Anger, 0.8));
-    let strong_after = StimulusEngine::apply_stimulus(yu.personality(), &strong, &apology);
+    let strong_after = StimulusEngine.apply_stimulus(yu.personality(), &strong, &apology);
     let strong_delta = (find_emotion(&strong_after, EmotionType::Anger).unwrap() - 0.8).abs();
 
     // 약한 Anger (0.3)
     let mut weak = EmotionState::new();
     weak.add(Emotion::new(EmotionType::Anger, 0.3));
-    let weak_after = StimulusEngine::apply_stimulus(yu.personality(), &weak, &apology);
+    let weak_after = StimulusEngine.apply_stimulus(yu.personality(), &weak, &apology);
     let weak_delta = (find_emotion(&weak_after, EmotionType::Anger).unwrap() - 0.3).abs();
 
     assert!(strong_delta < weak_delta,
@@ -201,7 +202,7 @@ fn intensity_1에서도_최소_관성으로_변동() {
 
     let mut state = EmotionState::new();
     state.add(Emotion::new(EmotionType::Anger, 1.0));
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &state, &apology);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &state, &apology);
     let anger_after = find_emotion(&after, EmotionType::Anger).unwrap();
 
     assert!(anger_after < 1.0,
