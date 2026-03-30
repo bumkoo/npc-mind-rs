@@ -362,6 +362,16 @@ impl NpcBuilder {
 
 
 // ---------------------------------------------------------------------------
+// PersonalityProfile 구현 — HEXACO → 차원 평균 요약
+// ---------------------------------------------------------------------------
+
+impl crate::ports::PersonalityProfile for HexacoProfile {
+    fn dimension_averages(&self) -> DimensionAverages {
+        self.dimension_averages()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // AppraisalWeights 구현 — HEXACO → OCC 가중치 캡슐화
 // ---------------------------------------------------------------------------
 

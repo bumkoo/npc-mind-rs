@@ -6,8 +6,22 @@
 use crate::domain::emotion::{EmotionState, Situation, SceneFocus};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
-use crate::domain::personality::Npc;
+use crate::domain::personality::{Npc, DimensionAverages};
 use crate::domain::relationship::Relationship;
+
+// ---------------------------------------------------------------------------
+// 성격 프로필 포트
+// ---------------------------------------------------------------------------
+
+/// 성격 프로필 포트 — 가이드 생성 시 성격 차원 요약을 제공
+///
+/// HEXACO, Big Five 등 구체적 성격 모델이 이 트레이트를 구현하여
+/// 가이드 도메인이 성격 모델의 내부 facet 구조를 모른 채
+/// 차원 평균만 받아 연기 지시/스냅샷을 생성할 수 있다.
+pub trait PersonalityProfile {
+    /// 성격 차원별 평균 점수를 반환
+    fn dimension_averages(&self) -> DimensionAverages;
+}
 
 // ---------------------------------------------------------------------------
 // OCC 감정 평가 가중치 포트

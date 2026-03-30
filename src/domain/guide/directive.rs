@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
-use crate::domain::personality::HexacoProfile;
+use crate::ports::PersonalityProfile;
 
 use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD, MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD};
 use super::enums::{Tone, Attitude, BehavioralTendency, Restriction};
@@ -25,7 +25,7 @@ impl ActingDirective {
     /// 감정과 성격을 기반으로 구체적인 연기 지시를 생성합니다.
     pub fn from_emotion_and_personality(
         state: &EmotionState,
-        profile: &HexacoProfile,
+        profile: &impl PersonalityProfile,
     ) -> Self {
         let avg = profile.dimension_averages();
         let mood = state.overall_valence();
