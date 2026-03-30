@@ -55,7 +55,7 @@ fn test_mind_service_full_flow() {
         dominance: 0.0,
     };
 
-    let res2 = service.apply_stimulus(stim_req).expect("Stimulus failed");
+    let res2 = service.apply_stimulus(stim_req, || {}, || vec![]).expect("Stimulus failed");
     assert!(res2.mood > res.mood); // 기분이 더 좋아져야 함
 
     // 3. 관계 갱신 (After Dialogue)

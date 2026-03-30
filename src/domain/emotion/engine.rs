@@ -10,17 +10,10 @@ use crate::domain::emotion::types::EmotionState;
 use crate::domain::emotion::situation::Situation;
 
 /// 도메인 서비스 — 성격(AppraisalWeights) × Relationship → OCC 감정
+///
+/// Zero-sized type. `Appraiser` 트레이트를 구현하며,
+/// `MindService`에 기본 감정 평가 엔진으로 주입됩니다.
 pub struct AppraisalEngine;
-
-impl AppraisalEngine {
-    pub fn appraise<P: AppraisalWeights>(
-        personality: &P,
-        situation: &Situation,
-        relationship: &Relationship,
-    ) -> EmotionState {
-        AppraisalProcessor::process(personality, situation, relationship)
-    }
-}
 
 impl crate::ports::Appraiser for AppraisalEngine {
     fn appraise<P: AppraisalWeights>(
@@ -29,6 +22,6 @@ impl crate::ports::Appraiser for AppraisalEngine {
         situation: &Situation,
         relationship: &Relationship,
     ) -> EmotionState {
-        AppraisalEngine::appraise(personality, situation, relationship)
+        AppraisalProcessor::process(personality, situation, relationship)
     }
 }

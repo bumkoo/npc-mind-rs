@@ -17,16 +17,20 @@ use crate::domain::tuning::{STIMULUS_IMPACT_RATE, STIMULUS_FADE_THRESHOLD, STIMU
 use super::types::EmotionState;
 
 /// 대사 자극에 의한 감정 변동 처리
+///
+/// Zero-sized type. `StimulusProcessor` 트레이트를 구현하며,
+/// `MindService`에 기본 자극 처리 엔진으로 주입됩니다.
 pub struct StimulusEngine;
 
-impl StimulusEngine {
+impl crate::ports::StimulusProcessor for StimulusEngine {
     /// 대사 자극에 의한 감정 변동을 계산합니다.
     ///
     /// 기존 감정의 강도만 변동시키며, 새 감정을 생성하지 않습니다.
     /// - 자극과 같은 방향의 감정 → 증폭
     /// - 자극과 반대 방향의 감정 → 감소
     /// - 0.05 이하로 떨어진 감정 → 자연 소멸
-    pub fn apply_stimulus<P: StimulusWeights>(
+    fn apply_stimulus<P: StimulusWeights>(
+        &self,
         personality: &P,
         current_state: &EmotionState,
         stimulus: &Pad,
@@ -53,20 +57,5 @@ impl StimulusEngine {
         }
 
         new_state
-    }
-}
-
-// ---------------------------------------------------------------------------
-// StimulusProcessor 포트 구현
-// ---------------------------------------------------------------------------
-
-impl crate::ports::StimulusProcessor for StimulusEngine {
-    fn apply_stimulus<P: StimulusWeights>(
-        &self,
-        personality: &P,
-        current_state: &EmotionState,
-        stimulus: &Pad,
-    ) -> EmotionState {
-        StimulusEngine::apply_stimulus(personality, current_state, stimulus)
     }
 }

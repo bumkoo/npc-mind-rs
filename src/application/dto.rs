@@ -419,7 +419,7 @@ impl SceneFocusInput {
     }
 }
 
-/// Scene 등록 응답
+/// Scene 등록 응답 (포맷팅 완료)
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SceneResponse {
     /// 등록된 Focus 수
@@ -428,4 +428,41 @@ pub struct SceneResponse {
     pub initial_appraise: Option<AppraiseResponse>,
     /// 현재 활성 Focus ID
     pub active_focus_id: Option<String>,
+}
+
+/// Scene 등록 도메인 결과 (포맷팅 전)
+pub struct SceneResult {
+    pub focus_count: usize,
+    pub initial_appraise: Option<AppraiseResult>,
+    pub active_focus_id: Option<String>,
+}
+
+impl SceneResult {
+    /// GuideFormatter를 적용하여 SceneResponse로 변환
+    pub fn format(self, formatter: &dyn GuideFormatter) -> SceneResponse {
+        SceneResponse {
+            focus_count: self.focus_count,
+            initial_appraise: self.initial_appraise.map(|r| r.format(formatter)),
+            active_focus_id: self.active_focus_id,
+        }
+    }
+}
+
+/// Scene Focus 상태 조회 결과
+#[derive(Serialize, Clone)]
+pub struct SceneInfoResult {
+    pub has_scene: bool,
+    pub npc_id: Option<String>,
+    pub partner_id: Option<String>,
+    pub active_focus_id: Option<String>,
+    pub focuses: Vec<FocusInfoItem>,
+}
+
+/// Focus 개별 항목 정보
+#[derive(Serialize, Clone)]
+pub struct FocusInfoItem {
+    pub id: String,
+    pub description: String,
+    pub is_active: bool,
+    pub trigger_display: String,
 }

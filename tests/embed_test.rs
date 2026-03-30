@@ -110,8 +110,8 @@ fn 전체_흐름_대사분석_후_자극_적용() {
         None,
     ).unwrap();
 
-    let initial = AppraisalEngine::appraise(yu.personality(), &situation, &rel);
-    let after = StimulusEngine::apply_stimulus(yu.personality(), &initial, &stimulus);
+    let initial = AppraisalEngine.appraise(yu.personality(), &situation, &rel);
+    let after = StimulusEngine.apply_stimulus(yu.personality(), &initial, &stimulus);
 
     let anger_before = initial.emotions().iter()
         .find(|e| e.emotion_type() == EmotionType::Anger)
