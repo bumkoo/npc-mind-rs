@@ -2,6 +2,13 @@
 
 NPC Mind Engine — HEXACO 성격이 OCC 감정을 생성하고, LLM이 연기할 수 있도록 가이드를 출력하는 Rust 라이브러리.
 
+라이브러리 형태로 배포되며, `MindService`가 유일한 공개 진입점입니다.
+
+### 기술 스택
+- **Language:** Rust (Edition 2021)
+- **Architecture:** Hexagonal Architecture (Ports and Adapters) + DDD
+- **Libraries:** `serde`/`serde_json`, `thiserror`, `axum`/`tokio`(WebUI), `tracing`(Appraisal Trace), `ort`(ONNX 임베딩)
+
 ## 빌드 & 테스트
 
 ```bash
@@ -143,6 +150,17 @@ docs/
 - `action`: 행위의 정당성 평가 (Pride, Admiration, Anger 등)
 - `object`: 대상의 매력도 평가 (Love, Hate)
 - `compound`: 기초 감정 결합 (Gratitude, Remorse 등)
+
+성격 가중치 기본 패턴: `1.0 + (Score * 0.3)` — 성격 점수에 따라 감정을 증폭/억제합니다.
+
+### 복합 감정 (Compound Emotions)
+기초 감정들이 결합하여 고차원 감정을 생성합니다:
+- **Gratification:** Pride + Joy / **Remorse:** Shame + Distress
+- **Gratitude:** Admiration + Joy / **Anger:** Reproach + Distress
+
+### 관계에 의한 변조 (Relationship Modifiers)
+- **친밀도(Closeness):** 타인 감정에 대한 공감/적대 반응 강도 및 타인 행동 평가의 기본 배율
+- **신뢰도(Trust):** 타인의 행동(Admiration/Reproach) 평가 시 가중치
 
 ## 개발 컨벤션
 
