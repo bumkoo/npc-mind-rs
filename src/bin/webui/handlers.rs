@@ -489,72 +489,82 @@ pub async fn load_state(
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
         .map_err(|e| AppError::Internal(e))?;
 
-    // scene 필드가 있으면 Focus 자동 등록
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
-            // Focus 변환
-            let repo = AppStateRepository { inner: &mut loaded };
-            let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req.focuses.iter()
-                .filter_map(|f| f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id).ok())
-                .collect();
-            drop(repo);
-
-            // MindService로 scene focus 로드 + 초기 appraise
-            let mut service = MindService::new(AppStateRepository { inner: &mut loaded });
-            let _ = service.load_scene_focuses(
-                focuses,
-                scene_req.npc_id.clone(),
-                scene_req.partner_id.clone(),
-            );
-            drop(service);
-
-            // Initial Focus에서 current_situation 자동 생성 (UI 폼 복원용)
-            let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
-            if let Some(fi) = initial_input {
-                let mut sit = serde_json::Map::new();
-                sit.insert("desc".into(), serde_json::json!(fi.description));
-                sit.insert("npcId".into(), serde_json::json!(scene_req.npc_id));
-                sit.insert("partnerId".into(), serde_json::json!(scene_req.partner_id));
-
-                if let Some(ref ev) = fi.event {
-                    sit.insert("hasEvent".into(), serde_json::json!(true));
-                    sit.insert("evDesc".into(), serde_json::json!(ev.description));
-                    sit.insert("evSelf".into(), serde_json::json!(ev.desirability_for_self));
-                    sit.insert("hasOther".into(), serde_json::json!(ev.other.is_some()));
-                    if let Some(ref o) = ev.other {
-                        sit.insert("otherTarget".into(), serde_json::json!(o.target_id));
-                        sit.insert("otherD".into(), serde_json::json!(o.desirability));
-                    }
-                    sit.insert("prospect".into(), serde_json::json!(ev.prospect));
-                } else {
-                    sit.insert("hasEvent".into(), serde_json::json!(false));
-                }
-
-                if let Some(ref ac) = fi.action {
-                    sit.insert("hasAction".into(), serde_json::json!(true));
-                    sit.insert("acDesc".into(), serde_json::json!(ac.description));
-                    sit.insert("agentId".into(), serde_json::json!(ac.agent_id));
-                    sit.insert("pw".into(), serde_json::json!(ac.praiseworthiness));
-                } else {
-                    sit.insert("hasAction".into(), serde_json::json!(false));
-                }
-
-                if let Some(ref obj) = fi.object {
-                    sit.insert("hasObject".into(), serde_json::json!(true));
-                    sit.insert("objTarget".into(), serde_json::json!(obj.target_id));
-                    sit.insert("objAp".into(), serde_json::json!(obj.appealingness));
-                } else {
-                    sit.insert("hasObject".into(), serde_json::json!(false));
-                }
-
-                loaded.current_situation = Some(serde_json::Value::Object(sit));
-            }
+            load_scene_into_state(&mut loaded, &scene_req);
         }
     }
 
     let mut inner = state.inner.write().await;
     *inner = loaded;
     Ok(StatusCode::OK)
+}
+
+/// Scene 필드를 파싱하여 Focus 등록 + UI 폼 복원용 situation 생성
+fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
+    // Focus 변환 + MindService 로드
+    let repo = AppStateRepository { inner: loaded };
+    let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req.focuses.iter()
+        .filter_map(|f| f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id).ok())
+        .collect();
+    drop(repo);
+
+    let mut service = MindService::new(AppStateRepository { inner: loaded });
+    let _ = service.load_scene_focuses(
+        focuses,
+        scene_req.npc_id.clone(),
+        scene_req.partner_id.clone(),
+    );
+    drop(service);
+
+    // Initial Focus → UI 폼 복원용 situation 맵 생성
+    let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
+    if let Some(fi) = initial_input {
+        loaded.current_situation = Some(serde_json::Value::Object(
+            build_situation_map(fi, &scene_req.npc_id, &scene_req.partner_id),
+        ));
+    }
+}
+
+/// SceneFocusInput에서 UI 폼 복원용 JSON 맵을 생성합니다.
+fn build_situation_map(fi: &SceneFocusInput, npc_id: &str, partner_id: &str) -> serde_json::Map<String, serde_json::Value> {
+    let mut sit = serde_json::Map::new();
+    sit.insert("desc".into(), serde_json::json!(fi.description));
+    sit.insert("npcId".into(), serde_json::json!(npc_id));
+    sit.insert("partnerId".into(), serde_json::json!(partner_id));
+
+    if let Some(ref ev) = fi.event {
+        sit.insert("hasEvent".into(), serde_json::json!(true));
+        sit.insert("evDesc".into(), serde_json::json!(ev.description));
+        sit.insert("evSelf".into(), serde_json::json!(ev.desirability_for_self));
+        sit.insert("hasOther".into(), serde_json::json!(ev.other.is_some()));
+        if let Some(ref o) = ev.other {
+            sit.insert("otherTarget".into(), serde_json::json!(o.target_id));
+            sit.insert("otherD".into(), serde_json::json!(o.desirability));
+        }
+        sit.insert("prospect".into(), serde_json::json!(ev.prospect));
+    } else {
+        sit.insert("hasEvent".into(), serde_json::json!(false));
+    }
+
+    if let Some(ref ac) = fi.action {
+        sit.insert("hasAction".into(), serde_json::json!(true));
+        sit.insert("acDesc".into(), serde_json::json!(ac.description));
+        sit.insert("agentId".into(), serde_json::json!(ac.agent_id));
+        sit.insert("pw".into(), serde_json::json!(ac.praiseworthiness));
+    } else {
+        sit.insert("hasAction".into(), serde_json::json!(false));
+    }
+
+    if let Some(ref obj) = fi.object {
+        sit.insert("hasObject".into(), serde_json::json!(true));
+        sit.insert("objTarget".into(), serde_json::json!(obj.target_id));
+        sit.insert("objAp".into(), serde_json::json!(obj.appealingness));
+    } else {
+        sit.insert("hasObject".into(), serde_json::json!(false));
+    }
+
+    sit
 }
 
 

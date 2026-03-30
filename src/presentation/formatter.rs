@@ -50,34 +50,7 @@ impl GuideFormatter for LocaleFormatter {
         lines.push(String::new());
 
         // --- 현재 감정 ---
-        lines.push(t.section_emotion.clone());
-
-        // 상위 3개 감정을 줄바꿈으로 표시, 지배 감정에 "(지배)" 표시
-        if !guide.emotion.active_emotions.is_empty() {
-            lines.push(t.emotion_composition.clone());
-
-            let dominant_type = guide.emotion.dominant.as_ref().map(|d| d.emotion_type);
-            let top3 = guide.emotion.active_emotions.iter().take(3);
-
-            for entry in top3 {
-                let emotion = l.emotion_name(&entry.emotion_type);
-                let intensity_str = l.intensity_label(entry.intensity);
-                let is_dominant = dominant_type == Some(entry.emotion_type);
-                let label = if is_dominant {
-                    format!("- {}({}, 지배)", emotion, intensity_str)
-                } else {
-                    format!("- {}({})", emotion, intensity_str)
-                };
-                let line = match &entry.context {
-                    Some(ctx) if !ctx.is_empty() => format!("{} — {}", label, ctx),
-                    _ => label,
-                };
-                lines.push(line);
-            }
-        }
-        let mood_str = l.mood_label(guide.emotion.mood);
-        lines.push(l.render_template(&t.overall_mood, &[("mood", mood_str)]));
-        lines.push(String::new());
+        self.format_emotion_section(&guide.emotion, &mut lines);
 
         // --- 상황 ---
         if let Some(ref desc) = guide.situation_description {
@@ -87,17 +60,7 @@ impl GuideFormatter for LocaleFormatter {
         }
 
         // --- 연기 지시 ---
-        lines.push(t.section_directive.clone());
-        lines.push(l.render_template(&t.directive_tone, &[
-            ("tone", l.tone_label(&guide.directive.tone)),
-        ]));
-        lines.push(l.render_template(&t.directive_attitude, &[
-            ("attitude", l.attitude_label(&guide.directive.attitude)),
-        ]));
-        lines.push(l.render_template(&t.directive_behavior, &[
-            ("behavior", l.behavioral_tendency_label(&guide.directive.behavioral_tendency)),
-        ]));
-        lines.push(String::new());
+        self.format_directive_section(&guide.directive, &mut lines);
 
         // --- 말투 ---
         lines.push(t.section_speech.clone());
@@ -117,16 +80,7 @@ impl GuideFormatter for LocaleFormatter {
 
         // --- 관계 ---
         if let Some(ref rel) = guide.relationship {
-            lines.push(l.render_template(&t.section_relationship, &[]));
-            lines.push(l.render_template(&t.relationship_closeness, &[
-                ("level", l.closeness_level_label(&rel.closeness_level)),
-            ]));
-            lines.push(l.render_template(&t.relationship_trust, &[
-                ("level", l.trust_level_label(&rel.trust_level)),
-            ]));
-            lines.push(l.render_template(&t.relationship_power, &[
-                ("level", l.power_level_label(&rel.power_level)),
-            ]));
+            self.format_relationship_section(rel, &mut lines);
         }
 
         lines.join("\n")
@@ -171,6 +125,79 @@ impl GuideFormatter for LocaleFormatter {
         };
 
         serde_json::to_string_pretty(&output)
+    }
+}
+
+use crate::domain::guide::{EmotionSnapshot, RelationshipSnapshot};
+
+impl LocaleFormatter {
+    /// 감정 섹션을 포맷합니다.
+    fn format_emotion_section(&self, emotion: &EmotionSnapshot, lines: &mut Vec<String>) {
+        let l = &self.locale;
+        let t = &l.template;
+
+        lines.push(t.section_emotion.clone());
+
+        if !emotion.active_emotions.is_empty() {
+            lines.push(t.emotion_composition.clone());
+
+            let dominant_type = emotion.dominant.as_ref().map(|d| d.emotion_type);
+            for entry in emotion.active_emotions.iter().take(3) {
+                let name = l.emotion_name(&entry.emotion_type);
+                let intensity = l.intensity_label(entry.intensity);
+                let is_dominant = dominant_type == Some(entry.emotion_type);
+
+                let label = if is_dominant {
+                    format!("- {}({}, {})", name, intensity, t.dominant_label)
+                } else {
+                    format!("- {}({})", name, intensity)
+                };
+                let line = match &entry.context {
+                    Some(ctx) if !ctx.is_empty() => format!("{} — {}", label, ctx),
+                    _ => label,
+                };
+                lines.push(line);
+            }
+        }
+
+        let mood_str = l.mood_label(emotion.mood);
+        lines.push(l.render_template(&t.overall_mood, &[("mood", mood_str)]));
+        lines.push(String::new());
+    }
+
+    /// 연기 지시 섹션을 포맷합니다.
+    fn format_directive_section(&self, directive: &ActingDirective, lines: &mut Vec<String>) {
+        let l = &self.locale;
+        let t = &l.template;
+
+        lines.push(t.section_directive.clone());
+        lines.push(l.render_template(&t.directive_tone, &[
+            ("tone", l.tone_label(&directive.tone)),
+        ]));
+        lines.push(l.render_template(&t.directive_attitude, &[
+            ("attitude", l.attitude_label(&directive.attitude)),
+        ]));
+        lines.push(l.render_template(&t.directive_behavior, &[
+            ("behavior", l.behavioral_tendency_label(&directive.behavioral_tendency)),
+        ]));
+        lines.push(String::new());
+    }
+
+    /// 관계 섹션을 포맷합니다.
+    fn format_relationship_section(&self, rel: &RelationshipSnapshot, lines: &mut Vec<String>) {
+        let l = &self.locale;
+        let t = &l.template;
+
+        lines.push(l.render_template(&t.section_relationship, &[]));
+        lines.push(l.render_template(&t.relationship_closeness, &[
+            ("level", l.closeness_level_label(&rel.closeness_level)),
+        ]));
+        lines.push(l.render_template(&t.relationship_trust, &[
+            ("level", l.trust_level_label(&rel.trust_level)),
+        ]));
+        lines.push(l.render_template(&t.relationship_power, &[
+            ("level", l.power_level_label(&rel.power_level)),
+        ]));
     }
 }
 

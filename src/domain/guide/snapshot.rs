@@ -24,6 +24,32 @@ pub struct PersonalitySnapshot {
     pub speech_styles: Vec<SpeechStyle>,
 }
 
+/// HEXACO 차원별 성격 특성 매핑 (high trait, high style, low trait, low style)
+const DIMENSION_MAP: [(
+    fn(&crate::domain::personality::DimensionAverages) -> f32,
+    PersonalityTrait, SpeechStyle,
+    PersonalityTrait, SpeechStyle,
+); 6] = [
+    // H: 정직-겸손성
+    (|a| a.h.value(), PersonalityTrait::HonestAndModest, SpeechStyle::FrankAndUnadorned,
+                      PersonalityTrait::CunningAndAmbitious, SpeechStyle::HidesInnerThoughts),
+    // E: 정서성
+    (|a| a.e.value(), PersonalityTrait::EmotionalAndAnxious, SpeechStyle::ExpressiveAndWorried,
+                      PersonalityTrait::BoldAndIndependent, SpeechStyle::CalmAndComposed),
+    // X: 외향성
+    (|a| a.x.value(), PersonalityTrait::ConfidentAndSociable, SpeechStyle::ActiveAndForceful,
+                      PersonalityTrait::IntrovertedAndQuiet, SpeechStyle::BriefAndConcise),
+    // A: 원만성
+    (|a| a.a.value(), PersonalityTrait::TolerantAndGentle, SpeechStyle::SoftAndConsiderate,
+                      PersonalityTrait::GrudgingAndCritical, SpeechStyle::SharpAndDirect),
+    // C: 성실성
+    (|a| a.c.value(), PersonalityTrait::SystematicAndDiligent, SpeechStyle::LogicalAndRational,
+                      PersonalityTrait::FreeAndImpulsive, SpeechStyle::UnfilteredAndSpontaneous),
+    // O: 개방성
+    (|a| a.o.value(), PersonalityTrait::CuriousAndCreative, SpeechStyle::MetaphoricalAndUnique,
+                      PersonalityTrait::TraditionalAndConservative, SpeechStyle::FormalAndTraditional),
+];
+
 impl PersonalitySnapshot {
     /// 성격 프로필에서 두드러지는 특성을 추출합니다.
     pub fn from_profile(profile: &impl PersonalityProfile) -> Self {
@@ -32,65 +58,18 @@ impl PersonalitySnapshot {
         let mut traits = Vec::new();
         let mut styles = Vec::new();
 
-        // 리팩토링: avg의 필드들이 Score 타입이므로 .value()로 비교를 수행합니다.
-        // H: 정직-겸손성
-        if avg.h.value() > t {
-            traits.push(PersonalityTrait::HonestAndModest);
-            styles.push(SpeechStyle::FrankAndUnadorned);
-        } else if avg.h.value() < -t {
-            traits.push(PersonalityTrait::CunningAndAmbitious);
-            styles.push(SpeechStyle::HidesInnerThoughts);
+        for &(get_value, high_trait, high_style, low_trait, low_style) in &DIMENSION_MAP {
+            let v = get_value(&avg);
+            if v > t {
+                traits.push(high_trait);
+                styles.push(high_style);
+            } else if v < -t {
+                traits.push(low_trait);
+                styles.push(low_style);
+            }
         }
 
-        // E: 정서성
-        if avg.e.value() > t {
-            traits.push(PersonalityTrait::EmotionalAndAnxious);
-            styles.push(SpeechStyle::ExpressiveAndWorried);
-        } else if avg.e.value() < -t {
-            traits.push(PersonalityTrait::BoldAndIndependent);
-            styles.push(SpeechStyle::CalmAndComposed);
-        }
-
-        // X: 외향성
-        if avg.x.value() > t {
-            traits.push(PersonalityTrait::ConfidentAndSociable);
-            styles.push(SpeechStyle::ActiveAndForceful);
-        } else if avg.x.value() < -t {
-            traits.push(PersonalityTrait::IntrovertedAndQuiet);
-            styles.push(SpeechStyle::BriefAndConcise);
-        }
-
-        // A: 원만성
-        if avg.a.value() > t {
-            traits.push(PersonalityTrait::TolerantAndGentle);
-            styles.push(SpeechStyle::SoftAndConsiderate);
-        } else if avg.a.value() < -t {
-            traits.push(PersonalityTrait::GrudgingAndCritical);
-            styles.push(SpeechStyle::SharpAndDirect);
-        }
-
-        // C: 성실성
-        if avg.c.value() > t {
-            traits.push(PersonalityTrait::SystematicAndDiligent);
-            styles.push(SpeechStyle::LogicalAndRational);
-        } else if avg.c.value() < -t {
-            traits.push(PersonalityTrait::FreeAndImpulsive);
-            styles.push(SpeechStyle::UnfilteredAndSpontaneous);
-        }
-
-        // O: 개방성
-        if avg.o.value() > t {
-            traits.push(PersonalityTrait::CuriousAndCreative);
-            styles.push(SpeechStyle::MetaphoricalAndUnique);
-        } else if avg.o.value() < -t {
-            traits.push(PersonalityTrait::TraditionalAndConservative);
-            styles.push(SpeechStyle::FormalAndTraditional);
-        }
-
-        Self {
-            traits,
-            speech_styles: styles,
-        }
+        Self { traits, speech_styles: styles }
     }
 }
 
