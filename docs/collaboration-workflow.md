@@ -3,7 +3,7 @@
 ## 개요
 
 이 문서는 Bekay와 Claude가 NPC 심리 엔진을 **반복적으로 개선**하기 위한 협업 루프를 정의한다.
-핵심 도구는 webui (http://127.0.0.1:3000)이며, Claude는 API로, Bekay는 브라우저로 동시에 사용한다.
+핵심 도구는 Mind Studio (http://127.0.0.1:3000)이며, Claude는 API로, Bekay는 브라우저로 동시에 사용한다.
 
 ---
 
