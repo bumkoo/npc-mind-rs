@@ -50,7 +50,7 @@ fn 교룡_성격_스냅샷_교활_비판적() {
 fn 배신_무백_가이드_절제된_분노() {
     let li = make_무백();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -67,7 +67,7 @@ fn 배신_무백_가이드_절제된_분노() {
 fn 배신_교룡_가이드_폭발적_분노() {
     let yu = make_교룡();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
-    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
     let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -98,7 +98,7 @@ fn 가이드_프롬프트_구조_검증() {
         None,
         None,
     ).unwrap();
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -115,7 +115,7 @@ fn 가이드_프롬프트_구조_검증() {
 fn 가이드_json_출력() {
     let yu = make_교룡();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
-    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()), None);
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
@@ -134,8 +134,8 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
     let yu = make_교룡();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
 
-    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
-    let yu_state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
+    let yu_state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
 
     let li_guide = ActingGuide::build(&li, &li_state, None, None);
     let yu_guide = ActingGuide::build(&yu, &yu_state, None, None);
@@ -176,7 +176,7 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
         .power(s(0.0))
         .build();
 
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &brother);
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &brother.modifiers());
     let guide = ActingGuide::build(&li, &state, Some("동료의 배신".into()), Some(&brother));
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
@@ -199,7 +199,7 @@ fn 관계_포함_json에_관계_데이터() {
         .build();
 
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
-    let state = AppraisalEngine.appraise(yu.personality(), &situation, &enemy);
+    let state = AppraisalEngine.appraise(yu.personality(), &situation, &enemy.modifiers());
 
     let guide = ActingGuide::build(&yu, &state, Some("배신".into()), Some(&enemy));
     let formatter = KoreanFormatter::new();
@@ -229,7 +229,7 @@ fn 관계_없으면_json에_관계_없음() {
         None,
         None,
     ).unwrap();
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let guide = ActingGuide::build(&li, &state, None, None);
     let formatter = KoreanFormatter::new();

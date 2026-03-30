@@ -4,7 +4,7 @@ use crate::domain::guide::ActingGuide;
 use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 use crate::ports::GuideFormatter;
-use super::mind_service::{MindRepository, MindServiceError};
+use super::mind_service::{NpcWorld, MindServiceError};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AppraiseRequest {
@@ -22,7 +22,7 @@ pub struct SituationInput {
 }
 
 impl SituationInput {
-    pub fn to_domain<R: MindRepository>(
+    pub fn to_domain<R: NpcWorld>(
         &self,
         repo: &R,
         npc_id: &str,
@@ -54,7 +54,7 @@ pub struct EventInput {
 }
 
 impl EventInput {
-    fn to_domain<R: MindRepository>(
+    fn to_domain<R: NpcWorld>(
         &self,
         repo: &R,
         npc_id: &str,
@@ -65,7 +65,7 @@ impl EventInput {
             Some(DesirabilityForOther {
                 target_id: o.target_id.clone(),
                 desirability: o.desirability,
-                relationship: rel,
+                modifiers: rel.modifiers(),
             })
         } else {
             None
@@ -103,15 +103,15 @@ pub struct ActionInput {
 }
 
 impl ActionInput {
-    fn to_domain<R: MindRepository>(
+    fn to_domain<R: NpcWorld>(
         &self,
         repo: &R,
         npc_id: &str,
         partner_id: &str,
     ) -> Result<ActionFocus, MindServiceError> {
-        let relationship = match &self.agent_id {
+        let modifiers = match &self.agent_id {
             Some(agent) if agent != partner_id => {
-                repo.get_relationship(npc_id, agent)
+                repo.get_relationship(npc_id, agent).map(|r| r.modifiers())
             }
             _ => None,
         };
@@ -119,7 +119,7 @@ impl ActionInput {
             description: self.description.clone(),
             agent_id: self.agent_id.clone(),
             praiseworthiness: self.praiseworthiness,
-            relationship,
+            modifiers,
         })
     }
 }
@@ -131,7 +131,7 @@ pub struct ObjectInput {
 }
 
 impl ObjectInput {
-    fn to_domain<R: MindRepository>(
+    fn to_domain<R: NpcWorld>(
         &self,
         repo: &R,
     ) -> Result<ObjectFocus, MindServiceError> {
@@ -378,7 +378,7 @@ impl ConditionInput {
 }
 
 impl SceneFocusInput {
-    pub fn to_domain<R: MindRepository>(
+    pub fn to_domain<R: NpcWorld>(
         &self,
         repo: &R,
         npc_id: &str,

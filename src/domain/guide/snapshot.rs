@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
-use crate::domain::personality::HexacoProfile;
 use crate::domain::relationship::Relationship;
+use crate::ports::PersonalityProfile;
 
 use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD};
 use super::enums::{PersonalityTrait, SpeechStyle};
@@ -25,8 +25,8 @@ pub struct PersonalitySnapshot {
 }
 
 impl PersonalitySnapshot {
-    /// HEXACO 프로필에서 두드러지는 특성을 추출합니다.
-    pub fn from_profile(profile: &HexacoProfile) -> Self {
+    /// 성격 프로필에서 두드러지는 특성을 추출합니다.
+    pub fn from_profile(profile: &impl PersonalityProfile) -> Self {
         let avg = profile.dimension_averages();
         let t = TRAIT_THRESHOLD;
         let mut traits = Vec::new();

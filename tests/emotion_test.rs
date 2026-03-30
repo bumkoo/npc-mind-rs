@@ -28,13 +28,13 @@ fn 배신_무백은_절제된_분노() {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.0);
@@ -56,19 +56,19 @@ fn 배신_교룡은_폭발적_분노() {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     assert!(anger > 0.5);
 
     let li = &ctx.mu_baek;
-    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     let li_anger = find_emotion(&li_state, EmotionType::Anger).unwrap();
     assert!(anger > li_anger);
 }
@@ -87,18 +87,18 @@ fn 배신_수련은_억눌린_고통() {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(shu.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(shu.personality(), &situation, &neutral_rel().modifiers());
 
     let anger = find_emotion(&state, EmotionType::Anger).unwrap();
     let yu = &ctx.gyo_ryong;
     let yu_anger = find_emotion(
-        &AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel()),
+        &AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers()),
         EmotionType::Anger,
     ).unwrap();
     assert!(anger < yu_anger);
@@ -124,7 +124,7 @@ fn 적_대군_무백은_담담한_두려움() {
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     let fear = find_emotion(&state, EmotionType::Fear).unwrap();
     assert!(fear > 0.0);
 }
@@ -144,7 +144,7 @@ fn 적_대군_소호는_두려움_없이_행동() {
         None,
     ).unwrap();
 
-    let na_state = AppraisalEngine.appraise(na.personality(), &situation, &neutral_rel());
+    let na_state = AppraisalEngine.appraise(na.personality(), &situation, &neutral_rel().modifiers());
     let na_fear = find_emotion(&na_state, EmotionType::Fear).unwrap();
     assert!(na_fear > 0.0);
 }
@@ -166,7 +166,7 @@ fn 라이벌_승진_무백은_대리기쁨() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
                 desirability: 0.8,
-                relationship: other_rel,
+                modifiers: other_rel.modifiers(),
             }),
             prospect: None,
         }),
@@ -174,7 +174,7 @@ fn 라이벌_승진_무백은_대리기쁨() {
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
     assert!(has_emotion(&state, EmotionType::HappyFor));
     assert!(!has_emotion(&state, EmotionType::Resentment));
 }
@@ -192,7 +192,7 @@ fn 라이벌_승진_교룡은_시기() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
                 desirability: 0.8,
-                relationship: other_rel,
+                modifiers: other_rel.modifiers(),
             }),
             prospect: None,
         }),
@@ -200,7 +200,7 @@ fn 라이벌_승진_교룡은_시기() {
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
     assert!(has_emotion(&state, EmotionType::Resentment));
 }
 
@@ -225,8 +225,8 @@ fn 해독약_실패_실망_강도_비교() {
         None,
     ).unwrap();
 
-    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
-    let shu_state = AppraisalEngine.appraise(shu.personality(), &situation, &neutral_rel());
+    let li_state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
+    let shu_state = AppraisalEngine.appraise(shu.personality(), &situation, &neutral_rel().modifiers());
 
     let li_disap = find_emotion(&li_state, EmotionType::Disappointment).unwrap();
     let shu_disap = find_emotion(&shu_state, EmotionType::Disappointment).unwrap();
@@ -244,7 +244,7 @@ fn 해독약_실패_실망_강도_비교() {
 fn 감정_상태_전체_valence() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
-    let state = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let valence = state.overall_valence();
     assert!(valence < 0.0);
 }
@@ -253,7 +253,7 @@ fn 감정_상태_전체_valence() {
 fn 감정_상태_dominant_감정() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
-    let state = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel());
+    let state = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &neutral_rel().modifiers());
     let dom = state.dominant().unwrap();
     assert!(
         dom.emotion_type() == EmotionType::Anger
@@ -266,7 +266,7 @@ fn 감정_상태_dominant_감정() {
 fn 감정_significant_필터링() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
-    let state = AppraisalEngine.appraise(li.personality(), &배신_상황(), &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &배신_상황(), &neutral_rel().modifiers());
     let significant = state.significant(0.2);
     assert!(!significant.is_empty());
 }
@@ -287,8 +287,8 @@ fn 의형제의_배신이_남의_배신보다_분노가_큼() {
         .build();
     let stranger = Relationship::neutral("gyo_ryong", "stranger");
 
-    let state_brother = AppraisalEngine.appraise(yu.personality(), &situation, &brother);
-    let state_stranger = AppraisalEngine.appraise(yu.personality(), &situation, &stranger);
+    let state_brother = AppraisalEngine.appraise(yu.personality(), &situation, &brother.modifiers());
+    let state_stranger = AppraisalEngine.appraise(yu.personality(), &situation, &stranger.modifiers());
 
     let anger_brother = find_emotion(&state_brother, EmotionType::Anger).unwrap();
     let anger_stranger = find_emotion(&state_stranger, EmotionType::Anger).unwrap();
@@ -309,8 +309,8 @@ fn 신뢰하던_상대의_배신이_더_강한_분노() {
         .trust(s(-0.5))
         .build();
 
-    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted);
-    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted);
+    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted.modifiers());
+    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted.modifiers());
 
     let anger_trusted = find_emotion(&state_trusted, EmotionType::Anger).unwrap();
     let anger_distrusted = find_emotion(&state_distrusted, EmotionType::Anger).unwrap();
@@ -336,7 +336,7 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "close".into(),
                 desirability: 0.8,
-                relationship: close,
+                modifiers: close.modifiers(),
             }),
             prospect: None,
         }),
@@ -351,7 +351,7 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "distant".into(),
                 desirability: 0.8,
-                relationship: distant,
+                modifiers: distant.modifiers(),
             }),
             prospect: None,
         }),
@@ -359,8 +359,8 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
         None,
     ).unwrap();
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &sit_close, &neutral_rel());
-    let state_distant = AppraisalEngine.appraise(li.personality(), &sit_distant, &neutral_rel());
+    let state_close = AppraisalEngine.appraise(li.personality(), &sit_close, &neutral_rel().modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &sit_distant, &neutral_rel().modifiers());
 
     let happy_close = find_emotion(&state_close, EmotionType::HappyFor).unwrap();
     let happy_distant = find_emotion(&state_distant, EmotionType::HappyFor).unwrap();
@@ -386,7 +386,7 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "rival".into(),
                 desirability: 0.8,
-                relationship: rival,
+                modifiers: rival.modifiers(),
             }),
             prospect: None,
         }),
@@ -402,7 +402,7 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: "nobody".into(),
                 desirability: 0.8,
-                relationship: nobody,
+                modifiers: nobody.modifiers(),
             }),
             prospect: None,
         }),
@@ -410,8 +410,8 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
         None,
     ).unwrap();
 
-    let state_rival = AppraisalEngine.appraise(yu.personality(), &sit_rival, &neutral_rel());
-    let state_nobody = AppraisalEngine.appraise(yu.personality(), &sit_nobody, &neutral_rel());
+    let state_rival = AppraisalEngine.appraise(yu.personality(), &sit_rival, &neutral_rel().modifiers());
+    let state_nobody = AppraisalEngine.appraise(yu.personality(), &sit_nobody, &neutral_rel().modifiers());
 
     let resent_rival = find_emotion(&state_rival, EmotionType::Resentment).unwrap();
     let resent_nobody = find_emotion(&state_nobody, EmotionType::Resentment).unwrap();
@@ -433,7 +433,7 @@ fn 타인_행운_상황(other_rel: &Relationship) -> Situation {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
                 desirability: 0.8,
-                relationship: other_rel.clone(),
+                modifiers: other_rel.modifiers(),
             }),
             prospect: None,
         }),
@@ -452,7 +452,7 @@ fn 타인_불행_상황(other_rel: &Relationship) -> Situation {
             desirability_for_other: Some(DesirabilityForOther {
                 target_id: other_rel.target_id().to_string(),
                 desirability: -0.7,
-                relationship: other_rel.clone(),
+                modifiers: other_rel.modifiers(),
             }),
             prospect: None,
         }),
@@ -469,8 +469,8 @@ fn 원수의_행운에_무백은_기뻐하되_약하게() {
         .closeness(s(-0.8))
         .build();
 
-    let state_enemy = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&enemy), &neutral_rel());
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel());
+    let state_enemy = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&enemy), &neutral_rel().modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel().modifiers());
 
     let happy_enemy = find_emotion(&state_enemy, EmotionType::HappyFor).unwrap();
     let happy_neutral = find_emotion(&state_neutral, EmotionType::HappyFor).unwrap();
@@ -486,8 +486,8 @@ fn 친구의_행운에_교룡은_시기하되_약하게() {
         .closeness(s(0.8))
         .build();
 
-    let state_friend = AppraisalEngine.appraise(yu.personality(), &타인_행운_상황(&friend), &neutral_rel());
-    let state_neutral = AppraisalEngine.appraise(yu.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel());
+    let state_friend = AppraisalEngine.appraise(yu.personality(), &타인_행운_상황(&friend), &neutral_rel().modifiers());
+    let state_neutral = AppraisalEngine.appraise(yu.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel().modifiers());
 
     let resent_friend = find_emotion(&state_friend, EmotionType::Resentment).unwrap();
     let resent_neutral = find_emotion(&state_neutral, EmotionType::Resentment).unwrap();
@@ -503,8 +503,8 @@ fn 친구의_불행에_수련은_더_강하게_동정() {
         .closeness(s(0.8))
         .build();
 
-    let state_friend = AppraisalEngine.appraise(shu.personality(), &타인_불행_상황(&friend), &neutral_rel());
-    let state_neutral = AppraisalEngine.appraise(shu.personality(), &타인_불행_상황(&neutral_rel()), &neutral_rel());
+    let state_friend = AppraisalEngine.appraise(shu.personality(), &타인_불행_상황(&friend), &neutral_rel().modifiers());
+    let state_neutral = AppraisalEngine.appraise(shu.personality(), &타인_불행_상황(&neutral_rel()), &neutral_rel().modifiers());
 
     let pity_friend = find_emotion(&state_friend, EmotionType::Pity).unwrap();
     let pity_neutral = find_emotion(&state_neutral, EmotionType::Pity).unwrap();
@@ -520,8 +520,8 @@ fn 원수의_불행에_교룡은_더_강하게_쾌재() {
         .closeness(s(-0.8))
         .build();
 
-    let state_enemy = AppraisalEngine.appraise(yu.personality(), &타인_불행_상황(&enemy), &neutral_rel());
-    let state_neutral = AppraisalEngine.appraise(yu.personality(), &타인_불행_상황(&neutral_rel()), &neutral_rel());
+    let state_enemy = AppraisalEngine.appraise(yu.personality(), &타인_불행_상황(&enemy), &neutral_rel().modifiers());
+    let state_neutral = AppraisalEngine.appraise(yu.personality(), &타인_불행_상황(&neutral_rel()), &neutral_rel().modifiers());
 
     let gloat_enemy = find_emotion(&state_enemy, EmotionType::Gloating).unwrap();
     let gloat_neutral = find_emotion(&state_neutral, EmotionType::Gloating).unwrap();
@@ -533,7 +533,7 @@ fn 원수의_불행에_교룡은_더_강하게_쾌재() {
 fn 중립_관계는_closeness_방향_영향_없음() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
-    let state = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel());
+    let state = AppraisalEngine.appraise(li.personality(), &타인_행운_상황(&neutral_rel()), &neutral_rel().modifiers());
     let happy = find_emotion(&state, EmotionType::HappyFor).unwrap();
 
     assert!(happy > 0.3);
@@ -556,7 +556,7 @@ fn 도움_상황() -> Situation {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -570,8 +570,8 @@ fn 신뢰하던_사람의_배신에_더_강한_분노() {
     let situation = 배신_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted").trust(s(0.8)).build();
 
-    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let anger_trusted = find_emotion(&state_trusted, EmotionType::Anger).unwrap();
     let anger_neutral = find_emotion(&state_neutral, EmotionType::Anger).unwrap();
@@ -586,8 +586,8 @@ fn 신뢰하던_사람의_배신에_더_강한_비난() {
     let situation = 배신_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted").trust(s(0.8)).build();
 
-    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let reproach_trusted = find_emotion(&state_trusted, EmotionType::Reproach).unwrap();
     let reproach_neutral = find_emotion(&state_neutral, EmotionType::Reproach).unwrap();
@@ -602,8 +602,8 @@ fn 불신하던_사람의_배신에_약한_분노() {
     let situation = 배신_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted").trust(s(-0.5)).build();
 
-    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let anger_distrusted = find_emotion(&state_distrusted, EmotionType::Anger).unwrap();
     let anger_neutral = find_emotion(&state_neutral, EmotionType::Anger).unwrap();
@@ -618,8 +618,8 @@ fn 신뢰하던_사람의_도움에_더_강한_감사() {
     let situation = 도움_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted").trust(s(0.8)).build();
 
-    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let grat_trusted = find_emotion(&state_trusted, EmotionType::Gratitude).unwrap();
     let grat_neutral = find_emotion(&state_neutral, EmotionType::Gratitude).unwrap();
@@ -634,8 +634,8 @@ fn 신뢰하던_사람의_의로운_행동에_더_강한_감탄() {
     let situation = 도움_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted").trust(s(0.8)).build();
 
-    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_trusted = AppraisalEngine.appraise(li.personality(), &situation, &trusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let adm_trusted = find_emotion(&state_trusted, EmotionType::Admiration).unwrap();
     let adm_neutral = find_emotion(&state_neutral, EmotionType::Admiration).unwrap();
@@ -650,8 +650,8 @@ fn 불신하던_사람의_도움에_약한_감사() {
     let situation = 도움_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted").trust(s(-0.5)).build();
 
-    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let grat_distrusted = find_emotion(&state_distrusted, EmotionType::Gratitude).unwrap();
     let grat_neutral = find_emotion(&state_neutral, EmotionType::Gratitude).unwrap();
@@ -666,8 +666,8 @@ fn 불신하던_사람의_의로운_행동에_약한_감탄() {
     let situation = 도움_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted").trust(s(-0.5)).build();
 
-    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted);
-    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel());
+    let state_distrusted = AppraisalEngine.appraise(li.personality(), &situation, &distrusted.modifiers());
+    let state_neutral = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
     let adm_distrusted = find_emotion(&state_distrusted, EmotionType::Admiration).unwrap();
     let adm_neutral = find_emotion(&state_neutral, EmotionType::Admiration).unwrap();
@@ -687,7 +687,7 @@ fn 자기_칭찬_상황() -> Situation {
         None,
         Some(ActionFocus {
             description: "".into(),
-            agent_id: None, relationship: None,
+            agent_id: None, modifiers: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -700,7 +700,7 @@ fn 자기_비난_상황() -> Situation {
         None,
         Some(ActionFocus {
             description: "".into(),
-            agent_id: None, relationship: None,
+            agent_id: None, modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -714,7 +714,7 @@ fn 타인_칭찬_상황() -> Situation {
         None,
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: 0.7,
         }),
         None,
@@ -727,7 +727,7 @@ fn 타인_비난_상황() -> Situation {
         None,
         Some(ActionFocus {
             description: "".into(),
-            agent_id: Some("partner".into()), relationship: None,
+            agent_id: Some("partner".into()), modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -745,8 +745,8 @@ fn 자기_행동_pride는_closeness에_무관() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &자기_칭찬_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &자기_칭찬_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &자기_칭찬_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &자기_칭찬_상황(), &distant.modifiers());
 
     let pride_close = find_emotion(&state_close, EmotionType::Pride).unwrap();
     let pride_distant = find_emotion(&state_distant, EmotionType::Pride).unwrap();
@@ -763,8 +763,8 @@ fn 자기_행동_shame은_closeness에_무관() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &자기_비난_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &자기_비난_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &자기_비난_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &자기_비난_상황(), &distant.modifiers());
 
     let shame_close = find_emotion(&state_close, EmotionType::Shame).unwrap();
     let shame_distant = find_emotion(&state_distant, EmotionType::Shame).unwrap();
@@ -783,8 +783,8 @@ fn 타인_행동_admiration은_closeness에_증폭() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &타인_칭찬_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &타인_칭찬_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &타인_칭찬_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &타인_칭찬_상황(), &distant.modifiers());
 
     let adm_close = find_emotion(&state_close, EmotionType::Admiration).unwrap();
     let adm_distant = find_emotion(&state_distant, EmotionType::Admiration).unwrap();
@@ -801,8 +801,8 @@ fn 타인_행동_reproach는_closeness에_증폭() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &타인_비난_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &타인_비난_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &타인_비난_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &타인_비난_상황(), &distant.modifiers());
 
     let repr_close = find_emotion(&state_close, EmotionType::Reproach).unwrap();
     let repr_distant = find_emotion(&state_distant, EmotionType::Reproach).unwrap();
@@ -831,14 +831,14 @@ fn 자기_compound_gratification은_closeness에_무관() {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: None, relationship: None,
+            agent_id: None, modifiers: None,
             praiseworthiness: 0.7,
         }),
         None,
     ).unwrap();
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &situation, &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &situation, &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &situation, &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &situation, &distant.modifiers());
 
     let joy_close = find_emotion(&state_close, EmotionType::Joy).unwrap();
     let joy_distant = find_emotion(&state_distant, EmotionType::Joy).unwrap();
@@ -872,14 +872,14 @@ fn 자기_compound_remorse는_closeness에_무관() {
         }),
         Some(ActionFocus {
             description: "".into(),
-            agent_id: None, relationship: None,
+            agent_id: None, modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
     ).unwrap();
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &situation, &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &situation, &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &situation, &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &situation, &distant.modifiers());
 
     let dist_close = find_emotion(&state_close, EmotionType::Distress).unwrap();
     let dist_distant = find_emotion(&state_distant, EmotionType::Distress).unwrap();
@@ -905,8 +905,8 @@ fn 타인_compound_gratitude는_closeness에_증폭() {
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
-    let state_close = AppraisalEngine.appraise(li.personality(), &도움_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(li.personality(), &도움_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(li.personality(), &도움_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(li.personality(), &도움_상황(), &distant.modifiers());
 
     let grat_close = find_emotion(&state_close, EmotionType::Gratitude).unwrap();
     let grat_distant = find_emotion(&state_distant, EmotionType::Gratitude).unwrap();
@@ -923,8 +923,8 @@ fn 타인_compound_anger는_closeness에_증폭() {
         .build();
     let distant = Relationship::neutral("gyo_ryong", "distant");
 
-    let state_close = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &close);
-    let state_distant = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &distant);
+    let state_close = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &close.modifiers());
+    let state_distant = AppraisalEngine.appraise(yu.personality(), &배신_상황(), &distant.modifiers());
 
     let anger_close = find_emotion(&state_close, EmotionType::Anger).unwrap();
     let anger_distant = find_emotion(&state_distant, EmotionType::Anger).unwrap();
@@ -950,7 +950,7 @@ fn hope_fulfilled_시_satisfaction과_joy_동시_생성() {
         None, None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&state, EmotionType::Satisfaction).is_some(), "Satisfaction이 있어야 함");
     assert!(find_emotion(&state, EmotionType::Joy).is_some(), "Joy도 함께 생성되어야 함");
 }
@@ -969,7 +969,7 @@ fn fear_confirmed_시_fears_confirmed와_distress_동시_생성() {
         None, None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&state, EmotionType::FearsConfirmed).is_some(), "FearsConfirmed가 있어야 함");
     assert!(find_emotion(&state, EmotionType::Distress).is_some(), "Distress도 함께 생성되어야 함");
 }
@@ -988,7 +988,7 @@ fn hope_unfulfilled_시_disappointment만_생성_joy_없음() {
         None, None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&state, EmotionType::Disappointment).is_some(), "Disappointment이 있어야 함");
     assert!(find_emotion(&state, EmotionType::Joy).is_none(), "Joy는 없어야 함");
     assert!(find_emotion(&state, EmotionType::Distress).is_none(), "Distress도 없어야 함");
@@ -1008,7 +1008,7 @@ fn fear_unrealized_시_relief만_생성_distress_없음() {
         None, None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&state, EmotionType::Relief).is_some(), "Relief가 있어야 함");
     assert!(find_emotion(&state, EmotionType::Distress).is_none(), "Distress는 없어야 함");
     assert!(find_emotion(&state, EmotionType::Joy).is_none(), "Joy도 없어야 함");
@@ -1027,13 +1027,13 @@ fn hope_fulfilled와_타인_action_결합_시_gratitude_생성() {
         }),
         Some(ActionFocus {
             description: "비밀을 지키겠다는 약속".into(),
-            agent_id: Some("huck".into()), relationship: None,
+            agent_id: Some("huck".into()), modifiers: None,
             praiseworthiness: 0.7,
         }),
         None,
     ).unwrap();
 
-    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel());
+    let state = AppraisalEngine.appraise(ctx.mu_baek.personality(), &situation, &neutral_rel().modifiers());
     assert!(find_emotion(&state, EmotionType::Admiration).is_some(), "Admiration이 있어야 함");
     assert!(find_emotion(&state, EmotionType::Joy).is_some(), "Joy가 있어야 함 (HopeFulfilled fall-through)");
     assert!(find_emotion(&state, EmotionType::Gratitude).is_some(), "Gratitude가 생성되어야 함 (Admiration + Joy)");

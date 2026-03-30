@@ -7,8 +7,9 @@
 use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus};
-use npc_mind::application::mind_service::{MindRepository, MindService};
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, SceneFocus, RelationshipModifiers};
+use npc_mind::{NpcWorld, EmotionStore, SceneStore};
+use npc_mind::application::mind_service::MindService;
 
 pub fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
@@ -49,7 +50,7 @@ pub fn 배신_상황_with_desc(description: &str) -> Situation {
         Some(ActionFocus {
             description: "".into(),
             agent_id: Some("partner".into()),
-            relationship: None,
+            modifiers: None,
             praiseworthiness: -0.7,
         }),
         None,
@@ -60,9 +61,14 @@ pub fn 배신_상황_with_desc(description: &str) -> Situation {
 // 관계 / 저장소 헬퍼
 // ---------------------------------------------------------------------------
 
-/// 테스트용 중립 관계 (감정 엔진에 Relationship 필수이므로 기본값 역할)
+/// 테스트용 중립 관계 (관계 갱신 테스트 등에서 사용)
 pub fn neutral_rel() -> Relationship {
     Relationship::neutral("npc", "test")
+}
+
+/// 테스트용 중립 modifier (감정 평가 시 기본값)
+pub fn neutral_mods() -> RelationshipModifiers {
+    RelationshipModifiers::neutral()
 }
 
 /// 테스트용 인메모리 저장소
@@ -99,7 +105,7 @@ impl MockRepository {
     }
 }
 
-impl MindRepository for MockRepository {
+impl NpcWorld for MockRepository {
     fn get_npc(&self, id: &str) -> Option<Npc> {
         self.npcs.get(id).cloned()
     }
@@ -117,6 +123,13 @@ impl MindRepository for MockRepository {
         None
     }
 
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
+        let key = format!("{}:{}", owner_id, target_id);
+        self.relationships.insert(key, rel);
+    }
+}
+
+impl EmotionStore for MockRepository {
     fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
         self.emotions.get(npc_id).cloned()
     }
@@ -128,12 +141,9 @@ impl MindRepository for MockRepository {
     fn clear_emotion_state(&mut self, npc_id: &str) {
         self.emotions.remove(npc_id);
     }
+}
 
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        let key = format!("{}:{}", owner_id, target_id);
-        self.relationships.insert(key, rel);
-    }
-
+impl SceneStore for MockRepository {
     fn get_scene_focuses(&self) -> &[SceneFocus] { &self.scene_focuses }
     fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { self.scene_focuses = focuses; }
     fn get_active_focus_id(&self) -> Option<&str> { self.active_focus_id.as_deref() }
@@ -147,16 +157,20 @@ impl MindRepository for MockRepository {
 }
 
 /// MindService가 가변 참조를 통해서도 작동할 수 있도록 구현
-impl MindRepository for &mut MockRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        (**self).get_npc(id)
-    }
+impl NpcWorld for &mut MockRepository {
+    fn get_npc(&self, id: &str) -> Option<Npc> { (**self).get_npc(id) }
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
         (**self).get_relationship(owner_id, target_id)
     }
     fn get_object_description(&self, object_id: &str) -> Option<String> {
         (**self).get_object_description(object_id)
     }
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
+        (**self).save_relationship(owner_id, target_id, rel)
+    }
+}
+
+impl EmotionStore for &mut MockRepository {
     fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
         (**self).get_emotion_state(npc_id)
     }
@@ -166,10 +180,9 @@ impl MindRepository for &mut MockRepository {
     fn clear_emotion_state(&mut self, npc_id: &str) {
         (**self).clear_emotion_state(npc_id)
     }
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        (**self).save_relationship(owner_id, target_id, rel)
-    }
+}
 
+impl SceneStore for &mut MockRepository {
     fn get_scene_focuses(&self) -> &[SceneFocus] { (**self).get_scene_focuses() }
     fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { (**self).set_scene_focuses(focuses) }
     fn get_active_focus_id(&self) -> Option<&str> { (**self).get_active_focus_id() }

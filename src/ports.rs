@@ -3,11 +3,25 @@
 //! 도메인 핵심 로직의 추상화 경계를 정의한다.
 //! 외부 어댑터는 이 트레이트를 구현하여 도메인과 연결된다.
 
-use crate::domain::emotion::{EmotionState, Situation, SceneFocus};
+use crate::domain::emotion::{EmotionState, Situation, SceneFocus, RelationshipModifiers};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
-use crate::domain::personality::Npc;
+use crate::domain::personality::{Npc, DimensionAverages};
 use crate::domain::relationship::Relationship;
+
+// ---------------------------------------------------------------------------
+// 성격 프로필 포트
+// ---------------------------------------------------------------------------
+
+/// 성격 프로필 포트 — 가이드 생성 시 성격 차원 요약을 제공
+///
+/// HEXACO, Big Five 등 구체적 성격 모델이 이 트레이트를 구현하여
+/// 가이드 도메인이 성격 모델의 내부 facet 구조를 모른 채
+/// 차원 평균만 받아 연기 지시/스냅샷을 생성할 수 있다.
+pub trait PersonalityProfile {
+    /// 성격 차원별 평균 점수를 반환
+    fn dimension_averages(&self) -> DimensionAverages;
+}
 
 // ---------------------------------------------------------------------------
 // OCC 감정 평가 가중치 포트
@@ -53,16 +67,16 @@ pub trait AppraisalWeights {
 // 감정 평가 엔진 포트
 // ---------------------------------------------------------------------------
 
-/// 감정 평가 포트 — 성격 × 상황 × 관계 기반 OCC 감정 생성
+/// 감정 평가 포트 — 성격 × 상황 × 관계 modifier 기반 OCC 감정 생성
 ///
 /// 상황 진입 시 1회 평가. 대화 중 감정 변동은 StimulusProcessor가 담당.
 pub trait Appraiser {
-    /// 성격(가중치) + 상황 + 관계 → 감정 상태 (상황 진입 시 1회)
+    /// 성격(가중치) + 상황 + 관계 modifier → 감정 상태 (상황 진입 시 1회)
     fn appraise<P: AppraisalWeights>(
         &self,
         personality: &P,
         situation: &Situation,
-        relationship: &Relationship,
+        dialogue_modifiers: &RelationshipModifiers,
     ) -> EmotionState;
 }
 
@@ -118,27 +132,32 @@ pub trait UtteranceAnalyzer {
 }
 
 // ---------------------------------------------------------------------------
-// 저장소 포트
+// 저장소 포트 — ISP 분리
 // ---------------------------------------------------------------------------
 
-/// 라이브러리 사용자가 제공해야 할 저장소 트레이트
+/// NPC/관계/오브젝트 월드 — 게임 세계 데이터 조회 및 관계 갱신
 ///
-/// NPC/관계/감정/Scene 상태를 조회하고 저장하는 역할을 합니다.
-/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정합니다.
-pub trait MindRepository {
+/// 라이브러리 사용자가 게임 엔티티 저장소에 맞게 구현합니다.
+pub trait NpcWorld {
     fn get_npc(&self, id: &str) -> Option<Npc>;
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship>;
     fn get_object_description(&self, object_id: &str) -> Option<String>;
+    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship);
+}
 
-    // 감정 상태 관리
+/// 감정 상태 저장소 — NPC별 감정 상태 CRUD
+///
+/// 인메모리, 파일, DB 등 구체적 저장 방식은 어댑터가 결정합니다.
+pub trait EmotionStore {
     fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState>;
     fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState);
     fn clear_emotion_state(&mut self, npc_id: &str);
+}
 
-    // 관계 갱신
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship);
-
-    // Scene 상태 관리
+/// Scene 상태 저장소 — Scene/Focus/Beat 관리
+///
+/// Scene 시작 시 Focus 목록을 등록하고, 대화 진행 중 활성 Focus를 관리합니다.
+pub trait SceneStore {
     fn get_scene_focuses(&self) -> &[SceneFocus];
     fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>);
     fn get_active_focus_id(&self) -> Option<&str>;
@@ -147,6 +166,15 @@ pub trait MindRepository {
     fn get_scene_partner_id(&self) -> Option<&str>;
     fn set_scene_ids(&mut self, npc_id: String, partner_id: String);
 }
+
+/// 편의 super-trait — 3개 포트를 모두 구현하면 자동으로 MindRepository
+///
+/// `MindService`는 이 트레이트를 바운드로 사용합니다.
+/// 개별 포트만 필요한 곳(예: DTO 변환)에서는 `NpcWorld`만 요구합니다.
+pub trait MindRepository: NpcWorld + EmotionStore + SceneStore {}
+
+/// 3개 포트를 모두 구현한 타입은 자동으로 MindRepository
+impl<T: NpcWorld + EmotionStore + SceneStore> MindRepository for T {}
 
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환
 ///

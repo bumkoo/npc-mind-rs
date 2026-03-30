@@ -3,7 +3,7 @@
 ## 개요
 
 AppraisalEngine은 NPC 심리 엔진의 핵심 도메인 서비스이다.
-**HEXACO 성격**, **상황(Situation)**, 그리고 대상과의 **관계(Relationship)**를 입력받아 OCC 감정(EmotionState)을 생성한다.
+**성격 가중치(AppraisalWeights)**, **상황(Situation)**, 그리고 대상과의 **관계 modifier(RelationshipModifiers)**를 입력받아 OCC 감정(EmotionState)을 생성한다.
 
 현재 엔진은 **"정적 평가(Appraisal) + 동적 자극(Stimulus)"** 아키텍처를 채택하고 있다:
 - `AppraisalEngine`: 상황 진입 시 1회 호출되어 초기 감정 상태를 결정한다.
@@ -16,16 +16,22 @@ AppraisalEngine은 NPC 심리 엔진의 핵심 도메인 서비스이다.
 ### 시그니처
 
 ```rust
-pub fn appraise(
-    personality: &HexacoProfile,
-    situation: &Situation,
-    relationship: &Relationship,
-) -> EmotionState
+pub trait Appraiser {
+    fn appraise<P: AppraisalWeights>(
+        &self,
+        personality: &P,
+        situation: &Situation,
+        dialogue_modifiers: &RelationshipModifiers,
+    ) -> EmotionState;
+}
 ```
+
+- `personality`: 성격 가중치 포트 (`HexacoProfile`이 기본 구현)
+- `dialogue_modifiers`: 대화 상대와의 관계에서 사전 계산된 감정 배율 (intensity, trust, empathy, hostility)
 
 ### 역할
 
-상황(Situation) 내의 각 포커스(Focus)를 분석하고, 성격과 관계 수치를 가중치로 적용하여 감정을 생성한다.
+상황(Situation) 내의 각 포커스(Focus)를 분석하고, 성격과 관계 modifier를 가중치로 적용하여 감정을 생성한다.
 
 1. **Focus 순회**: `Situation`에 포함된 `Option<EventFocus>`, `Option<ActionFocus>`, `Option<ObjectFocus>`를 각각 독립적으로 평가한다.
 2. **복합 감정 감지**: Action과 Event가 동시에 존재할 경우, 이를 결합하여 **Compound 감정**(분노, 감사 등)을 자동으로 생성한다.
@@ -42,13 +48,13 @@ pub fn appraise(
 - `1.0 - (max(0, Score) * W)`: 점수가 높을수록 감정 억제 (예: 인내심에 의한 분노 억제)
 
 ### 2. 타인 복지 감정 보정 (Fortune-of-others)
-사건의 대상이 타인인 경우(`DesirabilityForOther`), **해당 타인과의 개별 친밀도**가 공감/적대 배율로 개입한다.
-- **`empathy_rel_modifier()`**: `(1.0 + closeness × 0.3).max(0.0)`
+사건의 대상이 타인인 경우(`DesirabilityForOther`), **해당 타인과의 관계에서 사전 계산된 `RelationshipModifiers`**가 공감/적대 배율로 개입한다.
+- **`modifiers.empathy_modifier`**: `(1.0 + closeness × 0.3).max(0.0)`
   - **용도**: `HappyFor`(대리기쁨)와 `Pity`(동정)에 적용. 친할수록 타인의 행운에 더 기뻐하고 불행에 더 슬퍼한다.
-- **`hostility_rel_modifier()`**: `(1.0 - closeness × 0.3).max(0.0)`
+- **`modifiers.hostility_modifier`**: `(1.0 - closeness × 0.3).max(0.0)`
   - **용도**: `Resentment`(시기)와 `Gloating`(고소함)에 적용. 친할수록 시기심이 억제되고, 사이가 나쁠수록 타인의 불행을 더 고소해한다.
 
-**주의**: `rel_mul`(emotion_intensity_multiplier)은 **Admiration/Reproach에만** 적용된다. Event 감정이나 Fortune-of-others에는 적용하지 않는다.
+**주의**: `intensity_multiplier`와 `trust_modifier`는 **Admiration/Reproach에만** 적용된다. Event 감정이나 Fortune-of-others에는 적용하지 않는다.
 
 ---
 
@@ -69,17 +75,17 @@ pub fn appraise(
 
 ### 2. appraise_action() (행동 기반)
 행위자의 행동이 얼마나 찬양/비난받을 만한지(`praiseworthiness`) 평가한다.
-**3분기 구조**: `agent_id`와 `relationship`에 따라 분기한다.
-- `agent_id: None` → 자기 행동 → **Pride/Shame** (rel_mul 없음)
-- `agent_id: Some(_)`, `relationship: None` → 대화 상대 → **Admiration/Reproach** (appraise 파라미터의 relationship 사용)
-- `agent_id: Some(_)`, `relationship: Some(rel)` → 제3자 → **Admiration/Reproach** (제3자 relationship 사용)
+**3분기 구조**: `agent_id`와 `modifiers`에 따라 분기한다.
+- `agent_id: None` → 자기 행동 → **Pride/Shame** (modifier 없음)
+- `agent_id: Some(_)`, `modifiers: None` → 대화 상대 → **Admiration/Reproach** (appraise 파라미터의 dialogue_modifiers 사용)
+- `agent_id: Some(_)`, `modifiers: Some(mods)` → 제3자 → **Admiration/Reproach** (제3자 modifiers 사용)
 
 HEXACO 관여:
 - **C (성실성)**: 성실성 평균이 **도덕적/사회적 기준(`standards_amp`)**으로 작용하여, 기준이 높을수록 모든 행동 감정의 강도가 강해진다.
 - **H.modesty (겸손)**: 높을수록 자신의 선행에 대한 자부심(`Pride`)이 절제된다.
 - **A.gentleness (온화함)**: 높을수록 타인의 잘못에 대한 비난(`Reproach`) 감정이 억제된다.
-- **rel_mul**: Admiration/Reproach에만 적용. `(1.0 + closeness × 0.5).max(0.0)`.
-- **trust_mod**: Admiration/Reproach에만 적용. `1.0 + trust × 0.3`.
+- **intensity_multiplier**: Admiration/Reproach에만 적용. `(1.0 + closeness × 0.5).max(0.0)`.
+- **trust_modifier**: Admiration/Reproach에만 적용. `1.0 + trust × 0.3`.
 
 ### 3. appraise_compound() (복합 감정)
 사건의 결과(`Event`)와 원인이 되는 행동(`Action`)이 결합될 때 발생한다.
@@ -95,8 +101,8 @@ HEXACO 관여:
 
 ## 설계 판단 (Design Decisions)
 
-### 1. 왜 Relationship을 인자로 받는가?
-동일한 배신이라도 "지나가는 행인"과 "의형제"의 배신은 NPC가 느끼는 감정의 무게가 완전히 다르기 때문이다. 관계 데이터(`Relationship`)는 단순한 가중치를 넘어 감정의 질적 차이를 만들어낸다.
+### 1. 왜 RelationshipModifiers를 인자로 받는가?
+동일한 배신이라도 "지나가는 행인"과 "의형제"의 배신은 NPC가 느끼는 감정의 무게가 완전히 다르기 때문이다. `Relationship` Aggregate의 내부 구조를 감정 도메인에 노출하지 않기 위해, 필요한 배율만 사전 계산한 `RelationshipModifiers` VO를 사용한다.
 
 ### 2. 정적 평가와 동적 자극의 분리
 `AppraisalEngine`은 상황의 '사실 관계'를 기반으로 첫 감정을 잡는 데 집중하고, 이후 대화의 '뉘앙스'에 따른 변화는 `StimulusEngine`에 위임함으로써 책임 소재를 명확히 분리했다.
@@ -113,3 +119,4 @@ HEXACO 관여:
 | 0.1.0 | 2026-03-23 | 초기 설계안 작성 (Momentum 포함) |
 | 0.2.0 | 2026-03-26 | **현행화**: 실제 구현된 Relationship 기반 시스템으로 전면 수정. appraise_with_context 삭제 및 appraise_compound 추가. |
 | 0.3.0 | 2026-03-28 | Action 3분기(agent_id+relationship), rel_mul Admiration/Reproach 한정, Emotion context, empathy/hostility_rel_modifier 명칭 통일 |
+| 0.4.0 | 2026-03-30 | Appraiser 시그니처 변경: &Relationship → &RelationshipModifiers, &HexacoProfile → &P: AppraisalWeights. Action 3분기 relationship → modifiers |
