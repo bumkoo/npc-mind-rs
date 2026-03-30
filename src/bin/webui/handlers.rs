@@ -11,7 +11,7 @@ use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::personality::Npc;
 
 use npc_mind::application::dto::*;
-use npc_mind::application::mind_service::{MindService, MindServiceError, MindRepository};
+use npc_mind::application::mind_service::{MindService, MindServiceError, NpcWorld, EmotionStore, SceneStore};
 use npc_mind::ports::UtteranceAnalyzer;
 
 use crate::state::*;
@@ -67,7 +67,7 @@ struct AppStateRepository<'a> {
     inner: &'a mut StateInner,
 }
 
-impl<'a> MindRepository for AppStateRepository<'a> {
+impl<'a> NpcWorld for AppStateRepository<'a> {
     fn get_npc(&self, id: &str) -> Option<Npc> {
         self.inner.npcs.get(id).map(|p| p.to_npc())
     }
@@ -78,18 +78,6 @@ impl<'a> MindRepository for AppStateRepository<'a> {
 
     fn get_object_description(&self, object_id: &str) -> Option<String> {
         self.inner.objects.get(object_id).map(|o| o.description.clone())
-    }
-
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.inner.emotions.get(npc_id).cloned()
-    }
-
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        self.inner.emotions.insert(npc_id.to_string(), state);
-    }
-
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        self.inner.emotions.remove(npc_id);
     }
 
     fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
@@ -113,7 +101,23 @@ impl<'a> MindRepository for AppStateRepository<'a> {
             power: rel.power().value(),
         });
     }
+}
 
+impl<'a> EmotionStore for AppStateRepository<'a> {
+    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
+        self.inner.emotions.get(npc_id).cloned()
+    }
+
+    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
+        self.inner.emotions.insert(npc_id.to_string(), state);
+    }
+
+    fn clear_emotion_state(&mut self, npc_id: &str) {
+        self.inner.emotions.remove(npc_id);
+    }
+}
+
+impl<'a> SceneStore for AppStateRepository<'a> {
     fn get_scene_focuses(&self) -> &[SceneFocus] { &self.inner.scene_focuses }
     fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { self.inner.scene_focuses = focuses; }
     fn get_active_focus_id(&self) -> Option<&str> { self.inner.active_focus_id.as_deref() }
@@ -131,16 +135,22 @@ struct ReadOnlyAppStateRepo<'a> {
     inner: &'a StateInner,
 }
 
-impl<'a> MindRepository for ReadOnlyAppStateRepo<'a> {
+impl<'a> NpcWorld for ReadOnlyAppStateRepo<'a> {
     fn get_npc(&self, id: &str) -> Option<Npc> { self.inner.npcs.get(id).map(|p| p.to_npc()) }
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
         self.inner.find_relationship(owner_id, target_id).map(|r| r.to_relationship())
     }
     fn get_object_description(&self, _: &str) -> Option<String> { None }
+    fn save_relationship(&mut self, _: &str, _: &str, _: Relationship) { unreachable!("read-only") }
+}
+
+impl<'a> EmotionStore for ReadOnlyAppStateRepo<'a> {
     fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> { self.inner.emotions.get(npc_id).cloned() }
     fn save_emotion_state(&mut self, _: &str, _: EmotionState) { unreachable!("read-only") }
     fn clear_emotion_state(&mut self, _: &str) { unreachable!("read-only") }
-    fn save_relationship(&mut self, _: &str, _: &str, _: Relationship) { unreachable!("read-only") }
+}
+
+impl<'a> SceneStore for ReadOnlyAppStateRepo<'a> {
     fn get_scene_focuses(&self) -> &[SceneFocus] { &self.inner.scene_focuses }
     fn set_scene_focuses(&mut self, _: Vec<SceneFocus>) { unreachable!("read-only") }
     fn get_active_focus_id(&self) -> Option<&str> { self.inner.active_focus_id.as_deref() }
