@@ -3,7 +3,7 @@ use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
-use crate::domain::tuning::BEAT_MERGE_THRESHOLD;
+use crate::domain::tuning::{BEAT_MERGE_THRESHOLD, BEAT_DEFAULT_SIGNIFICANCE};
 use crate::ports::{Appraiser, StimulusProcessor};
 
 // 저장소 포트 재노출
@@ -203,7 +203,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 npc_id,
                 partner_id,
                 praiseworthiness: Some(0.0),
-                significance: Some(0.5),
+                significance: Some(BEAT_DEFAULT_SIGNIFICANCE),
             };
             let _ = self.update_relationship(&beat_req);
         }

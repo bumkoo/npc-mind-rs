@@ -25,7 +25,11 @@ use super::personality::Score;
 // 갱신 속도 상수
 // ---------------------------------------------------------------------------
 
-use crate::domain::tuning::{TRUST_UPDATE_RATE, CLOSENESS_UPDATE_RATE, SIGNIFICANCE_SCALE};
+use crate::domain::tuning::{
+    TRUST_UPDATE_RATE, CLOSENESS_UPDATE_RATE, SIGNIFICANCE_SCALE,
+    REL_CLOSENESS_INTENSITY_WEIGHT, REL_TRUST_EMOTION_WEIGHT,
+    REL_CLOSENESS_EMPATHY_WEIGHT, REL_CLOSENESS_HOSTILITY_WEIGHT,
+};
 
 // ---------------------------------------------------------------------------
 // Relationship (Value Object)
@@ -107,7 +111,7 @@ impl Relationship {
     /// 감정 반응 배율: closeness 방향에 따라 강화/약화
     /// 가까운 사이(+)면 감정 반응 강화, 적대적(-)이면 감정 절제/경계
     pub fn emotion_intensity_multiplier(&self) -> f32 {
-        (1.0 + self.closeness.value() * 0.5).max(0.0)
+        (1.0 + self.closeness.value() * REL_CLOSENESS_INTENSITY_WEIGHT).max(0.0)
     }
 
     /// 신뢰도 감정 배율: trust 방향에 따라 감정 증폭/약화
@@ -121,7 +125,7 @@ impl Relationship {
     ///
     /// 1.0 ± trust × 0.3 패턴 (engine.rs의 W와 동일)
     pub fn trust_emotion_modifier(&self) -> f32 {
-        1.0 + self.trust.value() * 0.3
+        1.0 + self.trust.value() * REL_TRUST_EMOTION_WEIGHT
     }
 
     /// 공감 관계 배율: 가까울수록 공감(HappyFor/Pity) 증폭
@@ -130,7 +134,7 @@ impl Relationship {
     /// - 중립(0.0) → 1.0
     /// - 원수(-0.8) → 0.76: 멀어서 공감 약함
     pub fn empathy_rel_modifier(&self) -> f32 {
-        (1.0 + self.closeness.value() * 0.3).max(0.0)
+        (1.0 + self.closeness.value() * REL_CLOSENESS_EMPATHY_WEIGHT).max(0.0)
     }
 
     /// 적대 관계 배율: 적대적일수록 적대감(Resentment/Gloating) 증폭
@@ -139,7 +143,7 @@ impl Relationship {
     /// - 중립(0.0) → 1.0
     /// - 원수(-0.8) → 1.24: 멀어서 적대 증폭
     pub fn hostility_rel_modifier(&self) -> f32 {
-        (1.0 - self.closeness.value() * 0.3).max(0.0)
+        (1.0 - self.closeness.value() * REL_CLOSENESS_HOSTILITY_WEIGHT).max(0.0)
     }
 
     // --- 새 인스턴스 반환 (Value Object 패턴) ---
