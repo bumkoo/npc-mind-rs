@@ -34,8 +34,13 @@ impl ActingDirective {
         let dominant = state.dominant();
         let significant = state.significant(EMOTION_THRESHOLD);
 
+        // --- 유의미한 감정 플래그 ---
+        let has_anger = significant.iter().any(|e| e.emotion_type() == EmotionType::Anger);
+        let has_fear = significant.iter().any(|e| e.emotion_type() == EmotionType::Fear);
+        let has_shame = significant.iter().any(|e| e.emotion_type() == EmotionType::Shame);
+        let has_reproach = significant.iter().any(|e| e.emotion_type() == EmotionType::Reproach);
+
         // --- 어조 결정 ---
-        // 성격 차원 평균(avg)의 각 필드는 이제 Score 타입이므로 .value()를 통해 비교합니다.
         let t = TRAIT_THRESHOLD;
         let tone = match dominant.as_ref().map(|e| e.emotion_type()) {
             Some(EmotionType::Anger) => {
@@ -70,15 +75,15 @@ impl ActingDirective {
 
         // --- 태도 결정 ---
         // significant는 이제 Vec<Emotion>이므로 .iter()를 통해 순회하며 조건을 확인합니다.
-        let attitude = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
+        let attitude = if has_anger {
             if avg.a.value() < -t {
                 Attitude::HostileAggressive
             } else {
                 Attitude::SuppressedDiscomfort
             }
-        } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Reproach) {
+        } else if has_reproach {
             Attitude::Judgmental
-        } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
+        } else if has_fear {
             Attitude::GuardedDefensive
         } else if mood > MOOD_THRESHOLD {
             Attitude::FriendlyOpen
@@ -89,7 +94,7 @@ impl ActingDirective {
         };
 
         // --- 행동 경향 결정 ---
-        let behavioral_tendency = if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
+        let behavioral_tendency = if has_anger {
             if avg.c.value() < -t {
                 BehavioralTendency::ImmediateConfrontation
             } else if avg.c.value() > t {
@@ -97,13 +102,13 @@ impl ActingDirective {
             } else {
                 BehavioralTendency::ExpressAndObserve
             }
-        } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
+        } else if has_fear {
             if avg.e.value() < -t {
                 BehavioralTendency::BraveConfrontation
             } else {
                 BehavioralTendency::SeekSafety
             }
-        } else if significant.iter().any(|e| e.emotion_type() == EmotionType::Shame) {
+        } else if has_shame {
             BehavioralTendency::AvoidOrDeflect
         } else if mood > MOOD_THRESHOLD {
             BehavioralTendency::ActiveCooperation
@@ -117,13 +122,13 @@ impl ActingDirective {
         if mood < -MOOD_THRESHOLD {
             restrictions.push(Restriction::NoHumorOrLightTone);
         }
-        if significant.iter().any(|e| e.emotion_type() == EmotionType::Anger) {
+        if has_anger {
             restrictions.push(Restriction::NoFriendliness);
         }
-        if significant.iter().any(|e| e.emotion_type() == EmotionType::Shame) {
+        if has_shame {
             restrictions.push(Restriction::NoSelfJustification);
         }
-        if significant.iter().any(|e| e.emotion_type() == EmotionType::Fear) {
+        if has_fear {
             restrictions.push(Restriction::NoBravado);
         }
         if avg.h.value() > HONESTY_RESTRICTION_THRESHOLD {
