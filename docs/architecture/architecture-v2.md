@@ -60,8 +60,12 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - **관성**: `inertia = max(1.0 - intensity, MIN_INERTIA)` — intensity=1.0이어도 최소 반응 보장.
 - **새 감정 생성 안 함**: 기존 감정의 강도만 조정. 새 감정은 appraise의 역할.
 
-### 2.6. Scene Focus 시스템
-장면(Scene) 내에서 자동 Beat 전환을 관리한다.
+### 2.6. Scene 도메인 애그리거트
+`Scene`은 장면 내 Focus/Beat 전환 로직을 캡슐화하는 도메인 애그리거트 루트이다.
+- **Scene**: 애그리거트 루트 (npc_id, partner_id, focuses, active_focus_id). `SceneStore` 포트를 통해 통째로 저장/조회/삭제.
+  - `check_trigger(state)` — 대기 중 Focus의 감정 조건 체크, 충족된 Focus 반환.
+  - `set_active_focus(focus_id)` — 활성 Focus 설정.
+  - `initial_focus()` — Initial 트리거를 가진 Focus 검색.
 - **SceneFocus**: Focus 옵션 (id, description, trigger, event/action/object).
 - **FocusTrigger**: Initial (즉시 적용) 또는 Conditions (감정 상태 조건, `OR[AND[...]]` 구조).
 - **merge_from_beat**: Beat 전환 시 이전 감정과 새 감정 합치기 (같은 감정은 max, threshold 미만 소멸).
@@ -89,7 +93,7 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 구분 | 컴포넌트 | 역할 |
 |------|----------|------|
 | **도메인** | `AppraisalEngine`, `StimulusEngine` | 순수 심리 연산 (I/O 없음) |
-| **포트** | `MindRepository`, `Appraiser`, `StimulusProcessor`, `GuideFormatter`, `TextEmbedder` | 외부 세계와의 인터페이스 정의 (모두 `ports.rs`에 위치) |
+| **포트** | `MindRepository`(`NpcWorld`+`EmotionStore`+`SceneStore`), `Appraiser`, `StimulusProcessor`, `GuideFormatter`, `TextEmbedder` | 외부 세계와의 인터페이스 정의 (모두 `ports.rs`에 위치). `SceneStore`는 Scene 애그리거트 단위로 `get_scene`/`save_scene`/`clear_scene` 제공 |
 | **어댑터** | `OrtEmbedder`, `AppStateRepository`, `LocaleFormatter`, `KoreanFormatter` | 구체적인 기술 구현 (ONNX, InMemory, TOML 등) |
 
 ---
@@ -118,6 +122,8 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 - [x] NpcId newtype 제거: String으로 통일
 - [x] AppraisalEngineImpl 트레이트 제거: 단순 함수로 대체
 - [x] directive 감정 조회 반복 제거 + significant() 불필요 할당 제거
+- [x] Scene 도메인 애그리거트 캡슐화: check_trigger/set_active_focus/initial_focus 메서드 이동, SceneStore 포트 단순화 (get_scene/save_scene/clear_scene)
+- [x] Scene 독립 단위 테스트 (scene_test.rs) 추가
 
 ### 예정
 - [ ] PAD 앵커 동적 관리 (앵커 편집 + 재임베딩)
@@ -135,3 +141,4 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 1.1.0 | 2026-03-29 | Application 계층 도입, AppraisalEngine 모듈화, TestContext 인프라 구축 반영 |
 | 2.0.0 | 2026-03-30 | Scene Focus 시스템, Beat 전환, stimulus 관성, merge_from_beat, significance, PowerLevel 5단계, tuning.rs 중앙 관리 |
 | 2.1.0 | 2026-03-30 | 플러거블 포맷터, 다국어 로케일, 포트 주입, Scene/Beat MindService 이동, 코드 정리 |
+| 2.2.0 | 2026-03-31 | Scene 도메인 애그리거트 캡슐화, SceneStore 포트 단순화, Scene 독립 단위 테스트 |

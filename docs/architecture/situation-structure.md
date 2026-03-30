@@ -110,12 +110,25 @@ let state = AppraisalEngine.appraise(&personality, &situation, &relationship.mod
 
 ---
 
-## SceneFocus — Beat 전환을 위한 Focus 옵션 (v2.0 추가)
+## Scene 애그리거트와 SceneFocus (v2.0 추가, v2.2 캡슐화)
 
+`Scene`은 장면 내 Focus/Beat 전환 로직을 캡슐화하는 **도메인 애그리거트 루트**이다.
 `SceneFocus`는 Situation의 확장으로, 장면(Scene) 내에서 **자동 Beat 전환**을 지원한다.
-게임이 Scene 시작 시 여러 Focus 옵션을 제공하면, 엔진이 stimulus 처리 중 감정 조건을 평가하여 Beat 전환을 판단한다.
 
 ```rust
+pub struct Scene {
+    npc_id: String,                    // 대화 주체 NPC
+    partner_id: String,                // 대화 상대
+    focuses: Vec<SceneFocus>,          // Focus 옵션 목록
+    active_focus_id: Option<String>,   // 현재 활성 Focus
+}
+
+impl Scene {
+    pub fn check_trigger(&self, state: &EmotionState) -> Option<&SceneFocus>;
+    pub fn set_active_focus(&mut self, focus_id: String);
+    pub fn initial_focus(&self) -> Option<&SceneFocus>;
+}
+
 pub struct SceneFocus {
     pub id: String,                    // Focus 식별자
     pub description: String,           // LLM 가이드의 [상황] 섹션에 사용
@@ -136,7 +149,14 @@ pub struct EmotionCondition {
 }
 ```
 
+### 저장소 포트
+`SceneStore` 포트가 Scene 애그리거트 단위로 CRUD를 제공한다:
+- `get_scene() -> Option<Scene>`
+- `save_scene(scene: Scene)`
+- `clear_scene()`
+
 ### 전환 흐름
 1. stimulus 호출 → 감정 강도 조정 (관성 적용)
-2. 대기 중 Focus의 trigger 조건 체크 (목록 순서 = 우선순위)
-3. 조건 충족 시 → after_beat (관계 갱신) → 새 Focus로 appraise → merge_from_beat
+2. `scene.check_trigger(&state)` — 대기 중 Focus의 조건 체크 (목록 순서 = 우선순위)
+3. 조건 충족 시 → `scene.set_active_focus()` → after_beat (관계 갱신) → 새 Focus로 appraise → merge_from_beat
+4. `repo.save_scene(scene)` — 변경된 Scene 저장

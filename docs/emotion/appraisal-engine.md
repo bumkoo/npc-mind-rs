@@ -6,8 +6,8 @@ AppraisalEngine은 NPC 심리 엔진의 핵심 도메인 서비스이다.
 **성격 가중치(AppraisalWeights)**, **상황(Situation)**, 그리고 대상과의 **관계 modifier(RelationshipModifiers)**를 입력받아 OCC 감정(EmotionState)을 생성한다.
 
 현재 엔진은 **"정적 평가(Appraisal) + 동적 자극(Stimulus)"** 아키텍처를 채택하고 있다:
-- `AppraisalEngine`: 상황 진입 시 1회 호출되어 초기 감정 상태를 결정한다.
-- `StimulusEngine`: 대화 진행 중 대사 자극에 따라 감정 강도를 실시간으로 변동시킨다.
+- `AppraisalEngine`: 상황 진입 시 1회 호출되어 초기 감정 상태를 결정한다. Beat 전환 시에도 새 Focus에 대해 재호출된다.
+- `StimulusEngine`: 대화 진행 중 대사 자극에 따라 감정 강도를 실시간으로 변동시킨다. Scene 애그리거트의 `check_trigger()` 결과에 따라 Beat 전환을 트리거할 수 있다.
 
 ---
 
@@ -120,3 +120,4 @@ HEXACO 관여:
 | 0.2.0 | 2026-03-26 | **현행화**: 실제 구현된 Relationship 기반 시스템으로 전면 수정. appraise_with_context 삭제 및 appraise_compound 추가. |
 | 0.3.0 | 2026-03-28 | Action 3분기(agent_id+relationship), rel_mul Admiration/Reproach 한정, Emotion context, empathy/hostility_rel_modifier 명칭 통일 |
 | 0.4.0 | 2026-03-30 | Appraiser 시그니처 변경: &Relationship → &RelationshipModifiers, &HexacoProfile → &P: AppraisalWeights. Action 3분기 relationship → modifiers |
+| 0.4.1 | 2026-03-31 | 문서 현행화: Scene 애그리거트 연동 설명 보강 (AppraisalEngine 로직 자체는 변경 없음) |
