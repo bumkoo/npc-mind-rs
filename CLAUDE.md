@@ -115,9 +115,13 @@ docs/
 
 | 포트 | 용도 | 구현체 |
 |------|------|--------|
-| `MindRepository` | NPC/관계/감정/Scene 저장소 | 라이브러리 사용자가 구현 |
+| `NpcWorld` | NPC/관계/오브젝트 조회 및 관계 갱신 | 라이브러리 사용자가 구현 |
+| `EmotionStore` | NPC별 감정 상태 CRUD | 라이브러리 사용자가 구현 |
+| `SceneStore` | Scene/Focus/Beat 상태 관리 | 라이브러리 사용자가 구현 |
+| `MindRepository` | 위 3개 포트 통합 (super-trait) | 자동 blanket impl |
 | `Appraiser` | 감정 평가 엔진 | `AppraisalEngine` (기본) |
 | `StimulusProcessor` | 자극 처리 엔진 | `StimulusEngine` (기본) |
+| `PersonalityProfile` | 성격 차원 평균 제공 (가이드용) | `HexacoProfile` |
 | `AppraisalWeights` | 성격 → 감정 가중치 | `HexacoProfile` |
 | `StimulusWeights` | 성격 → 자극 수용도 | `HexacoProfile` |
 | `GuideFormatter` | 가이드 → 텍스트/JSON | `LocaleFormatter`, `KoreanFormatter` |
