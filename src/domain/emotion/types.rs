@@ -248,7 +248,7 @@ impl EmotionState {
     /// 외부와의 호환성을 위해 제공됩니다.
     pub fn emotions(&self) -> Vec<Emotion> {
         self.intensities.iter().enumerate()
-            .filter(|(_, &i)| i > 0.0)
+            .filter(|&(_, &i)| i > 0.0)
             .filter_map(|(idx, &i)| {
                 EmotionType::from_index(idx).map(|t| {
                     match &self.contexts[idx] {
@@ -290,7 +290,7 @@ impl EmotionState {
     /// threshold 이상의 유의미한 감정들만 반환 (강도 내림차순)
     pub fn significant(&self, threshold: f32) -> Vec<Emotion> {
         let mut result: Vec<Emotion> = self.intensities.iter().enumerate()
-            .filter(|(_, &i)| i >= threshold)
+            .filter(|&(_, &i)| i >= threshold)
             .filter_map(|(idx, &i)| {
                 EmotionType::from_index(idx).map(|t| {
                     match &self.contexts[idx] {
