@@ -3,7 +3,7 @@
 //! 도메인 핵심 로직의 추상화 경계를 정의한다.
 //! 외부 어댑터는 이 트레이트를 구현하여 도메인과 연결된다.
 
-use crate::domain::emotion::{EmotionState, Situation, SceneFocus, RelationshipModifiers};
+use crate::domain::emotion::{EmotionState, Situation, RelationshipModifiers, Scene};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::{Npc, DimensionAverages};
@@ -158,13 +158,12 @@ pub trait EmotionStore {
 ///
 /// Scene 시작 시 Focus 목록을 등록하고, 대화 진행 중 활성 Focus를 관리합니다.
 pub trait SceneStore {
-    fn get_scene_focuses(&self) -> &[SceneFocus];
-    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>);
-    fn get_active_focus_id(&self) -> Option<&str>;
-    fn set_active_focus_id(&mut self, id: Option<String>);
-    fn get_scene_npc_id(&self) -> Option<&str>;
-    fn get_scene_partner_id(&self) -> Option<&str>;
-    fn set_scene_ids(&mut self, npc_id: String, partner_id: String);
+    /// 현재 활성 Scene 정보를 조회합니다.
+    fn get_scene(&self) -> Option<Scene>;
+    /// Scene 정보를 저장합니다 (생성 또는 갱신).
+    fn save_scene(&mut self, scene: Scene);
+    /// Scene 정보를 삭제합니다 (대화 종료 시).
+    fn clear_scene(&mut self);
 }
 
 /// 편의 super-trait — 3개 포트를 모두 구현하면 자동으로 MindRepository

@@ -9,13 +9,9 @@
 
 ## 용어 정의
 
-| 용어 | 영문 | 정의 | 엔진 호출 |
-|------|------|------|----------|
-| **장면** | Scene | 하나의 연속된 대화 단위. 시작과 끝이 있음. | `after_dialogue()` 1회 |
-| **비트** | Beat | 장면 안에서 감정 흐름이 전환되는 시점. (각본 용어) | `appraise()` 1회 |
-| **대사** | Utterance | 실제 캐릭터가 말하는 한 줄의 대사. | `stimulus()` 입력 |
+> 용어(Scene, Beat, Utterance)의 정의와 엔진 호출 매핑은 [CLAUDE.md 용어 정의](../../CLAUDE.md#용어-정의) 참조.
 
-**관계:**
+**구조 관계:**
 ```
 도서 (허클베리 핀)
  └── 챕터 (Ch.15)
@@ -57,6 +53,7 @@
 │       ├── 가중치 문제    → 엔진 코드 수정 → ③ 재실행         │
 │       ├── PAD 앵커 문제  → 앵커 문장 개선 → ③ 재실행         │
 │       ├── 가이드 문제    → directive 로직 수정 → ③ 재실행    │
+│       ├── 도구 문제      → Mind Studio 기능 개선 → ③ 재실행  │
 │       └── 만족          → ⑥ 저장                            │
 │                                                             │
 │       ▼                                                     │
@@ -120,7 +117,7 @@
 
 **상황 설계 프로세스**:
 
-**방법 A: 수동 Beat 실행 (기존 방식)**
+**방법 A: 수동 Beat 실행**
 1. **Beat 분할**: 장면을 3-5개 Beat(감정 전환 시점)으로 분할
 2. **각 Beat마다 Situation 구성**:
    - `description`: 전체 상황 맥락 (Compound 감정의 context)
@@ -132,15 +129,24 @@
    - `action.praiseworthiness`: -1.0~1.0
    - `object`: 대상 매력도 (필요시)
 3. **감정 평가**: Claude가 `POST /api/appraise` 호출
-4. **PAD 자극 적용**: 대사의 감정 톤을 PAD로 변환하여 `POST /api/stimulus`
+4. **PAD 자극 적용**: 대사 PAD를 `POST /api/stimulus`에 전달 (아래 "대사 PAD 측정" 참조)
 5. **대화 종료**: `POST /api/after-dialogue`로 관계 갱신
 
-**방법 B: Scene Focus 자동 전환 (신규)**
+**방법 B: Scene Focus 자동 전환**
 1. **시나리오 JSON에 scene 필드 작성**: Focus 옵션 목록 + trigger 조건 정의
-2. **시나리오 로드**: `/api/load` → scene 필드 자동 파싱 → Initial Focus 자동 appraise
-3. **stimulus 반복**: 상대 대사 PAD를 반복 적용 → 엔진이 감정 조건 체크 → 자동 Beat 전환
-4. **결과 관찰**: WebUI Scene Focus 패널에서 활성/대기 Focus 상태 + Beat 전환 배너 확인
+2. **시나리오 로드**: `POST /api/load` → scene 필드 파싱 → `Scene` 애그리거트 생성 → `scene.initial_focus()` 자동 appraise
+3. **stimulus 반복**: 대사 PAD를 반복 적용 → `scene.check_trigger(state)` → 조건 충족 시 자동 Beat 전환
+4. **상태 관찰**: `GET /api/scene-info`로 활성/대기 Focus 상태 확인. WebUI에서 Beat 전환 배너 표시
 5. **대화 종료**: `POST /api/after-dialogue`로 최종 관계 갱신
+
+**대사 PAD 측정 (stimulus 입력값 결정)**:
+
+| 모드 | 조건 | 흐름 |
+|------|------|------|
+| **자동 분석** | `--features embed` 빌드 | 대사 텍스트 → `POST /api/analyze-utterance` → BGE-M3 임베딩 → 앵커 비교 → PAD(P,A,D) 자동 산출 → 슬라이더 반영 |
+| **수동 입력** | embed feature 없음 | 대사의 감정 톤을 직접 판단하여 PAD 슬라이더 수동 조정 |
+
+자동 분석 결과가 직관과 다르면 → ⑤ PAD 앵커 개선으로 분기.
 
 
 ---
@@ -151,7 +157,7 @@
 **입력**: 감정 상태, 프롬프트, trace
 **산출물**: 평가 노트
 
-**검증 관점 5가지**:
+**검증 관점**:
 
 | 관점 | 질문 | 확인 방법 |
 |------|------|----------|
@@ -160,7 +166,8 @@
 | **성격 반영** | 성격이 감정에 영향을 미쳤는가? | trace에서 weight 확인 |
 | **프롬프트 품질** | LLM이 이 프롬프트로 좋은 대사를 만들 수 있는가? | context가 구체적인가, 연기 지시가 일관적인가 |
 | **관계 변동** | 대화 후 관계 변동이 합리적인가? | before/after 비교 |
-| **Beat 전환** | 전환 시점이 자연스러운가? 감정 합치기 결과가 적절한가? | trigger 조건 임계값, merge 후 잔여 감정 확인 |
+| **Beat 전환** | 전환 시점이 자연스러운가? 감정 합치기 결과가 적절한가? | `GET /api/scene-info`로 활성/대기 Focus 확인, trigger 임계값 + merge 후 잔여 감정 |
+| **대사 PAD 정확도** | 대사의 감정 톤이 올바르게 추출되었는가? | `POST /api/analyze-utterance` 결과 PAD를 직관과 비교. 예: 분노 대사가 P=+0.2면 앵커 문제 |
 
 ---
 
@@ -185,16 +192,51 @@
 - 예: "Gratitude가 안 나옴 → Compound 감정 생성 조건 검토"
 
 #### C. PAD 앵커 문제 — "대사의 감정 톤이 잘못 추출됨"
-- 증상: PAD 자극 적용 후 감정 변동 방향이 이상함
-- 대응: `pad.rs`의 앵커 문장 개선 또는 추가
-- 도구: 앵커 문장 수정 → 재임베딩 → ③ 재실행
-- 예: "무협 어투의 분노 대사가 P=+0.2로 나옴 → 부정 앵커에 무협 표현 추가"
+- 증상: `POST /api/analyze-utterance`로 대사를 분석했을 때 PAD 값이 직관과 불일치
+- 진단:
+  1. 문제 대사를 `analyze-utterance`로 PAD 측정
+  2. 예상 PAD와 실제 PAD를 비교 (예: 분노 대사인데 P=+0.2)
+  3. 원인 추정: 해당 감정 영역의 앵커 문장이 부족하거나 도메인(무협/사극 등) 미커버
+- 앵커 개선 루프:
+  1. `pad.rs`의 앵커 문장 수정/추가 (도메인 특화 표현 확장)
+  2. `cargo build --features embed` → 서버 재시작 (앵커 재임베딩)
+  3. 동일 대사 `analyze-utterance` 재분석 → before/after PAD 비교
+  4. 개선될 때까지 1-3 반복 → 만족 시 ③ 재실행
+- 도메인별 앵커 전략:
+  - **무협 어투**: "이 대역 무도한 놈!" 같은 무협 특유 분노/경멸 표현
+  - **사극 어투**: "전하, 통촉하여 주시옵소서" 같은 격식체 비탄/호소 표현
+  - **일상 어투**: 기본 앵커로 커버 가능
+- 예: "무협 어투의 분노 대사가 P=+0.2로 나옴 → 부정 앵커에 무협 분노 표현 추가 → P=-0.5로 개선 확인"
 
 #### D. 가이드/디렉티브 문제 — "감정은 맞는데 프롬프트가 어색해"
 - 증상: 감정 결과는 적절한데 어조/태도/행동 지시가 부자연스러움
 - 대응: `directive.rs`의 분기 로직 또는 `ko.toml`의 라벨 수정
 - 도구: 코드 수정 → ③ 재실행
 - 예: "분노 상태인데 '편안하고 온화한 어조'가 나옴 → Tone 분기 임계값 조정"
+
+#### E. Mind Studio 도구 문제 — "결과는 맞는데 검증/분석이 불편해"
+- 증상: 엔진 결과 자체는 적절하지만, Mind Studio의 시각화/워크플로우가 검증을 어렵게 만듦
+- 대응: Mind Studio 프론트엔드 또는 핸들러 개선
+- 도구: `src/bin/mind-studio/` 코드 수정 → 서버 재시작 → ③ 재실행
+
+**현재 파악된 개선 후보**:
+
+| 영역 | 현재 한계 | 개선 방향 | 우선순위 |
+|------|----------|----------|---------|
+| **감정 타임라인** | 턴 히스토리가 raw JSON으로만 표시 | 턴별 감정 변화를 시각적 그래프/차트로 표시 | 높음 |
+| **히스토리 비교** | 턴 간 before/after 감정 차이를 직접 비교 불가 | 턴 간 감정 diff 요약 표시 | 높음 |
+| **대사 PAD 일괄 분석** | `analyze-utterance`가 단건만 지원 | 대사 목록 일괄 PAD 분석 + 비교표 생성 | 높음 |
+| **프롬프트 맥락** | 어떤 감정이 프롬프트의 어떤 부분을 결정했는지 불투명 | 감정→프롬프트 매핑 하이라이트 | 중간 |
+| **Scene Focus 편집** | UI에서 Focus 생성/수정 불가 (JSON 직접 편집 필요) | Focus 편집 모달 추가 | 중간 |
+| **관계 시각화** | 관계가 텍스트 리스트로만 표시 | 관계 매트릭스 또는 네트워크 뷰 | 낮음 |
+| **시나리오 에디터** | scenario.json을 외부에서 직접 편집해야 함 | UI 내 시나리오 편집기 | 낮음 |
+
+**개선 루프**:
+1. 협업 중 도구 불편 사항 식별 → Bekay가 구체적 불편 사례 공유
+2. Claude가 개선 방안 제안 + 구현 난이도 추정
+3. 합의 → Claude가 Mind Studio 코드 수정 (`handlers.rs`, `static/index.html`)
+4. `cargo run --features mind-studio` → 서버 재시작 → 브라우저 새로고침 → 개선 확인
+5. ③ 재실행하여 개선된 도구로 검증 반복
 
 ---
 
@@ -205,7 +247,7 @@
 **산출물**: session 폴더
 
 **저장 내용**:
-- `scenario.json`: NPC + 관계 + turn_history (API로 자동 기록됨)
+- `scenario.json`: NPC + 관계 + turn_history + scene (Focus 옵션/trigger 조건 포함, API로 자동 기록됨)
 - `test_report.md`: 상세 테스트 레포트
 - `evaluation.md`: 평가 요약 + 개선 이력
 - `turn{N}_{label}.txt`: 턴별 프롬프트
@@ -220,27 +262,36 @@
 
 ## 프로젝트 발전 로드맵
 
-### Phase 1: 기초 검증 (현재)
+### Phase 1: 기초 검증 (완료)
 **목표**: 엔진이 기본적으로 작동하는지 확인
 **장면**: 잘 알려진 문학 작품 (허클베리핀 등)
 **초점**: 감정 유형 선택 정확성, 성격 반영 여부
+**달성**: 모든 기초 이슈 해결 — Compound 감정, significance, PowerLevel, Scene Focus 시스템
 
-현재 발견된 이슈:
-- ~~Gratitude 미생성 (Compound 감정 조건)~~ ✅ 해결 — HopeFulfilled/FearConfirmed fall-through
-- ~~관계 변동 계수 과소~~ ✅ 해결 — significance 파라미터 추가 (배율 1x~4x)
-- ~~power 라벨 오류~~ ✅ 해결 — 5단계 확장 + 행동 지시 포함
-- ~~턴 간 감정 누적 없음~~ ✅ 해결 — Scene Focus 시스템 + Beat 전환 + stimulus 관성
-
-### Phase 2: 감정 정밀도 (현재)
+### Phase 2: 감정 정밀도 (완료)
 **목표**: 감정 강도와 복합 감정의 정밀 튜닝 + Scene/Beat 시스템 검증
-**장면**: Ch.15 안개 (신뢰 파열/회복 — 완료), Ch.31 도덕적 위기
+**장면**: Ch.15 안개 (신뢰 파열/회복), Ch.31 도덕적 위기
 **초점**: Beat 전환 자동 판단, stimulus 관성 밸런스, merge_from_beat 동작 검증
-**달성**: Scene Focus 시스템 구현, Ch.15에서 5회 stimulus → 자동 Beat 전환 검증 완료
+**달성**: Scene Focus 시스템 구현 + Scene 애그리거트 캡슐화, Ch.15에서 5회 stimulus → 자동 Beat 전환 검증 완료
 
 ### Phase 3: PAD 앵커 최적화
 **목표**: 대사 텍스트에서 정확한 감정 톤 추출
 **장면**: 무협 도메인 대사 (청강만리, 와호장룡 스타일)
 **초점**: 한국어/무협 어투 앵커 확장, before/after 비교
+
+**워크플로우**:
+1. **기준 대사 수집**: 도메인별 대표 대사 목록 작성 (분노, 비탄, 기쁨, 경멸 등 감정별)
+2. **현재 PAD 측정**: `POST /api/analyze-utterance`로 각 대사의 PAD 자동 산출
+3. **직관 비교표 작성**: 대사 | 예상 PAD | 실제 PAD | 차이
+4. **앵커 개선**: 차이가 큰 감정 영역의 앵커 문장 추가/수정 (`pad.rs`)
+5. **재빌드**: `cargo build --features embed` → 서버 재시작 (앵커 재임베딩)
+6. **A/B 비교**: 동일 대사 재분석 → before/after PAD 비교 → 개선 효과 측정
+7. **반복**: 4-6을 수렴할 때까지 반복
+
+**도메인별 앵커 전략**:
+- 무협: 분노/경멸/호소 등 격렬한 감정 표현 중심
+- 사극: 격식체 비탄/충격/간곡함 중심
+- 일상: 기본 앵커로 대부분 커버, 은어/속어 보강
 
 ### Phase 4: 가이드 품질
 **목표**: LLM이 받아서 좋은 대사를 만들 수 있는 프롬프트
@@ -272,16 +323,16 @@ data/{도서명}/{장면명}/session_{NNN}/
 
 ## 실전 예시: 협업 대화 패턴
 
-### Bekay → Claude 요청 예시
+### 예시 1: 수동 Beat (방법 A)
 
+**Bekay → Claude**:
 ```
 "허클베리핀 Ch.15 안개 장면으로 테스트해줘.
 첨부 파일 참고해서 인물 설정하고, 짐이 헉의 거짓말에 화내는 장면부터
 사과 받는 장면까지 3턴으로 나눠서 돌려줘."
 ```
 
-### Claude 작업 순서
-
+**Claude 작업 순서**:
 1. 첨부 자료에서 Ch.15 원문 추출
 2. Jim/Huck 프로필이 이미 있으면 로드, 없으면 생성
 3. 관계를 Ch.8 이후 상태로 설정 (closeness=0.146, trust=0.180)
@@ -289,20 +340,79 @@ data/{도서명}/{장면명}/session_{NNN}/
 5. 각 턴마다 `POST /api/appraise` + 결과 분석
 6. test_report.md 작성 + session 저장
 
-### Bekay → Claude 개선 요청 예시
+### 예시 2: Scene Focus 자동 전환 + 대사 PAD 분석 (방법 B)
 
+**Bekay → Claude**:
+```
+"Ch.15 시나리오 JSON에 scene 필드 추가해서 Focus 자동 전환 테스트해줘.
+거짓말 발각(Initial) → 사과 수용(Anger < 0.4) 두 Focus로 설정하고,
+대사 PAD는 embed 모델로 자동 분석해줘."
+```
+
+**Claude 작업 순서**:
+1. 시나리오 JSON에 `scene` 필드 작성 (Focus 2개 + trigger 조건)
+2. `POST /api/load`로 시나리오 로드 → Initial Focus 자동 appraise
+3. 대사 "네 이놈! 날 걱정하며 울었는데 그걸 장난감으로 삼다니!" → `POST /api/analyze-utterance` → PAD 확인
+4. 산출된 PAD를 `POST /api/stimulus`에 반영 → 감정 변동 + Beat 전환 체크
+5. `GET /api/scene-info`로 Focus 상태 확인 → 자동 전환 여부 관찰
+6. 대사 반복 → Anger가 0.4 아래로 떨어지면 "사과 수용" Focus로 자동 전환
+7. `POST /api/after-dialogue`로 관계 갱신 + session 저장
+
+### 예시 3: PAD 앵커 개선
+
+**Bekay → Claude**:
+```
+"무협 어투 대사 PAD가 이상해. '이 대역 무도한 놈!'이 P=+0.1로 나오는데
+분노 대사니까 P가 마이너스여야 하잖아. 앵커 개선해보자."
+```
+
+**Claude 분석 → 대응**:
+1. `POST /api/analyze-utterance`로 문제 대사 PAD 측정 → P=+0.1, A=+0.6, D=+0.4
+2. 원인: 무협 어투의 분노 표현이 앵커에 없어서 "강한 명령/지배" 쪽으로 매핑됨
+3. `pad.rs`에 무협 분노 앵커 추가: "이 대역 무도한 놈!", "네놈의 만행을 용서치 않겠다" 등
+4. `cargo build --features embed` → 서버 재시작
+5. 동일 대사 재분석 → P=-0.5, A=+0.7, D=+0.3 (개선 확인)
+6. 다른 무협 분노 대사로도 검증 → session 저장
+
+### 예시 4: 감정 강도 개선 요청
+
+**Bekay → Claude**:
 ```
 "Turn 2에서 짐의 Anger가 0.3인데 너무 약한 것 같아.
 원작에서 짐은 이 장면에서 진심으로 상처받아서 화내거든.
 성격 문제인지 가중치 문제인지 같이 봐보자."
 ```
 
-### Claude 분석 → 대응
-
+**Claude 분석 → 대응**:
 1. trace 확인: `Anger: comp1=Reproach(0.X), comp2=Distress(0.Y), result=0.3`
 2. 원인 분석: "Jim의 A(원만성)가 너무 높아서 patience가 Anger를 억제하고 있음"
-3. 대안 제시: 
+3. 대안 제시:
    - A: patience를 0.7→0.5로 낮추고 재실행
    - B: Compound 감정의 patience 브레이크 계수를 조정
 4. Bekay가 선택 → 수정 → session_002로 재실행 → 비교
+
+---
+
+## Mind Studio API 참고표
+
+워크플로우 각 단계에서 사용하는 주요 엔드포인트:
+
+| 단계 | 엔드포인트 | 설명 |
+|------|-----------|------|
+| **② 프로파일** | `POST /api/npcs` | NPC 생성/수정 |
+| | `POST /api/relationships` | 관계 생성/수정 |
+| | `POST /api/objects` | 오브젝트 생성/수정 |
+| **③ 감정 평가** | `POST /api/appraise` | 상황 평가 → 감정 생성 |
+| | `POST /api/stimulus` | PAD 자극 적용 + Beat 전환 체크 |
+| | `POST /api/analyze-utterance` | 대사 텍스트 → PAD 자동 산출 (embed) |
+| | `POST /api/scene` | Scene 시작 (Focus 등록 + Initial appraise) |
+| | `POST /api/guide` | 현재 감정에서 가이드 재생성 |
+| **④ 결과 검증** | `GET /api/scene-info` | 활성/대기 Focus 상태 조회 |
+| | `GET /api/history` | 턴별 히스토리 조회 |
+| | `GET /api/situation` | 현재 상황 폼 상태 조회 |
+| **⑥ 저장** | `POST /api/save` | 전체 상태 JSON 저장 |
+| | `POST /api/load` | 시나리오 로드 (scene 필드 자동 처리) |
+| | `POST /api/after-dialogue` | 대화 종료 + 관계 갱신 |
+| **조회** | `GET /api/scenarios` | 시나리오 목록 |
+| | `GET /api/scenario-meta` | 현재 시나리오 메타데이터 |
 

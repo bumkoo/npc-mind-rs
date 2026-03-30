@@ -10,11 +10,13 @@
 
 mod types;
 mod situation;
+mod scene;
 mod appraisal;
 mod engine;
 mod stimulus;
 
 pub use types::*;
 pub use situation::*;
+pub use scene::*;
 pub use engine::*;
 pub use stimulus::*;

@@ -64,14 +64,14 @@ As dialogue progresses, `apply_stimulus()` adjusts emotional intensity turn-by-t
 Every scene evaluation is weighted by the NPC's HEXACO profile. A patient character (high `A.patience`) suppresses anger that an impatient one would explode with. A humble character (high `H.modesty`) feels less pride after the same achievement.
 
 ### 🎬 Scene & Beat System
-Define a scene as a sequence of **beats** — emotional turning points. The engine can automatically transition between beats based on emotional conditions:
+Define a scene as a sequence of **beats** — emotional turning points. The `Scene` aggregate manages focus options and automatically transitions between beats based on emotional conditions:
 
 ```json
 "trigger": [
   [{ "emotion": "Fear", "above": 0.6 }]
 ]
 ```
-When the NPC's Fear exceeds 0.6, the scene shifts to the next beat.
+When the NPC's Fear exceeds 0.6, `scene.check_trigger()` detects it and the engine shifts to the next beat — re-evaluating emotions and merging them with the previous state.
 
 ### 🗣️ Real-Time Dialogue Stimulus
 Each line of dialogue is analyzed as a PAD vector (Pleasure / Arousal / Dominance) and applied to the current emotional state. A comforting word from a superior has more impact than the same words from a peer.
@@ -143,6 +143,7 @@ Given a scene where a close ally has betrayed the NPC:
 
 ```rust
 use npc_mind::{FormattedMindService, AppraiseRequest};
+use npc_mind::application::dto::{SituationInput, EventInput, ActionInput};
 
 // 1. Create service with Korean locale
 let mut service = FormattedMindService::new(my_repository, "ko")?;
@@ -165,7 +166,7 @@ let response = service.appraise(AppraiseRequest {
         }),
         object: None,
     },
-}, || {}, Vec::new)?;
+}, || {}, || vec![])?;
 
 // 3. Send response.prompt to your LLM
 println!("{}", response.prompt);
@@ -192,6 +193,9 @@ A browser-based simulator for designing and testing NPC personalities and scenes
 ```bash
 cargo run --features mind-studio --bin npc-mind-studio
 # Opens at http://127.0.0.1:3000
+
+# With auto dialogue → PAD analysis (requires BGE-M3 model)
+cargo run --features mind-studio,embed --bin npc-mind-studio
 ```
 
 **What you can do:**
@@ -200,6 +204,7 @@ cargo run --features mind-studio --bin npc-mind-studio
 - Set up scenes and beats with emotion trigger conditions
 - Run emotion evaluations and inspect the generated prompt
 - Apply PAD stimuli turn-by-turn and watch emotional state shift
+- Auto-analyze dialogue text to PAD values (with `embed` feature)
 - Save/load scenario files for iterative testing
 
 ![Mind Studio showing NPC emotion bars and generated prompt](docs/assests/mind-studio-preview.png)
@@ -215,10 +220,12 @@ Application Layer
 Domain Layer
   ├── AppraisalEngine   HEXACO × Situation → OCC emotions
   ├── StimulusEngine    PAD stimulus → emotional drift
+  ├── Scene             Beat/Focus management aggregate
   └── ActingGuide       emotions + personality → directive
        │
 Ports (interfaces)
-  MindRepository · Appraiser · GuideFormatter · TextEmbedder
+  MindRepository (NpcWorld + EmotionStore + SceneStore)
+  Appraiser · GuideFormatter · TextEmbedder
        │
 Adapters
   OrtEmbedder (BGE-M3 ONNX) · LocaleFormatter · WebUI
@@ -287,11 +294,13 @@ This is an active solo development project building toward a wuxia martial-arts 
 
 The engine is being validated against real literary scenes (currently: *Adventures of Huckleberry Finn* as a character psychology benchmark).
 
-- ✅ Core emotion pipeline complete (245 passing tests)
+- ✅ Core emotion pipeline complete
 - ✅ Mind Studio with scenario save/load
-- ✅ Scene/Beat system with automatic transitions  
+- ✅ Scene/Beat system with automatic transitions (Scene aggregate)
 - ✅ Korean + English locale
+- ✅ BGE-M3 embedding for dialogue → PAD analysis
 - 🔄 Literary validation sessions ongoing
+- 🔜 PAD anchor optimization for domain-specific speech styles
 - 🔜 Power → tone mapping refinement
 - 🔜 Multi-NPC dialogue context
 

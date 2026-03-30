@@ -5,6 +5,7 @@ mod common;
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::relationship::Relationship;
+use npc_mind::SceneStore;
 
 use common::*;
 
@@ -248,4 +249,56 @@ fn after_dialogue_감정_초기화() {
     };
     let guide_res = service.generate_guide(guide_req);
     assert!(guide_res.is_err(), "after_dialogue 후 감정 상태 없음 → 가이드 생성 실패");
+}
+
+#[test]
+fn test_scene_persistence_and_clear() {
+    let mut ctx = TestContext::new();
+    let mut service = ctx.service();
+
+    let focuses = vec![
+        SceneFocusInput {
+            id: "start".into(),
+            description: "시작".into(),
+            trigger: None,
+            event: Some(EventInput {
+                description: "초기 상황".into(),
+                desirability_for_self: 0.1,
+                other: None,
+                prospect: None,
+            }),
+            action: None,
+            object: None,
+        }
+    ];
+
+    let req = SceneRequest {
+        npc_id: "mu_baek".into(),
+        partner_id: "gyo_ryong".into(),
+        description: "장면".into(),
+        focuses,
+    };
+
+    // 1. Scene 시작
+    let result = service.start_scene(req, || {}, Vec::new).unwrap();
+    assert_eq!(result.focus_count, 1);
+    assert!(result.active_focus_id.is_some());
+
+    // 2. 저장소에 Scene이 존재하는지 확인
+    {
+        let scene = service.repository().get_scene().expect("Scene이 저장되어야 함");
+        assert_eq!(scene.npc_id(), "mu_baek");
+        assert_eq!(scene.active_focus_id(), Some("start"));
+    }
+
+    // 3. Dialogue 종료 후 Scene이 삭제되는지 확인
+    let after_req = AfterDialogueRequest {
+        npc_id: "mu_baek".into(),
+        partner_id: "gyo_ryong".into(),
+        praiseworthiness: Some(0.0),
+        significance: Some(0.5),
+    };
+    service.after_dialogue(after_req).unwrap();
+
+    assert!(service.repository().get_scene().is_none(), "Dialogue 종료 후 Scene은 삭제되어야 함");
 }
