@@ -211,7 +211,7 @@ fn emotion_to_pad_22개_전수_검증() {
         (EmotionType::FearsConfirmed, -0.50,  0.30, -0.60),
         // Action: Attribution
         (EmotionType::Pride,           0.40,  0.30,  0.30),
-        (EmotionType::Shame,          -0.30,  0.10, -0.60),
+        (EmotionType::Shame,          -0.30,  0.10, -0.90),
         (EmotionType::Admiration,      0.50,  0.30, -0.20),
         (EmotionType::Reproach,       -0.30, -0.10,  0.40),
         // Action: Compound

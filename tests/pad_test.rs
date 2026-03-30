@@ -123,13 +123,13 @@ fn d_격차가_0이면_스케일러_1() {
 #[test]
 fn d_스케일러는_방향을_바꾸지_않음() {
     // P·A가 음수(감소)인 상황에서 D 격차가 커도 음수 유지
-    let shame_pad = emotion_to_pad(EmotionType::Shame); // D:-0.60
+    let shame_pad = emotion_to_pad(EmotionType::Shame); // D:-0.90
     let comfort = Pad::new(0.5, -0.3, 0.5);  // D:+0.5 → 큰 격차
 
     let dot = pad_dot(&shame_pad, &comfort);
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
-    // D_scale: 1 + |(-0.60)-(0.5)|×0.3 = 1.33
-    // result: -0.18 × 1.33 = -0.239 → 여전히 음수 (감소)
+    // D_scale: 1 + |(-0.90)-(0.5)|×0.3 = 1.42
+    // result: -0.18 × 1.42 = -0.256 → 여전히 음수 (감소)
     assert!(dot < 0.0,
         "D 스케일러는 P·A 방향을 유지: {}", dot);
 }
@@ -265,8 +265,8 @@ fn 비난_자극은_shame을_증폭_d격차로_더_강하게() {
     let shame_dot = pad_dot(&emotion_to_pad(EmotionType::Shame), &rebuke);
 
     // P·A: +0.18 + 0.07 = +0.25 (증폭 방향)
-    // D_scale: 1 + |(-0.60)-(+0.5)|×0.3 = 1.33
-    // result: +0.25 × 1.33 = +0.333
+    // D_scale: 1 + |(-0.90)-(+0.5)|×0.3 = 1.42
+    // result: +0.25 × 1.42 = +0.355
     assert!(shame_dot > 0.25,
         "비난 → Shame 증폭, D 격차로 P·A보다 강함: {} (P·A만이면 0.25)", shame_dot);
 }
@@ -278,8 +278,8 @@ fn 위로_자극은_shame을_감소() {
     let shame_dot = pad_dot(&emotion_to_pad(EmotionType::Shame), &comfort);
 
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
-    // D_scale: 1 + |(-0.60)-(-0.4)|×0.3 = 1.06 (비슷한 D → 약한 스케일링)
-    // result: -0.18 × 1.06 = -0.191
+    // D_scale: 1 + |(-0.90)-(-0.4)|×0.3 = 1.15
+    // result: -0.18 × 1.15 = -0.207
     assert!(shame_dot < 0.0,
         "위로 → Shame 감소: {}", shame_dot);
 }

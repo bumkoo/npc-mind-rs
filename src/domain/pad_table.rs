@@ -43,7 +43,9 @@ pub const FEARS_CONFIRMED_PAD: Pad = Pad { pleasure: -0.50, arousal:  0.30, domi
 // ---------------------------------------------------------------------------
 
 pub const PRIDE_PAD: Pad           = Pad { pleasure:  0.40, arousal:  0.30, dominance:  0.30 };
-pub const SHAME_PAD: Pad           = Pad { pleasure: -0.30, arousal:  0.10, dominance: -0.60 };
+/// D:-0.90 — Gebhard 원본(-0.60)에서 커스텀 조정.
+/// Shame은 OCC 감정 중 가장 복종적. Remorse(D:-0.60)와 차별화.
+pub const SHAME_PAD: Pad           = Pad { pleasure: -0.30, arousal:  0.10, dominance: -0.90 };
 pub const ADMIRATION_PAD: Pad      = Pad { pleasure:  0.50, arousal:  0.30, dominance: -0.20 };
 pub const REPROACH_PAD: Pad        = Pad { pleasure: -0.30, arousal: -0.10, dominance:  0.40 };
 
