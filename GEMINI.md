@@ -20,23 +20,28 @@
 ```
 src/
   application/    # 어플리케이션 계층 (라이브러리 진입점)
-    mind_service.rs # 핵심 오케스트레이션 (appraise, stimulus 등)
-    dto.rs        # API 데이터 전송 객체 및 도메인 변환 로직
+    mind_service.rs    # MindService — 핵심 오케스트레이션
+    formatted_service.rs # FormattedMindService — MindService + 포맷터 조합
+    dto.rs             # API 데이터 전송 객체 및 도메인 변환 로직
   domain/         # 핵심 도메인 로직 (순수 함수 및 상태 관리)
+    tuning.rs     # 튜닝 상수 — 모든 조정 가능 파라미터 중앙 관리
     personality.rs # HEXACO 모델, Score VO
     emotion/      # OCC 감정 엔진 및 상태 관리
-      appraisal/  # [Refactored] 세부 평가 모듈 (event, action, object, compound)
+      appraisal/  # 세부 평가 모듈 (event, action, object, compound)
       engine.rs   # 감정 평가 조정자 (AppraisalEngine)
       situation.rs # 상황 컨텍스트 정의
       stimulus.rs  # PAD 자극 처리 엔진
     relationship.rs # NPC 간 관계 (Closeness, Trust, Power)
     pad.rs        # 감정 공간(PAD) 매핑 및 분석
     guide/        # LLM 연기 지시문 생성 로직
-  ports.rs        # 외부 인터페이스 정의 (Repository, Embedder 등)
+      enums.rs    # Tone, Attitude, BehavioralTendency 등
+      directive.rs # ActingDirective (감정+성격 → 연기 지시)
+      snapshot.rs  # PersonalitySnapshot, EmotionSnapshot, RelationshipSnapshot
+  ports.rs        # 포트 트레이트 (NpcWorld, EmotionStore, SceneStore 등)
   adapter/        # 포트의 구체적 구현 (ORT Embedder 등)
   presentation/   # 다국어 지원 (Locales) 및 포맷팅
   bin/webui/      # 실험용 Web UI (Axum 서버)
-tests/            # [Refactored] TestContext 기반 통합 테스트
+tests/            # TestContext 기반 통합/유닛 테스트 (245건)
 ```
 
 ## 3. 핵심 도메인 규칙 및 공식
@@ -76,14 +81,23 @@ cargo run --features webui --bin npc-webui
 # Web UI + 대사→PAD 자동 분석 (embed 포함)
 cargo run --features webui,embed --bin npc-webui
 
-# 모든 테스트 실행 (TestContext 기반 80여 건)
+# 모든 테스트 실행 (245건)
 cargo test
 ```
 
 ### 주요 테스트 파일
-- `tests/application_test.rs`: `MindService` API 흐름 및 DTO 변환 검증
-- `tests/emotion_test.rs`: 35개 시나리오 기반 OCC 감정 로직 검증
-- `tests/relationship_test.rs`: 관계 변동 및 배율 규칙 검증
+- `tests/application_test.rs`: MindService API 흐름 및 DTO 변환 검증 (5건)
+- `tests/emotion_test.rs`: OCC 감정 평가 + 전망확인 + merge + trigger (52건)
+- `tests/relationship_test.rs`: 관계 3축 모델 및 변동 + significance 배율 (29건)
+- `tests/directive_test.rs`: ActingDirective Tone/Attitude/Behavior/Restriction 전 분기 (32건)
+- `tests/coverage_gap_test.rs`: valence, merge 경계값, PAD 좌표, 수식 정밀 검증 (23건)
+- `tests/guide_test.rs`: LLM 연기 가이드 생성 + PowerLevel (15건)
+- `tests/pad_test.rs`: PAD 공간 분석 (24건)
+- `tests/stimulus_test.rs`: 대사 자극 감정 변동 + 관성 (10건)
+- `tests/dialogue_flow_test.rs`: 대화 흐름 통합 테스트 (7건)
+- `tests/locale_test.rs`: 언어 설정 + 플러거블 포맷터 (20건)
+- `tests/port_injection_test.rs`: 포트 주입 + Scene/Beat 통합 (14건)
+- `tests/personality_test.rs`: HEXACO 성격 모델 (14건)
 
 ## 6. WebUI 주요 기능
 - NPC/관계/오브젝트 CRUD 및 OCC 감정 평가

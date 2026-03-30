@@ -255,7 +255,7 @@ NewToneVariant = "Description of new tone"
 | `[trust_level]` | 5 | 신뢰도 수준 (VeryHigh ~ VeryLow) |
 | `[power_level]` | 5 | 상하 관계 수준 (VeryHigh ~ VeryLow) |
 | `[fallback]` | 2 | 특성/말투 없을 때 폴백 문구 |
-| `[template]` | 19 | 프롬프트 섹션 헤더 및 포맷 패턴 |
+| `[template]` | 20 | 프롬프트 섹션 헤더 및 포맷 패턴 (`dominant_label` 포함) |
 
 ### template 플레이스홀더
 
@@ -269,6 +269,7 @@ directive_tone = "Tone: {tone}"         # {tone} → 어조 라벨
 directive_attitude = "Attitude: {attitude}"
 directive_behavior = "Behavior: {behavior}"
 restriction_item = "- {restriction}"    # {restriction} → 금지 사항 라벨
+dominant_label = "dominant"            # 지배 감정 라벨 (ko: "지배")
 relationship_closeness = "Closeness: {level}"
 relationship_trust = "Trust: {level}"
 relationship_power = "Power dynamic: {level}"
