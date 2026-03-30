@@ -202,7 +202,7 @@ cargo run --features mind-studio --bin npc-mind-studio
 - Apply PAD stimuli turn-by-turn and watch emotional state shift
 - Save/load scenario files for iterative testing
 
-![Mind Studio showing NPC emotion bars and generated prompt](docs/assets/mind-studio-preview.png)
+![Mind Studio showing NPC emotion bars and generated prompt](docs/assests/mind-studio-preview.png)
 
 ---
 
