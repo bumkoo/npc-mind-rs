@@ -31,9 +31,9 @@ cargo test --test locale_test         # 언어 설정 + 플러거블 포맷터 (
 cargo test --test port_injection_test # 포트 주입 + Scene/Beat 통합 (14개)
 cargo test --test coverage_gap_test   # 커버리지 갭 보완 (valence, merge, PAD 좌표 등) (23개)
 
-# webui 빌드 & 실행
-cargo run --features webui --bin npc-webui          # http://127.0.0.1:3000
-cargo run --features webui,embed --bin npc-webui    # 대사→PAD 분석 포함
+# mind-studio 빌드 & 실행
+cargo run --features mind-studio --bin npc-mind-studio          # http://127.0.0.1:3000
+cargo run --features mind-studio,embed --bin npc-mind-studio    # 대사→PAD 분석 포함
 ```
 
 ### 빌드 주의사항 (Windows)
@@ -72,7 +72,7 @@ src/
     formatter.rs                  # LocaleFormatter (TOML 기반 포맷터)
     locale.rs                     # LocaleBundle (TOML 파싱 + deep merge)
     korean.rs                     # KoreanFormatter (편의 래퍼)
-  bin/webui/                      # 실험용 Web UI (Axum 서버)
+  bin/mind-studio/                # NPC Mind Studio (Axum 서버)
 tests/
   common/mod.rs                   # TestContext, MockRepository, Fixtures
   application_test.rs             # MindService API + after_beat/after_dialogue 비교 (5건)
@@ -92,7 +92,7 @@ docs/
 1.  **Domain**: 순수 비즈니스 로직 (`src/domain`). 외부 의존성 없음.
 2.  **Application**: 도메인 객체 조립 및 흐름 제어 (`src/application`). 라이브러리 사용자의 주요 진입점.
 3.  **Ports**: 헥사고날 경계 정의 (`src/ports.rs`). 모든 포트 트레이트가 여기에 위치.
-4.  **Infrastructure/Presentation**: 외부 라이브러리 구현 및 API 노출 (`src/adapter`, `src/presentation`, `src/bin/webui`).
+4.  **Infrastructure/Presentation**: 외부 라이브러리 구현 및 API 노출 (`src/adapter`, `src/presentation`, `src/bin/mind-studio`).
 
 ### 핵심 진입점
 
@@ -167,7 +167,7 @@ docs/
 
 ### 에러 처리 및 응답
 - 서비스 계층은 `MindServiceError`를 반환합니다.
-- 웹 계층(`webui`)은 `AppError`를 통해 서비스 에러를 적절한 HTTP 상태 코드와 JSON으로 자동 변환(`IntoResponse`)합니다.
+- 웹 계층(`mind-studio`)은 `AppError`를 통해 서비스 에러를 적절한 HTTP 상태 코드와 JSON으로 자동 변환(`IntoResponse`)합니다.
 
 ### 데이터 변환 (Mapping)
 - DTO(`SituationInput` 등)는 `to_domain()` 메서드를 통해 도메인 모델로 변환됩니다. 이 과정에서 필요한 관계 조회 등을 위해 `MindRepository`를 참조합니다.
@@ -176,15 +176,15 @@ docs/
 - 모든 통합 테스트는 `tests/common/mod.rs`의 `TestContext`를 사용합니다.
 - 캐릭터 생성이나 저장소 초기화 등의 중복 코드를 방지하고, 일관된 테스트 환경을 보장합니다.
 
-## WebUI (axum 기반 협업 도구)
+## Mind Studio (axum 기반 협업 도구)
 
 Claude(API)와 Bekay(브라우저)가 동시에 사용하는 심리 엔진 시뮬레이터입니다.
-WebUI handlers는 `MindService` API만 호출하는 얇은 래퍼입니다.
-- 서버: `cargo run --features webui --bin npc-webui` → http://127.0.0.1:3000
-- 임베딩 포함: `cargo run --features webui,embed --bin npc-webui` (대사→PAD 자동 분석 활성화)
+Mind Studio handlers는 `MindService` API만 호출하는 얇은 래퍼입니다.
+- 서버: `cargo run --features mind-studio --bin npc-mind-studio` → http://127.0.0.1:3000
+- 임베딩 포함: `cargo run --features mind-studio,embed --bin npc-mind-studio` (대사→PAD 자동 분석 활성화)
 - 턴 히스토리: 각 API 호출 결과가 `TurnRecord`로 기록되어 시각화됩니다.
 
-### WebUI 주요 기능
+### Mind Studio 주요 기능
 - NPC/관계/오브젝트 CRUD
 - OCC 감정 평가 (appraise) 및 LLM 연기 가이드 생성
 - **대사 기반 PAD 자극 분석**: 상대 대사 입력 → PadAnalyzer(BGE-M3)로 PAD 자동 추출 → 슬라이더 반영 (embed feature 필요, 없으면 수동 입력)
@@ -194,7 +194,7 @@ WebUI handlers는 `MindService` API만 호출하는 얇은 래퍼입니다.
 - **Beat 전환 표시**: stimulus 결과에서 Beat 전환 발생 시 시각적 배너
 - **상황 중요도 슬라이더**: after_dialogue 시 significance (0.0~1.0) 설정
 
-### WebUI API 엔드포인트
+### Mind Studio API 엔드포인트
 - `POST /api/scene` — Scene 시작: Focus 옵션 목록 등록 + 초기 Focus 자동 appraise
 - `GET /api/scene-info` — 현재 Scene Focus 상태 조회 (프론트엔드 읽기 전용)
 - `POST /api/stimulus` — PAD 자극 적용 + Focus 전환 판단 (StimulusResponse 반환)

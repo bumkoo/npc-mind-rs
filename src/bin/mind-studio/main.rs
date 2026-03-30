@@ -57,7 +57,7 @@ async fn main() {
 
     // 정적 파일 경로
     let static_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/bin/webui/static");
+        .join("src/bin/mind-studio/static");
 
     let app = Router::new()
         // --- API ---
@@ -85,7 +85,7 @@ async fn main() {
         .with_state(state);
 
     let addr = "127.0.0.1:3000";
-    println!("NPC Mind WebUI: http://{addr}");
+    println!("NPC Mind Studio: http://{addr}");
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

@@ -7,7 +7,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 default = []
 embed = ["dep:bge-m3-onnx-rust"]
-webui = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing-subscriber"]
+mind-studio = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing-subscriber"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -25,6 +25,6 @@ tower-http = { version = "0.6", features = ["cors", "fs"], optional = true }
 approx = "0.5"
 
 [[bin]]
-name = "npc-webui"
-path = "src/bin/webui/main.rs"
-required-features = ["webui"]
+name = "npc-mind-studio"
+path = "src/bin/mind-studio/main.rs"
+required-features = ["mind-studio"]
