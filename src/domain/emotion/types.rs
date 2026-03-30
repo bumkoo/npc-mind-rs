@@ -215,10 +215,6 @@ impl Emotion {
         self.intensity >= threshold
     }
 
-    /// 강도에 값을 추가 (클램핑)
-    pub(super) fn add_intensity(&mut self, amount: f32) {
-        self.intensity = (self.intensity + amount).clamp(0.0, 1.0);
-    }
 }
 
 /// NPC의 현재 감정 상태: 여러 감정의 조합
