@@ -62,16 +62,16 @@ fn 교룡이_무백보다_부정_자극에_더_크게_반응() {
 
 #[test]
 fn 부정_자극_반복이면_분노_계속_증폭() {
-    let yu = make_교룡();
-    // 교룡이 중간 수준 분노(0.5)인 상태에서 강한 도발 반복
+    let li = make_무백();
+    // 무백이 중간 수준 분노(0.5)인 상태에서 강한 도발 반복
     let mut initial = EmotionState::new();
     initial.add(Emotion::new(EmotionType::Anger, 0.5));
 
     let provocation = Pad::new(-0.6, 0.7, 0.5);
 
-    let after1 = StimulusEngine.apply_stimulus(yu.personality(), &initial, &provocation);
-    let after2 = StimulusEngine.apply_stimulus(yu.personality(), &after1, &provocation);
-    let after3 = StimulusEngine.apply_stimulus(yu.personality(), &after2, &provocation);
+    let after1 = StimulusEngine.apply_stimulus(li.personality(), &initial, &provocation);
+    let after2 = StimulusEngine.apply_stimulus(li.personality(), &after1, &provocation);
+    let after3 = StimulusEngine.apply_stimulus(li.personality(), &after2, &provocation);
 
     let anger0 = find_emotion(&initial, EmotionType::Anger).unwrap();
     let anger1 = find_emotion(&after1, EmotionType::Anger).unwrap();
