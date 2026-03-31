@@ -1,4 +1,4 @@
-﻿//! HEXACO 성격 모델
+//! HEXACO 성격 모델
 //!
 //! 6개 차원(Dimension) × 각 4개 facet = 24개 facet으로
 //! NPC의 성격을 정의한다.
@@ -112,6 +112,12 @@ impl Score {
         self.0.abs()
     }
 
+    /// 가중치가 적용된 영향력 수치만 계산 (예: 0.5 * 0.3 = 0.15)
+    /// 수식의 의도를 명확히 하기 위해 사용합니다.
+    pub fn effect(&self, weight: f32) -> f32 {
+        self.0 * weight
+    }
+
     // -----------------------------------------------------------------------
     // 감정 강도 변조(Modifier) 계산기
     // -----------------------------------------------------------------------
@@ -120,8 +126,14 @@ impl Score {
     /// 성향이 강할수록 감정의 강도를 증폭시키고 싶을 때 사용합니다.
     /// 하한 0.0 보장 — 음수 가중치가 감정 방향을 뒤집지 않도록.
     pub fn modifier(&self, weight: f32) -> f32 {
-        (1.0 + self.0 * weight).max(0.0)
+        (1.0 + self.effect(weight)).max(0.0)
     }
+}
+
+/// 가중치 계산 공통 로직 추출
+/// 수식: 기저값 + 성격 영향력 합계 -> 지정된 범위로 클램핑
+fn finalize_weight(base: f32, effects: f32, range: (f32, f32)) -> f32 {
+    (base + effects).clamp(range.0, range.1)
 }
 
 // ---------------------------------------------------------------------------
@@ -409,15 +421,15 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     /// d < 0 (나쁜 일): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
     fn desirability_self_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let e_effect = avg.e.value() * W_STANDARD;
+        let mut e = avg.e.effect(W_STANDARD);
 
-        let valence_effect = if desirability >= 0.0 {
-            avg.x.value() * W_STANDARD
+        e += if desirability >= 0.0 {
+            avg.x.effect(W_STANDARD)
         } else {
-            -avg.a.value() * W_STANDARD - self.conscientiousness.prudence.value() * W_STANDARD
+            -avg.a.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_STANDARD)
         };
 
-        (BASE_SELF + e_effect + valence_effect).clamp(CLAMP_STANDARD.0, CLAMP_STANDARD.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
 
     /// 사건-자기-전망: Hope, Fear
@@ -426,15 +438,15 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     /// d < 0 (공포): E(예민→증폭) + Fear(겁→증폭)
     fn desirability_prospect_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let e_effect = avg.e.value() * W_STANDARD;
+        let mut e = avg.e.effect(W_STANDARD);
 
-        let valence_effect = if desirability >= 0.0 {
-            avg.x.value() * W_STANDARD - self.conscientiousness.prudence.value() * W_MILD
+        e += if desirability >= 0.0 {
+            avg.x.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD)
         } else {
-            self.emotionality.fearfulness.value() * W_STANDARD
+            self.emotionality.fearfulness.effect(W_STANDARD)
         };
 
-        (BASE_SELF + e_effect + valence_effect).clamp(CLAMP_STANDARD.0, CLAMP_STANDARD.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
 
     /// 사건-자기-확인: Satisfaction, Disappointment, Relief, FearsConfirmed
@@ -442,10 +454,9 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     /// E(예민→크게 반응) - Pru(신중→충격 감소, 이미 마음의 준비)
     fn desirability_confirmation_weight(&self, _desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let e_effect = avg.e.value() * W_STANDARD;
-        let pru_effect = -self.conscientiousness.prudence.value() * W_MILD;
+        let e = avg.e.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD);
 
-        (BASE_SELF + e_effect + pru_effect).clamp(CLAMP_STANDARD.0, CLAMP_STANDARD.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
 
     /// 사건-타인-공감: HappyFor, Pity
@@ -456,13 +467,13 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     fn empathy_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
 
-        let valence_effect = if desirability >= 0.0 {
-            avg.h.value() * W_STRONG + avg.a.value() * W_STRONG
+        let e = if desirability >= 0.0 {
+            avg.h.effect(W_STRONG) + avg.a.effect(W_STRONG)
         } else {
-            avg.a.value() * W_STRONG + self.emotionality.sentimentality.value() * W_STRONG
+            avg.a.effect(W_STRONG) + self.emotionality.sentimentality.effect(W_STRONG)
         };
 
-        (BASE_EMPATHY + valence_effect).clamp(CLAMP_OPTIONAL.0, CLAMP_OPTIONAL.1)
+        finalize_weight(BASE_EMPATHY, e, CLAMP_OPTIONAL)
     }
 
     /// 사건-타인-적대: Resentment, Gloating
@@ -473,13 +484,13 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     fn hostility_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
 
-        let valence_effect = if desirability >= 0.0 {
-            -avg.h.value() * W_DOMINANT
+        let e = if desirability >= 0.0 {
+            -avg.h.effect(W_DOMINANT)
         } else {
-            -avg.h.value() * W_STRONG - avg.a.value() * W_STRONG
+            -avg.h.effect(W_STRONG) - avg.a.effect(W_STRONG)
         };
 
-        (BASE_HOSTILITY + valence_effect).clamp(CLAMP_OPTIONAL.0, CLAMP_OPTIONAL.1)
+        finalize_weight(BASE_HOSTILITY, e, CLAMP_OPTIONAL)
     }
 
     /// 행동 평가: Pride, Shame, Admiration, Reproach
@@ -491,36 +502,32 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
     /// 타인+비난(Reproach): -Gen(온화→비난억제)
     fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32 {
         let avg = self.dimension_averages();
-        let c_effect = avg.c.value() * W_STANDARD;
+        let mut e = avg.c.effect(W_STANDARD);
 
-        let facet_effect = if is_self {
+        e += if is_self {
             if praiseworthiness > 0.0 {
-                // Pride: 겸손하면 자긍심 억제
-                -self.honesty_humility.modesty.value() * W_STANDARD
+                -self.honesty_humility.modesty.effect(W_STANDARD)
             } else {
-                // Shame: 겸손하면 수치심 증폭 (내 탓이오)
-                self.honesty_humility.modesty.value() * W_STANDARD
+                self.honesty_humility.modesty.effect(W_STANDARD)
             }
         } else {
             if praiseworthiness < 0.0 {
-                // Reproach: 온화하면 비난 억제
-                -self.agreeableness.gentleness.value() * W_STANDARD
+                -self.agreeableness.gentleness.effect(W_STANDARD)
             } else {
-                // Admiration: 온화하면 감탄 증폭
-                self.agreeableness.gentleness.value() * W_STANDARD
+                self.agreeableness.gentleness.effect(W_STANDARD)
             }
         };
 
-        (BASE_SELF + c_effect + facet_effect).clamp(CLAMP_STANDARD.0, CLAMP_STANDARD.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
 
     /// 대상 호불호: Love, Hate
     ///
     /// Aes(심미안→호불호 반응 강도)
     fn appealingness_weight(&self, _appealingness: f32) -> f32 {
-        let aes_effect = self.openness.aesthetic_appreciation.value() * W_STANDARD;
+        let e = self.openness.aesthetic_appreciation.effect(W_STANDARD);
 
-        (BASE_SELF + aes_effect).clamp(CLAMP_STANDARD.0, CLAMP_STANDARD.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
 }
 
@@ -532,15 +539,12 @@ impl crate::ports::StimulusWeights for HexacoProfile {
     /// E(예민→수용↑) - Pru(신중→급변억제) - patience(부정자극시 완충)
     fn stimulus_absorb_rate(&self, stimulus: &crate::domain::pad::Pad) -> f32 {
         let avg = self.dimension_averages();
-        let e_effect = avg.e.value() * W_STANDARD;
-        let pru_effect = -self.conscientiousness.prudence.value() * W_STANDARD;
+        let mut e = avg.e.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_STANDARD);
 
-        let valence_effect = if stimulus.pleasure < 0.0 {
-            -self.agreeableness.patience.value() * W_STRONG
-        } else {
-            0.0
-        };
+        if stimulus.pleasure < 0.0 {
+            e -= self.agreeableness.patience.effect(W_STRONG);
+        }
 
-        (BASE_SELF + e_effect + pru_effect + valence_effect).clamp(CLAMP_STIMULUS.0, CLAMP_STIMULUS.1)
+        finalize_weight(BASE_SELF, e, CLAMP_STIMULUS)
     }
 }

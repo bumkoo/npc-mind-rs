@@ -3,6 +3,7 @@
 //! 무협 캐릭터를 예시로 사용하여 도메인 모델 검증
 
 use npc_mind::domain::personality::*;
+use npc_mind::ports::AppraisalWeights;
 
 // ---------------------------------------------------------------------------
 // Score Value Object 테스트
@@ -398,4 +399,79 @@ fn 사인_성격_대비() {
     assert!(shu_avg.c.value() > 0.6);
     assert!(yu_avg.a.value() < -0.4 && yu_avg.x.value() > 0.4);
     assert!(na_avg.e.value() < -0.3 && na_avg.c.value() < -0.2);
+}
+
+// ---------------------------------------------------------------------------
+// 리팩토링 무결성 검증: 수식 결과값 정밀 테스트
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_score_effect_calculation() {
+    let s = Score::new(0.5, "test").unwrap();
+    let weight = 0.3;
+    
+    // 리팩토링된 effect() 메서드 결과가 (값 * 가중치)와 동일한지 확인
+    assert_eq!(s.effect(weight), 0.5 * 0.3);
+    
+    let neg_s = Score::new(-0.8, "test").unwrap();
+    assert_eq!(neg_s.effect(weight), -0.8 * 0.3);
+}
+
+#[test]
+fn test_appraisal_weights_consistency() {
+    // 1. 극단적으로 예민한 성격 (E=1.0)
+    let emotional = NpcBuilder::new("e", "e")
+        .emotionality(|e| {
+            e.fearfulness = Score::new(1.0, "").unwrap();
+            e.anxiety = Score::new(1.0, "").unwrap();
+            e.dependence = Score::new(1.0, "").unwrap();
+            e.sentimentality = Score::new(1.0, "").unwrap();
+        })
+        .build();
+    
+    // desirability_self_weight (Joy/Distress)
+    // d > 0: BASE_SELF(1.0) + E_effect(1.0*0.3) + X_effect(0.0*0.3) = 1.3
+    let w = emotional.personality().desirability_self_weight(1.0);
+    assert!((w - 1.3).abs() < f32::EPSILON, "E=1.0 -> weight=1.3 (Joy)");
+    
+    // 2. 극단적으로 무던한 성격 (E=-1.0)
+    let cold = NpcBuilder::new("c", "c")
+        .emotionality(|e| {
+            e.fearfulness = Score::new(-1.0, "").unwrap();
+            e.anxiety = Score::new(-1.0, "").unwrap();
+            e.dependence = Score::new(-1.0, "").unwrap();
+            e.sentimentality = Score::new(-1.0, "").unwrap();
+        })
+        .build();
+    
+    // d > 0: BASE_SELF(1.0) + E_effect(-1.0*0.3) + X_effect(0.0*0.3) = 0.7
+    let w2 = cold.personality().desirability_self_weight(1.0);
+    assert!((w2 - 0.7).abs() < f32::EPSILON, "E=-1.0 -> weight=0.7 (Joy)");
+}
+
+#[test]
+fn test_empathy_and_hostility_weights() {
+    // 정직하고 원만한 성격 (H=1.0, A=1.0)
+    let saint = NpcBuilder::new("s", "s")
+        .honesty_humility(|h| {
+            h.sincerity = Score::new(1.0, "").unwrap();
+            h.fairness = Score::new(1.0, "").unwrap();
+            h.greed_avoidance = Score::new(1.0, "").unwrap();
+            h.modesty = Score::new(1.0, "").unwrap();
+        })
+        .agreeableness(|a| {
+            a.forgiveness = Score::new(1.0, "").unwrap();
+            a.gentleness = Score::new(1.0, "").unwrap();
+            a.flexibility = Score::new(1.0, "").unwrap();
+            a.patience = Score::new(1.0, "").unwrap();
+        })
+        .build();
+
+    // d > 0 (타인에게 좋은 일): BASE_EMPATHY(0.5) + H_effect(1.0*0.4) + A_effect(1.0*0.4) = 1.3
+    let emp = saint.personality().empathy_weight(1.0);
+    assert!((emp - 1.3).abs() < f32::EPSILON, "H=1, A=1 -> empathy=1.3");
+
+    // d > 0 (타인에게 좋은 일): BASE_HOSTILITY(0.0) - H_effect(1.0*0.7) = -0.7 -> clamp(0.0)
+    let host = saint.personality().hostility_weight(1.0);
+    assert_eq!(host, 0.0, "정직하면 적대감(Resentment) 0");
 }

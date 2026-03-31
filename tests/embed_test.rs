@@ -16,6 +16,7 @@ use std::sync::{Mutex, OnceLock};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::ports::UtteranceAnalyzer;
+use npc_mind::{Appraiser, StimulusProcessor};
 
 /// 모델 경로 — 프로젝트 루트 기준 상대 경로
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";

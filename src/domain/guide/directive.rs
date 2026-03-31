@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
+use crate::domain::personality::DimensionAverages;
 use crate::ports::PersonalityProfile;
 
 use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD, MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD};
@@ -30,116 +31,151 @@ impl ActingDirective {
         let avg = profile.dimension_averages();
         let mood = state.overall_valence();
         
-        // 리팩토링: EmotionState 메서드들이 이제 소유권이 있는 값(Emotion, Vec<Emotion>)을 반환합니다.
-        let dominant = state.dominant();
+        // 판단에 필요한 정보 요약
+        let dominant = state.dominant().map(|e| e.emotion_type());
         let significant = state.significant(EMOTION_THRESHOLD);
-
-        // --- 유의미한 감정 플래그 ---
         let has_anger = significant.iter().any(|e| e.emotion_type() == EmotionType::Anger);
         let has_fear = significant.iter().any(|e| e.emotion_type() == EmotionType::Fear);
         let has_shame = significant.iter().any(|e| e.emotion_type() == EmotionType::Shame);
         let has_reproach = significant.iter().any(|e| e.emotion_type() == EmotionType::Reproach);
 
-        // --- 어조 결정 ---
+        Self {
+            tone: Tone::decide(dominant, mood, &avg),
+            attitude: Attitude::decide(has_anger, has_reproach, has_fear, mood, &avg),
+            behavioral_tendency: BehavioralTendency::decide(has_anger, has_fear, has_shame, mood, &avg),
+            restrictions: Restriction::evaluate_all(has_anger, has_fear, has_shame, mood, &avg),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 각 요소별 의사결정 로직 (Enums에 로직 위임)
+// ---------------------------------------------------------------------------
+
+impl Tone {
+    pub fn decide(dominant: Option<EmotionType>, mood: f32, avg: &DimensionAverages) -> Self {
         let t = TRAIT_THRESHOLD;
-        let tone = match dominant.as_ref().map(|e| e.emotion_type()) {
+        match dominant {
             Some(EmotionType::Anger) => {
-                if avg.c.value() > t { Tone::SuppressedCold }
-                else { Tone::RoughAggressive }
+                if avg.c.value() > t { Self::SuppressedCold }
+                else { Self::RoughAggressive }
             }
             Some(EmotionType::Distress) => {
-                if avg.e.value() > t { Tone::AnxiousTrembling }
-                else { Tone::SomberRestrained }
+                if avg.e.value() > t { Self::AnxiousTrembling }
+                else { Self::SomberRestrained }
             }
-            Some(EmotionType::Joy) => Tone::BrightLively,
+            Some(EmotionType::Joy) => Self::BrightLively,
             Some(EmotionType::Fear) => {
-                if avg.e.value() < -t { Tone::VigilantCalm }
-                else { Tone::TenseAnxious }
+                if avg.e.value() < -t { Self::VigilantCalm }
+                else { Self::TenseAnxious }
             }
-            Some(EmotionType::Shame) => Tone::ShrinkingSmall,
+            Some(EmotionType::Shame) => Self::ShrinkingSmall,
             Some(EmotionType::Pride) => {
-                if avg.h.value() > t { Tone::QuietConfidence }
-                else { Tone::ProudArrogant }
+                if avg.h.value() > t { Self::QuietConfidence }
+                else { Self::ProudArrogant }
             }
-            Some(EmotionType::Reproach) => Tone::CynicalCritical,
-            Some(EmotionType::Disappointment) => Tone::DeepSighing,
-            Some(EmotionType::Gratitude) => Tone::SincerelyWarm,
-            Some(EmotionType::Resentment) => Tone::JealousBitter,
-            Some(EmotionType::Pity) => Tone::CompassionateSoft,
+            Some(EmotionType::Reproach) => Self::CynicalCritical,
+            Some(EmotionType::Disappointment) => Self::DeepSighing,
+            Some(EmotionType::Gratitude) => Self::SincerelyWarm,
+            Some(EmotionType::Resentment) => Self::JealousBitter,
+            Some(EmotionType::Pity) => Self::CompassionateSoft,
             _ => {
-                if mood > EMOTION_THRESHOLD { Tone::RelaxedGentle }
-                else if mood < -EMOTION_THRESHOLD { Tone::Heavy }
-                else { Tone::Calm }
+                if mood > EMOTION_THRESHOLD { Self::RelaxedGentle }
+                else if mood < -EMOTION_THRESHOLD { Self::Heavy }
+                else { Self::Calm }
             }
-        };
+        }
+    }
+}
 
-        // --- 태도 결정 ---
-        // significant는 이제 Vec<Emotion>이므로 .iter()를 통해 순회하며 조건을 확인합니다.
-        let attitude = if has_anger {
+impl Attitude {
+    pub fn decide(
+        has_anger: bool,
+        has_reproach: bool,
+        has_fear: bool,
+        mood: f32,
+        avg: &DimensionAverages,
+    ) -> Self {
+        let t = TRAIT_THRESHOLD;
+        if has_anger {
             if avg.a.value() < -t {
-                Attitude::HostileAggressive
+                Self::HostileAggressive
             } else {
-                Attitude::SuppressedDiscomfort
+                Self::SuppressedDiscomfort
             }
         } else if has_reproach {
-            Attitude::Judgmental
+            Self::Judgmental
         } else if has_fear {
-            Attitude::GuardedDefensive
+            Self::GuardedDefensive
         } else if mood > MOOD_THRESHOLD {
-            Attitude::FriendlyOpen
+            Self::FriendlyOpen
         } else if mood < -MOOD_THRESHOLD {
-            Attitude::DefensiveClosed
+            Self::DefensiveClosed
         } else {
-            Attitude::NeutralObservant
-        };
+            Self::NeutralObservant
+        }
+    }
+}
 
-        // --- 행동 경향 결정 ---
-        let behavioral_tendency = if has_anger {
+impl BehavioralTendency {
+    pub fn decide(
+        has_anger: bool,
+        has_fear: bool,
+        has_shame: bool,
+        mood: f32,
+        avg: &DimensionAverages,
+    ) -> Self {
+        let t = TRAIT_THRESHOLD;
+        if has_anger {
             if avg.c.value() < -t {
-                BehavioralTendency::ImmediateConfrontation
+                Self::ImmediateConfrontation
             } else if avg.c.value() > t {
-                BehavioralTendency::StrategicResponse
+                Self::StrategicResponse
             } else {
-                BehavioralTendency::ExpressAndObserve
+                Self::ExpressAndObserve
             }
         } else if has_fear {
             if avg.e.value() < -t {
-                BehavioralTendency::BraveConfrontation
+                Self::BraveConfrontation
             } else {
-                BehavioralTendency::SeekSafety
+                Self::SeekSafety
             }
         } else if has_shame {
-            BehavioralTendency::AvoidOrDeflect
+            Self::AvoidOrDeflect
         } else if mood > MOOD_THRESHOLD {
-            BehavioralTendency::ActiveCooperation
+            Self::ActiveCooperation
         } else {
-            BehavioralTendency::ObserveAndRespond
-        };
+            Self::ObserveAndRespond
+        }
+    }
+}
 
-        // --- 금지 사항 결정 ---
+impl Restriction {
+    pub fn evaluate_all(
+        has_anger: bool,
+        has_fear: bool,
+        has_shame: bool,
+        mood: f32,
+        avg: &DimensionAverages,
+    ) -> Vec<Self> {
         let mut restrictions = Vec::new();
 
         if mood < -MOOD_THRESHOLD {
-            restrictions.push(Restriction::NoHumorOrLightTone);
+            restrictions.push(Self::NoHumorOrLightTone);
         }
         if has_anger {
-            restrictions.push(Restriction::NoFriendliness);
+            restrictions.push(Self::NoFriendliness);
         }
         if has_shame {
-            restrictions.push(Restriction::NoSelfJustification);
+            restrictions.push(Self::NoSelfJustification);
         }
         if has_fear {
-            restrictions.push(Restriction::NoBravado);
+            restrictions.push(Self::NoBravado);
         }
         if avg.h.value() > HONESTY_RESTRICTION_THRESHOLD {
-            restrictions.push(Restriction::NoLyingOrExaggeration);
+            restrictions.push(Self::NoLyingOrExaggeration);
         }
 
-        Self {
-            tone,
-            attitude,
-            behavioral_tendency,
-            restrictions,
-        }
+        restrictions
     }
 }

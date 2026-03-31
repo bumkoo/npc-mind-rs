@@ -5,7 +5,7 @@ mod common;
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::SceneStore;
+use npc_mind::{SceneStore, EmotionStore};
 
 use common::*;
 
@@ -301,4 +301,84 @@ fn test_scene_persistence_and_clear() {
     service.after_dialogue(after_req).unwrap();
 
     assert!(service.repository().get_scene().is_none(), "Dialogue 종료 후 Scene은 삭제되어야 함");
+}
+
+// ===========================================================================
+// Beat 전환 및 감정 병합 정밀 검증 시나리오
+// ===========================================================================
+
+#[test]
+fn test_beat_transition_and_emotion_merging() {
+    let mut ctx = TestContext::new();
+    let mut service = ctx.service();
+
+    // 1. Scene 설정 (교룡 대상)
+    let focuses = vec![
+        SceneFocusInput {
+            id: "calm".into(),
+            description: "평온한 대화".into(),
+            trigger: None,
+            event: Some(EventInput {
+                description: "초기 상황".into(),
+                desirability_for_self: 0.05, // 기쁨을 낮게 설정 (쉽게 사라지도록)
+                other: None,
+                prospect: None,
+            }),
+            action: None,
+            object: None,
+        },
+        SceneFocusInput {
+            id: "angry".into(),
+            description: "갑작스러운 갈등".into(),
+            trigger: Some(vec![vec![ConditionInput {
+                emotion: "Joy".into(),
+                absent: Some(true), // 기쁨이 완전히 사라지면 전환
+                below: None,
+                above: None,
+            }]]),
+            event: Some(EventInput {
+                description: "모욕을 당함".into(),
+                desirability_for_self: -0.6,
+                other: None,
+                prospect: None,
+            }),
+            action: None,
+            object: None,
+        }
+    ];
+
+    // 2. Scene 시작 (교룡으로 시작)
+    let start_req = SceneRequest {
+        npc_id: "gyo_ryong".into(),
+        partner_id: "mu_baek".into(),
+        description: "테스트 장면".into(),
+        focuses,
+    };
+    service.start_scene(start_req, || {}, Vec::new).unwrap();
+
+    // 3. 자극 적용: 교룡에게 강한 불쾌 자극을 주어 기쁨을 제거함
+    let stim_req = StimulusRequest {
+        npc_id: "gyo_ryong".into(),
+        partner_id: "mu_baek".into(),
+        situation_description: Some("무백의 원칙적인 잔소리".to_string()),
+        pleasure: -1.0, 
+        arousal: -1.0,
+        dominance: -1.0,
+    };
+
+    let stim_res = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
+    
+    // 4. 검증: 교룡은 민감하여 기쁨이 바로 사라지고 전환되어야 함
+    assert!(stim_res.beat_changed, "교룡은 기쁨이 사라지는 즉시 Beat가 전환되어야 함");
+    assert_eq!(stim_res.active_focus_id, Some("angry".to_string()));
+
+    // 5. 핵심 검증: 감정이 병합되었는가?
+    let final_state = service.repository().get_emotion_state("gyo_ryong").unwrap();
+    
+    // - "angry" 비트의 결과인 Distress 또는 Anger가 존재해야 함
+    assert!(final_state.emotions().len() > 0, "병합 후 감정이 존재해야 함");
+    
+    // - 이전 비트의 데이터가 유실되지 않고 병합 로직이 정상 호출되었음을 확인
+    // (이전 기쁨은 사라졌지만, 병합된 상태 자체는 유효해야 함)
+    assert!(final_state.overall_valence() < 0.0, "병합 후 기분은 나빠져야 함");
 }

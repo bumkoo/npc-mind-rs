@@ -1,4 +1,4 @@
-use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState, Scene, SceneFocus};
+use crate::domain::emotion::{AppraisalEngine, StimulusEngine, EmotionState, Scene, SceneFocus, Situation};
 use crate::domain::guide::ActingGuide;
 use crate::domain::pad::Pad;
 use crate::domain::personality::Npc;
@@ -27,13 +27,6 @@ pub enum MindServiceError {
 }
 
 /// Mind 엔진의 핵심 진입점 (Application Service)
-///
-/// 도메인 로직만 수행하며, 포맷팅은 하지 않습니다.
-/// 포맷팅이 포함된 응답이 필요하면 `FormattedMindService`를 사용하거나
-/// 반환된 `*Result`에 `.format(formatter)`를 호출하세요.
-///
-/// 감정 평가 엔진(`A`)과 자극 처리 엔진(`S`)을 제네릭으로 받으며,
-/// 기본값으로 `AppraisalEngine`과 `StimulusEngine`이 사용됩니다.
 pub struct MindService<
     R: MindRepository,
     A: Appraiser = AppraisalEngine,
@@ -44,7 +37,6 @@ pub struct MindService<
     stimulus_processor: S,
 }
 
-// 기본 엔진 사용 (기존 코드 호환)
 impl<R: MindRepository> MindService<R> {
     pub fn new(repository: R) -> Self {
         Self {
@@ -56,67 +48,77 @@ impl<R: MindRepository> MindService<R> {
 }
 
 impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S> {
-    /// 커스텀 엔진을 주입하여 생성합니다.
     pub fn with_engines(repository: R, appraiser: A, stimulus_processor: S) -> Self {
         Self { repository, appraiser, stimulus_processor }
     }
 
-    /// 저장소에 대한 가변 참조를 반환합니다.
-    pub fn repository_mut(&mut self) -> &mut R {
-        &mut self.repository
+    pub fn repository_mut(&mut self) -> &mut R { &mut self.repository }
+    pub fn repository(&self) -> &R { &self.repository }
+
+    // ---------------------------------------------------------------------------
+    // 공통 내부 헬퍼 (중복 제거)
+    // ---------------------------------------------------------------------------
+
+    /// NPC와 관계 정보를 한 번에 조회합니다.
+    fn prepare_context(&self, npc_id: &str, partner_id: &str) -> Result<(Npc, Relationship), MindServiceError> {
+        let npc = self.repository.get_npc(npc_id)
+            .ok_or_else(|| MindServiceError::NpcNotFound(npc_id.to_string()))?;
+
+        let relationship = self.repository.get_relationship(npc_id, partner_id)
+            .ok_or_else(|| MindServiceError::RelationshipNotFound(npc_id.to_string(), partner_id.to_string()))?;
+
+        Ok((npc, relationship))
     }
 
-    /// 저장소에 대한 불변 참조를 반환합니다.
-    pub fn repository(&self) -> &R {
-        &self.repository
+    /// 평가 엔진을 실행하고 결과를 저장한 뒤 AppraiseResult를 반환합니다.
+    fn execute_appraise_workflow(
+        &mut self,
+        npc: &Npc,
+        relationship: &Relationship,
+        situation: &Situation,
+        mut before_eval: impl FnMut(),
+        mut after_eval: impl FnMut() -> Vec<String>,
+    ) -> AppraiseResult {
+        before_eval();
+        let emotion_state = self.appraiser.appraise(npc.personality(), situation, &relationship.modifiers());
+        let trace = after_eval();
+
+        let result = build_appraise_result(
+            npc, &emotion_state,
+            Some(situation.description.clone()),
+            Some(relationship),
+            trace,
+        );
+
+        self.repository.save_emotion_state(npc.id(), emotion_state);
+        result
     }
+
+    // ---------------------------------------------------------------------------
+    // 공개 API 메서드
+    // ---------------------------------------------------------------------------
 
     /// 상황을 평가하여 감정을 생성하고 ActingGuide를 포함한 결과를 반환합니다.
     pub fn appraise(
         &mut self,
         req: AppraiseRequest,
-        mut before_eval: impl FnMut(),
-        mut after_eval: impl FnMut() -> Vec<String>,
+        before_eval: impl FnMut(),
+        after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<AppraiseResult, MindServiceError> {
-        let npc = self.repository.get_npc(&req.npc_id)
-            .ok_or_else(|| MindServiceError::NpcNotFound(req.npc_id.clone()))?;
-
-        let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
-            .ok_or_else(|| MindServiceError::RelationshipNotFound(req.npc_id.clone(), req.partner_id.clone()))?;
-
+        let (npc, relationship) = self.prepare_context(&req.npc_id, &req.partner_id)?;
         let situation = req.situation.to_domain(&self.repository, &req.npc_id, &req.partner_id)?;
 
-        before_eval();
-        let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
-        let trace = after_eval();
-
-        let result = build_appraise_result(
-            &npc, &emotion_state,
-            Some(situation.description.clone()),
-            Some(&relationship),
-            trace,
-        );
-
-        self.repository.save_emotion_state(&req.npc_id, emotion_state);
-
-        Ok(result)
+        Ok(self.execute_appraise_workflow(&npc, &relationship, &situation, before_eval, after_eval))
     }
 
     /// 대화 턴 중 발생한 PAD 자극을 적용하여 감정을 갱신합니다.
-    ///
-    /// Scene Focus가 등록되어 있으면 자극 적용 후 trigger 조건을 체크하여
-    /// Beat 전환을 자동으로 처리합니다.
     pub fn apply_stimulus(
         &mut self,
         req: StimulusRequest,
         before_eval: impl FnMut(),
         after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<StimulusResult, MindServiceError> {
-        let npc = self.repository.get_npc(&req.npc_id)
-            .ok_or_else(|| MindServiceError::NpcNotFound(req.npc_id.clone()))?;
-
-        let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
-            .ok_or_else(|| MindServiceError::RelationshipNotFound(req.npc_id.clone(), req.partner_id.clone()))?;
+        let (npc, relationship) = self.prepare_context(&req.npc_id, &req.partner_id)?;
 
         let current = self.repository.get_emotion_state(&req.npc_id)
             .ok_or(MindServiceError::EmotionStateNotFound)?;
@@ -135,15 +137,12 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             }
         }
 
-        // 3. Beat 전환 없음 — 기존 stimulus 결과 반환
+        // 3. Beat 전환 없음
         let (emotions, dominant, mood) = build_emotion_fields(&stimulated_state);
         let guide = ActingGuide::build(&npc, &stimulated_state, req.situation_description.clone(), Some(&relationship));
 
         Ok(StimulusResult {
-            emotions,
-            dominant,
-            mood,
-            guide,
+            emotions, dominant, mood, guide,
             trace: vec![],
             beat_changed: false,
             active_focus_id: None,
@@ -158,26 +157,25 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         relationship: &Relationship,
         scene: &mut Scene,
         focus: SceneFocus,
-        mut before_eval: impl FnMut(),
-        mut after_eval: impl FnMut() -> Vec<String>,
+        before_eval: impl FnMut(),
+        after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<StimulusResult, MindServiceError> {
-        // 관계 갱신 (감정 유지)
         self.update_beat_relationship(scene);
 
-        // 새 Focus appraise → merge
         let situation = focus.to_situation()
             .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))?;
 
-        let previous = self.repository.get_emotion_state(npc_id)
-            .unwrap_or_else(EmotionState::new);
+        let previous = self.repository.get_emotion_state(npc_id).unwrap_or_else(EmotionState::new);
 
-        before_eval();
-        let new_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
-        let beat_trace = after_eval();
-
+        // 통합 워크플로우 호출 (결과는 internal_appraise가 저장함)
+        let app_result = self.execute_appraise_workflow(npc, relationship, &situation, before_eval, after_eval);
+        
+        // 병합 처리 (이전 감정 + 새 감정)
+        let new_state = self.repository.get_emotion_state(npc_id).unwrap_or_else(EmotionState::new);
         let merged = EmotionState::merge_from_beat(&previous, &new_state, BEAT_MERGE_THRESHOLD);
         self.repository.save_emotion_state(npc_id, merged.clone());
 
+        // 병합된 상태로 필드 재구성
         let (emotions, dominant, mood) = build_emotion_fields(&merged);
         let guide = ActingGuide::build(npc, &merged, Some(focus.description.clone()), Some(relationship));
 
@@ -186,17 +184,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         self.repository.save_scene(scene.clone());
 
         Ok(StimulusResult {
-            emotions,
-            dominant,
-            mood,
-            guide,
-            trace: beat_trace,
+            emotions, dominant, mood, guide,
+            trace: app_result.trace,
             beat_changed: true,
             active_focus_id: Some(focus_id),
         })
     }
 
-    /// Beat 종료 시 Scene의 NPC/파트너 관계를 갱신합니다.
     fn update_beat_relationship(&mut self, scene: &Scene) {
         let beat_req = AfterDialogueRequest {
             npc_id: scene.npc_id().to_string(),
@@ -207,12 +201,11 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let _ = self.update_relationship(&beat_req);
     }
 
-    /// Scene 시작: Focus 목록 등록 + 초기 Focus 자동 appraise
     pub fn start_scene(
         &mut self,
         req: SceneRequest,
-        mut before_eval: impl FnMut(),
-        mut after_eval: impl FnMut() -> Vec<String>,
+        before_eval: impl FnMut(),
+        after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<SceneResult, MindServiceError> {
         let focuses: Vec<SceneFocus> = req.focuses.iter()
             .map(|f| f.to_domain(&self.repository, &req.npc_id, &req.partner_id))
@@ -222,23 +215,17 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let mut scene = Scene::new(req.npc_id.clone(), req.partner_id.clone(), focuses);
 
         let (initial_appraise, active_focus_id) = self.appraise_initial_focus(
-            &mut scene, || before_eval(), || after_eval(),
+            &mut scene, before_eval, after_eval,
         )?;
 
         self.repository.save_scene(scene);
-
         Ok(SceneResult { focus_count, initial_appraise, active_focus_id })
     }
 
-    /// 현재 Scene Focus 상태를 조회합니다.
     pub fn scene_info(&self) -> SceneInfoResult {
         let Some(scene) = self.repository.get_scene() else {
             return SceneInfoResult {
-                has_scene: false,
-                npc_id: None,
-                partner_id: None,
-                active_focus_id: None,
-                focuses: vec![],
+                has_scene: false, npc_id: None, partner_id: None, active_focus_id: None, focuses: vec![],
             };
         };
 
@@ -276,9 +263,6 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         }
     }
 
-    /// Scene Focus를 직접 로드합니다 (시나리오 파일 로드 시 사용).
-    ///
-    /// Initial Focus가 있으면 자동 appraise하고 결과를 반환합니다.
     pub fn load_scene_focuses(
         &mut self,
         focuses: Vec<SceneFocus>,
@@ -291,12 +275,11 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         Ok(result)
     }
 
-    /// Initial Focus를 찾아 appraise합니다. 없으면 (None, None) 반환.
     fn appraise_initial_focus(
         &mut self,
         scene: &mut Scene,
-        mut before_eval: impl FnMut(),
-        mut after_eval: impl FnMut() -> Vec<String>,
+        before_eval: impl FnMut(),
+        after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<(Option<AppraiseResult>, Option<String>), MindServiceError> {
         let npc_id = scene.npc_id();
         let partner_id = scene.partner_id();
@@ -305,50 +288,24 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             return Ok((None, None));
         };
 
-        let npc = self.repository.get_npc(npc_id)
-            .ok_or_else(|| MindServiceError::NpcNotFound(npc_id.to_string()))?;
+        let (npc, relationship) = self.prepare_context(npc_id, partner_id)?;
+        let situation = focus.to_situation().map_err(|e| MindServiceError::InvalidSituation(e.to_string()))?;
 
-        let relationship = self.repository.get_relationship(npc_id, partner_id)
-            .ok_or_else(|| MindServiceError::RelationshipNotFound(npc_id.to_string(), partner_id.to_string()))?;
-
-        let situation = focus.to_situation()
-            .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))?;
-
-        before_eval();
-        let emotion_state = self.appraiser.appraise(npc.personality(), &situation, &relationship.modifiers());
-        let trace = after_eval();
-
-        let result = build_appraise_result(
-            &npc, &emotion_state,
-            Some(focus.description.clone()),
-            Some(&relationship),
-            trace,
-        );
-
-        self.repository.save_emotion_state(npc_id, emotion_state);
+        let result = self.execute_appraise_workflow(&npc, &relationship, &situation, before_eval, after_eval);
         scene.set_active_focus(focus.id.clone());
 
         Ok((Some(result), Some(focus.id)))
     }
 
-    /// 현재 감정 상태 기반으로 가이드를 재생성합니다.
     pub fn generate_guide(&self, req: GuideRequest) -> Result<GuideResult, MindServiceError> {
-        let npc = self.repository.get_npc(&req.npc_id)
-            .ok_or_else(|| MindServiceError::NpcNotFound(req.npc_id.clone()))?;
-
-        let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
-            .ok_or_else(|| MindServiceError::RelationshipNotFound(req.npc_id.clone(), req.partner_id.clone()))?;
-
+        let (npc, relationship) = self.prepare_context(&req.npc_id, &req.partner_id)?;
         let emotion_state = self.repository.get_emotion_state(&req.npc_id)
             .ok_or(MindServiceError::EmotionStateNotFound)?;
 
         let guide = ActingGuide::build(&npc, &emotion_state, req.situation_description.clone(), Some(&relationship));
-
         Ok(GuideResult { guide })
     }
 
-    /// 대화가 종료된 후, 현재 감정 상태를 바탕으로 관계를 갱신합니다.
-    /// 감정 상태를 초기화합니다.
     pub fn after_dialogue(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
         let response = self.update_relationship(&req)?;
         self.repository.clear_emotion_state(&req.npc_id);
@@ -356,13 +313,10 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         Ok(response)
     }
 
-    /// Beat 종료 시 관계를 갱신합니다.
-    /// 감정 상태는 초기화하지 않습니다 (같은 Scene 내에서 계속 사용).
     pub fn after_beat(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
         self.update_relationship(&req)
     }
 
-    /// 관계 갱신 공통 로직
     fn update_relationship(&mut self, req: &AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
         let relationship = self.repository.get_relationship(&req.npc_id, &req.partner_id)
             .or_else(|| self.repository.get_relationship(&req.partner_id, &req.npc_id))
@@ -387,7 +341,6 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         };
 
         self.repository.save_relationship(&req.npc_id, &req.partner_id, new_rel);
-
         Ok(AfterDialogueResponse { before, after })
     }
 }

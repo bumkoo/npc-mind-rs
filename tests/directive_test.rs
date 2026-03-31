@@ -345,3 +345,74 @@ fn 빈_감정은_제한사항_최소() {
     assert!(d.restrictions.is_empty(),
         "빈 감정 + H↓ → 금지사항 없음: {:?}", d.restrictions);
 }
+
+// ===========================================================================
+// 열거형별 개별 decide 메서드 유닛 테스트 (리팩토링 검증)
+// ===========================================================================
+
+#[cfg(test)]
+mod enum_decide_unit_tests {
+    use super::*;
+
+    #[test]
+    fn test_tone_decide_logic() {
+        let avg = NpcBuilder::new("t", "t").build().personality().dimension_averages();
+        
+        // 1. 감정 없음 + 중립 기분
+        assert_eq!(Tone::decide(None, 0.0, &avg), Tone::Calm);
+        
+        // 2. 긍정 기분
+        assert_eq!(Tone::decide(None, 0.5, &avg), Tone::RelaxedGentle);
+        
+        // 3. 부정 기분
+        assert_eq!(Tone::decide(None, -0.5, &avg), Tone::Heavy);
+        
+        // 4. 특정 감정 dominant
+        assert_eq!(Tone::decide(Some(EmotionType::Joy), 0.5, &avg), Tone::BrightLively);
+        assert_eq!(Tone::decide(Some(EmotionType::Shame), -0.5, &avg), Tone::ShrinkingSmall);
+    }
+
+    #[test]
+    fn test_attitude_decide_logic() {
+        let avg = NpcBuilder::new("t", "t").build().personality().dimension_averages();
+
+        // 1. 기본 중립
+        assert_eq!(Attitude::decide(false, false, false, 0.0, &avg), Attitude::NeutralObservant);
+
+        // 2. 비난(Reproach) 존재
+        assert_eq!(Attitude::decide(false, true, false, 0.0, &avg), Attitude::Judgmental);
+
+        // 3. 두려움(Fear) 존재
+        assert_eq!(Attitude::decide(false, false, true, 0.0, &avg), Attitude::GuardedDefensive);
+    }
+
+    #[test]
+    fn test_behavioral_tendency_decide_logic() {
+        let avg = NpcBuilder::new("t", "t").build().personality().dimension_averages();
+
+        // 1. 기본 관찰
+        assert_eq!(BehavioralTendency::decide(false, false, false, 0.0, &avg), BehavioralTendency::ObserveAndRespond);
+
+        // 2. 수치심(Shame) 존재
+        assert_eq!(BehavioralTendency::decide(false, false, true, 0.0, &avg), BehavioralTendency::AvoidOrDeflect);
+
+        // 3. 긍정 기분
+        assert_eq!(BehavioralTendency::decide(false, false, false, 0.5, &avg), BehavioralTendency::ActiveCooperation);
+    }
+
+    #[test]
+    fn test_restriction_evaluate_all_logic() {
+        let avg = NpcBuilder::new("t", "t").build().personality().dimension_averages();
+
+        // 1. 중립일 때 빈 목록
+        assert!(Restriction::evaluate_all(false, false, false, 0.0, &avg).is_empty());
+
+        // 2. 분노 시 NoFriendliness 포함
+        let res = Restriction::evaluate_all(true, false, false, 0.0, &avg);
+        assert!(res.contains(&Restriction::NoFriendliness));
+
+        // 3. 부정 기분 시 NoHumor 포함
+        let res = Restriction::evaluate_all(false, false, false, -0.5, &avg);
+        assert!(res.contains(&Restriction::NoHumorOrLightTone));
+    }
+}

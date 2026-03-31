@@ -235,6 +235,10 @@ pub fn make_교룡() -> Npc {
             h.sincerity = s(-0.4); h.fairness = s(-0.5);
             h.greed_avoidance = s(-0.6); h.modesty = s(-0.7);
         })
+        .emotionality(|e| {
+            e.fearfulness = s(0.8); e.anxiety = s(0.7);
+            e.dependence = s(0.5); e.sentimentality = s(0.6);
+        })
         .extraversion(|x| {
             x.social_self_esteem = s(0.7); x.social_boldness = s(0.8);
             x.sociability = s(0.0); x.liveliness = s(0.6);
