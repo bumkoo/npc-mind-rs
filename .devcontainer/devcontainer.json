@@ -1,24 +1,32 @@
 {
   "name": "NPC Mind Rust Environment",
   "image": "mcr.microsoft.com/devcontainers/rust:1",
-  "forwardPorts": [8080, 3000], 
+  "forwardPorts": [3000],
   "portsAttributes": {
-    "8080": {
-      "label": "Mind Studio Web",
+    "3000": {
+      "label": "Mind Studio",
       "onAutoForward": "notify"
     }
   },
   "customizations": {
     "vscode": {
       "settings": {
-        "lldb.executable": "/usr/bin/lldb"
+        "lldb.executable": "/usr/bin/lldb",
+        "rust-analyzer.check.command": "clippy",
+        "rust-analyzer.cargo.features": ["mind-studio"],
+        "[rust]": {
+          "editor.formatOnSave": true,
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        }
       },
       "extensions": [
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
-        "serayuzgur.crates"
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "fill-labs.dependi"
       ]
     }
   },
-  "postCreateCommand": "rustc --version && cargo --version"
+  "postCreateCommand": "rustup update stable && cargo build"
 }
