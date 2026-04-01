@@ -33,6 +33,13 @@ cargo test --test coverage_gap_test   # 커버리지 갭 보완 (valence, merge,
 cargo test --test scene_test          # Scene 도메인 애그리거트 단위 테스트
 cargo test --test embed_test          # PAD 앵커 임베딩 통합 (embed feature 필요)
 
+# PAD 벤치마크 & 분석 (embed feature 필요)
+cargo test --features embed --test pad_benchmark_test      # PAD 분석기 품질 벤치마크
+cargo test --features embed --test pad_anchor_count_bench  # PAD 앵커 개수별 정확도 비교
+cargo test --features embed --test pad_colbert_bench       # Dense vs ColBERT PAD 분석 비교
+cargo test --features embed --test pad_gemini_bench        # Gemini 제안 앵커 vs 현재 앵커 비교
+cargo test --features embed --test pad_individual_scores   # 앵커별 개별 cos_sim 행렬 검증
+
 # mind-studio 빌드 & 실행
 cargo run --features mind-studio --bin npc-mind-studio          # http://127.0.0.1:3000
 cargo run --features mind-studio,embed --bin npc-mind-studio    # 대사→PAD 분석 포함
@@ -58,7 +65,7 @@ src/
     pad.rs                        # PAD 감정 공간 분석
     pad_table.rs                  # OCC → PAD 좌표 매핑 테이블 (Gebhard 2005 기반)
     emotion/
-      appraisal/                  # 세부 평가 모듈 (event, action, object, compound)
+      appraisal/                  # 세부 평가 모듈 (event, action, object, compound, helpers)
       engine.rs                   # AppraisalEngine (Appraiser 포트 구현)
       types.rs                    # OCC 감정 타입, EmotionState, merge_from_beat
       situation.rs                # 상황 모델 + Event/Action/Object Focus
@@ -87,8 +94,33 @@ tests/
   port_injection_test.rs          # 포트 주입 + Scene/Beat 통합
   scene_test.rs                   # Scene 도메인 애그리거트 단위 테스트
   embed_test.rs                   # PAD 앵커 임베딩 통합 (embed feature)
+  pad_benchmark_test.rs           # PAD 앵커 정확도 벤치마크 (embed feature)
+  pad_anchor_count_bench.rs       # PAD 앵커 개수별 성능 비교 (embed feature)
+  pad_colbert_bench.rs            # ColBERT 스코어링 벤치마크 (embed feature)
+  pad_gemini_bench.rs             # Gemini 임베딩 벤치마크 (embed feature)
+  pad_individual_scores.rs        # PAD 개별 감정 스코어 분석 (embed feature)
+locales/
+  ko.toml                          # 한국어 로케일 TOML
+  en.toml                          # 영어 로케일 TOML
 docs/
-  locale-guide.md                 # 언어 설정 가이드 (개발자/사용자)
+  architecture/
+    architecture-v2.md              # 아키텍처 v2 설계 문서
+    situation-structure.md          # 상황 구조 설계
+  emotion/
+    appraisal-engine.md             # 감정 평가 엔진 설계
+    occ-emotion-model.md            # OCC 감정 모델 정의
+    hexaco-occ-emotion-mapping.md   # HEXACO→OCC 매핑 설계
+    pad-anchor-score-matrix.md      # PAD 앵커 스코어 매트릭스
+    pad-stimulus-design-decisions.md # PAD 자극 설계 결정
+  guide/
+    guide-mapping-table.md          # 가이드 매핑 테이블
+  personality/
+    hexaco-research.md              # HEXACO 연구 자료
+    facets/                         # 6차원별 상세 가이드 (h,e,x,a,c,o)
+  infra/
+    embedding-adapter-migration.md  # 임베딩 어댑터 마이그레이션
+  collaboration-workflow.md         # 협업 워크플로우
+  locale-guide.md                   # 언어 설정 가이드 (개발자/사용자)
 ```
 
 ## 아키텍처 (DDD + 헥사고날 + 계층화)
@@ -200,10 +232,39 @@ Mind Studio handlers는 `MindService` API만 호출하는 얇은 래퍼입니다
 - **상황 중요도 슬라이더**: after_dialogue 시 significance (0.0~1.0) 설정
 
 ### Mind Studio API 엔드포인트
+
+**CRUD:**
+- `GET /api/npcs` — NPC 목록 조회
+- `POST /api/npcs` — NPC 생성/수정
+- `DELETE /api/npcs/{id}` — NPC 삭제
+- `GET /api/relationships` — 관계 목록 조회
+- `POST /api/relationships` — 관계 생성/수정
+- `DELETE /api/relationships/{owner}/{target}` — 관계 삭제
+- `GET /api/objects` — 오브젝트 목록 조회
+- `POST /api/objects` — 오브젝트 생성/수정
+- `DELETE /api/objects/{id}` — 오브젝트 삭제
+
+**감정 파이프라인:**
+- `POST /api/appraise` — 감정 평가 실행
+- `POST /api/stimulus` — PAD 자극 적용 + Focus 전환 판단
+- `POST /api/guide` — 현재 감정에서 가이드 재생성
+- `POST /api/after-dialogue` — 대화 종료 후 관계 갱신
+
+**Scene:**
 - `POST /api/scene` — Scene 시작: Focus 옵션 목록 등록 + 초기 Focus 자동 appraise
-- `GET /api/scene-info` — 현재 Scene Focus 상태 조회 (프론트엔드 읽기 전용)
-- `POST /api/stimulus` — PAD 자극 적용 + Focus 전환 판단 (StimulusResponse 반환)
-- `POST /api/load` — 시나리오 로드 시 scene 필드가 있으면 Focus 자동 등록
+- `GET /api/scene-info` — 현재 Scene Focus 상태 조회
+
+**분석:**
+- `POST /api/analyze-utterance` — 대사 → PAD 자동 분석 (embed feature)
+
+**시나리오 & 상태:**
+- `GET /api/scenarios` — 시나리오 파일 목록
+- `GET /api/scenario-meta` — 로드된 시나리오 메타정보
+- `POST /api/save` — 현재 상태 저장
+- `POST /api/load` — 시나리오 로드 (scene 필드 시 Focus 자동 등록)
+- `GET /api/situation` — 상황 패널 상태 조회
+- `PUT /api/situation` — 상황 패널 상태 저장
+- `GET /api/history` — 턴별 히스토리 조회
 
 ## 용어 정의
 
@@ -290,6 +351,7 @@ apply_stimulus 호출
 | `personality.rs` | W_STANDARD(0.3), W_STRONG(0.4), W_DOMINANT(0.7), W_MILD(0.2) | 성격→감정 가중치 |
 | `personality.rs` | BASE_SELF(1.0), BASE_EMPATHY(0.5), BASE_HOSTILITY(0.0) | 가중치 기저값 |
 | `personality.rs` | CLAMP_STANDARD(0.5,1.5), CLAMP_OPTIONAL(0.0,1.5), CLAMP_STIMULUS(0.1,2.0) | 가중치 범위 |
+| `personality.rs` | SCORE_MIN(-1.0), SCORE_MAX(1.0), SCORE_NEUTRAL(0.0) | 성격 점수 범위 |
 | `pad_table.rs` | 22개 감정별 PAD 좌표 (Gebhard 2005 기반, 커스텀 조정 포함) | OCC→PAD 매핑 |
 
 ## stimulus 관성 공식
