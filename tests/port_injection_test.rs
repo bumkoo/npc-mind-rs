@@ -77,7 +77,7 @@ fn 커스텀_appraiser_주입() {
         },
     };
 
-    let result = service.appraise(req, || {}, || vec![]).unwrap();
+    let result = service.appraise(req, || {}, Vec::new).unwrap();
 
     // 나쁜 상황이지만 AlwaysJoyAppraiser이므로 Joy만 존재
     assert!(result.emotions.iter().any(|e| e.emotion_type == "Joy"));
@@ -111,7 +111,7 @@ fn 커스텀_stimulus_processor_주입() {
         },
     };
 
-    let appraise_result = service.appraise(req, || {}, || vec![]).unwrap();
+    let appraise_result = service.appraise(req, || {}, Vec::new).unwrap();
     let before_mood = appraise_result.mood;
 
     // 부정적 자극 적용 — NoOp이므로 변동 없어야 함
@@ -124,7 +124,7 @@ fn 커스텀_stimulus_processor_주입() {
         dominance: 0.5,
     };
 
-    let stim_result = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
+    let stim_result = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
 
     // NoOp이므로 mood 변동 없음
     assert!((stim_result.mood - before_mood).abs() < 0.001,
@@ -161,7 +161,7 @@ fn 기본_엔진_사용시_기존과_동일() {
         },
     };
 
-    let result = service.appraise(req, || {}, || vec![]).unwrap();
+    let result = service.appraise(req, || {}, Vec::new).unwrap();
 
     // 기존 엔진이므로 부정적 감정 발생
     assert!(result.mood < 0.0);
@@ -221,7 +221,7 @@ fn start_scene_초기_focus_appraise() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    let result = service.start_scene(scene_req_with_initial(), || {}, || vec![]).unwrap();
+    let result = service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
 
     assert_eq!(result.focus_count, 2);
     assert!(result.initial_appraise.is_some());
@@ -267,7 +267,7 @@ fn start_scene_focus가_없으면_appraise_없음() {
         }],
     };
 
-    let result = service.start_scene(req, || {}, || vec![]).unwrap();
+    let result = service.start_scene(req, || {}, Vec::new).unwrap();
 
     assert_eq!(result.focus_count, 1);
     assert!(result.initial_appraise.is_none());
@@ -296,7 +296,7 @@ fn scene_info_scene_등록_후_상태_조회() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    service.start_scene(scene_req_with_initial(), || {}, || vec![]).unwrap();
+    service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
 
     let info = service.scene_info();
     assert!(info.has_scene);
@@ -344,7 +344,7 @@ fn stimulus_scene_없으면_beat_전환_안됨() {
             object: None,
         },
     };
-    service.appraise(req, || {}, || vec![]).unwrap();
+    service.appraise(req, || {}, Vec::new).unwrap();
 
     let stim = StimulusRequest {
         npc_id: "mu_baek".to_string(),
@@ -354,7 +354,7 @@ fn stimulus_scene_없으면_beat_전환_안됨() {
         arousal: 0.5,
         dominance: 0.0,
     };
-    let result = service.apply_stimulus(stim, || {}, || vec![]).unwrap();
+    let result = service.apply_stimulus(stim, || {}, Vec::new).unwrap();
 
     assert!(!result.beat_changed);
     assert!(result.active_focus_id.is_none());
@@ -409,7 +409,7 @@ fn stimulus_beat_전환_trigger_충족() {
         ],
     };
 
-    service.start_scene(scene_req, || {}, || vec![]).unwrap();
+    service.start_scene(scene_req, || {}, Vec::new).unwrap();
 
     // 강한 부정 자극 반복 → Distress 발생 → Beat 전환 예상
     // Joy가 있는 상태에서 부정 자극으로 Joy 감소 → Distress는 stimulus로 직접 생성 안 됨
@@ -431,7 +431,7 @@ fn stimulus_beat_전환_trigger_충족() {
         arousal: 0.0,
         dominance: 0.0,
     };
-    let result = service.apply_stimulus(stim, || {}, || vec![]).unwrap();
+    let result = service.apply_stimulus(stim, || {}, Vec::new).unwrap();
 
     assert!(result.beat_changed, "Distress > 0.1 조건 충족 → Beat 전환");
     assert_eq!(result.active_focus_id, Some("distress_focus".to_string()));
@@ -486,7 +486,7 @@ fn stimulus_beat_전환_후_active_focus_변경() {
         ],
     };
 
-    service.start_scene(scene_req, || {}, || vec![]).unwrap();
+    service.start_scene(scene_req, || {}, Vec::new).unwrap();
     assert_eq!(service.scene_info().active_focus_id, Some("happy".to_string()));
 
     // Joy를 수동으로 제거하여 absent 조건 충족
@@ -502,7 +502,7 @@ fn stimulus_beat_전환_후_active_focus_변경() {
         arousal: 0.0,
         dominance: 0.0,
     };
-    let result = service.apply_stimulus(stim, || {}, || vec![]).unwrap();
+    let result = service.apply_stimulus(stim, || {}, Vec::new).unwrap();
 
     assert!(result.beat_changed);
     assert_eq!(result.active_focus_id, Some("joy_gone".to_string()));
@@ -606,7 +606,7 @@ fn formatted_service_start_scene() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = FormattedMindService::new(repo, "ko").unwrap();
-    let response = service.start_scene(scene_req_with_initial(), || {}, || vec![]).unwrap();
+    let response = service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
 
     assert_eq!(response.focus_count, 2);
     assert!(response.initial_appraise.is_some());
@@ -668,7 +668,7 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
         ],
     };
 
-    service.start_scene(scene_req, || {}, || vec![]).unwrap();
+    service.start_scene(scene_req, || {}, Vec::new).unwrap();
 
     // Fear를 수동으로 설정
     let mut state = service.repository().get_emotion_state("mu_baek").unwrap();
@@ -683,7 +683,7 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
         arousal: 0.0,
         dominance: 0.0,
     };
-    let response = service.apply_stimulus(stim, || {}, || vec![]).unwrap();
+    let response = service.apply_stimulus(stim, || {}, Vec::new).unwrap();
 
     assert!(response.beat_changed);
     assert_eq!(response.active_focus_id, Some("fear_focus".to_string()));
