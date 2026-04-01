@@ -38,7 +38,7 @@ AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
 
 > `MIND_STUDIO_URL` 환경변수를 생략하면 기본값 `http://localhost:3000`을 사용합니다.
 
-## 제공되는 도구 (16개)
+## 제공되는 도구 (23개)
 
 ### 세계 구축 (CRUD)
 
@@ -49,8 +49,10 @@ AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
 | `delete_npc` | NPC 삭제 |
 | `list_relationships` | 관계 목록 조회 |
 | `create_relationship` | 관계 생성/수정 (closeness/trust/power) |
+| `delete_relationship` | 관계 삭제 |
 | `list_objects` | 오브젝트 목록 조회 |
 | `create_object` | 오브젝트 생성/수정 |
+| `delete_object` | 오브젝트 삭제 |
 
 ### 감정 파이프라인
 
@@ -61,12 +63,27 @@ AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
 | `generate_guide` | 현재 감정으로 프롬프트 재생성 |
 | `after_dialogue` | 대화 종료 → 관계 갱신 + 감정 초기화 |
 
+### 대사 분석
+
+| 도구 | 설명 |
+|------|------|
+| `analyze_utterance` | 대사 텍스트 → PAD 자동 분석 (embed feature 필요) |
+
 ### Scene 관리
 
 | 도구 | 설명 |
 |------|------|
 | `start_scene` | Scene 시작 (Focus/Beat 등록 + 초기 감정 평가) |
 | `get_scene_info` | 현재 Scene Focus 상태 조회 |
+
+### 상태 조회
+
+| 도구 | 설명 |
+|------|------|
+| `get_history` | 턴별 히스토리 조회 (감정 변화 추적/디버깅) |
+| `get_situation` | 현재 상황 설정 패널 상태 조회 |
+| `update_situation` | 상황 설정 패널 상태 저장 (WebUI 동기화) |
+| `get_scenario_meta` | 현재 로드된 시나리오 메타 정보 |
 
 ### 시나리오 관리
 
@@ -111,3 +128,18 @@ AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
 
 8. save_scenario(path="data/my_scenario/scenario.json")
 ```
+
+## Tool Annotations
+
+모든 도구에 MCP 표준 annotations가 적용되어 있습니다:
+
+| 분류 | 도구 | readOnly | destructive | idempotent |
+|------|------|----------|-------------|------------|
+| 조회 | `list_npcs`, `list_relationships`, `list_objects`, `list_scenarios` | ✅ | ❌ | - |
+| 조회 | `get_scene_info`, `get_history`, `get_situation`, `get_scenario_meta` | ✅ | ❌ | - |
+| 분석 | `analyze_utterance` | ✅ | ❌ | - |
+| 생성/수정 | `create_npc`, `create_relationship`, `create_object`, `update_situation` | ❌ | ❌ | ✅ |
+| 파이프라인 | `appraise`, `apply_stimulus`, `generate_guide`, `after_dialogue` | ❌ | ❌ | - |
+| Scene | `start_scene` | ❌ | ❌ | - |
+| 저장/로드 | `save_scenario`, `load_scenario` | ❌ | ❌ | - |
+| 삭제 | `delete_npc`, `delete_relationship`, `delete_object` | ❌ | ✅ | - |

@@ -452,9 +452,14 @@ pip install -r mcp/requirements.txt
 | `create_object` | `POST /api/objects` | ② 프로파일 |
 | `appraise` | `POST /api/appraise` | ③ 감정 평가 |
 | `apply_stimulus` | `POST /api/stimulus` | ③ 감정 평가 |
+| `analyze_utterance` | `POST /api/analyze-utterance` | ③ 대사 PAD 분석 |
 | `generate_guide` | `POST /api/guide` | ③ 감정 평가 |
 | `start_scene` | `POST /api/scene` | ③ 감정 평가 |
 | `get_scene_info` | `GET /api/scene-info` | ④ 결과 검증 |
+| `get_history` | `GET /api/history` | ④ 결과 검증 |
+| `get_situation` | `GET /api/situation` | ④ 결과 검증 |
+| `update_situation` | `PUT /api/situation` | ④ WebUI 동기화 |
+| `get_scenario_meta` | `GET /api/scenario-meta` | 조회 |
 | `after_dialogue` | `POST /api/after-dialogue` | ⑥ 저장 |
 | `save_scenario` | `POST /api/save` | ⑥ 저장 |
 | `load_scenario` | `POST /api/load` | ⑥ 저장 |
@@ -463,5 +468,40 @@ pip install -r mcp/requirements.txt
 | `list_relationships` | `GET /api/relationships` | 조회 |
 | `list_objects` | `GET /api/objects` | 조회 |
 | `delete_npc` | `DELETE /api/npcs/{id}` | 관리 |
+| `delete_relationship` | `DELETE /api/relationships/{owner}/{target}` | 관리 |
+| `delete_object` | `DELETE /api/objects/{id}` | 관리 |
 
 자세한 도구 파라미터와 사용 예시는 [mcp/README.md](../../mcp/README.md) 참고.
+
+### MCP Agent 워크플로우 예시: 대사 PAD 분석 + 결과 검증
+
+AI Agent가 MCP 도구만으로 대사 분석 → stimulus → 히스토리 검증까지 수행하는 흐름:
+
+```
+1. load_scenario(path="huckleberry_finn/ch15_fog_trash/session_001")
+   # 시나리오 로드
+
+2. get_scenario_meta()
+   # → {"name":"Ch.15 안개 속 쓰레기", ...} — 로드 확인
+
+3. analyze_utterance(utterance="네 이놈! 날 걱정하며 울었는데 그걸 장난감으로 삼다니!")
+   # → {"pleasure":-0.5, "arousal":0.7, "dominance":0.3}
+
+4. apply_stimulus(npc_id="jim", partner_id="huck",
+                  pleasure=-0.5, arousal=0.7, dominance=0.3,
+                  situation_description="헉의 거짓말에 분노")
+   # → 감정 갱신 + beat_changed 확인
+
+5. get_history()
+   # → 턴별 감정 변화 추적 — Turn 1: scene/appraise → Turn 2: stimulus
+
+6. get_scene_info()
+   # → 활성 Focus 확인, trigger 조건 충족 여부
+
+7. # 대사 반복 (4-6) → Beat 전환 시 프롬프트 변화 관찰
+
+8. after_dialogue(npc_id="jim", partner_id="huck",
+                  praiseworthiness=0.3, significance=0.7)
+
+9. save_scenario(path="huckleberry_finn/ch15_fog_trash/session_002")
+```

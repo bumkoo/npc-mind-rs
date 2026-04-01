@@ -47,29 +47,40 @@ HEXACO 6차원 (각 4 facets, -1.0~1.0):
 
 async def _request(method: str, path: str, body: dict | None = None) -> str:
     """Mind Studio HTTP API 호출 헬퍼."""
-    async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
-        if method == "GET":
-            resp = await client.get(path)
-        elif method == "POST":
-            resp = await client.post(path, json=body)
-        elif method == "PUT":
-            resp = await client.put(path, json=body)
-        elif method == "DELETE":
-            resp = await client.delete(path)
-        else:
-            return f"Unsupported method: {method}"
+    try:
+        async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
+            if method == "GET":
+                resp = await client.get(path)
+            elif method == "POST":
+                resp = await client.post(path, json=body)
+            elif method == "PUT":
+                resp = await client.put(path, json=body)
+            elif method == "DELETE":
+                resp = await client.delete(path)
+            else:
+                raise RuntimeError(f"Unsupported method: {method}")
 
-        if resp.status_code >= 400:
-            return f"Error {resp.status_code}: {resp.text}"
+            if resp.status_code >= 400:
+                raise RuntimeError(f"Mind Studio API error {resp.status_code}: {resp.text}")
 
-        text = resp.text.strip()
-        if not text:
-            return "OK"
-        # JSON이면 보기 좋게 포맷팅
-        try:
-            return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
-        except json.JSONDecodeError:
-            return text
+            text = resp.text.strip()
+            if not text:
+                return "OK"
+            # JSON이면 보기 좋게 포맷팅
+            try:
+                return json.dumps(json.loads(text), ensure_ascii=False, indent=2)
+            except json.JSONDecodeError:
+                return text
+    except httpx.ConnectError:
+        raise RuntimeError(
+            f"Mind Studio 서버에 연결할 수 없습니다 ({BASE_URL}). "
+            "먼저 'cargo run --features mind-studio --bin npc-mind-studio'를 실행하세요."
+        )
+    except httpx.TimeoutException:
+        raise RuntimeError(
+            f"Mind Studio 서버 응답 시간 초과 ({BASE_URL}). "
+            "서버가 실행 중인지 확인하세요."
+        )
 
 
 # =========================================================================
@@ -77,13 +88,13 @@ async def _request(method: str, path: str, body: dict | None = None) -> str:
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 async def list_npcs() -> str:
     """등록된 모든 NPC 목록을 조회합니다."""
     return await _request("GET", "/api/npcs")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
 async def create_npc(
     id: str,
     name: str,
@@ -128,7 +139,7 @@ async def create_npc(
     return await _request("POST", "/api/npcs", body)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
 async def delete_npc(id: str) -> str:
     """NPC를 삭제합니다."""
     return await _request("DELETE", f"/api/npcs/{id}")
@@ -139,13 +150,13 @@ async def delete_npc(id: str) -> str:
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 async def list_relationships() -> str:
     """등록된 모든 관계를 조회합니다."""
     return await _request("GET", "/api/relationships")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
 async def create_relationship(
     owner_id: str,
     target_id: str,
@@ -177,13 +188,13 @@ async def create_relationship(
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 async def list_objects() -> str:
     """등록된 모든 오브젝트를 조회합니다."""
     return await _request("GET", "/api/objects")
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
 async def create_object(
     id: str,
     description: str,
@@ -201,7 +212,7 @@ async def create_object(
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def appraise(
     npc_id: str,
     partner_id: str,
@@ -267,7 +278,7 @@ async def appraise(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def apply_stimulus(
     npc_id: str,
     partner_id: str,
@@ -297,7 +308,7 @@ async def apply_stimulus(
     return await _request("POST", "/api/stimulus", body)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def generate_guide(
     npc_id: str,
     partner_id: str,
@@ -313,7 +324,7 @@ async def generate_guide(
     return await _request("POST", "/api/guide", body)
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def after_dialogue(
     npc_id: str,
     partner_id: str,
@@ -340,7 +351,7 @@ async def after_dialogue(
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def start_scene(
     npc_id: str,
     partner_id: str,
@@ -379,7 +390,7 @@ async def start_scene(
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 async def get_scene_info() -> str:
     """현재 Scene의 Focus 상태를 조회합니다."""
     return await _request("GET", "/api/scene-info")
@@ -390,7 +401,7 @@ async def get_scene_info() -> str:
 # =========================================================================
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def save_scenario(path: str) -> str:
     """현재 상태를 JSON 파일로 저장합니다.
 
@@ -399,7 +410,7 @@ async def save_scenario(path: str) -> str:
     return await _request("POST", "/api/save", {"path": path})
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
 async def load_scenario(path: str) -> str:
     """저장된 시나리오 JSON을 로드합니다.
 
@@ -408,10 +419,93 @@ async def load_scenario(path: str) -> str:
     return await _request("POST", "/api/load", {"path": path})
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
 async def list_scenarios() -> str:
     """data/ 폴더에서 사용 가능한 시나리오 목록을 조회합니다."""
     return await _request("GET", "/api/scenarios")
+
+
+# =========================================================================
+# 대사 PAD 분석
+# =========================================================================
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def analyze_utterance(utterance: str) -> str:
+    """대사 텍스트를 PAD(Pleasure/Arousal/Dominance) 값으로 변환합니다.
+
+    BGE-M3 임베딩 모델이 대사의 감정 톤을 분석하여 PAD 좌표를 산출합니다.
+    Mind Studio 서버가 --features embed 로 빌드되어야 합니다.
+
+    반환값:
+    - pleasure: -1.0(불쾌) ~ 1.0(유쾌)
+    - arousal: -1.0(차분) ~ 1.0(격앙)
+    - dominance: -1.0(복종) ~ 1.0(지배)
+    """
+    return await _request("POST", "/api/analyze-utterance", {"utterance": utterance})
+
+
+# =========================================================================
+# 턴 히스토리 / 상황 상태 / 메타
+# =========================================================================
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def get_history() -> str:
+    """턴별 히스토리를 조회합니다.
+
+    각 턴에는 action 타입(appraise/stimulus/after_dialogue), 요청, 응답이 포함됩니다.
+    감정 변화 추적, 결과 검증, 디버깅에 사용합니다.
+    """
+    return await _request("GET", "/api/history")
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def get_situation() -> str:
+    """현재 상황 설정 패널의 상태를 조회합니다.
+
+    WebUI의 상황 폼(description, event, action, object 등)에 입력된 값을 반환합니다.
+    """
+    return await _request("GET", "/api/situation")
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+async def update_situation(situation_json: str) -> str:
+    """상황 설정 패널의 상태를 저장합니다.
+
+    situation_json은 상황 폼의 JSON 문자열입니다.
+    WebUI와 동기화하려면 이 도구로 폼 상태를 업데이트합니다.
+    """
+    import json as _json
+    body = _json.loads(situation_json)
+    return await _request("PUT", "/api/situation", body)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False})
+async def get_scenario_meta() -> str:
+    """현재 로드된 시나리오의 메타 정보를 조회합니다.
+
+    시나리오 이름, 설명 등 로드된 시나리오의 기본 정보를 반환합니다.
+    시나리오가 로드되지 않았으면 빈 결과를 반환합니다.
+    """
+    return await _request("GET", "/api/scenario-meta")
+
+
+# =========================================================================
+# 삭제: Relationship / Object
+# =========================================================================
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+async def delete_relationship(owner_id: str, target_id: str) -> str:
+    """NPC 간 관계를 삭제합니다."""
+    return await _request("DELETE", f"/api/relationships/{owner_id}/{target_id}")
+
+
+@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+async def delete_object(id: str) -> str:
+    """오브젝트를 삭제합니다."""
+    return await _request("DELETE", f"/api/objects/{id}")
 
 
 # =========================================================================
