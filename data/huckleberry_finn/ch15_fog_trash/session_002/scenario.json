@@ -1,0 +1,414 @@
+{
+  "npcs": {
+    "jim": {
+      "id": "jim",
+      "name": "Jim",
+      "description": "Miss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.",
+      "sincerity": 0.7,
+      "fairness": 0.6,
+      "greed_avoidance": 0.5,
+      "modesty": 0.7,
+      "fearfulness": 0.6,
+      "anxiety": 0.5,
+      "dependence": 0.4,
+      "sentimentality": 0.8,
+      "social_self_esteem": -0.4,
+      "social_boldness": -0.5,
+      "sociability": 0.3,
+      "liveliness": 0.2,
+      "forgiveness": 0.8,
+      "gentleness": 0.7,
+      "flexibility": 0.6,
+      "patience": 0.7,
+      "organization": 0.3,
+      "diligence": 0.6,
+      "perfectionism": 0.3,
+      "prudence": 0.5,
+      "aesthetic_appreciation": 0.3,
+      "inquisitiveness": 0.2,
+      "creativity": 0.1,
+      "unconventionality": -0.3
+    },
+    "huck": {
+      "id": "huck",
+      "name": "Huck Finn",
+      "description": "13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.",
+      "sincerity": -0.3,
+      "fairness": 0.2,
+      "greed_avoidance": 0.4,
+      "modesty": 0.3,
+      "fearfulness": -0.5,
+      "anxiety": -0.3,
+      "dependence": -0.7,
+      "sentimentality": -0.2,
+      "social_self_esteem": -0.2,
+      "social_boldness": 0.4,
+      "sociability": 0.1,
+      "liveliness": 0.3,
+      "forgiveness": 0.3,
+      "gentleness": 0.2,
+      "flexibility": 0.5,
+      "patience": 0.3,
+      "organization": -0.6,
+      "diligence": -0.3,
+      "perfectionism": -0.5,
+      "prudence": -0.4,
+      "aesthetic_appreciation": 0.2,
+      "inquisitiveness": 0.6,
+      "creativity": 0.5,
+      "unconventionality": 0.8
+    }
+  },
+  "relationships": {
+    "jim:huck": {
+      "owner_id": "jim",
+      "target_id": "huck",
+      "closeness": 0.4188576,
+      "trust": 0.507,
+      "power": -0.3
+    },
+    "huck:jim": {
+      "owner_id": "huck",
+      "target_id": "jim",
+      "closeness": 0.45,
+      "trust": 0.4,
+      "power": 0.3
+    }
+  },
+  "objects": {},
+  "scenario": {
+    "name": "Ch.15 Fog & Trash Speech",
+    "description": "안개 속 이별 후 재회. 헉의 거짓말 발각 → 짐의 Trash 연설 → 헉의 사과. 신뢰 파열과 회복 테스트.",
+    "notes": []
+  },
+  "turn_history": [
+    {
+      "label": "Turn 1: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": -0.24580872058868408,
+        "dominance": 0.0,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": 0.3241753578186035,
+        "situation_description": "헉이 태연하게 돌아와서 짐을 속이려 한다"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 0.987516462802887
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6334331631660461
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 0.987516462802887
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.7738290429115295
+          }
+        ],
+        "mood": -0.7982595562934875,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n헉이 태연하게 돌아와서 짐을 속이려 한다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 2: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": 0.3547360897064209,
+        "dominance": 0.0,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": -0.07907706499099731,
+        "situation_description": "짐이 헉을 보고 기뻐하며 걱정했던 마음을 쏟아낸다"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 0.9860507249832153
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6272801160812378
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 0.9860507249832153
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.8037160038948059
+          }
+        ],
+        "mood": -0.8056822419166565,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(극도로 강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n짐이 헉을 보고 기뻐하며 걱정했던 마음을 쏟아낸다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 3: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": 0.06539958715438843,
+        "dominance": 0.13100659847259521,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": 0.13955676555633545,
+        "situation_description": "헉이 뻔뻔하게 거짓말을 계속한다"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 0.9780271649360657
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6116650700569153
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 0.9780271649360657
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.7985393404960632
+          }
+        ],
+        "mood": -0.7960771918296814,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n헉이 뻔뻔하게 거짓말을 계속한다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 4: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": 0.10471156239509583,
+        "dominance": 0.0,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": -0.23345947265625,
+        "situation_description": "짐이 뗏목 위 잔해를 발견하고 거짓말을 깨닫는다"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 0.9854575395584106
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6236754655838013
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 0.9854575395584106
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.820191502571106
+          }
+        ],
+        "mood": -0.8097748756408691,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(극도로 강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n짐이 뗏목 위 잔해를 발견하고 거짓말을 깨닫는다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 5: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": 0.2148374319076538,
+        "dominance": 0.0,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": -0.3043869137763977,
+        "situation_description": "짐의 유명한 Trash 연설 — 진심어린 분노와 상처"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 0.9941684007644653
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6363340020179749
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 0.9941684007644653
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.8539537787437439
+          }
+        ],
+        "mood": -0.8281521201133728,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(극도로 강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n짐의 유명한 Trash 연설 — 진심어린 분노와 상처\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 6: stimulus (jim)",
+      "action": "stimulus",
+      "request": {
+        "arousal": 0.15796905755996704,
+        "dominance": 0.0,
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "pleasure": -0.3385584354400635,
+        "situation_description": "헉이 자존심을 꺾고 진심으로 사과한다"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "emotion_type": "Reproach",
+          "intensity": 1.0
+        },
+        "emotions": [
+          {
+            "context": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+            "emotion_type": "Distress",
+            "intensity": 0.6524548530578613
+          },
+          {
+            "context": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+            "emotion_type": "Reproach",
+            "intensity": 1.0
+          },
+          {
+            "context": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+            "emotion_type": "Anger",
+            "intensity": 0.8857854604721069
+          }
+        ],
+        "mood": -0.8460801243782043,
+        "prompt": "[NPC: Jim]\nMiss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.\n\n[성격]\n진실되고 공정하며 겸손한 성격이다. 감정이 풍부하고 불안해하기 쉬운 성격이다. 관용적이고 온화하며 인내심이 강하다. 체계적이고 근면하며 신중하게 행동한다.\n\n[현재 감정]\n감정 구성:\n- 비난(극도로 강한, 지배) — 헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함\n- 분노(극도로 강한) — 거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함\n- 고통(강한) — 짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다\n전체 분위기: 매우 부정적\n\n[상황]\n헉이 자존심을 꺾고 진심으로 사과한다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 분노를 억누르고 계획적으로 대응하려 한다.\n\n[말투]\n솔직하고 꾸밈없이 말한다. 감정을 표정과 말투에 드러내며, 걱정을 자주 내비친다. 부드럽고 배려 깊은 어조로 말한다. 논리적으로 말하고, 감정보다 이성을 앞세운다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n- 거짓말이나 과장을 하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 하위자 — 가르치는 어조, 지시와 훈계가 자연스러움",
+        "trace": []
+      }
+    },
+    {
+      "label": "Turn 7: after_dialogue (jim→huck)",
+      "action": "after_dialogue",
+      "request": {
+        "npc_id": "jim",
+        "partner_id": "huck",
+        "praiseworthiness": -0.30000001192092896,
+        "significance": 0.699999988079071
+      },
+      "response": {
+        "after": {
+          "closeness": 0.418857604265213,
+          "power": -0.30000001192092896,
+          "trust": 0.5070000290870667
+        },
+        "before": {
+          "closeness": 0.550000011920929,
+          "power": -0.30000001192092896,
+          "trust": 0.6000000238418579
+        }
+      }
+    }
+  ],
+  "current_situation": {
+    "acDesc": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+    "agentId": "huck",
+    "desc": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+    "evDesc": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+    "evSelf": -0.800000011920929,
+    "hasAction": true,
+    "hasEvent": true,
+    "hasObject": false,
+    "hasOther": false,
+    "npcId": "jim",
+    "partnerId": "huck",
+    "pw": -0.800000011920929
+  },
+  "scene": {
+    "description": "Ch.15 안개 재회 — 거짓말 발각과 사과",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "praiseworthiness": -0.8
+        },
+        "description": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+        "event": {
+          "description": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+          "desirability_for_self": -0.8
+        },
+        "id": "betrayal",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 스스로 잘못을 인정하고 진심으로 사과",
+          "praiseworthiness": 0.7
+        },
+        "description": "사과 수용 — 헉이 자존심을 꺾고 진심으로 사과함",
+        "event": {
+          "description": "헉이 자존심을 꺾고 사과함",
+          "desirability_for_self": 0.7
+        },
+        "id": "apology",
+        "trigger": [
+          [
+            {
+              "below": 0.4,
+              "emotion": "Anger"
+            },
+            {
+              "below": 0.3,
+              "emotion": "Distress"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "jim",
+    "partner_id": "huck"
+  }
+}

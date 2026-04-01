@@ -18,7 +18,7 @@ fn toml_빌트인_앵커_파싱() {
 
     assert_eq!(anchors.pleasure.positive.len(), 10);
     assert_eq!(anchors.pleasure.negative.len(), 10);
-    assert_eq!(anchors.arousal.positive.len(), 10);
+    assert_eq!(anchors.arousal.positive.len(), 14);  // 10 전투 + 4 감정적 고조
     assert_eq!(anchors.arousal.negative.len(), 10);
     assert_eq!(anchors.dominance.positive.len(), 10);
     assert_eq!(anchors.dominance.negative.len(), 6, "D- 역방향 제외로 6개");
