@@ -1,14 +1,14 @@
 //! 웹 UI 서버 상태 — NPC, 관계, 오브젝트 레지스트리
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
-use serde::{Deserialize, Serialize};
 
+use crate::trace_collector::AppraisalCollector;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
 use npc_mind::domain::pad::PadAnalyzer;
-use crate::trace_collector::AppraisalCollector;
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -225,7 +225,9 @@ impl StateInner {
     pub fn find_relationship(&self, id_a: &str, id_b: &str) -> Option<&RelationshipData> {
         let key1 = format!("{id_a}:{id_b}");
         let key2 = format!("{id_b}:{id_a}");
-        self.relationships.get(&key1).or_else(|| self.relationships.get(&key2))
+        self.relationships
+            .get(&key1)
+            .or_else(|| self.relationships.get(&key2))
     }
 
     /// JSON 파일로 저장

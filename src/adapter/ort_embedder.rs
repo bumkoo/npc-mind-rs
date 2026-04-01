@@ -8,7 +8,7 @@ use std::path::Path;
 
 use bge_m3_onnx_rust::BgeM3Embedder;
 
-use crate::ports::{TextEmbedder, EmbedError};
+use crate::ports::{EmbedError, TextEmbedder};
 
 /// ort(ONNX Runtime) 기반 임베딩 어댑터
 pub struct OrtEmbedder {
@@ -35,7 +35,8 @@ impl TextEmbedder for OrtEmbedder {
     fn embed(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
         let mut results = Vec::with_capacity(texts.len());
         for text in texts {
-            let dense = self.embedder
+            let dense = self
+                .embedder
                 .encode_dense(text)
                 .map_err(|e| EmbedError::InferenceError(e.to_string()))?;
             results.push(dense);

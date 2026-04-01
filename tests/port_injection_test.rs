@@ -8,13 +8,13 @@
 
 mod common;
 
+use npc_mind::EmotionStore;
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
-use npc_mind::EmotionStore;
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::pad::Pad;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::ports::{Appraiser, AppraisalWeights, StimulusProcessor, StimulusWeights};
+use npc_mind::ports::{AppraisalWeights, Appraiser, StimulusProcessor, StimulusWeights};
 
 use common::*;
 
@@ -127,8 +127,12 @@ fn 커스텀_stimulus_processor_주입() {
     let stim_result = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
 
     // NoOp이므로 mood 변동 없음
-    assert!((stim_result.mood - before_mood).abs() < 0.001,
-        "NoOp processor: mood 변동 없어야 함 (before={}, after={})", before_mood, stim_result.mood);
+    assert!(
+        (stim_result.mood - before_mood).abs() < 0.001,
+        "NoOp processor: mood 변동 없어야 함 (before={}, after={})",
+        before_mood,
+        stim_result.mood
+    );
 }
 
 #[test]
@@ -165,7 +169,12 @@ fn 기본_엔진_사용시_기존과_동일() {
 
     // 기존 엔진이므로 부정적 감정 발생
     assert!(result.mood < 0.0);
-    assert!(result.emotions.iter().any(|e| e.emotion_type == "Distress" || e.emotion_type == "Anger"));
+    assert!(
+        result
+            .emotions
+            .iter()
+            .any(|e| e.emotion_type == "Distress" || e.emotion_type == "Anger")
+    );
 }
 
 // ===========================================================================
@@ -221,7 +230,9 @@ fn start_scene_초기_focus_appraise() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    let result = service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
+    let result = service
+        .start_scene(scene_req_with_initial(), || {}, Vec::new)
+        .unwrap();
 
     assert_eq!(result.focus_count, 2);
     assert!(result.initial_appraise.is_some());
@@ -296,7 +307,9 @@ fn scene_info_scene_등록_후_상태_조회() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
+    service
+        .start_scene(scene_req_with_initial(), || {}, Vec::new)
+        .unwrap();
 
     let info = service.scene_info();
     assert!(info.has_scene);
@@ -306,7 +319,11 @@ fn scene_info_scene_등록_후_상태_조회() {
     assert_eq!(info.active_focus_id, Some("initial_focus".to_string()));
 
     // 활성 Focus 확인
-    let initial = info.focuses.iter().find(|f| f.id == "initial_focus").unwrap();
+    let initial = info
+        .focuses
+        .iter()
+        .find(|f| f.id == "initial_focus")
+        .unwrap();
     assert!(initial.is_active);
     assert_eq!(initial.trigger_display, "initial");
 
@@ -420,7 +437,9 @@ fn stimulus_beat_전환_trigger_충족() {
     // 수동으로 Distress 감정 설정하여 trigger 조건 충족시키기
     let mut state = service.repository().get_emotion_state("gyo_ryong").unwrap();
     state.add(Emotion::new(EmotionType::Distress, 0.5));
-    service.repository_mut().save_emotion_state("gyo_ryong", state);
+    service
+        .repository_mut()
+        .save_emotion_state("gyo_ryong", state);
 
     // 중립 자극 (감정은 거의 변동 없지만 trigger 체크는 수행)
     let stim = StimulusRequest {
@@ -487,12 +506,17 @@ fn stimulus_beat_전환_후_active_focus_변경() {
     };
 
     service.start_scene(scene_req, || {}, Vec::new).unwrap();
-    assert_eq!(service.scene_info().active_focus_id, Some("happy".to_string()));
+    assert_eq!(
+        service.scene_info().active_focus_id,
+        Some("happy".to_string())
+    );
 
     // Joy를 수동으로 제거하여 absent 조건 충족
     let mut state = service.repository().get_emotion_state("mu_baek").unwrap();
     state.remove(EmotionType::Joy);
-    service.repository_mut().save_emotion_state("mu_baek", state);
+    service
+        .repository_mut()
+        .save_emotion_state("mu_baek", state);
 
     let stim = StimulusRequest {
         npc_id: "mu_baek".to_string(),
@@ -508,7 +532,10 @@ fn stimulus_beat_전환_후_active_focus_변경() {
     assert_eq!(result.active_focus_id, Some("joy_gone".to_string()));
 
     // scene_info도 업데이트 확인
-    assert_eq!(service.scene_info().active_focus_id, Some("joy_gone".to_string()));
+    assert_eq!(
+        service.scene_info().active_focus_id,
+        Some("joy_gone".to_string())
+    );
 }
 
 // ===========================================================================
@@ -539,11 +566,9 @@ fn load_scene_focuses_초기_appraise() {
         object: None,
     }];
 
-    let result = service.load_scene_focuses(
-        focuses,
-        "mu_baek".to_string(),
-        "gyo_ryong".to_string(),
-    ).unwrap();
+    let result = service
+        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string())
+        .unwrap();
 
     assert!(result.is_some());
     let appraise = result.unwrap();
@@ -581,11 +606,9 @@ fn load_scene_focuses_initial_없으면_appraise_없음() {
         object: None,
     }];
 
-    let result = service.load_scene_focuses(
-        focuses,
-        "mu_baek".to_string(),
-        "gyo_ryong".to_string(),
-    ).unwrap();
+    let result = service
+        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string())
+        .unwrap();
 
     assert!(result.is_none());
     assert!(service.scene_info().has_scene);
@@ -606,7 +629,9 @@ fn formatted_service_start_scene() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = FormattedMindService::new(repo, "ko").unwrap();
-    let response = service.start_scene(scene_req_with_initial(), || {}, Vec::new).unwrap();
+    let response = service
+        .start_scene(scene_req_with_initial(), || {}, Vec::new)
+        .unwrap();
 
     assert_eq!(response.focus_count, 2);
     assert!(response.initial_appraise.is_some());
@@ -673,7 +698,9 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
     // Fear를 수동으로 설정
     let mut state = service.repository().get_emotion_state("mu_baek").unwrap();
     state.add(Emotion::new(EmotionType::Fear, 0.5));
-    service.repository_mut().save_emotion_state("mu_baek", state);
+    service
+        .repository_mut()
+        .save_emotion_state("mu_baek", state);
 
     let stim = StimulusRequest {
         npc_id: "mu_baek".to_string(),
@@ -688,4 +715,100 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
     assert!(response.beat_changed);
     assert_eq!(response.active_focus_id, Some("fear_focus".to_string()));
     assert!(!response.prompt.is_empty()); // 포맷팅된 프롬프트
+}
+
+// ===========================================================================
+// 리팩토링 검증 테스트
+// ===========================================================================
+
+use npc_mind::application::dto::FocusInfoItem;
+use npc_mind::domain::guide::{PersonalityTrait, SpeechStyle};
+use npc_mind::domain::personality::Score;
+
+#[test]
+fn test_focus_info_item_formatting() {
+    // 1. Initial trigger
+    let f1 = SceneFocus {
+        id: "f1".into(),
+        description: "desc1".into(),
+        trigger: FocusTrigger::Initial,
+        event: None,
+        action: None,
+        object: None,
+    };
+    let info1 = FocusInfoItem::from_domain(&f1, true);
+    assert_eq!(info1.trigger_display, "initial");
+    assert!(info1.is_active);
+
+    // 2. Complex condition trigger
+    let f2 = SceneFocus {
+        id: "f2".into(),
+        description: "desc2".into(),
+        trigger: FocusTrigger::Conditions(vec![
+            vec![
+                EmotionCondition {
+                    emotion: EmotionType::Joy,
+                    threshold: ConditionThreshold::Above(0.5),
+                },
+                EmotionCondition {
+                    emotion: EmotionType::Anger,
+                    threshold: ConditionThreshold::Absent,
+                },
+            ],
+            vec![EmotionCondition {
+                emotion: EmotionType::Distress,
+                threshold: ConditionThreshold::Below(0.2),
+            }],
+        ]),
+        event: None,
+        action: None,
+        object: None,
+    };
+    let info2 = FocusInfoItem::from_domain(&f2, false);
+    // "Joy > 0.5 AND Anger absent OR Distress < 0.2"
+    assert!(info2.trigger_display.contains("Joy > 0.5"));
+    assert!(info2.trigger_display.contains("AND"));
+    assert!(info2.trigger_display.contains("OR"));
+    assert!(info2.trigger_display.contains("Distress < 0.2"));
+    assert!(!info2.is_active);
+}
+
+#[test]
+fn test_personality_trait_evaluate() {
+    let t = 0.3;
+    let high = PersonalityTrait::HonestAndModest;
+    let low = PersonalityTrait::CunningAndAmbitious;
+
+    assert_eq!(
+        PersonalityTrait::evaluate(Score::clamped(0.5), t, high, low),
+        Some(high)
+    );
+    assert_eq!(
+        PersonalityTrait::evaluate(Score::clamped(-0.5), t, high, low),
+        Some(low)
+    );
+    assert_eq!(
+        PersonalityTrait::evaluate(Score::clamped(0.1), t, high, low),
+        None
+    );
+}
+
+#[test]
+fn test_speech_style_evaluate() {
+    let t = 0.3;
+    let high = SpeechStyle::FrankAndUnadorned;
+    let low = SpeechStyle::HidesInnerThoughts;
+
+    assert_eq!(
+        SpeechStyle::evaluate(Score::clamped(0.5), t, high, low),
+        Some(high)
+    );
+    assert_eq!(
+        SpeechStyle::evaluate(Score::clamped(-0.5), t, high, low),
+        Some(low)
+    );
+    assert_eq!(
+        SpeechStyle::evaluate(Score::clamped(0.1), t, high, low),
+        None
+    );
 }

@@ -3,10 +3,10 @@
 //! `KoreanFormatter`는 빌트인 한국어 로케일을 사용하는 편의 래퍼다.
 //! 다른 언어나 커스텀 로케일은 `FormattedMindService`를 통해 사용하세요.
 
+use super::builtin_toml;
+use super::formatter::LocaleFormatter;
 use crate::domain::guide::ActingGuide;
 use crate::ports::GuideFormatter;
-use super::formatter::LocaleFormatter;
-use super::builtin_toml;
 
 /// 한국어 연기 가이드 포맷터 — ko.toml 내장 래퍼
 pub struct KoreanFormatter {

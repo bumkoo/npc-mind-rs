@@ -1,6 +1,7 @@
 //! OCC 감정 유형과 감정 상태 정의
 
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 // ---------------------------------------------------------------------------
 // OCC 감정 유형 (22개)
@@ -73,37 +74,93 @@ pub enum EmotionType {
     Hate,
 }
 
+impl FromStr for EmotionType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Joy" => Ok(Self::Joy),
+            "Distress" => Ok(Self::Distress),
+            "HappyFor" => Ok(Self::HappyFor),
+            "Pity" => Ok(Self::Pity),
+            "Gloating" => Ok(Self::Gloating),
+            "Resentment" => Ok(Self::Resentment),
+            "Hope" => Ok(Self::Hope),
+            "Fear" => Ok(Self::Fear),
+            "Satisfaction" => Ok(Self::Satisfaction),
+            "Disappointment" => Ok(Self::Disappointment),
+            "Relief" => Ok(Self::Relief),
+            "FearsConfirmed" => Ok(Self::FearsConfirmed),
+            "Pride" => Ok(Self::Pride),
+            "Shame" => Ok(Self::Shame),
+            "Admiration" => Ok(Self::Admiration),
+            "Reproach" => Ok(Self::Reproach),
+            "Gratification" => Ok(Self::Gratification),
+            "Remorse" => Ok(Self::Remorse),
+            "Gratitude" => Ok(Self::Gratitude),
+            "Anger" => Ok(Self::Anger),
+            "Love" => Ok(Self::Love),
+            "Hate" => Ok(Self::Hate),
+            _ => Err(()),
+        }
+    }
+}
+
 impl EmotionType {
     /// 이 감정의 고유 인덱스 (0~21)
     /// 배열 기반의 빠른 접근을 위해 사용합니다.
     pub fn index(&self) -> usize {
         match self {
-            Self::Joy => 0, Self::Distress => 1,
-            Self::HappyFor => 2, Self::Pity => 3, Self::Gloating => 4, Self::Resentment => 5,
-            Self::Hope => 6, Self::Fear => 7,
-            Self::Satisfaction => 8, Self::Disappointment => 9,
-            Self::Relief => 10, Self::FearsConfirmed => 11,
-            Self::Pride => 12, Self::Shame => 13,
-            Self::Admiration => 14, Self::Reproach => 15,
-            Self::Gratification => 16, Self::Remorse => 17,
-            Self::Gratitude => 18, Self::Anger => 19,
-            Self::Love => 20, Self::Hate => 21,
+            Self::Joy => 0,
+            Self::Distress => 1,
+            Self::HappyFor => 2,
+            Self::Pity => 3,
+            Self::Gloating => 4,
+            Self::Resentment => 5,
+            Self::Hope => 6,
+            Self::Fear => 7,
+            Self::Satisfaction => 8,
+            Self::Disappointment => 9,
+            Self::Relief => 10,
+            Self::FearsConfirmed => 11,
+            Self::Pride => 12,
+            Self::Shame => 13,
+            Self::Admiration => 14,
+            Self::Reproach => 15,
+            Self::Gratification => 16,
+            Self::Remorse => 17,
+            Self::Gratitude => 18,
+            Self::Anger => 19,
+            Self::Love => 20,
+            Self::Hate => 21,
         }
     }
 
     /// 인덱스로부터 감정 유형 반환
     pub fn from_index(index: usize) -> Option<Self> {
         match index {
-            0 => Some(Self::Joy), 1 => Some(Self::Distress),
-            2 => Some(Self::HappyFor), 3 => Some(Self::Pity), 4 => Some(Self::Gloating), 5 => Some(Self::Resentment),
-            6 => Some(Self::Hope), 7 => Some(Self::Fear),
-            8 => Some(Self::Satisfaction), 9 => Some(Self::Disappointment),
-            10 => Some(Self::Relief), 11 => Some(Self::FearsConfirmed),
-            12 => Some(Self::Pride), 13 => Some(Self::Shame),
-            14 => Some(Self::Admiration), 15 => Some(Self::Reproach),
-            16 => Some(Self::Gratification), 17 => Some(Self::Remorse),
-            18 => Some(Self::Gratitude), 19 => Some(Self::Anger),
-            20 => Some(Self::Love), 21 => Some(Self::Hate),
+            0 => Some(Self::Joy),
+            1 => Some(Self::Distress),
+            2 => Some(Self::HappyFor),
+            3 => Some(Self::Pity),
+            4 => Some(Self::Gloating),
+            5 => Some(Self::Resentment),
+            6 => Some(Self::Hope),
+            7 => Some(Self::Fear),
+            8 => Some(Self::Satisfaction),
+            9 => Some(Self::Disappointment),
+            10 => Some(Self::Relief),
+            11 => Some(Self::FearsConfirmed),
+            12 => Some(Self::Pride),
+            13 => Some(Self::Shame),
+            14 => Some(Self::Admiration),
+            15 => Some(Self::Reproach),
+            16 => Some(Self::Gratification),
+            17 => Some(Self::Remorse),
+            18 => Some(Self::Gratitude),
+            19 => Some(Self::Anger),
+            20 => Some(Self::Love),
+            21 => Some(Self::Hate),
             _ => None,
         }
     }
@@ -111,17 +168,27 @@ impl EmotionType {
     /// 이 감정의 기본 valence (양수=긍정, 음수=부정)
     pub fn base_valence(&self) -> f32 {
         match self {
-            Self::Joy | Self::HappyFor | Self::Hope |
-            Self::Satisfaction | Self::Relief |
-            Self::Pride | Self::Admiration |
-            Self::Gratification | Self::Gratitude |
-            Self::Love => 1.0,
+            Self::Joy
+            | Self::HappyFor
+            | Self::Hope
+            | Self::Satisfaction
+            | Self::Relief
+            | Self::Pride
+            | Self::Admiration
+            | Self::Gratification
+            | Self::Gratitude
+            | Self::Love => 1.0,
 
-            Self::Distress | Self::Pity | Self::Fear |
-            Self::Disappointment | Self::FearsConfirmed |
-            Self::Shame | Self::Reproach |
-            Self::Remorse | Self::Anger |
-            Self::Hate => -1.0,
+            Self::Distress
+            | Self::Pity
+            | Self::Fear
+            | Self::Disappointment
+            | Self::FearsConfirmed
+            | Self::Shame
+            | Self::Reproach
+            | Self::Remorse
+            | Self::Anger
+            | Self::Hate => -1.0,
 
             // Gloating/Resentment: 복합 valence
             Self::Gloating => 0.5,    // 긍정이지만 어두운 기쁨
@@ -132,16 +199,27 @@ impl EmotionType {
     /// OCC 분기 분류
     pub fn branch(&self) -> EmotionBranch {
         match self {
-            Self::Joy | Self::Distress |
-            Self::HappyFor | Self::Pity | Self::Gloating | Self::Resentment |
-            Self::Hope | Self::Fear |
-            Self::Satisfaction | Self::Disappointment |
-            Self::Relief | Self::FearsConfirmed => EmotionBranch::Event,
+            Self::Joy
+            | Self::Distress
+            | Self::HappyFor
+            | Self::Pity
+            | Self::Gloating
+            | Self::Resentment
+            | Self::Hope
+            | Self::Fear
+            | Self::Satisfaction
+            | Self::Disappointment
+            | Self::Relief
+            | Self::FearsConfirmed => EmotionBranch::Event,
 
-            Self::Pride | Self::Shame |
-            Self::Admiration | Self::Reproach |
-            Self::Gratification | Self::Remorse |
-            Self::Gratitude | Self::Anger => EmotionBranch::Action,
+            Self::Pride
+            | Self::Shame
+            | Self::Admiration
+            | Self::Reproach
+            | Self::Gratification
+            | Self::Remorse
+            | Self::Gratitude
+            | Self::Anger => EmotionBranch::Action,
 
             Self::Love | Self::Hate => EmotionBranch::Object,
         }
@@ -187,7 +265,11 @@ impl Emotion {
     }
 
     /// context 포함 감정 생성
-    pub fn with_context(emotion_type: EmotionType, intensity: f32, context: impl Into<String>) -> Self {
+    pub fn with_context(
+        emotion_type: EmotionType,
+        intensity: f32,
+        context: impl Into<String>,
+    ) -> Self {
         Self {
             emotion_type,
             intensity: intensity.clamp(0.0, 1.0),
@@ -214,7 +296,6 @@ impl Emotion {
     pub fn is_significant(&self, threshold: f32) -> bool {
         self.intensity >= threshold
     }
-
 }
 
 /// NPC의 현재 감정 상태: 여러 감정의 조합
@@ -247,14 +328,14 @@ impl EmotionState {
     /// 감정 목록을 Vec<Emotion>으로 변환하여 반환 (강도가 0보다 큰 것만)
     /// 외부와의 호환성을 위해 제공됩니다.
     pub fn emotions(&self) -> Vec<Emotion> {
-        self.intensities.iter().enumerate()
+        self.intensities
+            .iter()
+            .enumerate()
             .filter(|&(_, &i)| i > 0.0)
             .filter_map(|(idx, &i)| {
-                EmotionType::from_index(idx).map(|t| {
-                    match &self.contexts[idx] {
-                        Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
-                        None => Emotion::new(t, i),
-                    }
+                EmotionType::from_index(idx).map(|t| match &self.contexts[idx] {
+                    Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                    None => Emotion::new(t, i),
                 })
             })
             .collect()
@@ -271,15 +352,15 @@ impl EmotionState {
 
     /// 가장 강한 감정 반환
     pub fn dominant(&self) -> Option<Emotion> {
-        self.intensities.iter().enumerate()
+        self.intensities
+            .iter()
+            .enumerate()
             .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
             .and_then(|(idx, &i)| {
                 if i > 0.0 {
-                    EmotionType::from_index(idx).map(|t| {
-                        match &self.contexts[idx] {
-                            Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
-                            None => Emotion::new(t, i),
-                        }
+                    EmotionType::from_index(idx).map(|t| match &self.contexts[idx] {
+                        Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                        None => Emotion::new(t, i),
                     })
                 } else {
                     None
@@ -289,18 +370,23 @@ impl EmotionState {
 
     /// threshold 이상의 유의미한 감정들만 반환 (강도 내림차순)
     pub fn significant(&self, threshold: f32) -> Vec<Emotion> {
-        let mut result: Vec<Emotion> = self.intensities.iter().enumerate()
+        let mut result: Vec<Emotion> = self
+            .intensities
+            .iter()
+            .enumerate()
             .filter(|&(_, &i)| i >= threshold)
             .filter_map(|(idx, &i)| {
-                EmotionType::from_index(idx).map(|t| {
-                    match &self.contexts[idx] {
-                        Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
-                        None => Emotion::new(t, i),
-                    }
+                EmotionType::from_index(idx).map(|t| match &self.contexts[idx] {
+                    Some(ctx) => Emotion::with_context(t, i, ctx.clone()),
+                    None => Emotion::new(t, i),
                 })
             })
             .collect();
-        result.sort_by(|a, b| b.intensity().partial_cmp(&a.intensity()).unwrap_or(std::cmp::Ordering::Equal));
+        result.sort_by(|a, b| {
+            b.intensity()
+                .partial_cmp(&a.intensity())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         result
     }
 
@@ -332,15 +418,15 @@ impl EmotionState {
         let mut count = 0;
 
         for (idx, &intensity) in self.intensities.iter().enumerate() {
-            if intensity > 0.0 {
-                if let Some(t) = EmotionType::from_index(idx) {
-                    sum += t.base_valence() * intensity;
-                    count += 1;
-                }
+            if let Some(t) = EmotionType::from_index(idx).filter(|_| intensity > 0.0) {
+                sum += t.base_valence() * intensity;
+                count += 1;
             }
         }
 
-        if count == 0 { return 0.0; }
+        if count == 0 {
+            return 0.0;
+        }
         (sum / count as f32).clamp(-1.0, 1.0)
     }
 
@@ -350,7 +436,11 @@ impl EmotionState {
     /// - 같은 감정이 양쪽에 있으면: max 기준 (강도 + context 모두 max 쪽)
     /// - 이전에만 있는 감정: 그대로 유지 (threshold 이상인 것만)
     /// - 새로운 감정에만 있는 감정: 그대로 추가
-    pub fn merge_from_beat(previous: &EmotionState, new: &EmotionState, threshold: f32) -> EmotionState {
+    pub fn merge_from_beat(
+        previous: &EmotionState,
+        new: &EmotionState,
+        threshold: f32,
+    ) -> EmotionState {
         let mut result = new.clone();
 
         for idx in 0..22 {
@@ -371,5 +461,32 @@ impl EmotionState {
         }
 
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn test_emotion_type_from_str() {
+        assert_eq!(EmotionType::from_str("Joy").unwrap(), EmotionType::Joy);
+        assert_eq!(EmotionType::from_str("Anger").unwrap(), EmotionType::Anger);
+        assert_eq!(
+            EmotionType::from_str("FearsConfirmed").unwrap(),
+            EmotionType::FearsConfirmed
+        );
+        assert!(EmotionType::from_str("Unknown").is_err());
+    }
+
+    #[test]
+    fn test_emotion_state_overall_valence() {
+        let mut state = EmotionState::new();
+        state.add(Emotion::new(EmotionType::Joy, 0.8));
+        state.add(Emotion::new(EmotionType::Distress, 0.4));
+
+        // (1.0 * 0.8 + -1.0 * 0.4) / 2 = 0.2
+        assert!((state.overall_valence() - 0.2).abs() < 0.001);
     }
 }

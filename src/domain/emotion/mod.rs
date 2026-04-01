@@ -8,15 +8,15 @@
 //! 각 감정은 intensity(0.0 ~ 1.0)를 가지며,
 //! HEXACO 성격이 appraisal 가중치로 작용하여 감정 강도를 조절한다.
 
-mod types;
-mod situation;
-mod scene;
 mod appraisal;
 mod engine;
+mod scene;
+mod situation;
 mod stimulus;
+mod types;
 
-pub use types::*;
-pub use situation::*;
-pub use scene::*;
 pub use engine::*;
+pub use scene::*;
+pub use situation::*;
 pub use stimulus::*;
+pub use types::*;

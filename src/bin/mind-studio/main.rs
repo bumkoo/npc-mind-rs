@@ -4,8 +4,8 @@
 //! - Claude: API (Invoke-WebRequest)로 NPC 생성, 감정 평가, 프롬프트 검증
 //! - Bekay: 브라우저 UI에서 결과 확인, 슬라이더 조작, 실험
 
-use axum::routing::{delete, get, post};
 use axum::Router;
+use axum::routing::{delete, get, post};
 use tower_http::services::ServeDir;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -24,18 +24,16 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     use npc_mind::domain::pad::PadAnalyzer;
     use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 
-    let model_dir = std::env::var("NPC_MIND_MODEL_DIR")
-        .unwrap_or_else(|_| "../models/bge-m3".to_string());
+    let model_dir =
+        std::env::var("NPC_MIND_MODEL_DIR").unwrap_or_else(|_| "../models/bge-m3".to_string());
     let model_path = std::path::Path::new(&model_dir).join("model_quantized.onnx");
     let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
 
-    let anchor_lang = std::env::var("NPC_MIND_ANCHOR_LANG")
-        .unwrap_or_else(|_| "ko".to_string());
-    let anchor_toml = builtin_anchor_toml(&anchor_lang)
-        .unwrap_or_else(|| {
-            eprintln!("빌트인 앵커 없음 (lang={anchor_lang}), ko 폴백");
-            builtin_anchor_toml("ko").unwrap()
-        });
+    let anchor_lang = std::env::var("NPC_MIND_ANCHOR_LANG").unwrap_or_else(|_| "ko".to_string());
+    let anchor_toml = builtin_anchor_toml(&anchor_lang).unwrap_or_else(|| {
+        eprintln!("빌트인 앵커 없음 (lang={anchor_lang}), ko 폴백");
+        builtin_anchor_toml("ko").unwrap()
+    });
     let source = TomlAnchorSource::from_content(anchor_toml)
         .with_cache_path(format!("locales/anchors/{anchor_lang}.embeddings.json"));
 
@@ -45,9 +43,15 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
                 println!("PAD Analyzer: 초기화 완료 (embed 활성, lang={anchor_lang})");
                 Some(analyzer)
             }
-            Err(e) => { eprintln!("PAD Analyzer 앵커 초기화 실패: {e:?}"); None }
+            Err(e) => {
+                eprintln!("PAD Analyzer 앵커 초기화 실패: {e:?}");
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("OrtEmbedder 초기화 실패: {e:?}");
+            None
         }
-        Err(e) => { eprintln!("OrtEmbedder 초기화 실패: {e:?}"); None }
     }
 }
 
@@ -68,16 +72,28 @@ async fn main() {
     let state = AppState::new(collector, analyzer);
 
     // 정적 파일 경로
-    let static_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("src/bin/mind-studio/static");
+    let static_dir =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/mind-studio/static");
 
     let app = Router::new()
         // --- API ---
-        .route("/api/npcs", get(handlers::list_npcs).post(handlers::upsert_npc))
+        .route(
+            "/api/npcs",
+            get(handlers::list_npcs).post(handlers::upsert_npc),
+        )
         .route("/api/npcs/{id}", delete(handlers::delete_npc))
-        .route("/api/relationships", get(handlers::list_relationships).post(handlers::upsert_relationship))
-        .route("/api/relationships/{owner}/{target}", delete(handlers::delete_relationship))
-        .route("/api/objects", get(handlers::list_objects).post(handlers::upsert_object))
+        .route(
+            "/api/relationships",
+            get(handlers::list_relationships).post(handlers::upsert_relationship),
+        )
+        .route(
+            "/api/relationships/{owner}/{target}",
+            delete(handlers::delete_relationship),
+        )
+        .route(
+            "/api/objects",
+            get(handlers::list_objects).post(handlers::upsert_object),
+        )
         .route("/api/objects/{id}", delete(handlers::delete_object))
         .route("/api/appraise", post(handlers::appraise))
         .route("/api/stimulus", post(handlers::stimulus))
@@ -89,7 +105,10 @@ async fn main() {
         .route("/api/scene-info", get(handlers::get_scene_info))
         .route("/api/analyze-utterance", post(handlers::analyze_utterance))
         .route("/api/history", get(handlers::get_history))
-        .route("/api/situation", get(handlers::get_situation).put(handlers::put_situation))
+        .route(
+            "/api/situation",
+            get(handlers::get_situation).put(handlers::put_situation),
+        )
         .route("/api/save", post(handlers::save_state))
         .route("/api/load", post(handlers::load_state))
         // --- 정적 파일 (SPA) ---

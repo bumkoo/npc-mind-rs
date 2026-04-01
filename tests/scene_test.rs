@@ -7,13 +7,17 @@ fn test_scene_initial_focus() {
             id: "start".into(),
             description: "시작".into(),
             trigger: FocusTrigger::Initial,
-            event: None, action: None, object: None,
+            event: None,
+            action: None,
+            object: None,
         },
         SceneFocus {
             id: "next".into(),
             description: "다음".into(),
             trigger: FocusTrigger::Conditions(vec![]),
-            event: None, action: None, object: None,
+            event: None,
+            action: None,
+            object: None,
         },
     ];
 
@@ -27,19 +31,17 @@ fn test_scene_initial_focus() {
 
 #[test]
 fn test_scene_check_trigger() {
-    let focuses = vec![
-        SceneFocus {
-            id: "angry_focus".into(),
-            description: "화남".into(),
-            trigger: FocusTrigger::Conditions(vec![
-                vec![EmotionCondition {
-                    emotion: EmotionType::Anger,
-                    threshold: ConditionThreshold::Above(0.5),
-                }]
-            ]),
-            event: None, action: None, object: None,
-        },
-    ];
+    let focuses = vec![SceneFocus {
+        id: "angry_focus".into(),
+        description: "화남".into(),
+        trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Above(0.5),
+        }]]),
+        event: None,
+        action: None,
+        object: None,
+    }];
 
     let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
     let mut state = EmotionState::new();
@@ -62,19 +64,28 @@ fn test_scene_trigger_complex_conditions() {
     // OR [ AND[Joy > 0.5, Pride > 0.3], AND[Anger > 0.8] ]
     let trigger = FocusTrigger::Conditions(vec![
         vec![
-            EmotionCondition { emotion: EmotionType::Joy, threshold: ConditionThreshold::Above(0.5) },
-            EmotionCondition { emotion: EmotionType::Pride, threshold: ConditionThreshold::Above(0.3) },
+            EmotionCondition {
+                emotion: EmotionType::Joy,
+                threshold: ConditionThreshold::Above(0.5),
+            },
+            EmotionCondition {
+                emotion: EmotionType::Pride,
+                threshold: ConditionThreshold::Above(0.3),
+            },
         ],
-        vec![
-            EmotionCondition { emotion: EmotionType::Anger, threshold: ConditionThreshold::Above(0.8) },
-        ]
+        vec![EmotionCondition {
+            emotion: EmotionType::Anger,
+            threshold: ConditionThreshold::Above(0.8),
+        }],
     ]);
 
     let focus = SceneFocus {
         id: "complex".into(),
         description: "복합".into(),
         trigger,
-        event: None, action: None, object: None,
+        event: None,
+        action: None,
+        object: None,
     };
 
     let scene = Scene::new("npc".into(), "partner".into(), vec![focus]);

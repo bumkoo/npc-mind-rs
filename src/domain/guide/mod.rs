@@ -6,20 +6,22 @@
 //! 이 모듈의 출력이 NPC 심리 엔진의 최종 산출물이다.
 //! 텍스트/JSON 등 구체적 포맷 변환은 presentation 레이어(GuideFormatter)가 담당한다.
 
+mod directive;
 mod enums;
 mod snapshot;
-mod directive;
 
+pub use directive::*;
 pub use enums::*;
 pub use snapshot::*;
-pub use directive::*;
 
 use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionState;
 use super::personality::Npc;
 use super::relationship::Relationship;
-use super::tuning::{MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, EMOTION_THRESHOLD, TRAIT_THRESHOLD};
+use super::tuning::{
+    EMOTION_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, MOOD_THRESHOLD, TRAIT_THRESHOLD,
+};
 
 // ---------------------------------------------------------------------------
 // LLM 연기 가이드 (최종 산출물)

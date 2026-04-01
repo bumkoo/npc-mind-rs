@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionType;
-use super::tuning::{PAD_D_SCALE_WEIGHT, PAD_AXIS_DEAD_ZONE, PAD_AXIS_SCALE};
+use super::tuning::{PAD_AXIS_DEAD_ZONE, PAD_AXIS_SCALE, PAD_D_SCALE_WEIGHT};
 
 // ---------------------------------------------------------------------------
 // PAD 구조체
@@ -49,12 +49,20 @@ pub struct Pad {
 
 impl Pad {
     pub fn new(pleasure: f32, arousal: f32, dominance: f32) -> Self {
-        Self { pleasure, arousal, dominance }
+        Self {
+            pleasure,
+            arousal,
+            dominance,
+        }
     }
 
     /// 중립 (0, 0, 0)
     pub fn neutral() -> Self {
-        Self { pleasure: 0.0, arousal: 0.0, dominance: 0.0 }
+        Self {
+            pleasure: 0.0,
+            arousal: 0.0,
+            dominance: 0.0,
+        }
     }
 }
 
@@ -96,31 +104,30 @@ use super::pad_table::*;
 /// P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
 pub fn emotion_to_pad(emotion: EmotionType) -> Pad {
     match emotion {
-        EmotionType::Joy             => JOY_PAD,
-        EmotionType::Distress        => DISTRESS_PAD,
-        EmotionType::HappyFor        => HAPPY_FOR_PAD,
-        EmotionType::Pity            => PITY_PAD,
-        EmotionType::Gloating        => GLOATING_PAD,
-        EmotionType::Resentment      => RESENTMENT_PAD,
-        EmotionType::Hope            => HOPE_PAD,
-        EmotionType::Fear            => FEAR_PAD,
-        EmotionType::Satisfaction    => SATISFACTION_PAD,
-        EmotionType::Disappointment  => DISAPPOINTMENT_PAD,
-        EmotionType::Relief          => RELIEF_PAD,
-        EmotionType::FearsConfirmed  => FEARS_CONFIRMED_PAD,
-        EmotionType::Pride           => PRIDE_PAD,
-        EmotionType::Shame           => SHAME_PAD,
-        EmotionType::Admiration      => ADMIRATION_PAD,
-        EmotionType::Reproach        => REPROACH_PAD,
-        EmotionType::Gratification   => GRATIFICATION_PAD,
-        EmotionType::Remorse         => REMORSE_PAD,
-        EmotionType::Gratitude       => GRATITUDE_PAD,
-        EmotionType::Anger           => ANGER_PAD,
-        EmotionType::Love            => LOVE_PAD,
-        EmotionType::Hate            => HATE_PAD,
+        EmotionType::Joy => JOY_PAD,
+        EmotionType::Distress => DISTRESS_PAD,
+        EmotionType::HappyFor => HAPPY_FOR_PAD,
+        EmotionType::Pity => PITY_PAD,
+        EmotionType::Gloating => GLOATING_PAD,
+        EmotionType::Resentment => RESENTMENT_PAD,
+        EmotionType::Hope => HOPE_PAD,
+        EmotionType::Fear => FEAR_PAD,
+        EmotionType::Satisfaction => SATISFACTION_PAD,
+        EmotionType::Disappointment => DISAPPOINTMENT_PAD,
+        EmotionType::Relief => RELIEF_PAD,
+        EmotionType::FearsConfirmed => FEARS_CONFIRMED_PAD,
+        EmotionType::Pride => PRIDE_PAD,
+        EmotionType::Shame => SHAME_PAD,
+        EmotionType::Admiration => ADMIRATION_PAD,
+        EmotionType::Reproach => REPROACH_PAD,
+        EmotionType::Gratification => GRATIFICATION_PAD,
+        EmotionType::Remorse => REMORSE_PAD,
+        EmotionType::Gratitude => GRATITUDE_PAD,
+        EmotionType::Anger => ANGER_PAD,
+        EmotionType::Love => LOVE_PAD,
+        EmotionType::Hate => HATE_PAD,
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // PadAnalyzer — 도메인 서비스 (업무 규칙)
@@ -129,7 +136,7 @@ pub fn emotion_to_pad(emotion: EmotionType) -> Pad {
 // TextEmbedder(인프라 포트)에만 의존하며, 구체적 임베딩 모델을 모른다.
 // cosine_sim, mean_vector, axis_score는 순수 수학 — 인프라 무관.
 
-use crate::ports::{TextEmbedder, EmbedError, PadAnchorSource};
+use crate::ports::{EmbedError, PadAnchorSource, TextEmbedder};
 
 // ---------------------------------------------------------------------------
 // 외부 로드용 도메인 타입
@@ -220,7 +227,8 @@ impl PadAnalyzer {
         }
 
         // 2. 앵커 텍스트 로드 → 임베딩 계산
-        let anchors = source.load_anchors()
+        let anchors = source
+            .load_anchors()
             .map_err(|e| EmbedError::InitError(e.to_string()))?;
         let pleasure = Self::embed_axis(&mut *embedder, &anchors.pleasure)?;
         let arousal = Self::embed_axis(&mut *embedder, &anchors.arousal)?;
@@ -246,7 +254,12 @@ impl PadAnalyzer {
         };
         let _ = source.save_cached_embeddings(&cached);
 
-        Ok(Self { embedder, pleasure, arousal, dominance })
+        Ok(Self {
+            embedder,
+            pleasure,
+            arousal,
+            dominance,
+        })
     }
 
     /// 앵커 텍스트 → 평균 임베딩 벡터 계산
@@ -278,7 +291,9 @@ impl PadAnalyzer {
 
     /// 여러 벡터의 평균
     fn mean_vector(vectors: &[Vec<f32>]) -> Vec<f32> {
-        if vectors.is_empty() { return Vec::new(); }
+        if vectors.is_empty() {
+            return Vec::new();
+        }
         let dim = vectors[0].len();
         let n = vectors.len() as f32;
         let mut mean = vec![0.0_f32; dim];
@@ -298,7 +313,9 @@ impl PadAnalyzer {
         let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
         let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
         let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-        if na == 0.0 || nb == 0.0 { return 0.0; }
+        if na == 0.0 || nb == 0.0 {
+            return 0.0;
+        }
         dot / (na * nb)
     }
 

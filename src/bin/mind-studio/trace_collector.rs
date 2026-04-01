@@ -4,10 +4,10 @@
 //! tracing::Layer를 구현하여 subscriber에 조합한다.
 
 use std::sync::{Arc, Mutex};
-use tracing::field::{Field, Visit};
 use tracing::Subscriber;
-use tracing_subscriber::layer::Context;
+use tracing::field::{Field, Visit};
 use tracing_subscriber::Layer;
+use tracing_subscriber::layer::Context;
 
 /// 엔진 trace 이벤트를 수집하는 Layer
 #[derive(Clone)]
@@ -17,7 +17,9 @@ pub struct AppraisalCollector {
 
 impl AppraisalCollector {
     pub fn new() -> Self {
-        Self { entries: Arc::new(Mutex::new(Vec::new())) }
+        Self {
+            entries: Arc::new(Mutex::new(Vec::new())),
+        }
     }
 
     /// 수집된 trace 항목을 가져오고 내부 버퍼 비움
@@ -33,15 +35,18 @@ struct FieldVisitor {
 
 impl Visit for FieldVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
-        self.fields.push((field.name().to_string(), format!("{:?}", value)));
+        self.fields
+            .push((field.name().to_string(), format!("{:?}", value)));
     }
 
     fn record_f64(&mut self, field: &Field, value: f64) {
-        self.fields.push((field.name().to_string(), format!("{:.3}", value)));
+        self.fields
+            .push((field.name().to_string(), format!("{:.3}", value)));
     }
 
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields.push((field.name().to_string(), value.to_string()));
+        self.fields
+            .push((field.name().to_string(), value.to_string()));
     }
 }
 
@@ -50,12 +55,16 @@ impl<S: Subscriber> Layer<S> for AppraisalCollector {
         let mut visitor = FieldVisitor { fields: Vec::new() };
         event.record(&mut visitor);
 
-        let emotion = visitor.fields.iter()
+        let emotion = visitor
+            .fields
+            .iter()
             .find(|(k, _)| k == "emotion")
             .map(|(_, v)| v.clone())
             .unwrap_or_else(|| "?".into());
 
-        let parts: Vec<String> = visitor.fields.iter()
+        let parts: Vec<String> = visitor
+            .fields
+            .iter()
             .filter(|(k, _)| k != "emotion" && k != "message")
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();

@@ -21,11 +21,11 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::application::dto::SceneFocusInput;
 use crate::domain::emotion::{EmotionState, Scene, SceneFocus};
 use crate::domain::personality::{Npc, NpcBuilder, Score};
 use crate::domain::relationship::{Relationship, RelationshipBuilder};
-use crate::ports::{NpcWorld, EmotionStore, SceneStore};
-use crate::application::dto::SceneFocusInput;
+use crate::ports::{EmotionStore, NpcWorld, SceneStore};
 
 // ---------------------------------------------------------------------------
 // 에러 타입
@@ -73,30 +73,54 @@ struct NpcJson {
     #[serde(default)]
     description: String,
     // HEXACO 24 facets
-    #[serde(default)] sincerity: f32,
-    #[serde(default)] fairness: f32,
-    #[serde(default)] greed_avoidance: f32,
-    #[serde(default)] modesty: f32,
-    #[serde(default)] fearfulness: f32,
-    #[serde(default)] anxiety: f32,
-    #[serde(default)] dependence: f32,
-    #[serde(default)] sentimentality: f32,
-    #[serde(default)] social_self_esteem: f32,
-    #[serde(default)] social_boldness: f32,
-    #[serde(default)] sociability: f32,
-    #[serde(default)] liveliness: f32,
-    #[serde(default)] forgiveness: f32,
-    #[serde(default)] gentleness: f32,
-    #[serde(default)] flexibility: f32,
-    #[serde(default)] patience: f32,
-    #[serde(default)] organization: f32,
-    #[serde(default)] diligence: f32,
-    #[serde(default)] perfectionism: f32,
-    #[serde(default)] prudence: f32,
-    #[serde(default)] aesthetic_appreciation: f32,
-    #[serde(default)] inquisitiveness: f32,
-    #[serde(default)] creativity: f32,
-    #[serde(default)] unconventionality: f32,
+    #[serde(default)]
+    sincerity: f32,
+    #[serde(default)]
+    fairness: f32,
+    #[serde(default)]
+    greed_avoidance: f32,
+    #[serde(default)]
+    modesty: f32,
+    #[serde(default)]
+    fearfulness: f32,
+    #[serde(default)]
+    anxiety: f32,
+    #[serde(default)]
+    dependence: f32,
+    #[serde(default)]
+    sentimentality: f32,
+    #[serde(default)]
+    social_self_esteem: f32,
+    #[serde(default)]
+    social_boldness: f32,
+    #[serde(default)]
+    sociability: f32,
+    #[serde(default)]
+    liveliness: f32,
+    #[serde(default)]
+    forgiveness: f32,
+    #[serde(default)]
+    gentleness: f32,
+    #[serde(default)]
+    flexibility: f32,
+    #[serde(default)]
+    patience: f32,
+    #[serde(default)]
+    organization: f32,
+    #[serde(default)]
+    diligence: f32,
+    #[serde(default)]
+    perfectionism: f32,
+    #[serde(default)]
+    prudence: f32,
+    #[serde(default)]
+    aesthetic_appreciation: f32,
+    #[serde(default)]
+    inquisitiveness: f32,
+    #[serde(default)]
+    creativity: f32,
+    #[serde(default)]
+    unconventionality: f32,
 }
 
 impl NpcJson {
@@ -148,9 +172,12 @@ impl NpcJson {
 struct RelationshipJson {
     owner_id: String,
     target_id: String,
-    #[serde(default)] closeness: f32,
-    #[serde(default)] trust: f32,
-    #[serde(default)] power: f32,
+    #[serde(default)]
+    closeness: f32,
+    #[serde(default)]
+    trust: f32,
+    #[serde(default)]
+    power: f32,
 }
 
 impl RelationshipJson {
@@ -174,8 +201,10 @@ struct ObjectJson {
 
 #[derive(Deserialize, Default)]
 struct ScenarioMeta {
-    #[serde(default)] name: String,
-    #[serde(default)] description: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    description: String,
     #[serde(default)]
     #[allow(dead_code)]
     notes: Vec<String>,
@@ -279,7 +308,9 @@ impl InMemoryRepository {
         let npc_id = &scene_json.npc_id;
         let partner_id = &scene_json.partner_id;
 
-        let focuses: Vec<SceneFocus> = scene_json.focuses.iter()
+        let focuses: Vec<SceneFocus> = scene_json
+            .focuses
+            .iter()
             .map(|f| f.to_domain(self, npc_id, partner_id))
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| RepositoryLoadError::ConversionError(e.to_string()))?;
@@ -317,17 +348,25 @@ impl InMemoryRepository {
     // --- 메타데이터 접근자 ---
 
     /// 시나리오 이름을 반환합니다.
-    pub fn scenario_name(&self) -> &str { &self.scenario_name }
+    pub fn scenario_name(&self) -> &str {
+        &self.scenario_name
+    }
 
     /// 시나리오 설명을 반환합니다.
-    pub fn scenario_description(&self) -> &str { &self.scenario_description }
+    pub fn scenario_description(&self) -> &str {
+        &self.scenario_description
+    }
 
     /// 턴 히스토리를 반환합니다.
-    pub fn turn_history(&self) -> &[serde_json::Value] { &self.turn_history }
+    pub fn turn_history(&self) -> &[serde_json::Value] {
+        &self.turn_history
+    }
 }
 
 impl Default for InMemoryRepository {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -341,11 +380,10 @@ impl NpcWorld for InMemoryRepository {
 
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
         let key = format!("{owner_id}:{target_id}");
-        self.relationships.get(&key).cloned()
-            .or_else(|| {
-                let rev = format!("{target_id}:{owner_id}");
-                self.relationships.get(&rev).cloned()
-            })
+        self.relationships.get(&key).cloned().or_else(|| {
+            let rev = format!("{target_id}:{owner_id}");
+            self.relationships.get(&rev).cloned()
+        })
     }
 
     fn get_object_description(&self, object_id: &str) -> Option<String> {
@@ -359,7 +397,11 @@ impl NpcWorld for InMemoryRepository {
             key
         } else {
             let rev = format!("{target_id}:{owner_id}");
-            if self.relationships.contains_key(&rev) { rev } else { key }
+            if self.relationships.contains_key(&rev) {
+                rev
+            } else {
+                key
+            }
         };
         self.relationships.insert(existing_key, rel);
     }
@@ -398,7 +440,9 @@ impl SceneStore for InMemoryRepository {
 // ---------------------------------------------------------------------------
 
 impl NpcWorld for &mut InMemoryRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> { (**self).get_npc(id) }
+    fn get_npc(&self, id: &str) -> Option<Npc> {
+        (**self).get_npc(id)
+    }
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
         (**self).get_relationship(owner_id, target_id)
     }
@@ -423,7 +467,13 @@ impl EmotionStore for &mut InMemoryRepository {
 }
 
 impl SceneStore for &mut InMemoryRepository {
-    fn get_scene(&self) -> Option<Scene> { (**self).get_scene() }
-    fn save_scene(&mut self, scene: Scene) { (**self).save_scene(scene) }
-    fn clear_scene(&mut self) { (**self).clear_scene() }
+    fn get_scene(&self) -> Option<Scene> {
+        (**self).get_scene()
+    }
+    fn save_scene(&mut self, scene: Scene) {
+        (**self).save_scene(scene)
+    }
+    fn clear_scene(&mut self) {
+        (**self).clear_scene()
+    }
 }

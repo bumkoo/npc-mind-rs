@@ -4,8 +4,8 @@
 
 #![cfg(feature = "embed")]
 
-use std::sync::{Mutex, OnceLock};
 use bge_m3_onnx_rust::{BgeM3Embedder, cosine_similarity};
+use std::sync::{Mutex, OnceLock};
 
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
 const TOKENIZER_PATH: &str = "../models/bge-m3/tokenizer.json";
@@ -108,30 +108,114 @@ const AXES: [AxisAnchors; 3] = [
     },
 ];
 
-struct TestCase { utterance: &'static str, expected: [f32; 3], label: &'static str }
+struct TestCase {
+    utterance: &'static str,
+    expected: [f32; 3],
+    label: &'static str,
+}
 
 fn test_cases() -> Vec<TestCase> {
     vec![
-        TestCase { utterance: "네 이놈, 죽고 싶으냐!", expected: [-1.0, 1.0, 1.0], label: "도발" },
-        TestCase { utterance: "은혜를 잊지 않겠습니다. 정말 감사합니다.", expected: [1.0, -1.0, -1.0], label: "감사" },
-        TestCase { utterance: "배은망덕한 놈! 의리도 없는 것이!", expected: [-1.0, 1.0, 1.0], label: "배신" },
-        TestCase { utterance: "오늘 날씨가 좋군요.", expected: [1.0, 0.0, 0.0], label: "중립" },
-        TestCase { utterance: "내 아이가 죽었소... 모든 것이 끝났소.", expected: [-1.0, -1.0, -1.0], label: "비탄" },
-        TestCase { utterance: "당장 목을 치겠다! 칼을 뽑아라!", expected: [-1.0, 1.0, 1.0], label: "위협" },
-        TestCase { utterance: "편안히 쉬시게. 차 한잔 올리지.", expected: [1.0, -1.0, 1.0], label: "환대" },
-        TestCase { utterance: "적이 쳐들어 온다! 모두 무기를 들어라!", expected: [-1.0, 1.0, 1.0], label: "긴급" },
-        TestCase { utterance: "강물이 고요히 흐르는군. 세상도 이리 평온하면 좋으련만.", expected: [1.0, -1.0, 0.0], label: "관조" },
-        TestCase { utterance: "내가 주도한다. 물러서라, 이것이 명이다!", expected: [0.0, 1.0, 1.0], label: "명령" },
-        TestCase { utterance: "제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.", expected: [-1.0, -1.0, -1.0], label: "복종" },
-        TestCase { utterance: "감히 내 앞에서! 무릎 꿇어라!", expected: [-1.0, 1.0, 1.0], label: "위압" },
-        TestCase { utterance: "소인은 아무것도 모릅니다... 살려주십시오.", expected: [-1.0, 1.0, -1.0], label: "애걸" },
-        TestCase { utterance: "이 일은 내가 책임지겠소. 모두 뒤로 물러나시오.", expected: [0.0, 1.0, 1.0], label: "책임" },
-        TestCase { utterance: "네가 날 배신하다니... 차라리 죽여라.", expected: [-1.0, 1.0, -1.0], label: "절망" },
-        TestCase { utterance: "드디어 해냈다! 십 년의 수련이 헛되지 않았구나!", expected: [1.0, 1.0, 1.0], label: "성취" },
-        TestCase { utterance: "괜찮소, 누구나 실수하오. 다시 일어서면 되지.", expected: [1.0, -1.0, 1.0], label: "위로" },
-        TestCase { utterance: "흥, 네까짓 것이 나를 이길 수 있다고 생각했느냐?", expected: [-1.0, 1.0, 1.0], label: "경멸" },
-        TestCase { utterance: "형님, 같이 술이나 한잔합시다. 오랜만이오.", expected: [1.0, -1.0, 0.0], label: "친근" },
-        TestCase { utterance: "저... 혹시 괜찮으시다면... 함께 가도 될까요?", expected: [1.0, 1.0, -1.0], label: "소심" },
+        TestCase {
+            utterance: "네 이놈, 죽고 싶으냐!",
+            expected: [-1.0, 1.0, 1.0],
+            label: "도발",
+        },
+        TestCase {
+            utterance: "은혜를 잊지 않겠습니다. 정말 감사합니다.",
+            expected: [1.0, -1.0, -1.0],
+            label: "감사",
+        },
+        TestCase {
+            utterance: "배은망덕한 놈! 의리도 없는 것이!",
+            expected: [-1.0, 1.0, 1.0],
+            label: "배신",
+        },
+        TestCase {
+            utterance: "오늘 날씨가 좋군요.",
+            expected: [1.0, 0.0, 0.0],
+            label: "중립",
+        },
+        TestCase {
+            utterance: "내 아이가 죽었소... 모든 것이 끝났소.",
+            expected: [-1.0, -1.0, -1.0],
+            label: "비탄",
+        },
+        TestCase {
+            utterance: "당장 목을 치겠다! 칼을 뽑아라!",
+            expected: [-1.0, 1.0, 1.0],
+            label: "위협",
+        },
+        TestCase {
+            utterance: "편안히 쉬시게. 차 한잔 올리지.",
+            expected: [1.0, -1.0, 1.0],
+            label: "환대",
+        },
+        TestCase {
+            utterance: "적이 쳐들어 온다! 모두 무기를 들어라!",
+            expected: [-1.0, 1.0, 1.0],
+            label: "긴급",
+        },
+        TestCase {
+            utterance: "강물이 고요히 흐르는군. 세상도 이리 평온하면 좋으련만.",
+            expected: [1.0, -1.0, 0.0],
+            label: "관조",
+        },
+        TestCase {
+            utterance: "내가 주도한다. 물러서라, 이것이 명이다!",
+            expected: [0.0, 1.0, 1.0],
+            label: "명령",
+        },
+        TestCase {
+            utterance: "제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.",
+            expected: [-1.0, -1.0, -1.0],
+            label: "복종",
+        },
+        TestCase {
+            utterance: "감히 내 앞에서! 무릎 꿇어라!",
+            expected: [-1.0, 1.0, 1.0],
+            label: "위압",
+        },
+        TestCase {
+            utterance: "소인은 아무것도 모릅니다... 살려주십시오.",
+            expected: [-1.0, 1.0, -1.0],
+            label: "애걸",
+        },
+        TestCase {
+            utterance: "이 일은 내가 책임지겠소. 모두 뒤로 물러나시오.",
+            expected: [0.0, 1.0, 1.0],
+            label: "책임",
+        },
+        TestCase {
+            utterance: "네가 날 배신하다니... 차라리 죽여라.",
+            expected: [-1.0, 1.0, -1.0],
+            label: "절망",
+        },
+        TestCase {
+            utterance: "드디어 해냈다! 십 년의 수련이 헛되지 않았구나!",
+            expected: [1.0, 1.0, 1.0],
+            label: "성취",
+        },
+        TestCase {
+            utterance: "괜찮소, 누구나 실수하오. 다시 일어서면 되지.",
+            expected: [1.0, -1.0, 1.0],
+            label: "위로",
+        },
+        TestCase {
+            utterance: "흥, 네까짓 것이 나를 이길 수 있다고 생각했느냐?",
+            expected: [-1.0, 1.0, 1.0],
+            label: "경멸",
+        },
+        TestCase {
+            utterance: "형님, 같이 술이나 한잔합시다. 오랜만이오.",
+            expected: [1.0, -1.0, 0.0],
+            label: "친근",
+        },
+        TestCase {
+            utterance: "저... 혹시 괜찮으시다면... 함께 가도 될까요?",
+            expected: [1.0, 1.0, -1.0],
+            label: "소심",
+        },
     ]
 }
 
@@ -142,31 +226,59 @@ fn 개별_앵커_dense_점수() {
 
     // 1) 앵커 임베딩
     println!("\n[1] 60개 앵커 Dense 임베딩...");
-    struct AxisEmb { label: &'static str, pos: Vec<Vec<f32>>, neg: Vec<Vec<f32>> }
+    struct AxisEmb {
+        label: &'static str,
+        pos: Vec<Vec<f32>>,
+        neg: Vec<Vec<f32>>,
+    }
     let mut axes: Vec<AxisEmb> = Vec::new();
     for ax in &AXES {
-        let pos: Vec<Vec<f32>> = ax.positive.iter()
-            .map(|t| emb.encode(t).unwrap().dense).collect();
-        let neg: Vec<Vec<f32>> = ax.negative.iter()
-            .map(|t| emb.encode(t).unwrap().dense).collect();
-        axes.push(AxisEmb { label: ax.label, pos, neg });
+        let pos: Vec<Vec<f32>> = ax
+            .positive
+            .iter()
+            .map(|t| emb.encode(t).unwrap().dense)
+            .collect();
+        let neg: Vec<Vec<f32>> = ax
+            .negative
+            .iter()
+            .map(|t| emb.encode(t).unwrap().dense)
+            .collect();
+        axes.push(AxisEmb {
+            label: ax.label,
+            pos,
+            neg,
+        });
     }
 
     // 2) 대사 임베딩
     println!("[2] 20개 대사 Dense 임베딩...\n");
-    let utts: Vec<(&&str, Vec<f32>, [f32;3])> = cases.iter()
-        .map(|c| (&c.utterance, emb.encode(c.utterance).unwrap().dense, c.expected))
+    let utts: Vec<(&&str, Vec<f32>, [f32; 3])> = cases
+        .iter()
+        .map(|c| {
+            (
+                &c.utterance,
+                emb.encode(c.utterance).unwrap().dense,
+                c.expected,
+            )
+        })
         .collect();
 
     // 3) 축별 출력
     for (ax_idx, axis) in axes.iter().enumerate() {
         println!("{}", "=".repeat(170));
-        println!("{}축 Dense cos_sim (+ 양극 10개 / - 음극 10개) + 집계", axis.label);
+        println!(
+            "{}축 Dense cos_sim (+ 양극 10개 / - 음극 10개) + 집계",
+            axis.label
+        );
         println!("{}", "=".repeat(170));
         print!("{:<6}", "대사");
-        for i in 1..=10 { print!("  {:>5}", format!("+{}", i)); }
+        for i in 1..=10 {
+            print!("  {:>5}", format!("+{}", i));
+        }
         print!("  |");
-        for i in 1..=10 { print!("  {:>5}", format!("-{}", i)); }
+        for i in 1..=10 {
+            print!("  {:>5}", format!("-{}", i));
+        }
         println!("  | {:>6} {:>6} {:>6} | exp", "mean", "top3", "max");
         println!("{}", "-".repeat(170));
 
@@ -174,31 +286,63 @@ fn 개별_앵커_dense_점수() {
             let dense = &utts[i].1;
             let exp = utts[i].2[ax_idx];
 
-            let ps: Vec<f32> = axis.pos.iter().map(|a| cosine_similarity(dense, a)).collect();
-            let ns: Vec<f32> = axis.neg.iter().map(|a| cosine_similarity(dense, a)).collect();
+            let ps: Vec<f32> = axis
+                .pos
+                .iter()
+                .map(|a| cosine_similarity(dense, a))
+                .collect();
+            let ns: Vec<f32> = axis
+                .neg
+                .iter()
+                .map(|a| cosine_similarity(dense, a))
+                .collect();
 
             let pm: f32 = ps.iter().sum::<f32>() / 10.0;
             let nm: f32 = ns.iter().sum::<f32>() / 10.0;
             let mean = pm - nm;
 
-            let mut sp = ps.clone(); sp.sort_by(|a,b| b.partial_cmp(a).unwrap());
-            let mut sn = ns.clone(); sn.sort_by(|a,b| b.partial_cmp(a).unwrap());
-            let top3 = sp[..3].iter().sum::<f32>()/3.0 - sn[..3].iter().sum::<f32>()/3.0;
+            let mut sp = ps.clone();
+            sp.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            let mut sn = ns.clone();
+            sn.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            let top3 = sp[..3].iter().sum::<f32>() / 3.0 - sn[..3].iter().sum::<f32>() / 3.0;
             let max_s = sp[0] - sn[0];
 
-            let dir = if exp > 0.0 { "+" } else if exp < 0.0 { "-" } else { "0" };
+            let dir = if exp > 0.0 {
+                "+"
+            } else if exp < 0.0 {
+                "-"
+            } else {
+                "0"
+            };
             let mk = |v: f32| -> &str {
-                if exp == 0.0 { " " }
-                else if (exp > 0.0) == (v > 0.0) { "✓" }
-                else { "✗" }
+                if exp == 0.0 {
+                    " "
+                } else if (exp > 0.0) == (v > 0.0) {
+                    "✓"
+                } else {
+                    "✗"
+                }
             };
 
             print!("{:<6}", case.label);
-            for s in &ps { print!("  {:>.3}", s); }
+            for s in &ps {
+                print!("  {:>.3}", s);
+            }
             print!("  |");
-            for s in &ns { print!("  {:>.3}", s); }
-            println!("  | {:>+.3}{} {:>+.3}{} {:>+.3}{} | {}",
-                mean, mk(mean), top3, mk(top3), max_s, mk(max_s), dir);
+            for s in &ns {
+                print!("  {:>.3}", s);
+            }
+            println!(
+                "  | {:>+.3}{} {:>+.3}{} {:>+.3}{} | {}",
+                mean,
+                mk(mean),
+                top3,
+                mk(top3),
+                max_s,
+                mk(max_s),
+                dir
+            );
         }
         println!();
     }
@@ -207,7 +351,10 @@ fn 개별_앵커_dense_점수() {
     println!("{}", "=".repeat(80));
     println!("전략별 방향 정확도 요약 (확정 앵커 10개)");
     println!("{}", "=".repeat(80));
-    println!("{:<6} {:>14} {:>14} {:>14}", "축", "D:mean", "D:top3", "D:max");
+    println!(
+        "{:<6} {:>14} {:>14} {:>14}",
+        "축", "D:mean", "D:top3", "D:max"
+    );
     println!("{}", "-".repeat(80));
 
     let mut total = [0u32; 3]; // mean, top3, max
@@ -218,34 +365,70 @@ fn 개별_앵커_dense_점수() {
         let mut n = 0u32;
         for (i, case) in cases.iter().enumerate() {
             let exp = case.expected[ax_idx];
-            if exp == 0.0 { continue; }
+            if exp == 0.0 {
+                continue;
+            }
             n += 1;
             let dense = &utts[i].1;
-            let ps: Vec<f32> = axis.pos.iter().map(|a| cosine_similarity(dense, a)).collect();
-            let ns: Vec<f32> = axis.neg.iter().map(|a| cosine_similarity(dense, a)).collect();
-            let pm: f32 = ps.iter().sum::<f32>()/10.0;
-            let nm: f32 = ns.iter().sum::<f32>()/10.0;
-            let mut sp = ps.clone(); sp.sort_by(|a,b| b.partial_cmp(a).unwrap());
-            let mut sn = ns.clone(); sn.sort_by(|a,b| b.partial_cmp(a).unwrap());
+            let ps: Vec<f32> = axis
+                .pos
+                .iter()
+                .map(|a| cosine_similarity(dense, a))
+                .collect();
+            let ns: Vec<f32> = axis
+                .neg
+                .iter()
+                .map(|a| cosine_similarity(dense, a))
+                .collect();
+            let pm: f32 = ps.iter().sum::<f32>() / 10.0;
+            let nm: f32 = ns.iter().sum::<f32>() / 10.0;
+            let mut sp = ps.clone();
+            sp.sort_by(|a, b| b.partial_cmp(a).unwrap());
+            let mut sn = ns.clone();
+            sn.sort_by(|a, b| b.partial_cmp(a).unwrap());
             let mean = pm - nm;
-            let top3 = sp[..3].iter().sum::<f32>()/3.0 - sn[..3].iter().sum::<f32>()/3.0;
+            let top3 = sp[..3].iter().sum::<f32>() / 3.0 - sn[..3].iter().sum::<f32>() / 3.0;
             let max_s = sp[0] - sn[0];
-            if (exp > 0.0) == (mean > 0.0) { ok[0] += 1; }
-            if (exp > 0.0) == (top3 > 0.0) { ok[1] += 1; }
-            if (exp > 0.0) == (max_s > 0.0) { ok[2] += 1; }
+            if (exp > 0.0) == (mean > 0.0) {
+                ok[0] += 1;
+            }
+            if (exp > 0.0) == (top3 > 0.0) {
+                ok[1] += 1;
+            }
+            if (exp > 0.0) == (max_s > 0.0) {
+                ok[2] += 1;
+            }
         }
-        for j in 0..3 { total[j] += ok[j]; }
+        for j in 0..3 {
+            total[j] += ok[j];
+        }
         total_n += n;
-        println!("{:<6} {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%)",
+        println!(
+            "{:<6} {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%)",
             axis.label,
-            ok[0], n, ok[0] as f64/n as f64*100.0,
-            ok[1], n, ok[1] as f64/n as f64*100.0,
-            ok[2], n, ok[2] as f64/n as f64*100.0);
+            ok[0],
+            n,
+            ok[0] as f64 / n as f64 * 100.0,
+            ok[1],
+            n,
+            ok[1] as f64 / n as f64 * 100.0,
+            ok[2],
+            n,
+            ok[2] as f64 / n as f64 * 100.0
+        );
     }
     println!("{}", "-".repeat(80));
-    println!("{:<6} {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%)",
+    println!(
+        "{:<6} {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%) {:>5}/{} ({:>3.0}%)",
         "합계",
-        total[0], total_n, total[0] as f64/total_n as f64*100.0,
-        total[1], total_n, total[1] as f64/total_n as f64*100.0,
-        total[2], total_n, total[2] as f64/total_n as f64*100.0);
+        total[0],
+        total_n,
+        total[0] as f64 / total_n as f64 * 100.0,
+        total[1],
+        total_n,
+        total[1] as f64 / total_n as f64 * 100.0,
+        total[2],
+        total_n,
+        total[2] as f64 / total_n as f64 * 100.0
+    );
 }

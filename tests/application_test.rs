@@ -5,7 +5,7 @@ mod common;
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::{SceneStore, EmotionStore};
+use npc_mind::{EmotionStore, SceneStore};
 
 use common::*;
 
@@ -14,11 +14,11 @@ fn test_mind_service_full_flow() {
     let mut repo = MockRepository::new();
     let mu_baek = make_무백();
     let gyo_ryong = make_교룡();
-    
+
     repo.add_npc(mu_baek.clone());
     repo.add_npc(gyo_ryong.clone());
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
-    
+
     let mut service = MindService::new(repo);
 
     // 1. 상황 평가 (Appraise)
@@ -38,8 +38,10 @@ fn test_mind_service_full_flow() {
         },
     };
 
-    let res = service.appraise(req, || {}, Vec::new).expect("Appraisal failed");
-    
+    let res = service
+        .appraise(req, || {}, Vec::new)
+        .expect("Appraisal failed");
+
     // 무백은 정의로우므로 Admiration(감탄)이 발생해야 함
     assert!(res.emotions.iter().any(|e| e.emotion_type == "Admiration"));
     assert!(res.mood > 0.0);
@@ -56,7 +58,9 @@ fn test_mind_service_full_flow() {
         dominance: 0.0,
     };
 
-    let res2 = service.apply_stimulus(stim_req, || {}, Vec::new).expect("Stimulus failed");
+    let res2 = service
+        .apply_stimulus(stim_req, || {}, Vec::new)
+        .expect("Stimulus failed");
     assert!(res2.mood > res.mood); // 기분이 더 좋아져야 함
 
     // 3. 관계 갱신 (After Dialogue)
@@ -67,8 +71,10 @@ fn test_mind_service_full_flow() {
         significance: None,
     };
 
-    let after_res = service.after_dialogue(after_req).expect("After dialogue failed");
-    
+    let after_res = service
+        .after_dialogue(after_req)
+        .expect("After dialogue failed");
+
     // 관계 점수가 상승했는지 확인 (closeness가 0.0에서 시작했으므로 양수여야 함)
     assert!(after_res.after.closeness > after_res.before.closeness);
     assert!(after_res.after.trust > after_res.before.trust);
@@ -115,19 +121,23 @@ fn test_dto_transformation_to_domain() {
         object: None,
     };
 
-    let domain = input.to_domain(&repo, "me", "partner").expect("Transformation failed");
+    let domain = input
+        .to_domain(&repo, "me", "partner")
+        .expect("Transformation failed");
 
     assert_eq!(domain.description, "test");
     let ev = domain.event.unwrap();
     assert_eq!(ev.description, "ev");
     assert_eq!(ev.desirability_for_self, 0.5);
-    
+
     // Prospect 매핑 확인
     match ev.prospect {
-        Some(npc_mind::domain::emotion::Prospect::Confirmation(npc_mind::domain::emotion::ProspectResult::HopeFulfilled)) => {},
+        Some(npc_mind::domain::emotion::Prospect::Confirmation(
+            npc_mind::domain::emotion::ProspectResult::HopeFulfilled,
+        )) => {}
         _ => panic!("Prospect mapping failed"),
     }
-    
+
     // 타인 운 확인
     let other = ev.desirability_for_other.unwrap();
     assert_eq!(other.target_id, "target");
@@ -150,9 +160,11 @@ fn test_dto_transformation_to_domain() {
     };
 
     let res = bad_input.to_domain(&repo, "me", "partner");
-    assert!(matches!(res, Err(npc_mind::application::mind_service::MindServiceError::RelationshipNotFound(_, _))));
+    assert!(matches!(
+        res,
+        Err(npc_mind::application::mind_service::MindServiceError::RelationshipNotFound(_, _))
+    ));
 }
-
 
 // ===========================================================================
 // after_beat vs after_dialogue 검증
@@ -184,7 +196,9 @@ fn after_beat_감정_유지() {
         },
     };
 
-    service.appraise(req, || {}, Vec::new).expect("appraise failed");
+    service
+        .appraise(req, || {}, Vec::new)
+        .expect("appraise failed");
 
     // after_beat — 관계 갱신하되 감정 유지
     let beat_req = AfterDialogueRequest {
@@ -202,7 +216,10 @@ fn after_beat_감정_유지() {
         situation_description: None,
     };
     let guide_res = service.generate_guide(guide_req);
-    assert!(guide_res.is_ok(), "after_beat 후 감정 상태 존재 → 가이드 생성 성공");
+    assert!(
+        guide_res.is_ok(),
+        "after_beat 후 감정 상태 존재 → 가이드 생성 성공"
+    );
 }
 
 #[test]
@@ -230,7 +247,9 @@ fn after_dialogue_감정_초기화() {
             object: None,
         },
     };
-    service.appraise(req, || {}, Vec::new).expect("appraise failed");
+    service
+        .appraise(req, || {}, Vec::new)
+        .expect("appraise failed");
 
     // after_dialogue — 관계 갱신 + 감정 초기화
     let dialogue_req = AfterDialogueRequest {
@@ -239,7 +258,9 @@ fn after_dialogue_감정_초기화() {
         praiseworthiness: Some(0.5),
         significance: None,
     };
-    service.after_dialogue(dialogue_req).expect("after_dialogue failed");
+    service
+        .after_dialogue(dialogue_req)
+        .expect("after_dialogue failed");
 
     // 감정 상태가 없어야 함 → 가이드 생성 실패
     let guide_req = GuideRequest {
@@ -248,7 +269,10 @@ fn after_dialogue_감정_초기화() {
         situation_description: None,
     };
     let guide_res = service.generate_guide(guide_req);
-    assert!(guide_res.is_err(), "after_dialogue 후 감정 상태 없음 → 가이드 생성 실패");
+    assert!(
+        guide_res.is_err(),
+        "after_dialogue 후 감정 상태 없음 → 가이드 생성 실패"
+    );
 }
 
 #[test]
@@ -256,21 +280,19 @@ fn test_scene_persistence_and_clear() {
     let mut ctx = TestContext::new();
     let mut service = ctx.service();
 
-    let focuses = vec![
-        SceneFocusInput {
-            id: "start".into(),
-            description: "시작".into(),
-            trigger: None,
-            event: Some(EventInput {
-                description: "초기 상황".into(),
-                desirability_for_self: 0.1,
-                other: None,
-                prospect: None,
-            }),
-            action: None,
-            object: None,
-        }
-    ];
+    let focuses = vec![SceneFocusInput {
+        id: "start".into(),
+        description: "시작".into(),
+        trigger: None,
+        event: Some(EventInput {
+            description: "초기 상황".into(),
+            desirability_for_self: 0.1,
+            other: None,
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    }];
 
     let req = SceneRequest {
         npc_id: "mu_baek".into(),
@@ -286,7 +308,10 @@ fn test_scene_persistence_and_clear() {
 
     // 2. 저장소에 Scene이 존재하는지 확인
     {
-        let scene = service.repository().get_scene().expect("Scene이 저장되어야 함");
+        let scene = service
+            .repository()
+            .get_scene()
+            .expect("Scene이 저장되어야 함");
         assert_eq!(scene.npc_id(), "mu_baek");
         assert_eq!(scene.active_focus_id(), Some("start"));
     }
@@ -300,7 +325,10 @@ fn test_scene_persistence_and_clear() {
     };
     service.after_dialogue(after_req).unwrap();
 
-    assert!(service.repository().get_scene().is_none(), "Dialogue 종료 후 Scene은 삭제되어야 함");
+    assert!(
+        service.repository().get_scene().is_none(),
+        "Dialogue 종료 후 Scene은 삭제되어야 함"
+    );
 }
 
 // ===========================================================================
@@ -344,7 +372,7 @@ fn test_beat_transition_and_emotion_merging() {
             }),
             action: None,
             object: None,
-        }
+        },
     ];
 
     // 2. Scene 시작 (교룡으로 시작)
@@ -361,24 +389,33 @@ fn test_beat_transition_and_emotion_merging() {
         npc_id: "gyo_ryong".into(),
         partner_id: "mu_baek".into(),
         situation_description: Some("무백의 원칙적인 잔소리".to_string()),
-        pleasure: -1.0, 
+        pleasure: -1.0,
         arousal: -1.0,
         dominance: -1.0,
     };
 
     let stim_res = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
-    
+
     // 4. 검증: 교룡은 민감하여 기쁨이 바로 사라지고 전환되어야 함
-    assert!(stim_res.beat_changed, "교룡은 기쁨이 사라지는 즉시 Beat가 전환되어야 함");
+    assert!(
+        stim_res.beat_changed,
+        "교룡은 기쁨이 사라지는 즉시 Beat가 전환되어야 함"
+    );
     assert_eq!(stim_res.active_focus_id, Some("angry".to_string()));
 
     // 5. 핵심 검증: 감정이 병합되었는가?
     let final_state = service.repository().get_emotion_state("gyo_ryong").unwrap();
-    
+
     // - "angry" 비트의 결과인 Distress 또는 Anger가 존재해야 함
-    assert!(!final_state.emotions().is_empty(), "병합 후 감정이 존재해야 함");
-    
+    assert!(
+        !final_state.emotions().is_empty(),
+        "병합 후 감정이 존재해야 함"
+    );
+
     // - 이전 비트의 데이터가 유실되지 않고 병합 로직이 정상 호출되었음을 확인
     // (이전 기쁨은 사라졌지만, 병합된 상태 자체는 유효해야 함)
-    assert!(final_state.overall_valence() < 0.0, "병합 후 기분은 나빠져야 함");
+    assert!(
+        final_state.overall_valence() < 0.0,
+        "병합 후 기분은 나빠져야 함"
+    );
 }

@@ -10,9 +10,9 @@
 
 use tracing::trace;
 
+use crate::domain::pad::{Pad, emotion_to_pad, pad_dot};
+use crate::domain::tuning::{STIMULUS_FADE_THRESHOLD, STIMULUS_IMPACT_RATE, STIMULUS_MIN_INERTIA};
 use crate::ports::StimulusWeights;
-use crate::domain::pad::{Pad, pad_dot, emotion_to_pad};
-use crate::domain::tuning::{STIMULUS_IMPACT_RATE, STIMULUS_FADE_THRESHOLD, STIMULUS_MIN_INERTIA};
 
 use super::types::EmotionState;
 
@@ -36,7 +36,12 @@ impl crate::ports::StimulusProcessor for StimulusEngine {
         stimulus: &Pad,
     ) -> EmotionState {
         let absorb = personality.stimulus_absorb_rate(stimulus);
-        trace!(absorb_rate = absorb, pleasure = stimulus.pleasure, arousal = stimulus.arousal, dominance = stimulus.dominance);
+        trace!(
+            absorb_rate = absorb,
+            pleasure = stimulus.pleasure,
+            arousal = stimulus.arousal,
+            dominance = stimulus.dominance
+        );
         let mut new_state = current_state.clone();
 
         for emotion in current_state.emotions() {

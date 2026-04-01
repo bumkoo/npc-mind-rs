@@ -4,9 +4,9 @@
 
 mod common;
 
-use npc_mind::domain::relationship::*;
-use npc_mind::domain::emotion::EmotionState;
 use common::{TestContext, score as s};
+use npc_mind::domain::emotion::EmotionState;
+use npc_mind::domain::relationship::*;
 
 // ===========================================================================
 // 기본 생성
@@ -286,8 +286,7 @@ fn 직렬화_역직렬화() {
 
 #[test]
 fn owner_id_직렬화에_포함() {
-    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong")
-        .build();
+    let rel = RelationshipBuilder::new("mu_baek", "gyo_ryong").build();
     let json = serde_json::to_string(&rel).unwrap();
     assert!(json.contains("mu_baek"));
     assert!(json.contains("gyo_ryong"));
@@ -299,10 +298,13 @@ fn after_dialogue_종합_갱신() {
         .closeness(s(0.0))
         .trust(s(0.0))
         .build();
-    
+
     let mut state = EmotionState::new();
-    state.add(npc_mind::domain::emotion::Emotion::new(npc_mind::domain::emotion::EmotionType::Joy, 0.8));
-    
+    state.add(npc_mind::domain::emotion::Emotion::new(
+        npc_mind::domain::emotion::EmotionType::Joy,
+        0.8,
+    ));
+
     let updated = rel.after_dialogue(&state, Some(0.7), 0.0);
     assert!(updated.closeness().value() > 0.0);
     assert!(updated.trust().value() > 0.0);

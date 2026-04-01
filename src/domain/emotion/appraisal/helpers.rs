@@ -13,7 +13,9 @@ pub fn add_valence(
     modifier: f32,
     ctx: &str,
 ) {
-    if weight <= 0.0 { return; }
+    if weight <= 0.0 {
+        return;
+    }
 
     if base_val > 0.0 {
         let val = base_val * weight * modifier;

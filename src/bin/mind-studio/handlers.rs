@@ -1,17 +1,19 @@
-﻿//! API 핸들러 — CRUD + 파이프라인 실행
+//! API 핸들러 — CRUD + 파이프라인 실행
 
+use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use npc_mind::domain::emotion::*;
-use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::personality::Npc;
+use npc_mind::domain::relationship::Relationship;
 
 use npc_mind::application::dto::*;
-use npc_mind::application::mind_service::{MindService, MindServiceError, NpcWorld, EmotionStore, SceneStore};
+use npc_mind::application::mind_service::{
+    EmotionStore, MindService, MindServiceError, NpcWorld, SceneStore,
+};
 use npc_mind::ports::UtteranceAnalyzer;
 
 use crate::state::*;
@@ -73,11 +75,16 @@ impl<'a> NpcWorld for AppStateRepository<'a> {
     }
 
     fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        self.inner.find_relationship(owner_id, target_id).map(|r| r.to_relationship())
+        self.inner
+            .find_relationship(owner_id, target_id)
+            .map(|r| r.to_relationship())
     }
 
     fn get_object_description(&self, object_id: &str) -> Option<String> {
-        self.inner.objects.get(object_id).map(|o| o.description.clone())
+        self.inner
+            .objects
+            .get(object_id)
+            .map(|o| o.description.clone())
     }
 
     fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
@@ -93,13 +100,16 @@ impl<'a> NpcWorld for AppStateRepository<'a> {
             }
         };
 
-        self.inner.relationships.insert(existing_key, RelationshipData {
-            owner_id: owner_id.to_string(),
-            target_id: target_id.to_string(),
-            closeness: rel.closeness().value(),
-            trust: rel.trust().value(),
-            power: rel.power().value(),
-        });
+        self.inner.relationships.insert(
+            existing_key,
+            RelationshipData {
+                owner_id: owner_id.to_string(),
+                target_id: target_id.to_string(),
+                closeness: rel.closeness().value(),
+                trust: rel.trust().value(),
+                power: rel.power().value(),
+            },
+        );
     }
 }
 
@@ -153,18 +163,32 @@ struct ReadOnlyAppStateRepo<'a> {
 }
 
 impl<'a> NpcWorld for ReadOnlyAppStateRepo<'a> {
-    fn get_npc(&self, id: &str) -> Option<Npc> { self.inner.npcs.get(id).map(|p| p.to_npc()) }
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        self.inner.find_relationship(owner_id, target_id).map(|r| r.to_relationship())
+    fn get_npc(&self, id: &str) -> Option<Npc> {
+        self.inner.npcs.get(id).map(|p| p.to_npc())
     }
-    fn get_object_description(&self, _: &str) -> Option<String> { None }
-    fn save_relationship(&mut self, _: &str, _: &str, _: Relationship) { unreachable!("read-only") }
+    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
+        self.inner
+            .find_relationship(owner_id, target_id)
+            .map(|r| r.to_relationship())
+    }
+    fn get_object_description(&self, _: &str) -> Option<String> {
+        None
+    }
+    fn save_relationship(&mut self, _: &str, _: &str, _: Relationship) {
+        unreachable!("read-only")
+    }
 }
 
 impl<'a> EmotionStore for ReadOnlyAppStateRepo<'a> {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> { self.inner.emotions.get(npc_id).cloned() }
-    fn save_emotion_state(&mut self, _: &str, _: EmotionState) { unreachable!("read-only") }
-    fn clear_emotion_state(&mut self, _: &str) { unreachable!("read-only") }
+    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
+        self.inner.emotions.get(npc_id).cloned()
+    }
+    fn save_emotion_state(&mut self, _: &str, _: EmotionState) {
+        unreachable!("read-only")
+    }
+    fn clear_emotion_state(&mut self, _: &str) {
+        unreachable!("read-only")
+    }
 }
 
 impl<'a> SceneStore for ReadOnlyAppStateRepo<'a> {
@@ -182,8 +206,12 @@ impl<'a> SceneStore for ReadOnlyAppStateRepo<'a> {
         Some(scene)
     }
 
-    fn save_scene(&mut self, _: Scene) { unreachable!("read-only") }
-    fn clear_scene(&mut self) { unreachable!("read-only") }
+    fn save_scene(&mut self, _: Scene) {
+        unreachable!("read-only")
+    }
+    fn clear_scene(&mut self) {
+        unreachable!("read-only")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,10 +227,7 @@ pub async fn list_npcs(State(state): State<AppState>) -> Json<Vec<NpcProfile>> {
 }
 
 /// POST /api/npcs — NPC 생성/업데이트
-pub async fn upsert_npc(
-    State(state): State<AppState>,
-    Json(npc): Json<NpcProfile>,
-) -> StatusCode {
+pub async fn upsert_npc(State(state): State<AppState>, Json(npc): Json<NpcProfile>) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.npcs.insert(npc.id.clone(), npc);
     StatusCode::OK
@@ -300,8 +325,10 @@ pub async fn appraise(
 
     let result = service.appraise(
         req.clone(),
-        || { collector.take_entries(); }, // before
-        || collector.take_entries(),      // after
+        || {
+            collector.take_entries();
+        }, // before
+        || collector.take_entries(), // after
     )?;
 
     let response = result.format(&*state.formatter);
@@ -309,7 +336,10 @@ pub async fn appraise(
     // 턴 기록 저장
     let turn_num = inner.turn_history.len() + 1;
     inner.turn_history.push(TurnRecord {
-        label: format!("Turn {}: appraise ({}→{})", turn_num, req.npc_id, req.partner_id),
+        label: format!(
+            "Turn {}: appraise ({}→{})",
+            turn_num, req.npc_id, req.partner_id
+        ),
         action: "appraise".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
@@ -333,7 +363,9 @@ pub async fn stimulus(
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
     let result = service.apply_stimulus(
         req.clone(),
-        || { collector.take_entries(); },
+        || {
+            collector.take_entries();
+        },
         || collector.take_entries(),
     )?;
     drop(service);
@@ -343,7 +375,12 @@ pub async fn stimulus(
     // 턴 기록
     let turn_num = inner.turn_history.len() + 1;
     let label = if response.beat_changed {
-        format!("Turn {}: stimulus+beat [{}] ({})", turn_num, response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
+        format!(
+            "Turn {}: stimulus+beat [{}] ({})",
+            turn_num,
+            response.active_focus_id.as_deref().unwrap_or("?"),
+            req.npc_id
+        )
     } else {
         format!("Turn {}: stimulus ({})", turn_num, req.npc_id)
     };
@@ -401,7 +438,10 @@ pub async fn after_dialogue(
     // 턴 기록
     let turn_num = inner.turn_history.len() + 1;
     inner.turn_history.push(TurnRecord {
-        label: format!("Turn {}: after_dialogue ({}→{})", turn_num, req.npc_id, req.partner_id),
+        label: format!(
+            "Turn {}: after_dialogue ({}→{})",
+            turn_num, req.npc_id, req.partner_id
+        ),
         action: "after_dialogue".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
@@ -431,11 +471,14 @@ pub async fn analyze_utterance(
     State(state): State<AppState>,
     Json(req): Json<AnalyzeUtteranceRequest>,
 ) -> Result<Json<AnalyzeUtteranceResponse>, AppError> {
-    let analyzer = state.analyzer.as_ref()
+    let analyzer = state
+        .analyzer
+        .as_ref()
         .ok_or_else(|| AppError::NotImplemented("embed feature가 비활성 상태입니다".into()))?;
 
     let mut analyzer = analyzer.lock().await;
-    let pad = analyzer.analyze(&req.utterance)
+    let pad = analyzer
+        .analyze(&req.utterance)
         .map_err(|e| AppError::Internal(format!("PAD 분석 실패: {e:?}")))?;
 
     Ok(Json(AnalyzeUtteranceResponse {
@@ -484,7 +527,12 @@ pub async fn get_history(State(state): State<AppState>) -> Json<Vec<TurnRecord>>
 /// GET /api/situation — 현재 상황 설정 패널 상태 조회
 pub async fn get_situation(State(state): State<AppState>) -> Json<serde_json::Value> {
     let inner = state.inner.read().await;
-    Json(inner.current_situation.clone().unwrap_or(serde_json::Value::Null))
+    Json(
+        inner
+            .current_situation
+            .clone()
+            .unwrap_or(serde_json::Value::Null),
+    )
 }
 
 /// PUT /api/situation — 상황 설정 패널 상태 저장
@@ -512,7 +560,8 @@ pub async fn save_state(
     Json(req): Json<SaveRequest>,
 ) -> Result<StatusCode, AppError> {
     let inner = state.inner.read().await;
-    inner.save_to_file(std::path::Path::new(&req.path))
+    inner
+        .save_to_file(std::path::Path::new(&req.path))
         .map_err(|e| AppError::Internal(e))?;
     Ok(StatusCode::OK)
 }
@@ -540,8 +589,13 @@ pub async fn load_state(
 fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
     // Focus 변환 + MindService 로드
     let repo = AppStateRepository { inner: loaded };
-    let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req.focuses.iter()
-        .filter_map(|f| f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id).ok())
+    let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req
+        .focuses
+        .iter()
+        .filter_map(|f| {
+            f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id)
+                .ok()
+        })
         .collect();
     drop(repo);
 
@@ -556,14 +610,20 @@ fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
     // Initial Focus → UI 폼 복원용 situation 맵 생성
     let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
     if let Some(fi) = initial_input {
-        loaded.current_situation = Some(serde_json::Value::Object(
-            build_situation_map(fi, &scene_req.npc_id, &scene_req.partner_id),
-        ));
+        loaded.current_situation = Some(serde_json::Value::Object(build_situation_map(
+            fi,
+            &scene_req.npc_id,
+            &scene_req.partner_id,
+        )));
     }
 }
 
 /// SceneFocusInput에서 UI 폼 복원용 JSON 맵을 생성합니다.
-fn build_situation_map(fi: &SceneFocusInput, npc_id: &str, partner_id: &str) -> serde_json::Map<String, serde_json::Value> {
+fn build_situation_map(
+    fi: &SceneFocusInput,
+    npc_id: &str,
+    partner_id: &str,
+) -> serde_json::Map<String, serde_json::Value> {
     let mut sit = serde_json::Map::new();
     sit.insert("desc".into(), serde_json::json!(fi.description));
     sit.insert("npcId".into(), serde_json::json!(npc_id));
@@ -603,7 +663,6 @@ fn build_situation_map(fi: &SceneFocusInput, npc_id: &str, partner_id: &str) -> 
     sit
 }
 
-
 // ---------------------------------------------------------------------------
 // 시나리오 목록 (data/ 폴더 스캔)
 // ---------------------------------------------------------------------------
@@ -631,7 +690,11 @@ fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<S
             let path = entry.path();
             if path.is_dir() {
                 scan_scenarios(base, &path, out);
-            } else if path.file_name().map(|f| f == "scenario.json").unwrap_or(false) {
+            } else if path
+                .file_name()
+                .map(|f| f == "scenario.json")
+                .unwrap_or(false)
+            {
                 if let Ok(rel) = path.parent().unwrap_or(&path).strip_prefix(base) {
                     let rel_str = rel.to_string_lossy().replace('\\', "/");
                     let label = rel_str.replace('/', " / ");
@@ -660,7 +723,9 @@ pub async fn scene(
     let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
     let result = service.start_scene(
         req.clone(),
-        || { collector.take_entries(); },
+        || {
+            collector.take_entries();
+        },
         || collector.take_entries(),
     )?;
     drop(service);
@@ -671,10 +736,13 @@ pub async fn scene(
     if response.initial_appraise.is_some() {
         let turn_num = inner.turn_history.len() + 1;
         inner.turn_history.push(TurnRecord {
-            label: format!("Turn {}: scene/appraise [{}] ({}→{})",
+            label: format!(
+                "Turn {}: scene/appraise [{}] ({}→{})",
                 turn_num,
                 response.active_focus_id.as_deref().unwrap_or("?"),
-                req.npc_id, req.partner_id),
+                req.npc_id,
+                req.partner_id
+            ),
             action: "scene".into(),
             request: serde_json::to_value(&req).unwrap_or_default(),
             response: serde_json::to_value(&response).unwrap_or_default(),

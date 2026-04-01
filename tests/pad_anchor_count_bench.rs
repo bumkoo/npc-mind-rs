@@ -6,31 +6,37 @@
 
 #![cfg(feature = "embed")]
 
-use std::sync::{Mutex, OnceLock};
+use npc_mind::PadAnchorSource;
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::TextEmbedder;
-use npc_mind::PadAnchorSource;
+use std::sync::{Mutex, OnceLock};
 
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
 const TOKENIZER_PATH: &str = "../models/bge-m3/tokenizer.json";
 
 fn shared_embedder() -> &'static Mutex<OrtEmbedder> {
     static EMB: OnceLock<Mutex<OrtEmbedder>> = OnceLock::new();
-    EMB.get_or_init(|| {
-        Mutex::new(OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap())
-    })
+    EMB.get_or_init(|| Mutex::new(OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()))
 }
 
 fn mean_vector(vectors: &[Vec<f32>]) -> Vec<f32> {
-    if vectors.is_empty() { return Vec::new(); }
+    if vectors.is_empty() {
+        return Vec::new();
+    }
     let dim = vectors[0].len();
     let n = vectors.len() as f32;
     let mut mean = vec![0.0f32; dim];
-    for v in vectors { for (i, val) in v.iter().enumerate() { mean[i] += val; } }
-    for val in mean.iter_mut() { *val /= n; }
+    for v in vectors {
+        for (i, val) in v.iter().enumerate() {
+            mean[i] += val;
+        }
+    }
+    for val in mean.iter_mut() {
+        *val /= n;
+    }
     mean
 }
 
@@ -139,26 +145,146 @@ struct TestCase {
 
 fn test_cases() -> Vec<TestCase> {
     vec![
-        TestCase { utterance: "네 이놈, 죽고 싶으냐!", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "도발(강)" },
-        TestCase { utterance: "은혜를 잊지 않겠습니다. 정말 감사합니다.", expected_p: 1.0, expected_a: -1.0, expected_d: -1.0, label: "감사" },
-        TestCase { utterance: "배은망덕한 놈! 의리도 없는 것이!", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "배신비난" },
-        TestCase { utterance: "오늘 날씨가 좋군요.", expected_p: 1.0, expected_a: 0.0, expected_d: 0.0, label: "중립적 긍정" },
-        TestCase { utterance: "내 아이가 죽었소... 모든 것이 끝났소.", expected_p: -1.0, expected_a: -1.0, expected_d: -1.0, label: "비탄/슬픔" },
-        TestCase { utterance: "당장 목을 치겠다! 칼을 뽑아라!", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "위협(고각성)" },
-        TestCase { utterance: "편안히 쉬시게. 차 한잔 올리지.", expected_p: 1.0, expected_a: -1.0, expected_d: 1.0, label: "차분한 환대" },
-        TestCase { utterance: "적이 쳐들어 온다! 모두 무기를 들어라!", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "긴급/전투" },
-        TestCase { utterance: "강물이 고요히 흐르는군. 세상도 이리 평온하면 좋으련만.", expected_p: 1.0, expected_a: -1.0, expected_d: 0.0, label: "명상/관조" },
-        TestCase { utterance: "내가 주도한다. 물러서라, 이것이 명이다!", expected_p: 0.0, expected_a: 1.0, expected_d: 1.0, label: "명령(지배)" },
-        TestCase { utterance: "제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.", expected_p: -1.0, expected_a: -1.0, expected_d: -1.0, label: "복종/자책" },
-        TestCase { utterance: "감히 내 앞에서! 무릎 꿇어라!", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "위압(지배)" },
-        TestCase { utterance: "소인은 아무것도 모릅니다... 살려주십시오.", expected_p: -1.0, expected_a: 1.0, expected_d: -1.0, label: "애걸(복종)" },
-        TestCase { utterance: "이 일은 내가 책임지겠소. 모두 뒤로 물러나시오.", expected_p: 0.0, expected_a: 1.0, expected_d: 1.0, label: "책임감(지배)" },
-        TestCase { utterance: "네가 날 배신하다니... 차라리 죽여라.", expected_p: -1.0, expected_a: 1.0, expected_d: -1.0, label: "배신+절망" },
-        TestCase { utterance: "드디어 해냈다! 십 년의 수련이 헛되지 않았구나!", expected_p: 1.0, expected_a: 1.0, expected_d: 1.0, label: "성취감" },
-        TestCase { utterance: "괜찮소, 누구나 실수하오. 다시 일어서면 되지.", expected_p: 1.0, expected_a: -1.0, expected_d: 1.0, label: "위로/격려" },
-        TestCase { utterance: "흥, 네까짓 것이 나를 이길 수 있다고 생각했느냐?", expected_p: -1.0, expected_a: 1.0, expected_d: 1.0, label: "경멸/조롱" },
-        TestCase { utterance: "형님, 같이 술이나 한잔합시다. 오랜만이오.", expected_p: 1.0, expected_a: -1.0, expected_d: 0.0, label: "친근함" },
-        TestCase { utterance: "저... 혹시 괜찮으시다면... 함께 가도 될까요?", expected_p: 1.0, expected_a: 1.0, expected_d: -1.0, label: "수줍음/소심" },
+        TestCase {
+            utterance: "네 이놈, 죽고 싶으냐!",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "도발(강)",
+        },
+        TestCase {
+            utterance: "은혜를 잊지 않겠습니다. 정말 감사합니다.",
+            expected_p: 1.0,
+            expected_a: -1.0,
+            expected_d: -1.0,
+            label: "감사",
+        },
+        TestCase {
+            utterance: "배은망덕한 놈! 의리도 없는 것이!",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "배신비난",
+        },
+        TestCase {
+            utterance: "오늘 날씨가 좋군요.",
+            expected_p: 1.0,
+            expected_a: 0.0,
+            expected_d: 0.0,
+            label: "중립적 긍정",
+        },
+        TestCase {
+            utterance: "내 아이가 죽었소... 모든 것이 끝났소.",
+            expected_p: -1.0,
+            expected_a: -1.0,
+            expected_d: -1.0,
+            label: "비탄/슬픔",
+        },
+        TestCase {
+            utterance: "당장 목을 치겠다! 칼을 뽑아라!",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "위협(고각성)",
+        },
+        TestCase {
+            utterance: "편안히 쉬시게. 차 한잔 올리지.",
+            expected_p: 1.0,
+            expected_a: -1.0,
+            expected_d: 1.0,
+            label: "차분한 환대",
+        },
+        TestCase {
+            utterance: "적이 쳐들어 온다! 모두 무기를 들어라!",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "긴급/전투",
+        },
+        TestCase {
+            utterance: "강물이 고요히 흐르는군. 세상도 이리 평온하면 좋으련만.",
+            expected_p: 1.0,
+            expected_a: -1.0,
+            expected_d: 0.0,
+            label: "명상/관조",
+        },
+        TestCase {
+            utterance: "내가 주도한다. 물러서라, 이것이 명이다!",
+            expected_p: 0.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "명령(지배)",
+        },
+        TestCase {
+            utterance: "제가 잘못했습니다. 어떤 벌이든 달게 받겠습니다.",
+            expected_p: -1.0,
+            expected_a: -1.0,
+            expected_d: -1.0,
+            label: "복종/자책",
+        },
+        TestCase {
+            utterance: "감히 내 앞에서! 무릎 꿇어라!",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "위압(지배)",
+        },
+        TestCase {
+            utterance: "소인은 아무것도 모릅니다... 살려주십시오.",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: -1.0,
+            label: "애걸(복종)",
+        },
+        TestCase {
+            utterance: "이 일은 내가 책임지겠소. 모두 뒤로 물러나시오.",
+            expected_p: 0.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "책임감(지배)",
+        },
+        TestCase {
+            utterance: "네가 날 배신하다니... 차라리 죽여라.",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: -1.0,
+            label: "배신+절망",
+        },
+        TestCase {
+            utterance: "드디어 해냈다! 십 년의 수련이 헛되지 않았구나!",
+            expected_p: 1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "성취감",
+        },
+        TestCase {
+            utterance: "괜찮소, 누구나 실수하오. 다시 일어서면 되지.",
+            expected_p: 1.0,
+            expected_a: -1.0,
+            expected_d: 1.0,
+            label: "위로/격려",
+        },
+        TestCase {
+            utterance: "흥, 네까짓 것이 나를 이길 수 있다고 생각했느냐?",
+            expected_p: -1.0,
+            expected_a: 1.0,
+            expected_d: 1.0,
+            label: "경멸/조롱",
+        },
+        TestCase {
+            utterance: "형님, 같이 술이나 한잔합시다. 오랜만이오.",
+            expected_p: 1.0,
+            expected_a: -1.0,
+            expected_d: 0.0,
+            label: "친근함",
+        },
+        TestCase {
+            utterance: "저... 혹시 괜찮으시다면... 함께 가도 될까요?",
+            expected_p: 1.0,
+            expected_a: 1.0,
+            expected_d: -1.0,
+            label: "수줍음/소심",
+        },
     ]
 }
 
@@ -179,9 +305,11 @@ fn 앵커_6개_vs_10개_비교() {
     println!("[2] 프로덕션 앵커(PadAnalyzer) 초기화...");
     drop(embedder);
     let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
-    let analyzer = PadAnalyzer::new(Box::new(
-        OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()
-    ), &source).unwrap();
+    let analyzer = PadAnalyzer::new(
+        Box::new(OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()),
+        &source,
+    )
+    .unwrap();
     let mut embedder2 = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap();
 
     // 3) 테스트 대사 임베딩
@@ -193,15 +321,22 @@ fn 앵커_6개_vs_10개_비교() {
     println!("{}", "=".repeat(130));
     println!("앵커 6개 vs 10개 PAD 분석 비교");
     println!("{}", "=".repeat(130));
-    println!("{:<14} {:>22}   {:>22}   {:>22}",
-        "", "P축", "A축", "D축");
-    println!("{:<14} {:>10} {:>10}   {:>10} {:>10}   {:>10} {:>10}",
-        "라벨", "6개", "10개", "6개", "10개", "6개", "10개");
+    println!("{:<14} {:>22}   {:>22}   {:>22}", "", "P축", "A축", "D축");
+    println!(
+        "{:<14} {:>10} {:>10}   {:>10} {:>10}   {:>10} {:>10}",
+        "라벨", "6개", "10개", "6개", "10개", "6개", "10개"
+    );
     println!("{}", "-".repeat(130));
 
-    let mut s6_p = 0; let mut s6_a = 0; let mut s6_d = 0;
-    let mut s10_p = 0; let mut s10_a = 0; let mut s10_d = 0;
-    let mut pt = 0; let mut at = 0; let mut dt = 0;
+    let mut s6_p = 0;
+    let mut s6_a = 0;
+    let mut s6_d = 0;
+    let mut s10_p = 0;
+    let mut s10_a = 0;
+    let mut s10_d = 0;
+    let mut pt = 0;
+    let mut at = 0;
+    let mut dt = 0;
 
     for (i, case) in cases.iter().enumerate() {
         let emb = &embeddings[i];
@@ -214,46 +349,114 @@ fn 앵커_6개_vs_10개_비교() {
 
         if case.expected_p != 0.0 {
             pt += 1;
-            if (case.expected_p > 0.0) == (c6.pleasure > 0.0) { s6_p += 1; }
-            if (case.expected_p > 0.0) == (p10 > 0.0) { s10_p += 1; }
+            if (case.expected_p > 0.0) == (c6.pleasure > 0.0) {
+                s6_p += 1;
+            }
+            if (case.expected_p > 0.0) == (p10 > 0.0) {
+                s10_p += 1;
+            }
         }
         if case.expected_a != 0.0 {
             at += 1;
-            if (case.expected_a > 0.0) == (c6.arousal > 0.0) { s6_a += 1; }
-            if (case.expected_a > 0.0) == (a10 > 0.0) { s10_a += 1; }
+            if (case.expected_a > 0.0) == (c6.arousal > 0.0) {
+                s6_a += 1;
+            }
+            if (case.expected_a > 0.0) == (a10 > 0.0) {
+                s10_a += 1;
+            }
         }
         if case.expected_d != 0.0 {
             dt += 1;
-            if (case.expected_d > 0.0) == (c6.dominance > 0.0) { s6_d += 1; }
-            if (case.expected_d > 0.0) == (d10 > 0.0) { s10_d += 1; }
+            if (case.expected_d > 0.0) == (c6.dominance > 0.0) {
+                s6_d += 1;
+            }
+            if (case.expected_d > 0.0) == (d10 > 0.0) {
+                s10_d += 1;
+            }
         }
 
         let mk = |e: f32, v6: f32, v10: f32| -> (&str, &str) {
-            let m6 = if e != 0.0 { if (e > 0.0) == (v6 > 0.0) { "✓" } else { "✗" } } else { " " };
-            let m10 = if e != 0.0 { if (e > 0.0) == (v10 > 0.0) { "✓" } else { "✗" } } else { " " };
+            let m6 = if e != 0.0 {
+                if (e > 0.0) == (v6 > 0.0) {
+                    "✓"
+                } else {
+                    "✗"
+                }
+            } else {
+                " "
+            };
+            let m10 = if e != 0.0 {
+                if (e > 0.0) == (v10 > 0.0) {
+                    "✓"
+                } else {
+                    "✗"
+                }
+            } else {
+                " "
+            };
             (m6, m10)
         };
         let (pm6, pm10) = mk(case.expected_p, c6.pleasure, p10);
         let (am6, am10) = mk(case.expected_a, c6.arousal, a10);
         let (dm6, dm10) = mk(case.expected_d, c6.dominance, d10);
 
-        println!("{:<14} {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}",
+        println!(
+            "{:<14} {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}  {:>+8.3}{}",
             case.label,
-            c6.pleasure, pm6, p10, pm10,
-            c6.arousal, am6, a10, am10,
-            c6.dominance, dm6, d10, dm10,
+            c6.pleasure,
+            pm6,
+            p10,
+            pm10,
+            c6.arousal,
+            am6,
+            a10,
+            am10,
+            c6.dominance,
+            dm6,
+            d10,
+            dm10,
         );
     }
 
     println!("{}", "-".repeat(130));
     println!("방향 정확도:");
-    println!("  P: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
-        s6_p, pt, s6_p as f64/pt as f64*100.0, s10_p, pt, s10_p as f64/pt as f64*100.0);
-    println!("  A: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
-        s6_a, at, s6_a as f64/at as f64*100.0, s10_a, at, s10_a as f64/at as f64*100.0);
-    println!("  D: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
-        s6_d, dt, s6_d as f64/dt as f64*100.0, s10_d, dt, s10_d as f64/dt as f64*100.0);
-    let t6 = s6_p+s6_a+s6_d; let t10 = s10_p+s10_a+s10_d; let tt = pt+at+dt;
-    println!("  합계: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
-        t6, tt, t6 as f64/tt as f64*100.0, t10, tt, t10 as f64/tt as f64*100.0);
+    println!(
+        "  P: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
+        s6_p,
+        pt,
+        s6_p as f64 / pt as f64 * 100.0,
+        s10_p,
+        pt,
+        s10_p as f64 / pt as f64 * 100.0
+    );
+    println!(
+        "  A: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
+        s6_a,
+        at,
+        s6_a as f64 / at as f64 * 100.0,
+        s10_a,
+        at,
+        s10_a as f64 / at as f64 * 100.0
+    );
+    println!(
+        "  D: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
+        s6_d,
+        dt,
+        s6_d as f64 / dt as f64 * 100.0,
+        s10_d,
+        dt,
+        s10_d as f64 / dt as f64 * 100.0
+    );
+    let t6 = s6_p + s6_a + s6_d;
+    let t10 = s10_p + s10_a + s10_d;
+    let tt = pt + at + dt;
+    println!(
+        "  합계: 6개 {}/{} ({:.0}%)  10개 {}/{} ({:.0}%)",
+        t6,
+        tt,
+        t6 as f64 / tt as f64 * 100.0,
+        t10,
+        tt,
+        t10 as f64 / tt as f64 * 100.0
+    );
 }

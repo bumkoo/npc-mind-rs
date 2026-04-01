@@ -2,15 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::enums::{PersonalityTrait, SpeechStyle};
 use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::relationship::Relationship;
 use crate::domain::tuning::{
-    EMOTION_THRESHOLD, TRAIT_THRESHOLD,
-    LEVEL_VERY_HIGH_THRESHOLD, LEVEL_HIGH_THRESHOLD,
-    LEVEL_LOW_THRESHOLD, LEVEL_VERY_LOW_THRESHOLD,
+    EMOTION_THRESHOLD, LEVEL_HIGH_THRESHOLD, LEVEL_LOW_THRESHOLD, LEVEL_VERY_HIGH_THRESHOLD,
+    LEVEL_VERY_LOW_THRESHOLD, TRAIT_THRESHOLD,
 };
 use crate::ports::PersonalityProfile;
-use super::enums::{PersonalityTrait, SpeechStyle};
 
 // ---------------------------------------------------------------------------
 // 성격 스냅샷
@@ -27,52 +26,127 @@ pub struct PersonalitySnapshot {
     pub speech_styles: Vec<SpeechStyle>,
 }
 
-/// HEXACO 차원별 성격 특성 매핑 (high trait, high style, low trait, low style)
-const DIMENSION_MAP: [(
-    fn(&crate::domain::personality::DimensionAverages) -> f32,
-    PersonalityTrait, SpeechStyle,
-    PersonalityTrait, SpeechStyle,
-); 6] = [
-    // H: 정직-겸손성
-    (|a| a.h.value(), PersonalityTrait::HonestAndModest, SpeechStyle::FrankAndUnadorned,
-                      PersonalityTrait::CunningAndAmbitious, SpeechStyle::HidesInnerThoughts),
-    // E: 정서성
-    (|a| a.e.value(), PersonalityTrait::EmotionalAndAnxious, SpeechStyle::ExpressiveAndWorried,
-                      PersonalityTrait::BoldAndIndependent, SpeechStyle::CalmAndComposed),
-    // X: 외향성
-    (|a| a.x.value(), PersonalityTrait::ConfidentAndSociable, SpeechStyle::ActiveAndForceful,
-                      PersonalityTrait::IntrovertedAndQuiet, SpeechStyle::BriefAndConcise),
-    // A: 원만성
-    (|a| a.a.value(), PersonalityTrait::TolerantAndGentle, SpeechStyle::SoftAndConsiderate,
-                      PersonalityTrait::GrudgingAndCritical, SpeechStyle::SharpAndDirect),
-    // C: 성실성
-    (|a| a.c.value(), PersonalityTrait::SystematicAndDiligent, SpeechStyle::LogicalAndRational,
-                      PersonalityTrait::FreeAndImpulsive, SpeechStyle::UnfilteredAndSpontaneous),
-    // O: 개방성
-    (|a| a.o.value(), PersonalityTrait::CuriousAndCreative, SpeechStyle::MetaphoricalAndUnique,
-                      PersonalityTrait::TraditionalAndConservative, SpeechStyle::FormalAndTraditional),
-];
-
 impl PersonalitySnapshot {
     /// 성격 프로필에서 두드러지는 특성을 추출합니다.
     pub fn from_profile(profile: &impl PersonalityProfile) -> Self {
         let avg = profile.dimension_averages();
         let t = TRAIT_THRESHOLD;
+
         let mut traits = Vec::new();
         let mut styles = Vec::new();
 
-        for &(get_value, high_trait, high_style, low_trait, low_style) in &DIMENSION_MAP {
-            let v = get_value(&avg);
-            if v > t {
-                traits.push(high_trait);
-                styles.push(high_style);
-            } else if v < -t {
-                traits.push(low_trait);
-                styles.push(low_style);
-            }
+        // H: 정직-겸손성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.h,
+            t,
+            PersonalityTrait::HonestAndModest,
+            PersonalityTrait::CunningAndAmbitious,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.h,
+            t,
+            SpeechStyle::FrankAndUnadorned,
+            SpeechStyle::HidesInnerThoughts,
+        ) {
+            styles.push(st);
         }
 
-        Self { traits, speech_styles: styles }
+        // E: 정서성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.e,
+            t,
+            PersonalityTrait::EmotionalAndAnxious,
+            PersonalityTrait::BoldAndIndependent,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.e,
+            t,
+            SpeechStyle::ExpressiveAndWorried,
+            SpeechStyle::CalmAndComposed,
+        ) {
+            styles.push(st);
+        }
+
+        // X: 외향성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.x,
+            t,
+            PersonalityTrait::ConfidentAndSociable,
+            PersonalityTrait::IntrovertedAndQuiet,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.x,
+            t,
+            SpeechStyle::ActiveAndForceful,
+            SpeechStyle::BriefAndConcise,
+        ) {
+            styles.push(st);
+        }
+
+        // A: 원만성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.a,
+            t,
+            PersonalityTrait::TolerantAndGentle,
+            PersonalityTrait::GrudgingAndCritical,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.a,
+            t,
+            SpeechStyle::SoftAndConsiderate,
+            SpeechStyle::SharpAndDirect,
+        ) {
+            styles.push(st);
+        }
+
+        // C: 성실성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.c,
+            t,
+            PersonalityTrait::SystematicAndDiligent,
+            PersonalityTrait::FreeAndImpulsive,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.c,
+            t,
+            SpeechStyle::LogicalAndRational,
+            SpeechStyle::UnfilteredAndSpontaneous,
+        ) {
+            styles.push(st);
+        }
+
+        // O: 개방성
+        if let Some(tr) = PersonalityTrait::evaluate(
+            avg.o,
+            t,
+            PersonalityTrait::CuriousAndCreative,
+            PersonalityTrait::TraditionalAndConservative,
+        ) {
+            traits.push(tr);
+        }
+        if let Some(st) = SpeechStyle::evaluate(
+            avg.o,
+            t,
+            SpeechStyle::MetaphoricalAndUnique,
+            SpeechStyle::FormalAndTraditional,
+        ) {
+            styles.push(st);
+        }
+
+        Self {
+            traits,
+            speech_styles: styles,
+        }
     }
 }
 
@@ -109,14 +183,14 @@ pub struct EmotionSnapshot {
 impl EmotionSnapshot {
     /// EmotionState에서 스냅샷 요약을 생성합니다.
     pub fn from_state(state: &EmotionState) -> Self {
-        let dominant = state.dominant()
-            .map(|e| EmotionEntry {
-                emotion_type: e.emotion_type(),
-                intensity: e.intensity(),
-                context: e.context().map(|s| s.to_string()),
-            });
+        let dominant = state.dominant().map(|e| EmotionEntry {
+            emotion_type: e.emotion_type(),
+            intensity: e.intensity(),
+            context: e.context().map(|s| s.to_string()),
+        });
 
-        let active_emotions = state.significant(EMOTION_THRESHOLD)
+        let active_emotions = state
+            .significant(EMOTION_THRESHOLD)
             .iter()
             .map(|e| EmotionEntry {
                 emotion_type: e.emotion_type(),
@@ -134,7 +208,6 @@ impl EmotionSnapshot {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // 관계 스냅샷
@@ -188,24 +261,35 @@ pub enum PowerLevel {
 
 impl RelationshipLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > LEVEL_VERY_HIGH_THRESHOLD { Self::VeryHigh }
-        else if value > LEVEL_HIGH_THRESHOLD { Self::High }
-        else if value > LEVEL_LOW_THRESHOLD { Self::Neutral }
-        else if value > LEVEL_VERY_LOW_THRESHOLD { Self::Low }
-        else { Self::VeryLow }
+        if value > LEVEL_VERY_HIGH_THRESHOLD {
+            Self::VeryHigh
+        } else if value > LEVEL_HIGH_THRESHOLD {
+            Self::High
+        } else if value > LEVEL_LOW_THRESHOLD {
+            Self::Neutral
+        } else if value > LEVEL_VERY_LOW_THRESHOLD {
+            Self::Low
+        } else {
+            Self::VeryLow
+        }
     }
 }
 
 impl PowerLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > LEVEL_VERY_HIGH_THRESHOLD { Self::VeryHigh }
-        else if value > LEVEL_HIGH_THRESHOLD { Self::High }
-        else if value > LEVEL_LOW_THRESHOLD { Self::Neutral }
-        else if value > LEVEL_VERY_LOW_THRESHOLD { Self::Low }
-        else { Self::VeryLow }
+        if value > LEVEL_VERY_HIGH_THRESHOLD {
+            Self::VeryHigh
+        } else if value > LEVEL_HIGH_THRESHOLD {
+            Self::High
+        } else if value > LEVEL_LOW_THRESHOLD {
+            Self::Neutral
+        } else if value > LEVEL_VERY_LOW_THRESHOLD {
+            Self::Low
+        } else {
+            Self::VeryLow
+        }
     }
 }
-
 
 impl RelationshipSnapshot {
     /// Relationship에서 스냅샷 생성

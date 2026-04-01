@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
-use super::{EmotionState, Situation, SituationError};
 use super::types::EmotionType;
+use super::{EmotionState, Situation, SituationError};
+use serde::{Deserialize, Serialize};
 
 /// 장면(Scene) 애그리거트 루트
 ///
@@ -27,10 +27,18 @@ impl Scene {
         }
     }
 
-    pub fn npc_id(&self) -> &str { &self.npc_id }
-    pub fn partner_id(&self) -> &str { &self.partner_id }
-    pub fn focuses(&self) -> &[SceneFocus] { &self.focuses }
-    pub fn active_focus_id(&self) -> Option<&str> { self.active_focus_id.as_deref() }
+    pub fn npc_id(&self) -> &str {
+        &self.npc_id
+    }
+    pub fn partner_id(&self) -> &str {
+        &self.partner_id
+    }
+    pub fn focuses(&self) -> &[SceneFocus] {
+        &self.focuses
+    }
+    pub fn active_focus_id(&self) -> Option<&str> {
+        self.active_focus_id.as_deref()
+    }
 
     /// 현재 감정 상태를 기반으로 전환할 Focus를 찾습니다.
     pub fn check_trigger(&self, state: &EmotionState) -> Option<&SceneFocus> {
@@ -44,7 +52,9 @@ impl Scene {
 
     /// Initial Focus를 찾아 반환합니다.
     pub fn initial_focus(&self) -> Option<&SceneFocus> {
-        self.focuses.iter().find(|f| matches!(f.trigger, FocusTrigger::Initial))
+        self.focuses
+            .iter()
+            .find(|f| matches!(f.trigger, FocusTrigger::Initial))
     }
 }
 
@@ -107,11 +117,9 @@ impl FocusTrigger {
     pub fn is_met(&self, state: &EmotionState) -> bool {
         match self {
             FocusTrigger::Initial => false,
-            FocusTrigger::Conditions(or_groups) => {
-                or_groups.iter().any(|and_group| {
-                    and_group.iter().all(|cond| cond.is_met(state))
-                })
-            }
+            FocusTrigger::Conditions(or_groups) => or_groups
+                .iter()
+                .any(|and_group| and_group.iter().all(|cond| cond.is_met(state))),
         }
     }
 }

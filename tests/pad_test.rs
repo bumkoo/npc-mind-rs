@@ -43,8 +43,7 @@ fn 같은_방향이면_양수_내적() {
     // P·A: (-0.51)×(-0.6) + (0.59)×(0.7) = 0.306 + 0.413 = 0.719
     // D_scale: 1 + |0.25-0.5|×0.3 = 1.075
     // result: 0.719 × 1.075 = 0.773
-    assert!(dot > 0.0,
-        "Anger PAD와 도발 자극은 P·A 공명: {}", dot);
+    assert!(dot > 0.0, "Anger PAD와 도발 자극은 P·A 공명: {}", dot);
 }
 
 #[test]
@@ -56,8 +55,7 @@ fn 반대_방향이면_음수_내적() {
     // P·A: (-0.51)×(0.5) + (0.59)×(-0.3) = -0.255 - 0.177 = -0.432
     // D_scale: 1 + |0.25-(-0.4)|×0.3 = 1.195
     // result: -0.432 × 1.195 = -0.516
-    assert!(dot < 0.0,
-        "Anger PAD와 사과 자극은 P·A 반발: {}", dot);
+    assert!(dot < 0.0, "Anger PAD와 사과 자극은 P·A 반발: {}", dot);
 }
 
 #[test]
@@ -66,8 +64,7 @@ fn 중립과의_내적은_0() {
     let neutral = Pad::neutral();
 
     let dot = pad_dot(&anger_pad, &neutral);
-    assert!((dot - 0.0).abs() < 0.001,
-        "중립 PAD와의 내적은 0: {}", dot);
+    assert!((dot - 0.0).abs() < 0.001, "중립 PAD와의 내적은 0: {}", dot);
 }
 
 #[test]
@@ -80,9 +77,12 @@ fn 자극이_강할수록_내적_절대값이_큼() {
     let dot_weak = pad_dot(&anger_pad, &weak);
     let dot_strong = pad_dot(&anger_pad, &strong);
 
-    assert!(dot_strong > dot_weak,
+    assert!(
+        dot_strong > dot_weak,
         "강한 자극({}) > 약한 자극({}) 내적값",
-        dot_strong, dot_weak);
+        dot_strong,
+        dot_weak
+    );
 }
 
 // ===========================================================================
@@ -95,16 +95,19 @@ fn d_격차가_클수록_효과가_강함() {
     let anger_pad = emotion_to_pad(EmotionType::Anger); // D:+0.25
 
     // 비슷한 D → 스케일러 작음
-    let same_d = Pad::new(-0.6, 0.7, 0.3);  // |0.25-0.3| = 0.05
+    let same_d = Pad::new(-0.6, 0.7, 0.3); // |0.25-0.3| = 0.05
     // 먼 D → 스케일러 큼
-    let far_d = Pad::new(-0.6, 0.7, -0.8);  // |0.25-(-0.8)| = 1.05
+    let far_d = Pad::new(-0.6, 0.7, -0.8); // |0.25-(-0.8)| = 1.05
 
     let dot_same = pad_dot(&anger_pad, &same_d);
     let dot_far = pad_dot(&anger_pad, &far_d);
 
-    assert!(dot_far > dot_same,
+    assert!(
+        dot_far > dot_same,
         "D 격차 큰 자극({}) > D 격차 작은 자극({}) — 스케일러 효과",
-        dot_far, dot_same);
+        dot_far,
+        dot_same
+    );
 }
 
 #[test]
@@ -116,22 +119,25 @@ fn d_격차가_0이면_스케일러_1() {
     let dot = pad_dot(&a, &b);
     let pa_only = a.pleasure * b.pleasure + a.arousal * b.arousal;
 
-    assert!((dot - pa_only).abs() < 0.001,
-        "D 격차 0 → 스케일러 1.0 → P·A 결과 그대로: dot={}, pa={}", dot, pa_only);
+    assert!(
+        (dot - pa_only).abs() < 0.001,
+        "D 격차 0 → 스케일러 1.0 → P·A 결과 그대로: dot={}, pa={}",
+        dot,
+        pa_only
+    );
 }
 
 #[test]
 fn d_스케일러는_방향을_바꾸지_않음() {
     // P·A가 음수(감소)인 상황에서 D 격차가 커도 음수 유지
     let shame_pad = emotion_to_pad(EmotionType::Shame); // D:-0.90
-    let comfort = Pad::new(0.5, -0.3, 0.5);  // D:+0.5 → 큰 격차
+    let comfort = Pad::new(0.5, -0.3, 0.5); // D:+0.5 → 큰 격차
 
     let dot = pad_dot(&shame_pad, &comfort);
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
     // D_scale: 1 + |(-0.90)-(0.5)|×0.3 = 1.42
     // result: -0.18 × 1.42 = -0.256 → 여전히 음수 (감소)
-    assert!(dot < 0.0,
-        "D 스케일러는 P·A 방향을 유지: {}", dot);
+    assert!(dot < 0.0, "D 스케일러는 P·A 방향을 유지: {}", dot);
 }
 
 // ===========================================================================
@@ -141,28 +147,42 @@ fn d_스케일러는_방향을_바꾸지_않음() {
 #[test]
 fn 부정_감정은_pleasure_음수() {
     let negative_emotions = [
-        EmotionType::Distress, EmotionType::Fear,
-        EmotionType::Anger, EmotionType::Shame,
-        EmotionType::Disappointment, EmotionType::Hate,
+        EmotionType::Distress,
+        EmotionType::Fear,
+        EmotionType::Anger,
+        EmotionType::Shame,
+        EmotionType::Disappointment,
+        EmotionType::Hate,
     ];
     for etype in &negative_emotions {
         let pad = emotion_to_pad(*etype);
-        assert!(pad.pleasure < 0.0,
-            "{:?}의 P는 음수여야 함: {}", etype, pad.pleasure);
+        assert!(
+            pad.pleasure < 0.0,
+            "{:?}의 P는 음수여야 함: {}",
+            etype,
+            pad.pleasure
+        );
     }
 }
 
 #[test]
 fn 긍정_감정은_pleasure_양수() {
     let positive_emotions = [
-        EmotionType::Joy, EmotionType::Hope,
-        EmotionType::Pride, EmotionType::Gratitude,
-        EmotionType::Satisfaction, EmotionType::Love,
+        EmotionType::Joy,
+        EmotionType::Hope,
+        EmotionType::Pride,
+        EmotionType::Gratitude,
+        EmotionType::Satisfaction,
+        EmotionType::Love,
     ];
     for etype in &positive_emotions {
         let pad = emotion_to_pad(*etype);
-        assert!(pad.pleasure > 0.0,
-            "{:?}의 P는 양수여야 함: {}", etype, pad.pleasure);
+        assert!(
+            pad.pleasure > 0.0,
+            "{:?}의 P는 양수여야 함: {}",
+            etype,
+            pad.pleasure
+        );
     }
 }
 
@@ -226,7 +246,11 @@ fn 감사_자극은_gratitude와_공명() {
     let thanks = Pad::new(0.7, 0.3, -0.3);
 
     let gratitude_dot = pad_dot(&emotion_to_pad(EmotionType::Gratitude), &thanks);
-    assert!(gratitude_dot > 0.0, "감사 자극 → Gratitude 공명: {}", gratitude_dot);
+    assert!(
+        gratitude_dot > 0.0,
+        "감사 자극 → Gratitude 공명: {}",
+        gratitude_dot
+    );
 }
 
 #[test]
@@ -242,9 +266,12 @@ fn 위협_자극은_fear와_anger_모두_공명하되_fear가_더_강함() {
     // Fear > Anger — 위협엔 두려움이 먼저 (P·A가 더 크고 D 격차도 더 큼)
     assert!(fear_dot > 0.0, "위협 → Fear 공명: {}", fear_dot);
     assert!(anger_dot > 0.0, "위협 → Anger도 공명: {}", anger_dot);
-    assert!(fear_dot > anger_dot,
+    assert!(
+        fear_dot > anger_dot,
         "위협 → Fear({}) > Anger({}) — 위협엔 두려움이 먼저",
-        fear_dot, anger_dot);
+        fear_dot,
+        anger_dot
+    );
 }
 
 // ===========================================================================
@@ -267,8 +294,11 @@ fn 비난_자극은_shame을_증폭_d격차로_더_강하게() {
     // P·A: +0.18 + 0.07 = +0.25 (증폭 방향)
     // D_scale: 1 + |(-0.90)-(+0.5)|×0.3 = 1.42
     // result: +0.25 × 1.42 = +0.355
-    assert!(shame_dot > 0.25,
-        "비난 → Shame 증폭, D 격차로 P·A보다 강함: {} (P·A만이면 0.25)", shame_dot);
+    assert!(
+        shame_dot > 0.25,
+        "비난 → Shame 증폭, D 격차로 P·A보다 강함: {} (P·A만이면 0.25)",
+        shame_dot
+    );
 }
 
 #[test]
@@ -280,8 +310,7 @@ fn 위로_자극은_shame을_감소() {
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
     // D_scale: 1 + |(-0.90)-(-0.4)|×0.3 = 1.15
     // result: -0.18 × 1.15 = -0.207
-    assert!(shame_dot < 0.0,
-        "위로 → Shame 감소: {}", shame_dot);
+    assert!(shame_dot < 0.0, "위로 → Shame 감소: {}", shame_dot);
 }
 
 #[test]
@@ -293,8 +322,11 @@ fn 위로_자극은_fear를_감소_보호자일수록_효과적() {
     // P·A: -0.384 - 0.12 = -0.504 (감소 방향)
     // D_scale: 1 + |(-0.43)-(+0.5)|×0.3 = 1.28 (큰 격차 → 강한 스케일링)
     // result: -0.504 × 1.28 = -0.645
-    assert!(fear_dot < -0.5,
-        "보호자 위로 → Fear 강한 감소 (D 격차 효과): {}", fear_dot);
+    assert!(
+        fear_dot < -0.5,
+        "보호자 위로 → Fear 강한 감소 (D 격차 효과): {}",
+        fear_dot
+    );
 }
 
 #[test]
@@ -306,8 +338,11 @@ fn 위협_자극은_fear를_증폭_강자일수록_효과적() {
     // P·A: +0.512 + 0.48 = +0.992 (증폭 방향)
     // D_scale: 1 + |(-0.43)-(+0.6)|×0.3 = 1.31 (큰 격차 → 강한 스케일링)
     // result: +0.992 × 1.31 = +1.30
-    assert!(fear_dot > 1.0,
-        "강자 위협 → Fear 매우 강한 증폭: {}", fear_dot);
+    assert!(
+        fear_dot > 1.0,
+        "강자 위협 → Fear 매우 강한 증폭: {}",
+        fear_dot
+    );
 }
 
 #[test]
@@ -324,7 +359,10 @@ fn 같은_사과도_복종적이면_anger에_더_효과적() {
 
     // 둘 다 음수(감소)지만 비굴한 사과가 더 효과적
     assert!(dot_proud < 0.0, "당당한 사과도 Anger 감소: {}", dot_proud);
-    assert!(dot_humble < dot_proud,
+    assert!(
+        dot_humble < dot_proud,
         "비굴한 사과({}) < 당당한 사과({}) — 더 많이 감소 (D 격차 효과)",
-        dot_humble, dot_proud);
+        dot_humble,
+        dot_proud
+    );
 }

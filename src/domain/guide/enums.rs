@@ -116,6 +116,10 @@ pub enum Restriction {
     NoLyingOrExaggeration,
 }
 
+use crate::domain::personality::Score;
+
+// ... (rest of imports)
+
 // ---------------------------------------------------------------------------
 // 성격 특성 열거형
 // ---------------------------------------------------------------------------
@@ -149,6 +153,25 @@ pub enum PersonalityTrait {
     TraditionalAndConservative,
 }
 
+impl PersonalityTrait {
+    /// 특정 차원의 점수로부터 성격 특성을 도출합니다.
+    pub fn evaluate(
+        score: Score,
+        threshold: f32,
+        high_variant: Self,
+        low_variant: Self,
+    ) -> Option<Self> {
+        let v = score.value();
+        if v > threshold {
+            Some(high_variant)
+        } else if v < -threshold {
+            Some(low_variant)
+        } else {
+            None
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // 말투 스타일 열거형
 // ---------------------------------------------------------------------------
@@ -180,4 +203,23 @@ pub enum SpeechStyle {
     MetaphoricalAndUnique,
     /// O↓: 격식을 차리고, 전통적인 표현을 쓴다
     FormalAndTraditional,
+}
+
+impl SpeechStyle {
+    /// 특정 차원의 점수로부터 말투 스타일을 도출합니다.
+    pub fn evaluate(
+        score: Score,
+        threshold: f32,
+        high_variant: Self,
+        low_variant: Self,
+    ) -> Option<Self> {
+        let v = score.value();
+        if v > threshold {
+            Some(high_variant)
+        } else if v < -threshold {
+            Some(low_variant)
+        } else {
+            None
+        }
+    }
 }

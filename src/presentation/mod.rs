@@ -1,6 +1,6 @@
-pub mod locale;
 pub mod formatter;
 pub mod korean;
+pub mod locale;
 
 // ---------------------------------------------------------------------------
 // 빌트인 로케일 레지스트리

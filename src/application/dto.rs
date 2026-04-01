@@ -1,10 +1,15 @@
-use serde::{Deserialize, Serialize};
-use crate::domain::emotion::{ActionFocus, DesirabilityForOther, EventFocus, ObjectFocus, Prospect, ProspectResult, Situation, SceneFocus, FocusTrigger, EmotionCondition, ConditionThreshold, EmotionType, EmotionState};
+use super::mind_service::{MindServiceError, NpcWorld};
+use crate::domain::emotion::{
+    ActionFocus, ConditionThreshold, DesirabilityForOther, EmotionCondition, EmotionState,
+    EmotionType, EventFocus, FocusTrigger, ObjectFocus, Prospect, ProspectResult, SceneFocus,
+    Situation,
+};
 use crate::domain::guide::ActingGuide;
 use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 use crate::ports::GuideFormatter;
-use super::mind_service::{NpcWorld, MindServiceError};
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct AppraiseRequest {
@@ -28,15 +33,21 @@ impl SituationInput {
         npc_id: &str,
         partner_id: &str,
     ) -> Result<Situation, MindServiceError> {
-        let event = self.event.as_ref()
+        let event = self
+            .event
+            .as_ref()
             .map(|e| e.to_domain(repo, npc_id))
             .transpose()?;
 
-        let action = self.action.as_ref()
+        let action = self
+            .action
+            .as_ref()
             .map(|a| a.to_domain(repo, npc_id, partner_id))
             .transpose()?;
 
-        let object = self.object.as_ref()
+        let object = self
+            .object
+            .as_ref()
             .map(|o| o.to_domain(repo))
             .transpose()?;
 
@@ -60,8 +71,9 @@ impl EventInput {
         npc_id: &str,
     ) -> Result<EventFocus, MindServiceError> {
         let other = if let Some(ref o) = self.other {
-            let rel = repo.get_relationship(npc_id, &o.target_id)
-                .ok_or_else(|| MindServiceError::RelationshipNotFound(npc_id.to_string(), o.target_id.clone()))?;
+            let rel = repo.get_relationship(npc_id, &o.target_id).ok_or_else(|| {
+                MindServiceError::RelationshipNotFound(npc_id.to_string(), o.target_id.clone())
+            })?;
             Some(DesirabilityForOther {
                 target_id: o.target_id.clone(),
                 desirability: o.desirability,
@@ -131,11 +143,9 @@ pub struct ObjectInput {
 }
 
 impl ObjectInput {
-    fn to_domain<R: NpcWorld>(
-        &self,
-        repo: &R,
-    ) -> Result<ObjectFocus, MindServiceError> {
-        let description = repo.get_object_description(&self.target_id)
+    fn to_domain<R: NpcWorld>(&self, repo: &R) -> Result<ObjectFocus, MindServiceError> {
+        let description = repo
+            .get_object_description(&self.target_id)
             .unwrap_or_else(|| self.target_id.clone());
         Ok(ObjectFocus {
             target_id: self.target_id.clone(),
@@ -256,9 +266,14 @@ impl GuideResult {
 // ---------------------------------------------------------------------------
 
 /// EmotionState에서 공통 응답 필드를 추출합니다.
-pub(crate) fn build_emotion_fields(state: &EmotionState) -> (Vec<EmotionOutput>, Option<EmotionOutput>, f32) {
-    let emotions: Vec<EmotionOutput> = state.emotions().iter()
-        .map(EmotionOutput::from_emotion).collect();
+pub(crate) fn build_emotion_fields(
+    state: &EmotionState,
+) -> (Vec<EmotionOutput>, Option<EmotionOutput>, f32) {
+    let emotions: Vec<EmotionOutput> = state
+        .emotions()
+        .iter()
+        .map(EmotionOutput::from_emotion)
+        .collect();
     let dominant = state.dominant().map(|e| EmotionOutput::from_emotion(&e));
     let mood = state.overall_valence();
     (emotions, dominant, mood)
@@ -274,7 +289,13 @@ pub(crate) fn build_appraise_result(
 ) -> AppraiseResult {
     let (emotions, dominant, mood) = build_emotion_fields(state);
     let guide = ActingGuide::build(npc, state, situation_desc, relationship);
-    AppraiseResult { emotions, dominant, mood, guide, trace }
+    AppraiseResult {
+        emotions,
+        dominant,
+        mood,
+        guide,
+        trace,
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -356,10 +377,9 @@ pub struct ConditionInput {
 
 impl ConditionInput {
     fn to_domain(&self) -> Result<EmotionCondition, MindServiceError> {
-        let emotion: EmotionType = serde_json::from_str(&format!("\"{}\"", self.emotion))
-            .map_err(|_| MindServiceError::InvalidSituation(
-                format!("알 수 없는 감정 유형: {}", self.emotion)
-            ))?;
+        let emotion = EmotionType::from_str(&self.emotion).map_err(|_| {
+            MindServiceError::InvalidSituation(format!("알 수 없는 감정 유형: {}", self.emotion))
+        })?;
 
         let threshold = if let Some(v) = self.below {
             ConditionThreshold::Below(v)
@@ -369,7 +389,7 @@ impl ConditionInput {
             ConditionThreshold::Absent
         } else {
             return Err(MindServiceError::InvalidSituation(
-                "조건에 below, above, absent 중 하나가 필요합니다".into()
+                "조건에 below, above, absent 중 하나가 필요합니다".into(),
             ));
         };
 
@@ -387,9 +407,11 @@ impl SceneFocusInput {
         let trigger = match &self.trigger {
             None => FocusTrigger::Initial,
             Some(or_groups) => {
-                let conditions = or_groups.iter()
+                let conditions = or_groups
+                    .iter()
                     .map(|and_group| {
-                        and_group.iter()
+                        and_group
+                            .iter()
                             .map(|c| c.to_domain())
                             .collect::<Result<Vec<_>, _>>()
                     })
@@ -398,13 +420,19 @@ impl SceneFocusInput {
             }
         };
 
-        let event = self.event.as_ref()
+        let event = self
+            .event
+            .as_ref()
             .map(|e| e.to_domain(repo, npc_id))
             .transpose()?;
-        let action = self.action.as_ref()
+        let action = self
+            .action
+            .as_ref()
             .map(|a| a.to_domain(repo, npc_id, partner_id))
             .transpose()?;
-        let object = self.object.as_ref()
+        let object = self
+            .object
+            .as_ref()
             .map(|o| o.to_domain(repo))
             .transpose()?;
 
@@ -448,6 +476,8 @@ impl SceneResult {
     }
 }
 
+// ... (rest of imports)
+
 /// Scene Focus 상태 조회 결과
 #[derive(Serialize, Clone)]
 pub struct SceneInfoResult {
@@ -465,4 +495,37 @@ pub struct FocusInfoItem {
     pub description: String,
     pub is_active: bool,
     pub trigger_display: String,
+}
+
+impl FocusInfoItem {
+    pub fn from_domain(f: &SceneFocus, is_active: bool) -> Self {
+        let trigger_display = match &f.trigger {
+            FocusTrigger::Initial => "initial".to_string(),
+            FocusTrigger::Conditions(or_groups) => or_groups
+                .iter()
+                .map(|and_group| {
+                    and_group
+                        .iter()
+                        .map(|c| {
+                            let threshold = match c.threshold {
+                                ConditionThreshold::Below(v) => format!("< {:.1}", v),
+                                ConditionThreshold::Above(v) => format!("> {:.1}", v),
+                                ConditionThreshold::Absent => "absent".to_string(),
+                            };
+                            format!("{:?} {}", c.emotion, threshold)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" AND ")
+                })
+                .collect::<Vec<_>>()
+                .join(" OR "),
+        };
+
+        Self {
+            id: f.id.clone(),
+            description: f.description.clone(),
+            is_active,
+            trigger_display,
+        }
+    }
 }

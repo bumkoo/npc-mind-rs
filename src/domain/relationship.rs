@@ -26,9 +26,9 @@ use super::personality::Score;
 // ---------------------------------------------------------------------------
 
 use crate::domain::tuning::{
-    TRUST_UPDATE_RATE, CLOSENESS_UPDATE_RATE, SIGNIFICANCE_SCALE,
-    REL_CLOSENESS_INTENSITY_WEIGHT, REL_TRUST_EMOTION_WEIGHT,
-    REL_CLOSENESS_EMPATHY_WEIGHT, REL_CLOSENESS_HOSTILITY_WEIGHT,
+    CLOSENESS_UPDATE_RATE, REL_CLOSENESS_EMPATHY_WEIGHT, REL_CLOSENESS_HOSTILITY_WEIGHT,
+    REL_CLOSENESS_INTENSITY_WEIGHT, REL_TRUST_EMOTION_WEIGHT, SIGNIFICANCE_SCALE,
+    TRUST_UPDATE_RATE,
 };
 
 // ---------------------------------------------------------------------------
@@ -87,11 +87,21 @@ impl Relationship {
 
     // --- 접근자 ---
 
-    pub fn owner_id(&self) -> &str { &self.owner_id }
-    pub fn target_id(&self) -> &str { &self.target_id }
-    pub fn closeness(&self) -> Score { self.closeness }
-    pub fn trust(&self) -> Score { self.trust }
-    pub fn power(&self) -> Score { self.power }
+    pub fn owner_id(&self) -> &str {
+        &self.owner_id
+    }
+    pub fn target_id(&self) -> &str {
+        &self.target_id
+    }
+    pub fn closeness(&self) -> Score {
+        self.closeness
+    }
+    pub fn trust(&self) -> Score {
+        self.trust
+    }
+    pub fn power(&self) -> Score {
+        self.power
+    }
 
     // --- 감정 엔진 연동 (읽기 전용) ---
 
@@ -153,7 +163,10 @@ impl Relationship {
     pub fn with_updated_trust(&self, praiseworthiness: f32, significance: f32) -> Self {
         let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
         Self {
-            trust: updated_score(self.trust, praiseworthiness * TRUST_UPDATE_RATE * multiplier),
+            trust: updated_score(
+                self.trust,
+                praiseworthiness * TRUST_UPDATE_RATE * multiplier,
+            ),
             ..self.clone()
         }
     }
@@ -163,7 +176,10 @@ impl Relationship {
     pub fn with_updated_closeness(&self, overall_valence: f32, significance: f32) -> Self {
         let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
         Self {
-            closeness: updated_score(self.closeness, overall_valence * CLOSENESS_UPDATE_RATE * multiplier),
+            closeness: updated_score(
+                self.closeness,
+                overall_valence * CLOSENESS_UPDATE_RATE * multiplier,
+            ),
             ..self.clone()
         }
     }
@@ -252,6 +268,12 @@ impl RelationshipBuilder {
     }
 
     pub fn build(self) -> Relationship {
-        Relationship::new(self.owner_id, self.target_id, self.closeness, self.trust, self.power)
+        Relationship::new(
+            self.owner_id,
+            self.target_id,
+            self.closeness,
+            self.trust,
+            self.power,
+        )
     }
 }

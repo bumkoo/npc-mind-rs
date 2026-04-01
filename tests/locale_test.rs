@@ -6,14 +6,14 @@
 mod common;
 
 use npc_mind::application::dto::*;
-use npc_mind::application::mind_service::MindService;
 use npc_mind::application::formatted_service::FormattedMindService;
+use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::guide::ActingGuide;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::ports::GuideFormatter;
+use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
 use npc_mind::presentation::locale::LocaleBundle;
-use npc_mind::presentation::builtin_toml;
 
 use common::*;
 
@@ -106,8 +106,14 @@ fn locale_merge_빈_오버라이드는_기본값_유지() {
     let bundle = LocaleBundle::from_toml_with_overrides(base, overrides).unwrap();
     let base_bundle = LocaleBundle::from_toml(base).unwrap();
 
-    assert_eq!(bundle.emotion.get("Anger"), base_bundle.emotion.get("Anger"));
-    assert_eq!(bundle.template.section_npc, base_bundle.template.section_npc);
+    assert_eq!(
+        bundle.emotion.get("Anger"),
+        base_bundle.emotion.get("Anger")
+    );
+    assert_eq!(
+        bundle.template.section_npc,
+        base_bundle.template.section_npc
+    );
 }
 
 // ===========================================================================
@@ -173,8 +179,12 @@ fn formatted_service_한국어와_영어_프롬프트가_다름() {
     let mut ko_service = make_formatted_service("ko");
     let mut en_service = make_formatted_service("en");
 
-    let ko_response = ko_service.appraise(appraise_req(), || {}, Vec::new).unwrap();
-    let en_response = en_service.appraise(appraise_req(), || {}, Vec::new).unwrap();
+    let ko_response = ko_service
+        .appraise(appraise_req(), || {}, Vec::new)
+        .unwrap();
+    let en_response = en_service
+        .appraise(appraise_req(), || {}, Vec::new)
+        .unwrap();
 
     // 동일한 감정이 생성되어야 함 (도메인 로직은 동일)
     assert_eq!(ko_response.emotions.len(), en_response.emotions.len());
@@ -255,7 +265,11 @@ struct TestFormatter;
 
 impl GuideFormatter for TestFormatter {
     fn format_prompt(&self, guide: &ActingGuide) -> String {
-        format!("TEST_PROMPT: {} feels {:?}", guide.npc_name, guide.emotion.dominant.as_ref().map(|e| e.emotion_type))
+        format!(
+            "TEST_PROMPT: {} feels {:?}",
+            guide.npc_name,
+            guide.emotion.dominant.as_ref().map(|e| e.emotion_type)
+        )
     }
 
     fn format_json(&self, guide: &ActingGuide) -> Result<String, serde_json::Error> {

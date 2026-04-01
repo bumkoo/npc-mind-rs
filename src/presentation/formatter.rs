@@ -5,9 +5,9 @@
 
 use serde::Serialize;
 
+use super::locale::LocaleBundle;
 use crate::domain::guide::*;
 use crate::ports::GuideFormatter;
-use super::locale::LocaleBundle;
 
 /// 로케일 기반 포맷터 — TOML 로케일 파일 하나로 어떤 언어든 지원
 pub struct LocaleFormatter {
@@ -22,7 +22,9 @@ impl LocaleFormatter {
 
     /// TOML 문자열에서 직접 생성
     pub fn from_toml(content: &str) -> Result<Self, toml::de::Error> {
-        Ok(Self { locale: LocaleBundle::from_toml(content)? })
+        Ok(Self {
+            locale: LocaleBundle::from_toml(content)?,
+        })
     }
 
     /// 내부 로케일 번들 참조
@@ -71,9 +73,10 @@ impl GuideFormatter for LocaleFormatter {
         if !guide.directive.restrictions.is_empty() {
             lines.push(t.section_restriction.clone());
             for r in &guide.directive.restrictions {
-                lines.push(l.render_template(&t.restriction_item, &[
-                    ("restriction", l.restriction_label(r)),
-                ]));
+                lines.push(l.render_template(
+                    &t.restriction_item,
+                    &[("restriction", l.restriction_label(r))],
+                ));
             }
             lines.push(String::new());
         }
@@ -97,11 +100,24 @@ impl GuideFormatter for LocaleFormatter {
                 speech_style: l.format_speech_styles(&guide.personality),
             },
             emotion: LocaleEmotionOutput {
-                dominant: guide.emotion.dominant.as_ref().map(|entry|
-                    format!("{}({})", l.emotion_name(&entry.emotion_type), l.intensity_label(entry.intensity))),
-                active_emotions: guide.emotion.active_emotions.iter()
-                    .map(|entry|
-                        format!("{}({})", l.emotion_name(&entry.emotion_type), l.intensity_label(entry.intensity)))
+                dominant: guide.emotion.dominant.as_ref().map(|entry| {
+                    format!(
+                        "{}({})",
+                        l.emotion_name(&entry.emotion_type),
+                        l.intensity_label(entry.intensity)
+                    )
+                }),
+                active_emotions: guide
+                    .emotion
+                    .active_emotions
+                    .iter()
+                    .map(|entry| {
+                        format!(
+                            "{}({})",
+                            l.emotion_name(&entry.emotion_type),
+                            l.intensity_label(entry.intensity)
+                        )
+                    })
                     .collect(),
                 mood: guide.emotion.mood,
                 mood_label: l.mood_label(guide.emotion.mood).to_string(),
@@ -109,19 +125,26 @@ impl GuideFormatter for LocaleFormatter {
             directive: LocaleDirectiveOutput {
                 tone: l.tone_label(&guide.directive.tone).to_string(),
                 attitude: l.attitude_label(&guide.directive.attitude).to_string(),
-                behavioral_tendency: l.behavioral_tendency_label(
-                    &guide.directive.behavioral_tendency).to_string(),
-                restrictions: guide.directive.restrictions.iter()
+                behavioral_tendency: l
+                    .behavioral_tendency_label(&guide.directive.behavioral_tendency)
+                    .to_string(),
+                restrictions: guide
+                    .directive
+                    .restrictions
+                    .iter()
                     .map(|r| l.restriction_label(r).to_string())
                     .collect(),
             },
             situation_description: guide.situation_description.clone(),
-            relationship: guide.relationship.as_ref().map(|rel| LocaleRelationshipOutput {
-                target_name: rel.target_name.clone(),
-                closeness: l.closeness_level_label(&rel.closeness_level).to_string(),
-                trust: l.trust_level_label(&rel.trust_level).to_string(),
-                power: l.power_level_label(&rel.power_level).to_string(),
-            }),
+            relationship: guide
+                .relationship
+                .as_ref()
+                .map(|rel| LocaleRelationshipOutput {
+                    target_name: rel.target_name.clone(),
+                    closeness: l.closeness_level_label(&rel.closeness_level).to_string(),
+                    trust: l.trust_level_label(&rel.trust_level).to_string(),
+                    power: l.power_level_label(&rel.power_level).to_string(),
+                }),
         };
 
         serde_json::to_string_pretty(&output)
@@ -171,15 +194,21 @@ impl LocaleFormatter {
         let t = &l.template;
 
         lines.push(t.section_directive.clone());
-        lines.push(l.render_template(&t.directive_tone, &[
-            ("tone", l.tone_label(&directive.tone)),
-        ]));
-        lines.push(l.render_template(&t.directive_attitude, &[
-            ("attitude", l.attitude_label(&directive.attitude)),
-        ]));
-        lines.push(l.render_template(&t.directive_behavior, &[
-            ("behavior", l.behavioral_tendency_label(&directive.behavioral_tendency)),
-        ]));
+        lines.push(l.render_template(
+            &t.directive_tone,
+            &[("tone", l.tone_label(&directive.tone))],
+        ));
+        lines.push(l.render_template(
+            &t.directive_attitude,
+            &[("attitude", l.attitude_label(&directive.attitude))],
+        ));
+        lines.push(l.render_template(
+            &t.directive_behavior,
+            &[(
+                "behavior",
+                l.behavioral_tendency_label(&directive.behavioral_tendency),
+            )],
+        ));
         lines.push(String::new());
     }
 
@@ -189,15 +218,18 @@ impl LocaleFormatter {
         let t = &l.template;
 
         lines.push(l.render_template(&t.section_relationship, &[]));
-        lines.push(l.render_template(&t.relationship_closeness, &[
-            ("level", l.closeness_level_label(&rel.closeness_level)),
-        ]));
-        lines.push(l.render_template(&t.relationship_trust, &[
-            ("level", l.trust_level_label(&rel.trust_level)),
-        ]));
-        lines.push(l.render_template(&t.relationship_power, &[
-            ("level", l.power_level_label(&rel.power_level)),
-        ]));
+        lines.push(l.render_template(
+            &t.relationship_closeness,
+            &[("level", l.closeness_level_label(&rel.closeness_level))],
+        ));
+        lines.push(l.render_template(
+            &t.relationship_trust,
+            &[("level", l.trust_level_label(&rel.trust_level))],
+        ));
+        lines.push(l.render_template(
+            &t.relationship_power,
+            &[("level", l.power_level_label(&rel.power_level))],
+        ));
     }
 }
 

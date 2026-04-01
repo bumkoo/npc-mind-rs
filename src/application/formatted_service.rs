@@ -19,14 +19,14 @@
 //! let service = FormattedMindService::with_formatter(repo, my_formatter);
 //! ```
 
-use crate::domain::emotion::{AppraisalEngine, StimulusEngine, SceneFocus};
-use crate::ports::{GuideFormatter, Appraiser, StimulusProcessor};
+use crate::domain::emotion::{AppraisalEngine, SceneFocus, StimulusEngine};
+use crate::ports::{Appraiser, GuideFormatter, StimulusProcessor};
+use crate::presentation::builtin_toml;
 use crate::presentation::formatter::LocaleFormatter;
 use crate::presentation::locale::LocaleBundle;
-use crate::presentation::builtin_toml;
 
-use super::mind_service::{MindService, MindRepository, MindServiceError};
 use super::dto::*;
+use super::mind_service::{MindRepository, MindService, MindServiceError};
 
 /// 포맷팅 포함 Mind 서비스
 ///
@@ -47,10 +47,12 @@ impl<R: MindRepository> FormattedMindService<R> {
     ///
     /// 지원 언어: `"ko"` (한국어), `"en"` (영어)
     pub fn new(repository: R, lang: &str) -> Result<Self, MindServiceError> {
-        let toml = builtin_toml(lang)
-            .ok_or_else(|| MindServiceError::LocaleError(
-                format!("지원하지 않는 빌트인 언어: '{}' (지원: ko, en)", lang)
-            ))?;
+        let toml = builtin_toml(lang).ok_or_else(|| {
+            MindServiceError::LocaleError(format!(
+                "지원하지 않는 빌트인 언어: '{}' (지원: ko, en)",
+                lang
+            ))
+        })?;
         let formatter = LocaleFormatter::from_toml(toml)
             .map_err(|e| MindServiceError::LocaleError(e.to_string()))?;
         Ok(Self {
@@ -60,11 +62,17 @@ impl<R: MindRepository> FormattedMindService<R> {
     }
 
     /// 빌트인 언어 위에 커스텀 TOML을 부분 덮어쓰기하여 생성합니다.
-    pub fn with_overrides(repository: R, lang: &str, overrides: &str) -> Result<Self, MindServiceError> {
-        let base = builtin_toml(lang)
-            .ok_or_else(|| MindServiceError::LocaleError(
-                format!("지원하지 않는 빌트인 언어: '{}' (지원: ko, en)", lang)
-            ))?;
+    pub fn with_overrides(
+        repository: R,
+        lang: &str,
+        overrides: &str,
+    ) -> Result<Self, MindServiceError> {
+        let base = builtin_toml(lang).ok_or_else(|| {
+            MindServiceError::LocaleError(format!(
+                "지원하지 않는 빌트인 언어: '{}' (지원: ko, en)",
+                lang
+            ))
+        })?;
         let bundle = LocaleBundle::from_toml_with_overrides(base, overrides)
             .map_err(|e| MindServiceError::LocaleError(e.to_string()))?;
         let formatter = LocaleFormatter::new(bundle);
@@ -164,12 +172,18 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> FormattedMindService
     }
 
     /// 대화 종료 후 관계를 갱신합니다.
-    pub fn after_dialogue(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
+    pub fn after_dialogue(
+        &mut self,
+        req: AfterDialogueRequest,
+    ) -> Result<AfterDialogueResponse, MindServiceError> {
         self.service.after_dialogue(req)
     }
 
     /// Beat 종료 시 관계를 갱신합니다.
-    pub fn after_beat(&mut self, req: AfterDialogueRequest) -> Result<AfterDialogueResponse, MindServiceError> {
+    pub fn after_beat(
+        &mut self,
+        req: AfterDialogueRequest,
+    ) -> Result<AfterDialogueResponse, MindServiceError> {
         self.service.after_beat(req)
     }
 }

@@ -243,20 +243,32 @@ impl LocaleBundle {
 
     /// 감정 강도 → 라벨 변환
     pub fn intensity_label(&self, intensity: f32) -> &str {
-        if intensity >= 0.8 { &self.intensity.extreme }
-        else if intensity >= 0.6 { &self.intensity.strong }
-        else if intensity >= 0.4 { &self.intensity.noticeable }
-        else if intensity >= 0.2 { &self.intensity.weak }
-        else { &self.intensity.faint }
+        if intensity >= 0.8 {
+            &self.intensity.extreme
+        } else if intensity >= 0.6 {
+            &self.intensity.strong
+        } else if intensity >= 0.4 {
+            &self.intensity.noticeable
+        } else if intensity >= 0.2 {
+            &self.intensity.weak
+        } else {
+            &self.intensity.faint
+        }
     }
 
     /// 전체 분위기 → 라벨 변환
     pub fn mood_label(&self, mood: f32) -> &str {
-        if mood > 0.5 { &self.mood.very_positive }
-        else if mood > 0.2 { &self.mood.positive }
-        else if mood > -0.2 { &self.mood.neutral }
-        else if mood > -0.5 { &self.mood.negative }
-        else { &self.mood.very_negative }
+        if mood > 0.5 {
+            &self.mood.very_positive
+        } else if mood > 0.2 {
+            &self.mood.positive
+        } else if mood > -0.2 {
+            &self.mood.neutral
+        } else if mood > -0.5 {
+            &self.mood.negative
+        } else {
+            &self.mood.very_negative
+        }
     }
 
     /// EmotionType → 번역된 이름
@@ -280,7 +292,10 @@ impl LocaleBundle {
     /// BehavioralTendency → 번역된 설명
     pub fn behavioral_tendency_label(&self, bt: &BehavioralTendency) -> &str {
         let key = bt.variant_name();
-        self.behavioral_tendency.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.behavioral_tendency
+            .get(key)
+            .map(|s| s.as_str())
+            .unwrap_or(key)
     }
 
     /// Restriction → 번역된 설명
@@ -292,19 +307,28 @@ impl LocaleBundle {
     /// PersonalityTrait → 번역된 설명
     pub fn personality_trait_label(&self, t: &PersonalityTrait) -> &str {
         let key = t.variant_name();
-        self.personality_trait.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.personality_trait
+            .get(key)
+            .map(|s| s.as_str())
+            .unwrap_or(key)
     }
 
     /// SpeechStyle → 번역된 설명
     pub fn speech_style_label(&self, s: &SpeechStyle) -> &str {
         let key = s.variant_name();
-        self.speech_style.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.speech_style
+            .get(key)
+            .map(|s| s.as_str())
+            .unwrap_or(key)
     }
 
     /// RelationshipLevel → 친밀도 번역
     pub fn closeness_level_label(&self, level: &RelationshipLevel) -> &str {
         let key = level.variant_name();
-        self.closeness_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.closeness_level
+            .get(key)
+            .map(|s| s.as_str())
+            .unwrap_or(key)
     }
 
     /// RelationshipLevel → 신뢰도 번역
@@ -324,7 +348,9 @@ impl LocaleBundle {
         if snapshot.traits.is_empty() {
             self.fallback.no_traits.clone()
         } else {
-            snapshot.traits.iter()
+            snapshot
+                .traits
+                .iter()
                 .map(|t| self.personality_trait_label(t))
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -336,7 +362,9 @@ impl LocaleBundle {
         if snapshot.speech_styles.is_empty() {
             self.fallback.no_speech_style.clone()
         } else {
-            snapshot.speech_styles.iter()
+            snapshot
+                .speech_styles
+                .iter()
                 .map(|s| self.speech_style_label(s))
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -365,7 +393,9 @@ fn deep_merge(base: &mut toml::Value, over: toml::Value) {
             for (k, v) in over_t {
                 match base_t.get_mut(&k) {
                     Some(existing) => deep_merge(existing, v),
-                    None => { base_t.insert(k, v); }
+                    None => {
+                        base_t.insert(k, v);
+                    }
                 }
             }
         }

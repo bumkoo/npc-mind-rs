@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
-use crate::domain::pad::{PadAnchorSet, PadAxisAnchorsOwned, CachedPadEmbeddings};
-use crate::ports::{PadAnchorSource, AnchorLoadError};
+use crate::domain::pad::{CachedPadEmbeddings, PadAnchorSet, PadAxisAnchorsOwned};
+use crate::ports::{AnchorLoadError, PadAnchorSource};
 
 // ---------------------------------------------------------------------------
 // JSON 역직렬화 구조체 (어댑터 내부용)
@@ -101,21 +101,23 @@ impl PadAnchorSource for JsonAnchorSource {
         if !path.exists() {
             return Ok(None);
         }
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
         let cached: CachedPadEmbeddings = serde_json::from_str(&content)
             .map_err(|e| AnchorLoadError::ParseError(e.to_string()))?;
         Ok(Some(cached))
     }
 
-    fn save_cached_embeddings(&self, embeddings: &CachedPadEmbeddings) -> Result<(), AnchorLoadError> {
+    fn save_cached_embeddings(
+        &self,
+        embeddings: &CachedPadEmbeddings,
+    ) -> Result<(), AnchorLoadError> {
         let Some(ref path) = self.cache_path else {
             return Ok(());
         };
         let json = serde_json::to_string_pretty(embeddings)
             .map_err(|e| AnchorLoadError::ParseError(e.to_string()))?;
-        std::fs::write(path, json)
-            .map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
+        std::fs::write(path, json).map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
         Ok(())
     }
 }

@@ -12,7 +12,7 @@
 //! 감정 값 × 성격 가중치 = 방향 유지 + 강도 증폭
 //! 예: 부정 감정(-0.3) × 까칠함(1.5) = -0.45 (단순 곱셈으로 자연스러운 증폭)
 
-use serde::{Serialize, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 // ---------------------------------------------------------------------------
 // 성격 → 감정 가중치 상수
@@ -145,10 +145,10 @@ fn finalize_weight(base: f32, effects: f32, range: (f32, f32)) -> f32 {
 /// -1.0: 교활하고 탐욕적이며 자기과시적
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HonestyHumility {
-    pub sincerity: Score,         // 진실성
-    pub fairness: Score,          // 공정성
-    pub greed_avoidance: Score,   // 탐욕회피
-    pub modesty: Score,           // 겸손
+    pub sincerity: Score,       // 진실성
+    pub fairness: Score,        // 공정성
+    pub greed_avoidance: Score, // 탐욕회피
+    pub modesty: Score,         // 겸손
 }
 
 /// E: 정서성 (Emotionality)
@@ -156,10 +156,10 @@ pub struct HonestyHumility {
 /// -1.0: 대담하고 독립적이며 감정적 거리감
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Emotionality {
-    pub fearfulness: Score,       // 두려움
-    pub anxiety: Score,           // 불안
-    pub dependence: Score,        // 의존성
-    pub sentimentality: Score,    // 감상성
+    pub fearfulness: Score,    // 두려움
+    pub anxiety: Score,        // 불안
+    pub dependence: Score,     // 의존성
+    pub sentimentality: Score, // 감상성
 }
 
 /// X: 외향성 (Extraversion)
@@ -167,10 +167,10 @@ pub struct Emotionality {
 /// -1.0: 소극적이고 과묵하며 조용함
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Extraversion {
-    pub social_self_esteem: Score,  // 사회적 자존감
-    pub social_boldness: Score,     // 사회적 대담성
-    pub sociability: Score,         // 사교성
-    pub liveliness: Score,          // 활력
+    pub social_self_esteem: Score, // 사회적 자존감
+    pub social_boldness: Score,    // 사회적 대담성
+    pub sociability: Score,        // 사교성
+    pub liveliness: Score,         // 활력
 }
 
 /// A: 원만성 (Agreeableness)
@@ -178,10 +178,10 @@ pub struct Extraversion {
 /// -1.0: 원한을 품고 비판적이며 완고함
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agreeableness {
-    pub forgiveness: Score,   // 용서
-    pub gentleness: Score,    // 온화함
-    pub flexibility: Score,   // 유연성
-    pub patience: Score,      // 인내
+    pub forgiveness: Score, // 용서
+    pub gentleness: Score,  // 온화함
+    pub flexibility: Score, // 유연성
+    pub patience: Score,    // 인내
 }
 
 /// C: 성실성 (Conscientiousness)
@@ -189,10 +189,10 @@ pub struct Agreeableness {
 /// -1.0: 충동적이고 게으르며 부주의함
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Conscientiousness {
-    pub organization: Score,    // 조직력
-    pub diligence: Score,       // 근면
-    pub perfectionism: Score,   // 완벽주의
-    pub prudence: Score,        // 신중함
+    pub organization: Score,  // 조직력
+    pub diligence: Score,     // 근면
+    pub perfectionism: Score, // 완벽주의
+    pub prudence: Score,      // 신중함
 }
 
 /// O: 경험에 대한 개방성 (Openness to Experience)
@@ -200,10 +200,10 @@ pub struct Conscientiousness {
 /// -1.0: 보수적이고 관습적이며 상상력 부족
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Openness {
-    pub aesthetic_appreciation: Score,  // 미적 감상
-    pub inquisitiveness: Score,         // 탐구심
-    pub creativity: Score,              // 창의성
-    pub unconventionality: Score,       // 비관습성
+    pub aesthetic_appreciation: Score, // 미적 감상
+    pub inquisitiveness: Score,        // 탐구심
+    pub creativity: Score,             // 창의성
+    pub unconventionality: Score,      // 비관습성
 }
 
 // ---------------------------------------------------------------------------
@@ -227,28 +227,40 @@ impl HexacoProfile {
         let s = Score::neutral();
         Self {
             honesty_humility: HonestyHumility {
-                sincerity: s, fairness: s,
-                greed_avoidance: s, modesty: s,
+                sincerity: s,
+                fairness: s,
+                greed_avoidance: s,
+                modesty: s,
             },
             emotionality: Emotionality {
-                fearfulness: s, anxiety: s,
-                dependence: s, sentimentality: s,
+                fearfulness: s,
+                anxiety: s,
+                dependence: s,
+                sentimentality: s,
             },
             extraversion: Extraversion {
-                social_self_esteem: s, social_boldness: s,
-                sociability: s, liveliness: s,
+                social_self_esteem: s,
+                social_boldness: s,
+                sociability: s,
+                liveliness: s,
             },
             agreeableness: Agreeableness {
-                forgiveness: s, gentleness: s,
-                flexibility: s, patience: s,
+                forgiveness: s,
+                gentleness: s,
+                flexibility: s,
+                patience: s,
             },
             conscientiousness: Conscientiousness {
-                organization: s, diligence: s,
-                perfectionism: s, prudence: s,
+                organization: s,
+                diligence: s,
+                perfectionism: s,
+                prudence: s,
             },
             openness: Openness {
-                aesthetic_appreciation: s, inquisitiveness: s,
-                creativity: s, unconventionality: s,
+                aesthetic_appreciation: s,
+                inquisitiveness: s,
+                creativity: s,
+                unconventionality: s,
             },
         }
     }
@@ -256,30 +268,42 @@ impl HexacoProfile {
     /// 각 차원의 평균 점수를 반환
     pub fn dimension_averages(&self) -> DimensionAverages {
         DimensionAverages {
-            h: avg4(self.honesty_humility.sincerity,
-                    self.honesty_humility.fairness,
-                    self.honesty_humility.greed_avoidance,
-                    self.honesty_humility.modesty),
-            e: avg4(self.emotionality.fearfulness,
-                    self.emotionality.anxiety,
-                    self.emotionality.dependence,
-                    self.emotionality.sentimentality),
-            x: avg4(self.extraversion.social_self_esteem,
-                    self.extraversion.social_boldness,
-                    self.extraversion.sociability,
-                    self.extraversion.liveliness),
-            a: avg4(self.agreeableness.forgiveness,
-                    self.agreeableness.gentleness,
-                    self.agreeableness.flexibility,
-                    self.agreeableness.patience),
-            c: avg4(self.conscientiousness.organization,
-                    self.conscientiousness.diligence,
-                    self.conscientiousness.perfectionism,
-                    self.conscientiousness.prudence),
-            o: avg4(self.openness.aesthetic_appreciation,
-                    self.openness.inquisitiveness,
-                    self.openness.creativity,
-                    self.openness.unconventionality),
+            h: avg4(
+                self.honesty_humility.sincerity,
+                self.honesty_humility.fairness,
+                self.honesty_humility.greed_avoidance,
+                self.honesty_humility.modesty,
+            ),
+            e: avg4(
+                self.emotionality.fearfulness,
+                self.emotionality.anxiety,
+                self.emotionality.dependence,
+                self.emotionality.sentimentality,
+            ),
+            x: avg4(
+                self.extraversion.social_self_esteem,
+                self.extraversion.social_boldness,
+                self.extraversion.sociability,
+                self.extraversion.liveliness,
+            ),
+            a: avg4(
+                self.agreeableness.forgiveness,
+                self.agreeableness.gentleness,
+                self.agreeableness.flexibility,
+                self.agreeableness.patience,
+            ),
+            c: avg4(
+                self.conscientiousness.organization,
+                self.conscientiousness.diligence,
+                self.conscientiousness.perfectionism,
+                self.conscientiousness.prudence,
+            ),
+            o: avg4(
+                self.openness.aesthetic_appreciation,
+                self.openness.inquisitiveness,
+                self.openness.creativity,
+                self.openness.unconventionality,
+            ),
         }
     }
 }
@@ -287,8 +311,12 @@ impl HexacoProfile {
 /// 6개 차원의 평균 점수 요약
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DimensionAverages {
-    pub h: Score, pub e: Score, pub x: Score,
-    pub a: Score, pub c: Score, pub o: Score,
+    pub h: Score,
+    pub e: Score,
+    pub x: Score,
+    pub a: Score,
+    pub c: Score,
+    pub o: Score,
 }
 
 /// 4개 점수의 평균을 계산하여 Score로 반환 (범위 클램핑 포함)
@@ -326,10 +354,18 @@ impl Npc {
         }
     }
 
-    pub fn id(&self) -> &str { &self.id }
-    pub fn name(&self) -> &str { &self.name }
-    pub fn description(&self) -> &str { &self.description }
-    pub fn personality(&self) -> &HexacoProfile { &self.personality }
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn description(&self) -> &str {
+        &self.description
+    }
+    pub fn personality(&self) -> &HexacoProfile {
+        &self.personality
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -398,7 +434,6 @@ impl NpcBuilder {
         }
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // PersonalityProfile 구현 — HEXACO → 차원 평균 요약

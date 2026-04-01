@@ -4,13 +4,13 @@
 //! - Mind Studio scenario.json 로드 (from_file / from_json)
 //! - Scene 포함 JSON 로드
 
-use npc_mind::{
-    InMemoryRepository, MindService, FormattedMindService,
-    AppraiseRequest, NpcWorld, EmotionStore, SceneStore,
-};
 use npc_mind::application::dto::*;
 use npc_mind::domain::personality::{NpcBuilder, Score};
 use npc_mind::domain::relationship::RelationshipBuilder;
+use npc_mind::{
+    AppraiseRequest, EmotionStore, FormattedMindService, InMemoryRepository, MindService, NpcWorld,
+    SceneStore,
+};
 
 // ---------------------------------------------------------------------------
 // 프로그래밍 방식 테스트
@@ -59,7 +59,10 @@ fn add_object_and_retrieve() {
     let mut repo = InMemoryRepository::new();
     repo.add_object("sword", "명검 천하제일검");
 
-    assert_eq!(repo.get_object_description("sword").unwrap(), "명검 천하제일검");
+    assert_eq!(
+        repo.get_object_description("sword").unwrap(),
+        "명검 천하제일검"
+    );
     assert!(repo.get_object_description("nothing").is_none());
 }
 
@@ -71,26 +74,28 @@ fn programmatic_repository_with_mind_service() {
         .honesty_humility(|h| h.sincerity = Score::clamped(0.8))
         .build();
     repo.add_npc(npc);
-    repo.add_relationship(
-        RelationshipBuilder::new("mu_baek", "player").build()
-    );
+    repo.add_relationship(RelationshipBuilder::new("mu_baek", "player").build());
 
     let mut service = MindService::new(&mut repo);
-    let result = service.appraise(AppraiseRequest {
-        npc_id: "mu_baek".into(),
-        partner_id: "player".into(),
-        situation: SituationInput {
-            description: "좋은 일이 일어났다".into(),
-            event: Some(EventInput {
-                description: "기쁜 소식".into(),
-                desirability_for_self: 0.7,
-                other: None,
-                prospect: None,
-            }),
-            action: None,
-            object: None,
+    let result = service.appraise(
+        AppraiseRequest {
+            npc_id: "mu_baek".into(),
+            partner_id: "player".into(),
+            situation: SituationInput {
+                description: "좋은 일이 일어났다".into(),
+                event: Some(EventInput {
+                    description: "기쁜 소식".into(),
+                    desirability_for_self: 0.7,
+                    other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+            },
         },
-    }, || {}, || vec![]);
+        || {},
+        || vec![],
+    );
 
     assert!(result.is_ok());
     let result = result.unwrap();
@@ -104,8 +109,9 @@ fn programmatic_repository_with_mind_service() {
 #[test]
 fn from_file_loads_scenario_json() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch8_jackson_island_meeting/session_001/scenario.json"
-    ).unwrap();
+        "data/huckleberry_finn/ch8_jackson_island_meeting/session_001/scenario.json",
+    )
+    .unwrap();
 
     // NPC 로드 확인
     assert!(repo.get_npc("mu_baek").is_some());
@@ -124,8 +130,9 @@ fn from_file_loads_scenario_json() {
 #[test]
 fn from_file_loads_scene_with_focuses() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json"
-    ).unwrap();
+        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+    )
+    .unwrap();
 
     // NPC/관계
     assert!(repo.get_npc("jim").is_some());
@@ -145,8 +152,9 @@ fn from_file_loads_scene_with_focuses() {
 #[test]
 fn from_file_with_scene_can_run_service() {
     let mut repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json"
-    ).unwrap();
+        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+    )
+    .unwrap();
 
     let service = MindService::new(&mut repo);
     let info = service.scene_info();
@@ -213,29 +221,34 @@ fn from_file_nonexistent_returns_error() {
 #[test]
 fn formatted_service_with_loaded_repository() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json"
-    ).unwrap();
+        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+    )
+    .unwrap();
 
     let mut service = FormattedMindService::new(repo, "ko").unwrap();
-    let response = service.appraise(AppraiseRequest {
-        npc_id: "jim".into(),
-        partner_id: "huck".into(),
-        situation: SituationInput {
-            description: "헉이 거짓말로 짐을 속였다".into(),
-            event: Some(EventInput {
-                description: "거짓말 발각".into(),
-                desirability_for_self: -0.8,
-                other: None,
-                prospect: None,
-            }),
-            action: Some(ActionInput {
-                description: "기만 행위".into(),
-                agent_id: Some("huck".into()),
-                praiseworthiness: -0.8,
-            }),
-            object: None,
+    let response = service.appraise(
+        AppraiseRequest {
+            npc_id: "jim".into(),
+            partner_id: "huck".into(),
+            situation: SituationInput {
+                description: "헉이 거짓말로 짐을 속였다".into(),
+                event: Some(EventInput {
+                    description: "거짓말 발각".into(),
+                    desirability_for_self: -0.8,
+                    other: None,
+                    prospect: None,
+                }),
+                action: Some(ActionInput {
+                    description: "기만 행위".into(),
+                    agent_id: Some("huck".into()),
+                    praiseworthiness: -0.8,
+                }),
+                object: None,
+            },
         },
-    }, || {}, || vec![]);
+        || {},
+        || vec![],
+    );
 
     assert!(response.is_ok());
     let response = response.unwrap();

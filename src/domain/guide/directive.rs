@@ -6,8 +6,8 @@ use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::personality::DimensionAverages;
 use crate::ports::PersonalityProfile;
 
-use super::{EMOTION_THRESHOLD, TRAIT_THRESHOLD, MOOD_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD};
-use super::enums::{Tone, Attitude, BehavioralTendency, Restriction};
+use super::enums::{Attitude, BehavioralTendency, Restriction, Tone};
+use super::{EMOTION_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, MOOD_THRESHOLD, TRAIT_THRESHOLD};
 
 /// 감정 상태에서 도출된 구체적 연기 지시
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,19 +30,29 @@ impl ActingDirective {
     ) -> Self {
         let avg = profile.dimension_averages();
         let mood = state.overall_valence();
-        
+
         // 판단에 필요한 정보 요약
         let dominant = state.dominant().map(|e| e.emotion_type());
         let significant = state.significant(EMOTION_THRESHOLD);
-        let has_anger = significant.iter().any(|e| e.emotion_type() == EmotionType::Anger);
-        let has_fear = significant.iter().any(|e| e.emotion_type() == EmotionType::Fear);
-        let has_shame = significant.iter().any(|e| e.emotion_type() == EmotionType::Shame);
-        let has_reproach = significant.iter().any(|e| e.emotion_type() == EmotionType::Reproach);
+        let has_anger = significant
+            .iter()
+            .any(|e| e.emotion_type() == EmotionType::Anger);
+        let has_fear = significant
+            .iter()
+            .any(|e| e.emotion_type() == EmotionType::Fear);
+        let has_shame = significant
+            .iter()
+            .any(|e| e.emotion_type() == EmotionType::Shame);
+        let has_reproach = significant
+            .iter()
+            .any(|e| e.emotion_type() == EmotionType::Reproach);
 
         Self {
             tone: Tone::decide(dominant, mood, &avg),
             attitude: Attitude::decide(has_anger, has_reproach, has_fear, mood, &avg),
-            behavioral_tendency: BehavioralTendency::decide(has_anger, has_fear, has_shame, mood, &avg),
+            behavioral_tendency: BehavioralTendency::decide(
+                has_anger, has_fear, has_shame, mood, &avg,
+            ),
             restrictions: Restriction::evaluate_all(has_anger, has_fear, has_shame, mood, &avg),
         }
     }
@@ -57,22 +67,34 @@ impl Tone {
         let t = TRAIT_THRESHOLD;
         match dominant {
             Some(EmotionType::Anger) => {
-                if avg.c.value() > t { Self::SuppressedCold }
-                else { Self::RoughAggressive }
+                if avg.c.value() > t {
+                    Self::SuppressedCold
+                } else {
+                    Self::RoughAggressive
+                }
             }
             Some(EmotionType::Distress) => {
-                if avg.e.value() > t { Self::AnxiousTrembling }
-                else { Self::SomberRestrained }
+                if avg.e.value() > t {
+                    Self::AnxiousTrembling
+                } else {
+                    Self::SomberRestrained
+                }
             }
             Some(EmotionType::Joy) => Self::BrightLively,
             Some(EmotionType::Fear) => {
-                if avg.e.value() < -t { Self::VigilantCalm }
-                else { Self::TenseAnxious }
+                if avg.e.value() < -t {
+                    Self::VigilantCalm
+                } else {
+                    Self::TenseAnxious
+                }
             }
             Some(EmotionType::Shame) => Self::ShrinkingSmall,
             Some(EmotionType::Pride) => {
-                if avg.h.value() > t { Self::QuietConfidence }
-                else { Self::ProudArrogant }
+                if avg.h.value() > t {
+                    Self::QuietConfidence
+                } else {
+                    Self::ProudArrogant
+                }
             }
             Some(EmotionType::Reproach) => Self::CynicalCritical,
             Some(EmotionType::Disappointment) => Self::DeepSighing,
@@ -80,9 +102,13 @@ impl Tone {
             Some(EmotionType::Resentment) => Self::JealousBitter,
             Some(EmotionType::Pity) => Self::CompassionateSoft,
             _ => {
-                if mood > EMOTION_THRESHOLD { Self::RelaxedGentle }
-                else if mood < -EMOTION_THRESHOLD { Self::Heavy }
-                else { Self::Calm }
+                if mood > EMOTION_THRESHOLD {
+                    Self::RelaxedGentle
+                } else if mood < -EMOTION_THRESHOLD {
+                    Self::Heavy
+                } else {
+                    Self::Calm
+                }
             }
         }
     }

@@ -3,10 +3,10 @@
 //! 도메인 핵심 로직의 추상화 경계를 정의한다.
 //! 외부 어댑터는 이 트레이트를 구현하여 도메인과 연결된다.
 
-use crate::domain::emotion::{EmotionState, Situation, RelationshipModifiers, Scene};
+use crate::domain::emotion::{EmotionState, RelationshipModifiers, Scene, Situation};
 use crate::domain::guide::ActingGuide;
-use crate::domain::pad::{Pad, PadAnchorSet, CachedPadEmbeddings};
-use crate::domain::personality::{Npc, DimensionAverages};
+use crate::domain::pad::{CachedPadEmbeddings, Pad, PadAnchorSet};
+use crate::domain::personality::{DimensionAverages, Npc};
 use crate::domain::relationship::Relationship;
 
 // ---------------------------------------------------------------------------
@@ -135,7 +135,10 @@ pub trait PadAnchorSource {
     fn load_cached_embeddings(&self) -> Result<Option<CachedPadEmbeddings>, AnchorLoadError>;
 
     /// 계산된 임베딩 저장 (캐시 경로 없으면 no-op)
-    fn save_cached_embeddings(&self, embeddings: &CachedPadEmbeddings) -> Result<(), AnchorLoadError>;
+    fn save_cached_embeddings(
+        &self,
+        embeddings: &CachedPadEmbeddings,
+    ) -> Result<(), AnchorLoadError>;
 }
 
 /// 앵커 로딩 오류

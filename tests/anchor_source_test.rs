@@ -5,10 +5,10 @@
 //! - 캐시 라운드트립
 //! - 빌트인 레지스트리
 
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
-use npc_mind::adapter::json_anchor_source::JsonAnchorSource;
-use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::PadAnchorSource;
+use npc_mind::adapter::json_anchor_source::JsonAnchorSource;
+use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 
 #[test]
 fn toml_빌트인_앵커_파싱() {
@@ -43,7 +43,7 @@ fn toml_캐시_없으면_none() {
 
 #[test]
 fn toml_캐시_라운드트립() {
-    use npc_mind::domain::pad::{CachedPadEmbeddings, CachedAxisEmbeddings};
+    use npc_mind::domain::pad::{CachedAxisEmbeddings, CachedPadEmbeddings};
 
     let cache_path = std::env::temp_dir().join("npc_mind_test_cache.json");
     // 정리
@@ -69,8 +69,12 @@ fn toml_캐시_라운드트립() {
         },
     };
 
-    source.save_cached_embeddings(&dummy).expect("캐시 저장 실패");
-    let loaded = source.load_cached_embeddings().expect("캐시 로드 실패")
+    source
+        .save_cached_embeddings(&dummy)
+        .expect("캐시 저장 실패");
+    let loaded = source
+        .load_cached_embeddings()
+        .expect("캐시 로드 실패")
         .expect("캐시 있어야 함");
 
     assert_eq!(loaded.model_id, "test-model");
