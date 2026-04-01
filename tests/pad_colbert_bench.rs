@@ -9,7 +9,10 @@
 
 use std::sync::{Mutex, OnceLock};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
-use npc_mind::domain::pad::{PadAnalyzer, PLEASURE_ANCHORS, AROUSAL_ANCHORS, DOMINANCE_ANCHORS};
+use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::domain::pad::PadAnalyzer;
+use npc_mind::domain::pad_anchors::builtin_anchor_toml;
+use npc_mind::PadAnchorSource;
 use bge_m3_onnx_rust::{BgeM3Embedder, max_sim};
 
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
@@ -37,7 +40,7 @@ fn colbert_axis_score(
 /// 앵커 텍스트 목록 → ColBERT 토큰 벡터 풀 (모든 앵커의 토큰을 합침)
 fn build_colbert_pool(
     embedder: &mut BgeM3Embedder,
-    anchors: &[&str],
+    anchors: &[String],
 ) -> Vec<Vec<f32>> {
     let mut pool = Vec::new();
     for text in anchors {
@@ -84,14 +87,18 @@ fn test_cases() -> Vec<TestCase> {
 fn dense_vs_colbert_비교() {
     let mut embedder = shared_embedder().lock().unwrap();
 
+    // 0) 앵커 로드
+    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+    let anchors = source.load_anchors().unwrap();
+
     // 1) ColBERT 앵커 풀 구축
     println!("\n[1] ColBERT 앵커 풀 구축 중...");
-    let p_pos_pool = build_colbert_pool(&mut embedder, PLEASURE_ANCHORS.positive);
-    let p_neg_pool = build_colbert_pool(&mut embedder, PLEASURE_ANCHORS.negative);
-    let a_pos_pool = build_colbert_pool(&mut embedder, AROUSAL_ANCHORS.positive);
-    let a_neg_pool = build_colbert_pool(&mut embedder, AROUSAL_ANCHORS.negative);
-    let d_pos_pool = build_colbert_pool(&mut embedder, DOMINANCE_ANCHORS.positive);
-    let d_neg_pool = build_colbert_pool(&mut embedder, DOMINANCE_ANCHORS.negative);
+    let p_pos_pool = build_colbert_pool(&mut embedder, &anchors.pleasure.positive);
+    let p_neg_pool = build_colbert_pool(&mut embedder, &anchors.pleasure.negative);
+    let a_pos_pool = build_colbert_pool(&mut embedder, &anchors.arousal.positive);
+    let a_neg_pool = build_colbert_pool(&mut embedder, &anchors.arousal.negative);
+    let d_pos_pool = build_colbert_pool(&mut embedder, &anchors.dominance.positive);
+    let d_neg_pool = build_colbert_pool(&mut embedder, &anchors.dominance.negative);
     println!("   P pool: +{}/−{} tokens, A pool: +{}/−{}, D pool: +{}/−{}",
         p_pos_pool.len(), p_neg_pool.len(),
         a_pos_pool.len(), a_neg_pool.len(),
@@ -102,7 +109,7 @@ fn dense_vs_colbert_비교() {
     drop(embedder);
     let analyzer = PadAnalyzer::new(Box::new(
         OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()
-    )).unwrap();
+    ), &source).unwrap();
     let mut embedder2 = shared_embedder().lock().unwrap();
 
     // 3) 결과 비교

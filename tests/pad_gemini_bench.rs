@@ -7,7 +7,9 @@
 
 use std::sync::{Mutex, OnceLock};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
+use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
 use npc_mind::domain::pad::PadAnalyzer;
+use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::TextEmbedder;
 
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
@@ -204,9 +206,10 @@ fn gemini_vs_current_앵커_비교() {
     println!("[2] 현재 앵커(PadAnalyzer)로 분석기 초기화...");
     drop(embedder);
     let mut embedder2 = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap();
+    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
     let analyzer = PadAnalyzer::new(Box::new(
         OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()
-    )).unwrap();
+    ), &source).unwrap();
 
     // 3) 테스트 대사 임베딩
     println!("[3] 테스트 대사 임베딩 중...");

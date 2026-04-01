@@ -40,7 +40,7 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
         .with_cache_path(format!("locales/anchors/{anchor_lang}.embeddings.json"));
 
     match OrtEmbedder::new(&model_path, &tokenizer_path) {
-        Ok(embedder) => match PadAnalyzer::with_source(Box::new(embedder), &source) {
+        Ok(embedder) => match PadAnalyzer::new(Box::new(embedder), &source) {
             Ok(analyzer) => {
                 println!("PAD Analyzer: 초기화 완료 (embed 활성, lang={anchor_lang})");
                 Some(analyzer)

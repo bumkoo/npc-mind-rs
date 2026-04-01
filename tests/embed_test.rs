@@ -14,7 +14,9 @@
 use std::sync::{Mutex, OnceLock};
 
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
+use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
 use npc_mind::domain::pad::PadAnalyzer;
+use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::UtteranceAnalyzer;
 use npc_mind::{Appraiser, StimulusProcessor};
 
@@ -28,7 +30,8 @@ fn shared_analyzer() -> &'static Mutex<PadAnalyzer> {
     ANALYZER.get_or_init(|| {
         let embedder = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH)
             .expect("OrtEmbedder 초기화 실패");
-        let analyzer = PadAnalyzer::new(Box::new(embedder))
+        let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+        let analyzer = PadAnalyzer::new(Box::new(embedder), &source)
             .expect("PadAnalyzer 앵커 계산 실패");
         Mutex::new(analyzer)
     })

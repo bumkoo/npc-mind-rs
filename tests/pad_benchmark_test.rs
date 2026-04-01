@@ -6,7 +6,9 @@
 
 use std::sync::{Mutex, OnceLock};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
+use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
 use npc_mind::domain::pad::PadAnalyzer;
+use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::UtteranceAnalyzer;
 
 const MODEL_PATH: &str = "../models/bge-m3/model_quantized.onnx";
@@ -16,7 +18,8 @@ fn shared_analyzer() -> &'static Mutex<PadAnalyzer> {
     static ANALYZER: OnceLock<Mutex<PadAnalyzer>> = OnceLock::new();
     ANALYZER.get_or_init(|| {
         let embedder = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap();
-        Mutex::new(PadAnalyzer::new(Box::new(embedder)).unwrap())
+        let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+        Mutex::new(PadAnalyzer::new(Box::new(embedder), &source).unwrap())
     })
 }
 
