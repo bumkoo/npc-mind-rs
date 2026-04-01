@@ -20,17 +20,29 @@ use state::AppState;
 #[cfg(feature = "embed")]
 fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     use npc_mind::adapter::ort_embedder::OrtEmbedder;
+    use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
     use npc_mind::domain::pad::PadAnalyzer;
+    use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 
     let model_dir = std::env::var("NPC_MIND_MODEL_DIR")
         .unwrap_or_else(|_| "../models/bge-m3".to_string());
     let model_path = std::path::Path::new(&model_dir).join("model_quantized.onnx");
     let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
 
+    let anchor_lang = std::env::var("NPC_MIND_ANCHOR_LANG")
+        .unwrap_or_else(|_| "ko".to_string());
+    let anchor_toml = builtin_anchor_toml(&anchor_lang)
+        .unwrap_or_else(|| {
+            eprintln!("빌트인 앵커 없음 (lang={anchor_lang}), ko 폴백");
+            builtin_anchor_toml("ko").unwrap()
+        });
+    let source = TomlAnchorSource::from_content(anchor_toml)
+        .with_cache_path(format!("locales/anchors/{anchor_lang}.embeddings.json"));
+
     match OrtEmbedder::new(&model_path, &tokenizer_path) {
-        Ok(embedder) => match PadAnalyzer::new(Box::new(embedder)) {
+        Ok(embedder) => match PadAnalyzer::with_source(Box::new(embedder), &source) {
             Ok(analyzer) => {
-                println!("PAD Analyzer: 초기화 완료 (embed 활성)");
+                println!("PAD Analyzer: 초기화 완료 (embed 활성, lang={anchor_lang})");
                 Some(analyzer)
             }
             Err(e) => { eprintln!("PAD Analyzer 앵커 초기화 실패: {e:?}"); None }

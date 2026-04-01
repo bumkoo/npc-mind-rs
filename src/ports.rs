@@ -5,7 +5,7 @@
 
 use crate::domain::emotion::{EmotionState, Situation, RelationshipModifiers, Scene};
 use crate::domain::guide::ActingGuide;
-use crate::domain::pad::Pad;
+use crate::domain::pad::{Pad, PadAnchorSet, CachedPadEmbeddings};
 use crate::domain::personality::{Npc, DimensionAverages};
 use crate::domain::relationship::Relationship;
 
@@ -120,6 +120,33 @@ pub enum EmbedError {
     InitError(String),
     #[error("임베딩 추론 실패: {0}")]
     InferenceError(String),
+}
+
+/// PAD 앵커 로딩 포트 — 포맷 무관 앵커 소스
+///
+/// TOML, JSON, DB 등 어디서든 앵커 텍스트와 캐싱된 임베딩을 로드.
+/// 도메인(PadAnalyzer)은 이 트레이트에만 의존하고 파일 포맷을 모른다.
+/// 차후 다른 설정 로딩에도 이 패턴을 재사용할 수 있다.
+pub trait PadAnchorSource {
+    /// 3축 앵커 텍스트 로드
+    fn load_anchors(&self) -> Result<PadAnchorSet, AnchorLoadError>;
+
+    /// 캐싱된 임베딩 로드 (없으면 None → 재계산 필요)
+    fn load_cached_embeddings(&self) -> Result<Option<CachedPadEmbeddings>, AnchorLoadError>;
+
+    /// 계산된 임베딩 저장 (캐시 경로 없으면 no-op)
+    fn save_cached_embeddings(&self, embeddings: &CachedPadEmbeddings) -> Result<(), AnchorLoadError>;
+}
+
+/// 앵커 로딩 오류
+#[derive(Debug, thiserror::Error)]
+pub enum AnchorLoadError {
+    #[error("앵커 파싱 실패: {0}")]
+    ParseError(String),
+    #[error("앵커 I/O 실패: {0}")]
+    IoError(String),
+    #[error("앵커 데이터 검증 실패: {0}")]
+    ValidationError(String),
 }
 
 /// 도메인 포트: 대사 → PAD 변환

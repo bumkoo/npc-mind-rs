@@ -8,3 +8,6 @@
 
 #[cfg(feature = "embed")]
 pub mod ort_embedder;
+
+pub mod toml_anchor_source;
+pub mod json_anchor_source;

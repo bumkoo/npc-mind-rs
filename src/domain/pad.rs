@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionType;
-use super::tuning::PAD_D_SCALE_WEIGHT;
+use super::tuning::{PAD_D_SCALE_WEIGHT, PAD_AXIS_DEAD_ZONE, PAD_AXIS_SCALE};
 
 // ---------------------------------------------------------------------------
 // PAD 구조체
@@ -148,6 +148,10 @@ pub const PLEASURE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
         "괜찮소, 걱정하지 마시오. 모든 것이 잘 될 것이오.",
         "은혜를 잊지 않겠소. 정말 고맙소.",
         "오랜만이오, 반갑소! 그간 무고하셨소?",
+        "이런 좋은 일이 생기다니, 참으로 다행이오.",
+        "그대 덕분이오. 마음 깊이 감사드리오.",
+        "하하, 이 맛에 사는 것 아니겠소?",
+        "이 기쁨을 함께 나눌 수 있어 더없이 좋소.",
     ],
     negative: &[
         "정말 괴롭고 불쾌하기 짝이 없군.",
@@ -156,6 +160,10 @@ pub const PLEASURE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
         "배은망덕한 놈! 네놈이 어찌 그럴 수 있느냐!",
         "꺼져라. 네 꼴을 보기도 싫다.",
         "모든 것이 끝이다. 아무런 희망이 없다.",
+        "이토록 비참한 꼴을 당하다니, 치가 떨린다.",
+        "속이 끓어 당장이라도 뒤엎어버리고 싶구나.",
+        "내 신세가 이 지경이 되다니, 살아서 무엇하랴.",
+        "너 같은 놈은 용서할 수 없다. 절대로.",
     ],
 };
 
@@ -173,6 +181,10 @@ pub const AROUSAL_ANCHORS: PadAxisAnchors = PadAxisAnchors {
         "적이 쳐들어 온다! 모두 무기를 들어라!",
         "검이 부딪히는 굉음에 온몸의 피가 역류하는구나!",
         "어서! 지금 당장 움직여야 한다!",
+        "빨리! 한시가 급하다, 지체하면 늦는다!",
+        "온몸의 신경이 곤두선다. 한눈팔 수 없다!",
+        "사방에서 뿜어져 나오는 살기에 숨이 턱턱 막혀온다!",
+        "심장이 귓가에서 쿵쿵거린다. 전투가 시작된다!",
     ],
     negative: &[
         "마음이 한없이 차분하고 담담해지는구려.",
@@ -181,6 +193,10 @@ pub const AROUSAL_ANCHORS: PadAxisAnchors = PadAxisAnchors {
         "천천히 하시오. 서두를 것 없소.",
         "편히 쉬시게. 차 한잔 드시오.",
         "강물처럼 흘러가는 대로 두면 되오.",
+        "급할 것 없소. 세월이 약이라 했소.",
+        "바람결에 몸을 맡기니 마음도 가벼워지는군.",
+        "조용히 눈을 감으니 모든 것이 고요하구려.",
+        "한숨 돌리시오. 아직 여유가 있소.",
     ],
 };
 
@@ -199,14 +215,19 @@ pub const DOMINANCE_ANCHORS: PadAxisAnchors = PadAxisAnchors {
         "감히! 무릎 꿇어라! 이것은 명이다!",
         "내 결정에 이의를 달 자가 있느냐?",
         "이 일은 내가 책임지겠소. 뒤로 물러나시오.",
+        "내 허락 없이는 아무도 이 문을 나설 수 없다.",
+        "입 닥쳐라. 내가 말할 때는 듣기만 해라.",
+        "네놈의 운명은 내 손에 달렸다. 잘 생각해라.",
+        "내가 나서면 끝이다. 더 이상의 논의는 불필요하다.",
     ],
     negative: &[
-        "눈앞이 캄캄하군... 어찌해야 할지 모르겠어.",
-        "아무것도 할 수 없다니, 이리도 무력할 수가...",
-        "위축되어 숨조차 제대로 쉴 수가 없구나.",
-        "소인은 감히 거역할 수 없습니다. 처분을 기다리겠습니다.",
-        "살려주십시오... 무엇이든 하겠습니다.",
-        "저... 혹시 괜찮으시다면... 따라가도 될까요?",
+        // D-3(위축), D-4(거역불가), D-8(발버둥), D-9(억울) 역방향 앵커 제외
+        "눈앞이 캄캄하군... 어찌해야 할지 모르겠어.",       // D-1
+        "아무것도 할 수 없다니, 이리도 무력할 수가...",     // D-2
+        "살려주십시오... 무엇이든 하겠습니다.",             // D-5
+        "저... 혹시 괜찮으시다면... 따라가도 될까요?",     // D-6
+        "제가 감히 어찌... 대인의 뜻을 거스를 수 있겠습니까.", // D-7
+        "어차피 내 뜻대로 되는 것은 하나도 없으니, 네 마음대로 해라.", // D-10
     ],
 };
 
@@ -225,7 +246,45 @@ pub const PAD_ANCHORS: [&PadAxisAnchors; 3] = [
 // TextEmbedder(인프라 포트)에만 의존하며, 구체적 임베딩 모델을 모른다.
 // cosine_sim, mean_vector, axis_score는 순수 수학 — 인프라 무관.
 
-use crate::ports::{TextEmbedder, EmbedError};
+use crate::ports::{TextEmbedder, EmbedError, PadAnchorSource};
+
+// ---------------------------------------------------------------------------
+// 외부 로드용 도메인 타입
+// ---------------------------------------------------------------------------
+
+/// 외부 로드된 앵커 텍스트 (축 하나)
+pub struct PadAxisAnchorsOwned {
+    pub positive: Vec<String>,
+    pub negative: Vec<String>,
+}
+
+/// 3축 전체 앵커 세트 (외부 소스에서 로드)
+pub struct PadAnchorSet {
+    pub pleasure: PadAxisAnchorsOwned,
+    pub arousal: PadAxisAnchorsOwned,
+    pub dominance: PadAxisAnchorsOwned,
+}
+
+/// 캐싱된 축 임베딩 (사전 계산된 평균 벡터)
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CachedAxisEmbeddings {
+    pub positive_mean: Vec<f32>,
+    pub negative_mean: Vec<f32>,
+}
+
+/// 3축 전체 캐싱 임베딩
+#[derive(Clone, Serialize, Deserialize)]
+pub struct CachedPadEmbeddings {
+    pub model_id: String,
+    pub dimension: usize,
+    pub pleasure: CachedAxisEmbeddings,
+    pub arousal: CachedAxisEmbeddings,
+    pub dominance: CachedAxisEmbeddings,
+}
+
+// ---------------------------------------------------------------------------
+// 사전 계산된 앵커 임베딩
+// ---------------------------------------------------------------------------
 
 /// 사전 계산된 앵커 임베딩 (축 하나의 양극단)
 pub struct AxisEmbeddings {
@@ -250,7 +309,7 @@ pub struct PadAnalyzer {
 }
 
 impl PadAnalyzer {
-    /// TextEmbedder로 3축 앵커 임베딩을 사전 계산하여 생성
+    /// TextEmbedder로 3축 앵커 임베딩을 사전 계산하여 생성 (하드코딩 상수 사용)
     pub fn new(mut embedder: Box<dyn TextEmbedder + Send>) -> Result<Self, EmbedError> {
         let pleasure = Self::embed_axis(&mut *embedder, &PLEASURE_ANCHORS)?;
         let arousal = Self::embed_axis(&mut *embedder, &AROUSAL_ANCHORS)?;
@@ -259,13 +318,86 @@ impl PadAnalyzer {
         Ok(Self { embedder, pleasure, arousal, dominance })
     }
 
-    /// 앵커 텍스트 → 평균 임베딩 벡터 계산
+    /// 외부 앵커 소스에서 로드하여 생성 (캐싱 지원)
+    ///
+    /// 1. 캐시된 임베딩이 있으면 바로 사용
+    /// 2. 없으면 앵커 텍스트 로드 → 임베딩 계산 → 캐시 저장
+    pub fn with_source(
+        mut embedder: Box<dyn TextEmbedder + Send>,
+        source: &dyn PadAnchorSource,
+    ) -> Result<Self, EmbedError> {
+        // 1. 캐시된 임베딩 시도
+        if let Ok(Some(cached)) = source.load_cached_embeddings() {
+            return Ok(Self {
+                embedder,
+                pleasure: AxisEmbeddings {
+                    positive: cached.pleasure.positive_mean,
+                    negative: cached.pleasure.negative_mean,
+                },
+                arousal: AxisEmbeddings {
+                    positive: cached.arousal.positive_mean,
+                    negative: cached.arousal.negative_mean,
+                },
+                dominance: AxisEmbeddings {
+                    positive: cached.dominance.positive_mean,
+                    negative: cached.dominance.negative_mean,
+                },
+            });
+        }
+
+        // 2. 앵커 텍스트 로드 → 임베딩 계산
+        let anchors = source.load_anchors()
+            .map_err(|e| EmbedError::InitError(e.to_string()))?;
+        let pleasure = Self::embed_axis_owned(&mut *embedder, &anchors.pleasure)?;
+        let arousal = Self::embed_axis_owned(&mut *embedder, &anchors.arousal)?;
+        let dominance = Self::embed_axis_owned(&mut *embedder, &anchors.dominance)?;
+
+        // 3. 캐시 저장 (best-effort, 실패해도 무시)
+        let dim = pleasure.positive.len();
+        let cached = CachedPadEmbeddings {
+            model_id: String::new(),
+            dimension: dim,
+            pleasure: CachedAxisEmbeddings {
+                positive_mean: pleasure.positive.clone(),
+                negative_mean: pleasure.negative.clone(),
+            },
+            arousal: CachedAxisEmbeddings {
+                positive_mean: arousal.positive.clone(),
+                negative_mean: arousal.negative.clone(),
+            },
+            dominance: CachedAxisEmbeddings {
+                positive_mean: dominance.positive.clone(),
+                negative_mean: dominance.negative.clone(),
+            },
+        };
+        let _ = source.save_cached_embeddings(&cached);
+
+        Ok(Self { embedder, pleasure, arousal, dominance })
+    }
+
+    /// 앵커 텍스트 → 평균 임베딩 벡터 계산 (static 슬라이스)
     fn embed_axis(
         embedder: &mut dyn TextEmbedder,
         anchors: &PadAxisAnchors,
     ) -> Result<AxisEmbeddings, EmbedError> {
         let pos_vecs = embedder.embed(anchors.positive)?;
         let neg_vecs = embedder.embed(anchors.negative)?;
+
+        Ok(AxisEmbeddings {
+            positive: Self::mean_vector(&pos_vecs),
+            negative: Self::mean_vector(&neg_vecs),
+        })
+    }
+
+    /// 앵커 텍스트 → 평균 임베딩 벡터 계산 (owned Vec<String>)
+    fn embed_axis_owned(
+        embedder: &mut dyn TextEmbedder,
+        anchors: &PadAxisAnchorsOwned,
+    ) -> Result<AxisEmbeddings, EmbedError> {
+        let pos_refs: Vec<&str> = anchors.positive.iter().map(|s| s.as_str()).collect();
+        let neg_refs: Vec<&str> = anchors.negative.iter().map(|s| s.as_str()).collect();
+        let pos_vecs = embedder.embed(&pos_refs)?;
+        let neg_vecs = embedder.embed(&neg_refs)?;
 
         Ok(AxisEmbeddings {
             positive: Self::mean_vector(&pos_vecs),
@@ -311,10 +443,16 @@ impl PadAnalyzer {
     }
 
     /// 대사 임베딩과 축 앵커 유사도 차이 → -1.0~1.0
+    ///
+    /// 보정: |차이| < PAD_AXIS_DEAD_ZONE(0.02) → 0.0, 이후 ×PAD_AXIS_SCALE(3.0)
     fn axis_score(utterance_emb: &[f32], axis: &AxisEmbeddings) -> f32 {
         let sim_pos = Self::cosine_sim(utterance_emb, &axis.positive);
         let sim_neg = Self::cosine_sim(utterance_emb, &axis.negative);
-        (sim_pos - sim_neg).clamp(-1.0, 1.0)
+        let raw = sim_pos - sim_neg;
+        if raw.abs() < PAD_AXIS_DEAD_ZONE {
+            return 0.0;
+        }
+        (raw * PAD_AXIS_SCALE).clamp(-1.0, 1.0)
     }
 }
 
