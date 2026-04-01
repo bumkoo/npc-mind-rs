@@ -5,40 +5,10 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
-
-use crate::domain::pad::{CachedPadEmbeddings, PadAnchorSet, PadAxisAnchorsOwned};
+use crate::domain::pad::CachedPadEmbeddings;
 use crate::ports::{AnchorLoadError, PadAnchorSource};
 
-// ---------------------------------------------------------------------------
-// JSON 역직렬화 구조체 (어댑터 내부용)
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-struct AnchorJson {
-    /// JSON 스키마 호환용 — 파싱 시 필드 존재 확인만 하고 값은 사용하지 않음
-    #[allow(dead_code)]
-    meta: AnchorMeta,
-    pleasure: AxisAnchorsJson,
-    arousal: AxisAnchorsJson,
-    dominance: AxisAnchorsJson,
-}
-
-#[derive(Deserialize)]
-struct AnchorMeta {
-    /// 앵커 언어 코드 (예: "ko") — 파싱 검증용, 런타임에서는 미사용
-    #[allow(dead_code)]
-    language: String,
-    /// 앵커 데이터 버전 — 하위 호환성 검증용, 런타임에서는 미사용
-    #[allow(dead_code)]
-    version: String,
-}
-
-#[derive(Deserialize)]
-struct AxisAnchorsJson {
-    positive: Vec<String>,
-    negative: Vec<String>,
-}
+use super::anchor_common::{self, AnchorRaw, AnchorSourceBase};
 
 // ---------------------------------------------------------------------------
 // JsonAnchorSource
@@ -46,81 +16,46 @@ struct AxisAnchorsJson {
 
 /// JSON 기반 앵커 소스
 pub struct JsonAnchorSource {
-    json_content: String,
-    cache_path: Option<PathBuf>,
+    base: AnchorSourceBase,
 }
 
 impl JsonAnchorSource {
     /// 문자열에서 생성
     pub fn from_content(content: &str) -> Self {
         Self {
-            json_content: content.to_owned(),
-            cache_path: None,
+            base: AnchorSourceBase::from_content(content),
         }
     }
 
     /// 런타임 파일 경로에서 로드
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, AnchorLoadError> {
-        let content = std::fs::read_to_string(path.as_ref())
-            .map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
         Ok(Self {
-            json_content: content,
-            cache_path: None,
+            base: AnchorSourceBase::from_file(path)?,
         })
     }
 
     /// 임베딩 캐시 파일 경로 설정
     pub fn with_cache_path(mut self, path: impl Into<PathBuf>) -> Self {
-        self.cache_path = Some(path.into());
+        self.base = self.base.with_cache_path(path);
         self
     }
 }
 
 impl PadAnchorSource for JsonAnchorSource {
-    fn load_anchors(&self) -> Result<PadAnchorSet, AnchorLoadError> {
-        let parsed: AnchorJson = serde_json::from_str(&self.json_content)
+    fn load_anchors(&self) -> Result<crate::domain::pad::PadAnchorSet, AnchorLoadError> {
+        let parsed: AnchorRaw = serde_json::from_str(&self.base.content)
             .map_err(|e| AnchorLoadError::ParseError(e.to_string()))?;
-
-        Ok(PadAnchorSet {
-            pleasure: PadAxisAnchorsOwned {
-                positive: parsed.pleasure.positive,
-                negative: parsed.pleasure.negative,
-            },
-            arousal: PadAxisAnchorsOwned {
-                positive: parsed.arousal.positive,
-                negative: parsed.arousal.negative,
-            },
-            dominance: PadAxisAnchorsOwned {
-                positive: parsed.dominance.positive,
-                negative: parsed.dominance.negative,
-            },
-        })
+        Ok(parsed.into_anchor_set())
     }
 
     fn load_cached_embeddings(&self) -> Result<Option<CachedPadEmbeddings>, AnchorLoadError> {
-        let Some(ref path) = self.cache_path else {
-            return Ok(None);
-        };
-        if !path.exists() {
-            return Ok(None);
-        }
-        let content =
-            std::fs::read_to_string(path).map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
-        let cached: CachedPadEmbeddings = serde_json::from_str(&content)
-            .map_err(|e| AnchorLoadError::ParseError(e.to_string()))?;
-        Ok(Some(cached))
+        anchor_common::load_cached_embeddings(&self.base.cache_path)
     }
 
     fn save_cached_embeddings(
         &self,
         embeddings: &CachedPadEmbeddings,
     ) -> Result<(), AnchorLoadError> {
-        let Some(ref path) = self.cache_path else {
-            return Ok(());
-        };
-        let json = serde_json::to_string_pretty(embeddings)
-            .map_err(|e| AnchorLoadError::ParseError(e.to_string()))?;
-        std::fs::write(path, json).map_err(|e| AnchorLoadError::IoError(e.to_string()))?;
-        Ok(())
+        anchor_common::save_cached_embeddings(&self.base.cache_path, embeddings)
     }
 }

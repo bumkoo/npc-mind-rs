@@ -619,49 +619,70 @@ fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
     }
 }
 
+/// UI 폼 복원용 상황 데이터 — SceneFocusInput → 평탄화된 JSON 구조
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SituationFormData {
+    desc: String,
+    npc_id: String,
+    partner_id: String,
+    has_event: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ev_desc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ev_self: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    has_other: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    other_target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    other_d: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prospect: Option<String>,
+    has_action: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    ac_desc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pw: Option<f32>,
+    has_object: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    obj_target: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    obj_ap: Option<f32>,
+}
+
 /// SceneFocusInput에서 UI 폼 복원용 JSON 맵을 생성합니다.
 fn build_situation_map(
     fi: &SceneFocusInput,
     npc_id: &str,
     partner_id: &str,
 ) -> serde_json::Map<String, serde_json::Value> {
-    let mut sit = serde_json::Map::new();
-    sit.insert("desc".into(), serde_json::json!(fi.description));
-    sit.insert("npcId".into(), serde_json::json!(npc_id));
-    sit.insert("partnerId".into(), serde_json::json!(partner_id));
+    let form = SituationFormData {
+        desc: fi.description.clone(),
+        npc_id: npc_id.to_string(),
+        partner_id: partner_id.to_string(),
+        has_event: fi.event.is_some(),
+        ev_desc: fi.event.as_ref().map(|e| e.description.clone()),
+        ev_self: fi.event.as_ref().map(|e| e.desirability_for_self),
+        has_other: fi.event.as_ref().map(|e| e.other.is_some()),
+        other_target: fi.event.as_ref().and_then(|e| e.other.as_ref().map(|o| o.target_id.clone())),
+        other_d: fi.event.as_ref().and_then(|e| e.other.as_ref().map(|o| o.desirability)),
+        prospect: fi.event.as_ref().and_then(|e| e.prospect.clone()),
+        has_action: fi.action.is_some(),
+        ac_desc: fi.action.as_ref().map(|a| a.description.clone()),
+        agent_id: fi.action.as_ref().and_then(|a| a.agent_id.clone()),
+        pw: fi.action.as_ref().map(|a| a.praiseworthiness),
+        has_object: fi.object.is_some(),
+        obj_target: fi.object.as_ref().map(|o| o.target_id.clone()),
+        obj_ap: fi.object.as_ref().map(|o| o.appealingness),
+    };
 
-    if let Some(ref ev) = fi.event {
-        sit.insert("hasEvent".into(), serde_json::json!(true));
-        sit.insert("evDesc".into(), serde_json::json!(ev.description));
-        sit.insert("evSelf".into(), serde_json::json!(ev.desirability_for_self));
-        sit.insert("hasOther".into(), serde_json::json!(ev.other.is_some()));
-        if let Some(ref o) = ev.other {
-            sit.insert("otherTarget".into(), serde_json::json!(o.target_id));
-            sit.insert("otherD".into(), serde_json::json!(o.desirability));
-        }
-        sit.insert("prospect".into(), serde_json::json!(ev.prospect));
-    } else {
-        sit.insert("hasEvent".into(), serde_json::json!(false));
+    match serde_json::to_value(form) {
+        Ok(serde_json::Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
     }
-
-    if let Some(ref ac) = fi.action {
-        sit.insert("hasAction".into(), serde_json::json!(true));
-        sit.insert("acDesc".into(), serde_json::json!(ac.description));
-        sit.insert("agentId".into(), serde_json::json!(ac.agent_id));
-        sit.insert("pw".into(), serde_json::json!(ac.praiseworthiness));
-    } else {
-        sit.insert("hasAction".into(), serde_json::json!(false));
-    }
-
-    if let Some(ref obj) = fi.object {
-        sit.insert("hasObject".into(), serde_json::json!(true));
-        sit.insert("objTarget".into(), serde_json::json!(obj.target_id));
-        sit.insert("objAp".into(), serde_json::json!(obj.appealingness));
-    } else {
-        sit.insert("hasObject".into(), serde_json::json!(false));
-    }
-
-    sit
 }
 
 // ---------------------------------------------------------------------------

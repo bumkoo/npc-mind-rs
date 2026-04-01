@@ -23,6 +23,8 @@ tower-http = { version = "0.6", features = ["cors", "fs"], optional = true }
 
 [dev-dependencies]
 approx = "0.5"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
 
 [[bin]]
 name = "npc-mind-studio"

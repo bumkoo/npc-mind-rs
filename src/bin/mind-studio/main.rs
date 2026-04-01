@@ -14,7 +14,50 @@ mod handlers;
 mod state;
 mod trace_collector;
 
+#[cfg(test)]
+mod handler_tests;
+
 use state::AppState;
+
+/// API 라우터를 생성합니다 (테스트에서도 재사용).
+fn build_api_router(state: AppState) -> Router {
+    Router::new()
+        .route(
+            "/api/npcs",
+            get(handlers::list_npcs).post(handlers::upsert_npc),
+        )
+        .route("/api/npcs/{id}", delete(handlers::delete_npc))
+        .route(
+            "/api/relationships",
+            get(handlers::list_relationships).post(handlers::upsert_relationship),
+        )
+        .route(
+            "/api/relationships/{owner}/{target}",
+            delete(handlers::delete_relationship),
+        )
+        .route(
+            "/api/objects",
+            get(handlers::list_objects).post(handlers::upsert_object),
+        )
+        .route("/api/objects/{id}", delete(handlers::delete_object))
+        .route("/api/appraise", post(handlers::appraise))
+        .route("/api/stimulus", post(handlers::stimulus))
+        .route("/api/scene", post(handlers::scene))
+        .route("/api/guide", post(handlers::guide))
+        .route("/api/after-dialogue", post(handlers::after_dialogue))
+        .route("/api/scenarios", get(handlers::list_scenarios))
+        .route("/api/scenario-meta", get(handlers::get_scenario_meta))
+        .route("/api/scene-info", get(handlers::get_scene_info))
+        .route("/api/analyze-utterance", post(handlers::analyze_utterance))
+        .route("/api/history", get(handlers::get_history))
+        .route(
+            "/api/situation",
+            get(handlers::get_situation).put(handlers::put_situation),
+        )
+        .route("/api/save", post(handlers::save_state))
+        .route("/api/load", post(handlers::load_state))
+        .with_state(state)
+}
 
 /// embed feature 활성 시 PadAnalyzer 초기화
 #[cfg(feature = "embed")]
@@ -75,45 +118,8 @@ async fn main() {
     let static_dir =
         std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/mind-studio/static");
 
-    let app = Router::new()
-        // --- API ---
-        .route(
-            "/api/npcs",
-            get(handlers::list_npcs).post(handlers::upsert_npc),
-        )
-        .route("/api/npcs/{id}", delete(handlers::delete_npc))
-        .route(
-            "/api/relationships",
-            get(handlers::list_relationships).post(handlers::upsert_relationship),
-        )
-        .route(
-            "/api/relationships/{owner}/{target}",
-            delete(handlers::delete_relationship),
-        )
-        .route(
-            "/api/objects",
-            get(handlers::list_objects).post(handlers::upsert_object),
-        )
-        .route("/api/objects/{id}", delete(handlers::delete_object))
-        .route("/api/appraise", post(handlers::appraise))
-        .route("/api/stimulus", post(handlers::stimulus))
-        .route("/api/scene", post(handlers::scene))
-        .route("/api/guide", post(handlers::guide))
-        .route("/api/after-dialogue", post(handlers::after_dialogue))
-        .route("/api/scenarios", get(handlers::list_scenarios))
-        .route("/api/scenario-meta", get(handlers::get_scenario_meta))
-        .route("/api/scene-info", get(handlers::get_scene_info))
-        .route("/api/analyze-utterance", post(handlers::analyze_utterance))
-        .route("/api/history", get(handlers::get_history))
-        .route(
-            "/api/situation",
-            get(handlers::get_situation).put(handlers::put_situation),
-        )
-        .route("/api/save", post(handlers::save_state))
-        .route("/api/load", post(handlers::load_state))
-        // --- 정적 파일 (SPA) ---
-        .fallback_service(ServeDir::new(static_dir))
-        .with_state(state);
+    let app = build_api_router(state)
+        .fallback_service(ServeDir::new(static_dir));
 
     let port = std::env::var("MIND_STUDIO_PORT").unwrap_or_else(|_| "3000".to_string());
     let addr = format!("127.0.0.1:{port}");

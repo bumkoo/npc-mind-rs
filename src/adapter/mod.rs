@@ -9,6 +9,7 @@
 #[cfg(feature = "embed")]
 pub mod ort_embedder;
 
+pub(crate) mod anchor_common;
 pub mod json_anchor_source;
 pub mod memory_repository;
 pub mod toml_anchor_source;
