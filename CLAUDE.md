@@ -31,6 +31,7 @@ cargo test --test locale_test         # 언어 설정 + 플러거블 포맷터
 cargo test --test port_injection_test # 포트 주입 + Scene/Beat 통합
 cargo test --test coverage_gap_test   # 커버리지 갭 보완 (valence, merge, PAD 좌표 등)
 cargo test --test scene_test          # Scene 도메인 애그리거트 단위 테스트
+cargo test --test anchor_source_test  # PAD 앵커 소스 어댑터 (TOML/JSON 파싱 + 캐시)
 cargo test --test embed_test          # PAD 앵커 임베딩 통합 (embed feature 필요)
 
 # PAD 벤치마크 & 분석 (embed feature 필요)
@@ -64,6 +65,7 @@ src/
     relationship.rs               # 관계 모델 (closeness, trust, power) + significance
     pad.rs                        # PAD 감정 공간 분석
     pad_table.rs                  # OCC → PAD 좌표 매핑 테이블 (Gebhard 2005 기반)
+    pad_anchors.rs                # PAD 앵커 레지스트리 (빌트인 TOML 로드)
     emotion/
       appraisal/                  # 세부 평가 모듈 (event, action, object, compound, helpers)
       engine.rs                   # AppraisalEngine (Appraiser 포트 구현)
@@ -76,13 +78,21 @@ src/
       directive.rs                # ActingDirective (감정+성격 → 연기 지시)
       snapshot.rs                 # PersonalitySnapshot, EmotionSnapshot, RelationshipSnapshot
   ports.rs                        # 포트 트레이트 (MindRepository, Appraiser, GuideFormatter 등)
-  adapter/                        # 포트 구현 (ORT Embedder 등)
+  adapter/                        # 포트 구현 (인프라 어댑터)
+    ort_embedder.rs               # ORT ONNX 임베딩 (embed feature)
+    toml_anchor_source.rs         # TOML 기반 PadAnchorSource 구현
+    json_anchor_source.rs         # JSON 기반 PadAnchorSource 구현
   presentation/                   # 다국어 지원 및 텍스트 포맷팅
     mod.rs                        # 빌트인 로케일 레지스트리 (ko, en)
     formatter.rs                  # LocaleFormatter (TOML 기반 포맷터)
     locale.rs                     # LocaleBundle (TOML 파싱 + deep merge)
     korean.rs                     # KoreanFormatter (편의 래퍼)
   bin/mind-studio/                # NPC Mind Studio (Axum 서버)
+    main.rs                       # Axum 웹 서버 진입점
+    handlers.rs                   # HTTP 엔드포인트 핸들러
+    state.rs                      # 공유 애플리케이션 상태
+    trace_collector.rs            # Appraisal Trace 수집기
+    static/index.html             # 웹 UI
 tests/
   common/mod.rs                   # TestContext, MockRepository, Fixtures
   application_test.rs             # MindService API + after_beat/after_dialogue 비교
@@ -102,6 +112,8 @@ tests/
 locales/
   ko.toml                          # 한국어 로케일 TOML
   en.toml                          # 영어 로케일 TOML
+  anchors/
+    ko.toml                        # 한국어 PAD 앵커 텍스트 (무협 도메인)
 docs/
   architecture/
     architecture-v2.md              # 아키텍처 v2 설계 문서
@@ -121,6 +133,14 @@ docs/
     embedding-adapter-migration.md  # 임베딩 어댑터 마이그레이션
   collaboration-workflow.md         # 협업 워크플로우
   locale-guide.md                   # 언어 설정 가이드 (개발자/사용자)
+data/
+  huckleberry_finn/                 # 소설 기반 테스트 시나리오
+    ch8_jackson_island_meeting/     # 8장: 잭슨 섬 만남
+      session_001/                  # scenario.json + evaluation + turn logs
+      session_002/                  # scenario.json + evaluation
+    ch15_fog_trash/                 # 15장: 안개 속 쓰레기
+      session_001/                  # scenario.json
+  presets/                          # 캐릭터 사전설정 JSON (so_ho, shu_lien, mu_baek, gyo_ryong)
 ```
 
 ## 아키텍처 (DDD + 헥사고날 + 계층화)
@@ -174,6 +194,7 @@ docs/
 | `AppraisalWeights` | 성격 → 감정 가중치 | `HexacoProfile` |
 | `StimulusWeights` | 성격 → 자극 수용도 | `HexacoProfile` |
 | `GuideFormatter` | 가이드 → 텍스트/JSON | `LocaleFormatter`, `KoreanFormatter` |
+| `PadAnchorSource` | PAD 앵커 로드/캐시 | `TomlAnchorSource`, `JsonAnchorSource` |
 | `TextEmbedder` | 텍스트 → 벡터 | `OrtEmbedder` (embed feature) |
 | `UtteranceAnalyzer` | 대사 → PAD | `PadAnalyzer` |
 
@@ -331,6 +352,8 @@ apply_stimulus 호출
 | CLOSENESS_UPDATE_RATE | 0.05 | 친밀도 갱신 계수 |
 | SIGNIFICANCE_SCALE | 3.0 | 상황 중요도 배율 (sig=1.0 → 4배) |
 | PAD_D_SCALE_WEIGHT | 0.3 | PAD D축 격차 스케일러 |
+| PAD_AXIS_DEAD_ZONE | 0.02 | PAD 축 데드존 (미세 변동 무시) |
+| PAD_AXIS_SCALE | 3.0 | PAD 축 스케일 계수 |
 | MOOD_THRESHOLD | 0.3 | 기분 분기 임계값 |
 | HONESTY_RESTRICTION_THRESHOLD | 0.5 | 정직성 제약 임계값 |
 | EMOTION_THRESHOLD | 0.2 | 감정 유의미 판단 기준 (가이드 반영) |
