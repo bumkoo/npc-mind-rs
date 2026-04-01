@@ -17,6 +17,7 @@ use crate::ports::{AnchorLoadError, PadAnchorSource};
 
 #[derive(Deserialize)]
 struct AnchorToml {
+    /// TOML 스키마 호환용 — 파싱 시 필드 존재 확인만 하고 값은 사용하지 않음
     #[allow(dead_code)]
     meta: AnchorMeta,
     pleasure: AxisAnchorsToml,
@@ -26,8 +27,10 @@ struct AnchorToml {
 
 #[derive(Deserialize)]
 struct AnchorMeta {
+    /// 앵커 언어 코드 (예: "ko") — 파싱 검증용, 런타임에서는 미사용
     #[allow(dead_code)]
     language: String,
+    /// 앵커 데이터 버전 — 하위 호환성 검증용, 런타임에서는 미사용
     #[allow(dead_code)]
     version: String,
 }

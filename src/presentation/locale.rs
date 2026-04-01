@@ -271,76 +271,62 @@ impl LocaleBundle {
         }
     }
 
+    /// VariantName 트레이트를 구현한 enum → 번역 테이블에서 조회하는 제네릭 헬퍼
+    ///
+    /// 번역이 없으면 variant 이름을 그대로 반환 (폴백).
+    fn lookup<'a>(&'a self, map: &'a HashMap<String, String>, item: &dyn VariantName) -> &'a str {
+        let key = item.variant_name();
+        map.get(key).map(|s| s.as_str()).unwrap_or(key)
+    }
+
     /// EmotionType → 번역된 이름
     pub fn emotion_name(&self, etype: &EmotionType) -> &str {
-        let key = etype.variant_name();
-        self.emotion.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.emotion, etype)
     }
 
     /// Tone → 번역된 설명
     pub fn tone_label(&self, tone: &Tone) -> &str {
-        let key = tone.variant_name();
-        self.tone.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.tone, tone)
     }
 
     /// Attitude → 번역된 설명
     pub fn attitude_label(&self, attitude: &Attitude) -> &str {
-        let key = attitude.variant_name();
-        self.attitude.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.attitude, attitude)
     }
 
     /// BehavioralTendency → 번역된 설명
     pub fn behavioral_tendency_label(&self, bt: &BehavioralTendency) -> &str {
-        let key = bt.variant_name();
-        self.behavioral_tendency
-            .get(key)
-            .map(|s| s.as_str())
-            .unwrap_or(key)
+        self.lookup(&self.behavioral_tendency, bt)
     }
 
     /// Restriction → 번역된 설명
     pub fn restriction_label(&self, r: &Restriction) -> &str {
-        let key = r.variant_name();
-        self.restriction.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.restriction, r)
     }
 
     /// PersonalityTrait → 번역된 설명
     pub fn personality_trait_label(&self, t: &PersonalityTrait) -> &str {
-        let key = t.variant_name();
-        self.personality_trait
-            .get(key)
-            .map(|s| s.as_str())
-            .unwrap_or(key)
+        self.lookup(&self.personality_trait, t)
     }
 
     /// SpeechStyle → 번역된 설명
     pub fn speech_style_label(&self, s: &SpeechStyle) -> &str {
-        let key = s.variant_name();
-        self.speech_style
-            .get(key)
-            .map(|s| s.as_str())
-            .unwrap_or(key)
+        self.lookup(&self.speech_style, s)
     }
 
     /// RelationshipLevel → 친밀도 번역
     pub fn closeness_level_label(&self, level: &RelationshipLevel) -> &str {
-        let key = level.variant_name();
-        self.closeness_level
-            .get(key)
-            .map(|s| s.as_str())
-            .unwrap_or(key)
+        self.lookup(&self.closeness_level, level)
     }
 
     /// RelationshipLevel → 신뢰도 번역
     pub fn trust_level_label(&self, level: &RelationshipLevel) -> &str {
-        let key = level.variant_name();
-        self.trust_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.trust_level, level)
     }
 
     /// PowerLevel → 번역된 설명
     pub fn power_level_label(&self, level: &PowerLevel) -> &str {
-        let key = level.variant_name();
-        self.power_level.get(key).map(|s| s.as_str()).unwrap_or(key)
+        self.lookup(&self.power_level, level)
     }
 
     /// 성격 특성 목록을 번역된 문장으로 조합

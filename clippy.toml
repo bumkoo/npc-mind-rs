@@ -1,0 +1,10 @@
+# NPC Mind Engine — clippy 설정
+
+# 인지 복잡도 임계값 (기본 25, 조금 엄격하게)
+cognitive-complexity-threshold = 20
+
+# 함수 파라미터 개수 상한
+too-many-arguments-threshold = 8
+
+# enum variant 개수 상한 (OCC 감정 22개 허용)
+enum-variant-count-threshold = 30

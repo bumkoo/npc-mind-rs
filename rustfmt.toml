@@ -1,0 +1,19 @@
+# NPC Mind Engine — rustfmt 설정
+# Rust stable 호환 옵션만 사용
+
+# 최대 줄 길이
+max_width = 100
+
+# use 정렬: 블록 단위 (crate/super/self 구분)
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# 탭 대신 스페이스 (기본값 유지 명시)
+tab_spaces = 4
+hard_tabs = false
+
+# 함수 인자가 길 때 한 줄에 하나씩
+fn_params_layout = "Tall"
+
+# edition
+edition = "2024"

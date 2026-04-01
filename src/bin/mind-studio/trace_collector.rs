@@ -24,7 +24,12 @@ impl AppraisalCollector {
 
     /// 수집된 trace 항목을 가져오고 내부 버퍼 비움
     pub fn take_entries(&self) -> Vec<String> {
-        std::mem::take(&mut *self.entries.lock().unwrap())
+        // Mutex가 poisoned 되는 경우는 다른 스레드가 panic한 상황으로,
+        // trace 수집이 중단되어도 서비스에 영향 없으므로 빈 벡터 반환.
+        match self.entries.lock() {
+            Ok(mut guard) => std::mem::take(&mut *guard),
+            Err(_poisoned) => Vec::new(),
+        }
     }
 }
 
@@ -70,6 +75,9 @@ impl<S: Subscriber> Layer<S> for AppraisalCollector {
             .collect();
 
         let line = format!("  → {}: {}", emotion, parts.join(", "));
-        self.entries.lock().unwrap().push(line);
+        // Mutex poisoned 시 trace 항목 유실 허용 (서비스 안정성 우선)
+        if let Ok(mut guard) = self.entries.lock() {
+            guard.push(line);
+        }
     }
 }

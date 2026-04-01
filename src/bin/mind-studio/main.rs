@@ -115,8 +115,13 @@ async fn main() {
         .fallback_service(ServeDir::new(static_dir))
         .with_state(state);
 
-    let addr = "127.0.0.1:3000";
+    let port = std::env::var("MIND_STUDIO_PORT").unwrap_or_else(|_| "3000".to_string());
+    let addr = format!("127.0.0.1:{port}");
     println!("NPC Mind Studio: http://{addr}");
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Mind Studio 서버 포트 바인딩 실패 — MIND_STUDIO_PORT 환경변수를 확인하세요");
+    axum::serve(listener, app)
+        .await
+        .expect("Mind Studio 서버 실행 중 오류 발생");
 }

@@ -60,7 +60,7 @@ struct ScenarioJson {
     scene: Option<SceneJson>,
     #[serde(default)]
     turn_history: Vec<serde_json::Value>,
-    // current_situation: 파싱만 하고 무시
+    /// Mind Studio UI 상태 보존용 — 로드 시 파싱하지만 엔진에서는 미사용
     #[serde(default)]
     #[allow(dead_code)]
     current_situation: Option<serde_json::Value>,
@@ -194,6 +194,7 @@ impl RelationshipJson {
 struct ObjectJson {
     #[serde(default)]
     description: String,
+    /// Mind Studio JSON 스키마 호환용 — 향후 오브젝트 분류에 활용 예정
     #[allow(dead_code)]
     #[serde(default)]
     category: Option<String>,
@@ -205,6 +206,7 @@ struct ScenarioMeta {
     name: String,
     #[serde(default)]
     description: String,
+    /// 시나리오 메모 — JSON 저장/로드 호환용, 엔진에서는 미사용
     #[serde(default)]
     #[allow(dead_code)]
     notes: Vec<String>,
@@ -214,6 +216,7 @@ struct ScenarioMeta {
 struct SceneJson {
     npc_id: String,
     partner_id: String,
+    /// Scene 설명 — JSON 저장/로드 호환용, 엔진에서는 미사용
     #[allow(dead_code)]
     #[serde(default)]
     description: String,

@@ -24,6 +24,7 @@ use crate::state::*;
 pub enum AppError {
     Service(MindServiceError),
     Internal(String),
+    /// 향후 리소스 조회 실패 핸들링용 — 현재 CRUD는 빈 결과를 허용하므로 미사용
     #[allow(dead_code)]
     NotFound(String),
     NotImplemented(String),
