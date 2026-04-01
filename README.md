@@ -155,9 +155,10 @@ let response = service.appraise(AppraiseRequest {
     situation: SituationInput {
         description: "동료가 적에게 아군 위치를 밀고했다".into(),
         event: Some(EventInput {
-            desirability_for_self: -0.8,
             description: "배신으로 인한 피해".into(),
-            ..Default::default()
+            desirability_for_self: -0.8,
+            other: None,
+            prospect: None,
         }),
         action: Some(ActionInput {
             agent_id: Some("jo_ryong".into()),
@@ -207,7 +208,7 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 - Auto-analyze dialogue text to PAD values (with `embed` feature)
 - Save/load scenario files for iterative testing
 
-![Mind Studio showing NPC emotion bars and generated prompt](docs/assests/mind-studio-preview.png)
+![Mind Studio showing NPC emotion bars and generated prompt](docs/assets/mind-studio-preview.png)
 
 ---
 
@@ -299,9 +300,10 @@ The engine is being validated against real literary scenes (currently: *Adventur
 - ✅ Scene/Beat system with automatic transitions (Scene aggregate)
 - ✅ Korean + English locale
 - ✅ BGE-M3 embedding for dialogue → PAD analysis
+- ✅ PAD anchor externalization (PadAnchorSource port + TOML/JSON adapters)
+- ✅ Power → tone mapping (PowerLevel in ActingDirective)
+- ✅ Devcontainer / GitHub Codespaces support
 - 🔄 Literary validation sessions ongoing
-- 🔜 PAD anchor optimization for domain-specific speech styles
-- 🔜 Power → tone mapping refinement
 - 🔜 Multi-NPC dialogue context
 
 ---
