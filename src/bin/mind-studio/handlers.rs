@@ -118,15 +118,32 @@ impl<'a> EmotionStore for AppStateRepository<'a> {
 }
 
 impl<'a> SceneStore for AppStateRepository<'a> {
-    fn get_scene_focuses(&self) -> &[SceneFocus] { &self.inner.scene_focuses }
-    fn set_scene_focuses(&mut self, focuses: Vec<SceneFocus>) { self.inner.scene_focuses = focuses; }
-    fn get_active_focus_id(&self) -> Option<&str> { self.inner.active_focus_id.as_deref() }
-    fn set_active_focus_id(&mut self, id: Option<String>) { self.inner.active_focus_id = id; }
-    fn get_scene_npc_id(&self) -> Option<&str> { self.inner.scene_npc_id.as_deref() }
-    fn get_scene_partner_id(&self) -> Option<&str> { self.inner.scene_partner_id.as_deref() }
-    fn set_scene_ids(&mut self, npc_id: String, partner_id: String) {
-        self.inner.scene_npc_id = Some(npc_id);
-        self.inner.scene_partner_id = Some(partner_id);
+    fn get_scene(&self) -> Option<Scene> {
+        let npc_id = self.inner.scene_npc_id.as_ref()?;
+        let partner_id = self.inner.scene_partner_id.as_ref()?;
+        let mut scene = Scene::new(
+            npc_id.clone(),
+            partner_id.clone(),
+            self.inner.scene_focuses.clone(),
+        );
+        if let Some(ref id) = self.inner.active_focus_id {
+            scene.set_active_focus(id.clone());
+        }
+        Some(scene)
+    }
+
+    fn save_scene(&mut self, scene: Scene) {
+        self.inner.scene_npc_id = Some(scene.npc_id().to_string());
+        self.inner.scene_partner_id = Some(scene.partner_id().to_string());
+        self.inner.scene_focuses = scene.focuses().to_vec();
+        self.inner.active_focus_id = scene.active_focus_id().map(|s| s.to_string());
+    }
+
+    fn clear_scene(&mut self) {
+        self.inner.scene_npc_id = None;
+        self.inner.scene_partner_id = None;
+        self.inner.scene_focuses.clear();
+        self.inner.active_focus_id = None;
     }
 }
 
@@ -151,13 +168,22 @@ impl<'a> EmotionStore for ReadOnlyAppStateRepo<'a> {
 }
 
 impl<'a> SceneStore for ReadOnlyAppStateRepo<'a> {
-    fn get_scene_focuses(&self) -> &[SceneFocus] { &self.inner.scene_focuses }
-    fn set_scene_focuses(&mut self, _: Vec<SceneFocus>) { unreachable!("read-only") }
-    fn get_active_focus_id(&self) -> Option<&str> { self.inner.active_focus_id.as_deref() }
-    fn set_active_focus_id(&mut self, _: Option<String>) { unreachable!("read-only") }
-    fn get_scene_npc_id(&self) -> Option<&str> { self.inner.scene_npc_id.as_deref() }
-    fn get_scene_partner_id(&self) -> Option<&str> { self.inner.scene_partner_id.as_deref() }
-    fn set_scene_ids(&mut self, _: String, _: String) { unreachable!("read-only") }
+    fn get_scene(&self) -> Option<Scene> {
+        let npc_id = self.inner.scene_npc_id.as_ref()?;
+        let partner_id = self.inner.scene_partner_id.as_ref()?;
+        let mut scene = Scene::new(
+            npc_id.clone(),
+            partner_id.clone(),
+            self.inner.scene_focuses.clone(),
+        );
+        if let Some(ref id) = self.inner.active_focus_id {
+            scene.set_active_focus(id.clone());
+        }
+        Some(scene)
+    }
+
+    fn save_scene(&mut self, _: Scene) { unreachable!("read-only") }
+    fn clear_scene(&mut self) { unreachable!("read-only") }
 }
 
 // ---------------------------------------------------------------------------
