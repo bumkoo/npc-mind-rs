@@ -38,7 +38,7 @@ fn test_mind_service_full_flow() {
         },
     };
 
-    let res = service.appraise(req, || {}, || vec![]).expect("Appraisal failed");
+    let res = service.appraise(req, || {}, Vec::new).expect("Appraisal failed");
     
     // 무백은 정의로우므로 Admiration(감탄)이 발생해야 함
     assert!(res.emotions.iter().any(|e| e.emotion_type == "Admiration"));
@@ -56,7 +56,7 @@ fn test_mind_service_full_flow() {
         dominance: 0.0,
     };
 
-    let res2 = service.apply_stimulus(stim_req, || {}, || vec![]).expect("Stimulus failed");
+    let res2 = service.apply_stimulus(stim_req, || {}, Vec::new).expect("Stimulus failed");
     assert!(res2.mood > res.mood); // 기분이 더 좋아져야 함
 
     // 3. 관계 갱신 (After Dialogue)
@@ -90,7 +90,7 @@ fn test_mind_service_errors() {
         },
     };
 
-    let res = service.appraise(req, || {}, || vec![]);
+    let res = service.appraise(req, || {}, Vec::new);
     assert!(res.is_err());
 }
 
@@ -184,7 +184,7 @@ fn after_beat_감정_유지() {
         },
     };
 
-    service.appraise(req, || {}, || vec![]).expect("appraise failed");
+    service.appraise(req, || {}, Vec::new).expect("appraise failed");
 
     // after_beat — 관계 갱신하되 감정 유지
     let beat_req = AfterDialogueRequest {
@@ -230,7 +230,7 @@ fn after_dialogue_감정_초기화() {
             object: None,
         },
     };
-    service.appraise(req, || {}, || vec![]).expect("appraise failed");
+    service.appraise(req, || {}, Vec::new).expect("appraise failed");
 
     // after_dialogue — 관계 갱신 + 감정 초기화
     let dialogue_req = AfterDialogueRequest {
@@ -366,7 +366,7 @@ fn test_beat_transition_and_emotion_merging() {
         dominance: -1.0,
     };
 
-    let stim_res = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
+    let stim_res = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
     
     // 4. 검증: 교룡은 민감하여 기쁨이 바로 사라지고 전환되어야 함
     assert!(stim_res.beat_changed, "교룡은 기쁨이 사라지는 즉시 Beat가 전환되어야 함");
@@ -376,7 +376,7 @@ fn test_beat_transition_and_emotion_merging() {
     let final_state = service.repository().get_emotion_state("gyo_ryong").unwrap();
     
     // - "angry" 비트의 결과인 Distress 또는 Anger가 존재해야 함
-    assert!(final_state.emotions().len() > 0, "병합 후 감정이 존재해야 함");
+    assert!(!final_state.emotions().is_empty(), "병합 후 감정이 존재해야 함");
     
     // - 이전 비트의 데이터가 유실되지 않고 병합 로직이 정상 호출되었음을 확인
     // (이전 기쁨은 사라졌지만, 병합된 상태 자체는 유효해야 함)
