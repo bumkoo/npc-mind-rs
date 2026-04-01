@@ -335,7 +335,30 @@ pub struct EmotionOutput {
 
 ## Repository Ports
 
-라이브러리 사용자가 구현해야 하는 3개의 저장소 트레이트입니다.
+3개의 저장소 트레이트입니다. 기본 제공 `InMemoryRepository`를 사용하거나 직접 구현할 수 있습니다.
+
+### InMemoryRepository — 기본 제공 구현체
+
+```rust
+use npc_mind::InMemoryRepository;
+
+// Mind Studio JSON 로드 (권장)
+let repo = InMemoryRepository::from_file("data/scenario.json")?;
+
+// JSON 문자열에서 로드
+let repo = InMemoryRepository::from_json(json_str)?;
+
+// 프로그래밍 방식
+let mut repo = InMemoryRepository::new();
+repo.add_npc(npc);
+repo.add_relationship(rel);
+repo.add_object("sword", "명검");
+
+// 메타데이터 접근자
+repo.scenario_name();        // 시나리오 이름
+repo.scenario_description(); // 시나리오 설명
+repo.turn_history();         // 턴 히스토리
+```
 
 ### NpcWorld — 게임 세계 데이터
 

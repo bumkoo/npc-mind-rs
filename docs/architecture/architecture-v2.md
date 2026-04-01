@@ -94,7 +94,7 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 |------|----------|------|
 | **도메인** | `AppraisalEngine`, `StimulusEngine` | 순수 심리 연산 (I/O 없음) |
 | **포트** | `MindRepository`(`NpcWorld`+`EmotionStore`+`SceneStore`), `Appraiser`, `StimulusProcessor`, `GuideFormatter`, `TextEmbedder` | 외부 세계와의 인터페이스 정의 (모두 `ports.rs`에 위치). `SceneStore`는 Scene 애그리거트 단위로 `get_scene`/`save_scene`/`clear_scene` 제공 |
-| **어댑터** | `OrtEmbedder`, `AppStateRepository`, `LocaleFormatter`, `KoreanFormatter` | 구체적인 기술 구현 (ONNX, InMemory, TOML 등) |
+| **어댑터** | `InMemoryRepository` (기본 MindRepository), `OrtEmbedder`, `LocaleFormatter`, `KoreanFormatter`; Mind Studio 전용: `AppStateRepository` | 구체적인 기술 구현 (InMemory/JSON, ONNX, TOML 등) |
 
 ---
 

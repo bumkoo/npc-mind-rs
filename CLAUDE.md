@@ -147,6 +147,11 @@ data/
     ch15_fog_trash/                 # 15장: 안개 속 쓰레기
       session_001/                  # scenario.json
   presets/                          # 캐릭터 사전설정 JSON (so_ho, shu_lien, mu_baek, gyo_ryong)
+mcp/
+  mind_studio_server.py             # MCP 서버 — Mind Studio API 16개 도구 노출 (Python + mcp SDK)
+  requirements.txt                  # Python 의존성 (mcp, httpx)
+  README.md                         # AI Agent용 MCP 설정 가이드
+.mcp.json                           # 프로젝트 MCP 서버 설정 (mind-studio)
 ```
 
 ## 아키텍처 (DDD + 헥사고날 + 계층화)
