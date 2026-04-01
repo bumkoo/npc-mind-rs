@@ -98,34 +98,58 @@ pub struct NpcProfile {
     pub name: String,
     pub description: String,
     // H: 정직-겸손성
+    #[serde(default)]
     pub sincerity: f32,
+    #[serde(default)]
     pub fairness: f32,
+    #[serde(default)]
     pub greed_avoidance: f32,
+    #[serde(default)]
     pub modesty: f32,
     // E: 정서성
+    #[serde(default)]
     pub fearfulness: f32,
+    #[serde(default)]
     pub anxiety: f32,
+    #[serde(default)]
     pub dependence: f32,
+    #[serde(default)]
     pub sentimentality: f32,
     // X: 외향성
+    #[serde(default)]
     pub social_self_esteem: f32,
+    #[serde(default)]
     pub social_boldness: f32,
+    #[serde(default)]
     pub sociability: f32,
+    #[serde(default)]
     pub liveliness: f32,
     // A: 원만성
+    #[serde(default)]
     pub forgiveness: f32,
+    #[serde(default)]
     pub gentleness: f32,
+    #[serde(default)]
     pub flexibility: f32,
+    #[serde(default)]
     pub patience: f32,
     // C: 성실성
+    #[serde(default)]
     pub organization: f32,
+    #[serde(default)]
     pub diligence: f32,
+    #[serde(default)]
     pub perfectionism: f32,
+    #[serde(default)]
     pub prudence: f32,
     // O: 경험개방성
+    #[serde(default)]
     pub aesthetic_appreciation: f32,
+    #[serde(default)]
     pub inquisitiveness: f32,
+    #[serde(default)]
     pub creativity: f32,
+    #[serde(default)]
     pub unconventionality: f32,
 }
 
