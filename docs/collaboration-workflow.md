@@ -3,7 +3,7 @@
 ## 개요
 
 이 문서는 Bekay와 Claude가 NPC 심리 엔진을 **반복적으로 개선**하기 위한 협업 루프를 정의한다.
-핵심 도구는 Mind Studio (http://127.0.0.1:3000)이며, Claude는 API로, Bekay는 브라우저로 동시에 사용한다.
+핵심 도구는 Mind Studio (http://127.0.0.1:3000)이며, Claude는 MCP 도구 또는 API로, Bekay는 브라우저로 동시에 사용한다.
 
 ---
 
@@ -416,3 +416,52 @@ data/{도서명}/{장면명}/session_{NNN}/
 | **조회** | `GET /api/scenarios` | 시나리오 목록 |
 | | `GET /api/scenario-meta` | 현재 시나리오 메타데이터 |
 
+## MCP Server (AI Agent 연동)
+
+Claude Code 등 AI Agent가 Mind Studio를 자율적으로 사용할 때는 MCP 서버를 통해 도구로 호출합니다.
+
+### 설정
+
+```bash
+# Mind Studio 서버 실행
+cargo run --features mind-studio --bin npc-mind-studio
+
+# Python MCP 의존성 설치
+pip install -r mcp/requirements.txt
+```
+
+프로젝트의 `.mcp.json`:
+```json
+{
+  "mcpServers": {
+    "mind-studio": {
+      "command": "python",
+      "args": ["mcp/mind_studio_server.py"],
+      "env": { "MIND_STUDIO_URL": "http://localhost:3000" }
+    }
+  }
+}
+```
+
+### MCP 도구 ↔ HTTP API 매핑
+
+| MCP 도구 | HTTP 엔드포인트 | 워크플로우 단계 |
+|----------|----------------|---------------|
+| `create_npc` | `POST /api/npcs` | ② 프로파일 |
+| `create_relationship` | `POST /api/relationships` | ② 프로파일 |
+| `create_object` | `POST /api/objects` | ② 프로파일 |
+| `appraise` | `POST /api/appraise` | ③ 감정 평가 |
+| `apply_stimulus` | `POST /api/stimulus` | ③ 감정 평가 |
+| `generate_guide` | `POST /api/guide` | ③ 감정 평가 |
+| `start_scene` | `POST /api/scene` | ③ 감정 평가 |
+| `get_scene_info` | `GET /api/scene-info` | ④ 결과 검증 |
+| `after_dialogue` | `POST /api/after-dialogue` | ⑥ 저장 |
+| `save_scenario` | `POST /api/save` | ⑥ 저장 |
+| `load_scenario` | `POST /api/load` | ⑥ 저장 |
+| `list_scenarios` | `GET /api/scenarios` | 조회 |
+| `list_npcs` | `GET /api/npcs` | 조회 |
+| `list_relationships` | `GET /api/relationships` | 조회 |
+| `list_objects` | `GET /api/objects` | 조회 |
+| `delete_npc` | `DELETE /api/npcs/{id}` | 관리 |
+
+자세한 도구 파라미터와 사용 예시는 [mcp/README.md](../../mcp/README.md) 참고.
