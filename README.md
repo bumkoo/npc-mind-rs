@@ -231,6 +231,33 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 
 ![Mind Studio showing NPC emotion bars and generated prompt](docs/assets/mind-studio-preview.png)
 
+### MCP Integration (AI Agent)
+
+AI Agent(Claude Code)가 Mind Studio API를 통해 시나리오를 자율적으로 설계/테스트할 수 있습니다.
+
+```bash
+# 1. Mind Studio 서버 실행
+cargo run --features mind-studio --bin npc-mind-studio
+
+# 2. Python MCP 의존성 설치
+pip install -r mcp/requirements.txt
+```
+
+다른 프로젝트의 `.mcp.json`에 추가:
+
+```json
+{
+  "mcpServers": {
+    "mind-studio": {
+      "command": "python",
+      "args": ["/path/to/npc-mind-rs/mcp/mind_studio_server.py"]
+    }
+  }
+}
+```
+
+AI Agent가 사용할 수 있는 16개 MCP 도구: NPC/관계 CRUD, 감정 평가(`appraise`), PAD 자극(`apply_stimulus`), Scene/Beat 관리, 시나리오 저장/로드. 자세한 내용은 [MCP 가이드](mcp/README.md)를 참고하세요.
+
 ---
 
 ## Architecture
@@ -318,6 +345,7 @@ See [locale guide](docs/locale-guide.md) for the full TOML schema.
 | [Integration Guide](docs/api/integration-guide.md) | Step-by-step: NPC creation → scene setup → directive generation |
 | [Locale Guide](docs/locale-guide.md) | TOML locale schema and customization |
 | [Architecture](docs/architecture/architecture-v2.md) | DDD + Hexagonal architecture design |
+| [MCP Server Guide](mcp/README.md) | AI Agent용 Mind Studio MCP 도구 설정 |
 
 ---
 
@@ -336,6 +364,7 @@ The engine is being validated against real literary scenes (currently: *Adventur
 - ✅ Power → tone mapping (PowerLevel in ActingDirective)
 - ✅ Devcontainer / GitHub Codespaces support
 - ✅ InMemoryRepository built-in adapter (Mind Studio JSON load)
+- ✅ MCP server for AI Agent integration (16 tools)
 - 🔄 Literary validation sessions ongoing
 - 🔜 Multi-NPC dialogue context
 
