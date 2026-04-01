@@ -289,6 +289,17 @@ See [locale guide](docs/locale-guide.md) for the full TOML schema.
 
 ---
 
+## Documentation
+
+| Document | Description |
+|----------|-------------|
+| [API Reference](docs/api/api-reference.md) | Service methods, DTO types, repository ports |
+| [Integration Guide](docs/api/integration-guide.md) | Step-by-step: NPC creation → scene setup → directive generation |
+| [Locale Guide](docs/locale-guide.md) | TOML locale schema and customization |
+| [Architecture](docs/architecture/architecture-v2.md) | DDD + Hexagonal architecture design |
+
+---
+
 ## Project Status
 
 This is an active solo development project building toward a wuxia martial-arts RPG focused on character conflict and growth — think *Crouching Tiger, Hidden Dragon* as an interactive narrative.
