@@ -25,3 +25,4 @@ pub use application::dto::{
 pub use ports::{GuideFormatter, Appraiser, StimulusProcessor, PersonalityProfile, NpcWorld, EmotionStore, SceneStore, PadAnchorSource, AnchorLoadError};
 pub use presentation::formatter::LocaleFormatter;
 pub use presentation::builtin_toml;
+pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};

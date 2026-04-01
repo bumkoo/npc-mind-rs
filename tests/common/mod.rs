@@ -4,12 +4,14 @@
 
 #![allow(dead_code)]
 
-use std::collections::HashMap;
 use npc_mind::domain::personality::*;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, Scene, RelationshipModifiers};
-use npc_mind::{NpcWorld, EmotionStore, SceneStore};
+use npc_mind::domain::emotion::{EmotionState, EmotionType, Situation, EventFocus, ActionFocus, RelationshipModifiers};
+use npc_mind::InMemoryRepository;
 use npc_mind::application::mind_service::MindService;
+
+/// MockRepository는 InMemoryRepository의 별칭입니다 (기존 테스트 호환).
+pub type MockRepository = InMemoryRepository;
 
 pub fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
@@ -71,133 +73,29 @@ pub fn neutral_mods() -> RelationshipModifiers {
     RelationshipModifiers::neutral()
 }
 
-/// 테스트용 인메모리 저장소
-pub struct MockRepository {
-    pub npcs: HashMap<String, Npc>,
-    pub relationships: HashMap<String, Relationship>,
-    pub emotions: HashMap<String, EmotionState>,
-    pub scene: Option<Scene>,
-}
-
-impl MockRepository {
-    pub fn new() -> Self {
-        Self {
-            npcs: HashMap::new(),
-            relationships: HashMap::new(),
-            emotions: HashMap::new(),
-            scene: None,
-        }
-    }
-    
-    pub fn add_npc(&mut self, npc: Npc) {
-        self.npcs.insert(npc.id().to_string(), npc);
-    }
-
-    pub fn add_relationship(&mut self, rel: Relationship) {
-        let key = format!("{}:{}", rel.owner_id(), rel.target_id());
-        self.relationships.insert(key, rel);
-    }
-}
-
-impl NpcWorld for MockRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        self.npcs.get(id).cloned()
-    }
-
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        let key = format!("{}:{}", owner_id, target_id);
-        self.relationships.get(&key).cloned()
-            .or_else(|| {
-                let rev_key = format!("{}:{}", target_id, owner_id);
-                self.relationships.get(&rev_key).cloned()
-            })
-    }
-
-    fn get_object_description(&self, _object_id: &str) -> Option<String> {
-        None
-    }
-
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        let key = format!("{}:{}", owner_id, target_id);
-        self.relationships.insert(key, rel);
-    }
-}
-
-impl EmotionStore for MockRepository {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.emotions.get(npc_id).cloned()
-    }
-
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        self.emotions.insert(npc_id.to_string(), state);
-    }
-
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        self.emotions.remove(npc_id);
-    }
-}
-
-impl SceneStore for MockRepository {
-    fn get_scene(&self) -> Option<Scene> { self.scene.clone() }
-    fn save_scene(&mut self, scene: Scene) { self.scene = Some(scene); }
-    fn clear_scene(&mut self) { self.scene = None; }
-}
-
-/// MindService가 가변 참조를 통해서도 작동할 수 있도록 구현
-impl NpcWorld for &mut MockRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> { (**self).get_npc(id) }
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        (**self).get_relationship(owner_id, target_id)
-    }
-    fn get_object_description(&self, object_id: &str) -> Option<String> {
-        (**self).get_object_description(object_id)
-    }
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        (**self).save_relationship(owner_id, target_id, rel)
-    }
-}
-
-impl EmotionStore for &mut MockRepository {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        (**self).get_emotion_state(npc_id)
-    }
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        (**self).save_emotion_state(npc_id, state)
-    }
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        (**self).clear_emotion_state(npc_id)
-    }
-}
-
-impl SceneStore for &mut MockRepository {
-    fn get_scene(&self) -> Option<Scene> { (**self).get_scene() }
-    fn save_scene(&mut self, scene: Scene) { (**self).save_scene(scene) }
-    fn clear_scene(&mut self) { (**self).clear_scene() }
-}
-
 /// 표준 테스트 컨텍스트
 /// 
 /// 무백, 교룡이 미리 로드되어 있고 중립 관계가 설정된 상태로 시작합니다.
 pub struct TestContext {
-    pub repo: MockRepository,
+    pub repo: InMemoryRepository,
     pub mu_baek: Npc,
     pub gyo_ryong: Npc,
 }
 
 impl TestContext {
     pub fn new() -> Self {
-        let mut repo = MockRepository::new();
+        let mut repo = InMemoryRepository::new();
         let mu_baek = make_무백();
         let gyo_ryong = make_교룡();
-        
+
         repo.add_npc(mu_baek.clone());
         repo.add_npc(gyo_ryong.clone());
         repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
-        
+
         Self { repo, mu_baek, gyo_ryong }
     }
 
-    pub fn service(&mut self) -> MindService<&mut MockRepository> {
+    pub fn service(&mut self) -> MindService<&mut InMemoryRepository> {
         MindService::new(&mut self.repo)
     }
 }

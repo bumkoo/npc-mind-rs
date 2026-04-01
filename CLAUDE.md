@@ -31,6 +31,7 @@ cargo test --test locale_test         # 언어 설정 + 플러거블 포맷터
 cargo test --test port_injection_test # 포트 주입 + Scene/Beat 통합
 cargo test --test coverage_gap_test   # 커버리지 갭 보완 (valence, merge, PAD 좌표 등)
 cargo test --test scene_test          # Scene 도메인 애그리거트 단위 테스트
+cargo test --test repository_test     # InMemoryRepository (JSON 로드, Scene, 서비스 연동)
 cargo test --test anchor_source_test  # PAD 앵커 소스 어댑터 (TOML/JSON 파싱 + 캐시)
 cargo test --test embed_test          # PAD 앵커 임베딩 통합 (embed feature 필요)
 
@@ -79,6 +80,7 @@ src/
       snapshot.rs                 # PersonalitySnapshot, EmotionSnapshot, RelationshipSnapshot
   ports.rs                        # 포트 트레이트 (MindRepository, Appraiser, GuideFormatter 등)
   adapter/                        # 포트 구현 (인프라 어댑터)
+    memory_repository.rs          # InMemoryRepository — 기본 MindRepository 구현체 (JSON 로드)
     ort_embedder.rs               # ORT ONNX 임베딩 (embed feature)
     toml_anchor_source.rs         # TOML 기반 PadAnchorSource 구현
     json_anchor_source.rs         # JSON 기반 PadAnchorSource 구현
@@ -94,7 +96,7 @@ src/
     trace_collector.rs            # Appraisal Trace 수집기
     static/index.html             # 웹 UI
 tests/
-  common/mod.rs                   # TestContext, MockRepository, Fixtures
+  common/mod.rs                   # TestContext, InMemoryRepository 별칭, Fixtures
   application_test.rs             # MindService API + after_beat/after_dialogue 비교
   emotion_test.rs                 # OCC 감정 + 전망확인 + merge + trigger
   relationship_test.rs            # 관계 모델 + significance 배율
@@ -102,6 +104,7 @@ tests/
   coverage_gap_test.rs            # valence, merge 경계값, PAD 좌표, 수식 정밀 검증
   locale_test.rs                  # 언어 설정 + 플러거블 포맷터
   port_injection_test.rs          # 포트 주입 + Scene/Beat 통합
+  repository_test.rs              # InMemoryRepository (JSON 로드, Scene, 서비스 연동)
   scene_test.rs                   # Scene 도메인 애그리거트 단위 테스트
   embed_test.rs                   # PAD 앵커 임베딩 통합 (embed feature)
   pad_benchmark_test.rs           # PAD 앵커 정확도 벤치마크 (embed feature)
@@ -115,6 +118,9 @@ locales/
   anchors/
     ko.toml                        # 한국어 PAD 앵커 텍스트 (무협 도메인)
 docs/
+  api/
+    api-reference.md                # 공개 API 레퍼런스 (서비스, DTO, 포트, 도메인 타입)
+    integration-guide.md            # 외부 프로젝트 통합 가이드 (단계별)
   architecture/
     architecture-v2.md              # 아키텍처 v2 설계 문서
     situation-structure.md          # 상황 구조 설계
@@ -153,7 +159,13 @@ data/
 
 ### 핵심 진입점
 
-라이브러리 사용자는 `MindRepository` 포트를 구현하여 서비스를 생성합니다.
+라이브러리에 내장된 `InMemoryRepository`를 사용하거나, `MindRepository` 포트를 직접 구현하여 서비스를 생성합니다.
+
+**`InMemoryRepository`** — 기본 제공 MindRepository 구현체 (`adapter/memory_repository.rs`)
+- `InMemoryRepository::from_file("scenario.json")` — Mind Studio JSON 로드
+- `InMemoryRepository::from_json(json_str)` — JSON 문자열에서 로드
+- `InMemoryRepository::new()` — 빈 상태 + `add_npc()`/`add_relationship()`/`add_object()`
+- `scenario_name()`, `scenario_description()`, `turn_history()` — 메타데이터 접근자
 
 **`MindService<R, A, S>`** — 도메인 결과 반환 (포맷팅 없음)
 - 제네릭 `A: Appraiser`, `S: StimulusProcessor` (기본값: `AppraisalEngine`, `StimulusEngine`)
@@ -184,9 +196,9 @@ data/
 
 | 포트 | 용도 | 구현체 |
 |------|------|--------|
-| `NpcWorld` | NPC/관계/오브젝트 조회 및 관계 갱신 | 라이브러리 사용자가 구현 |
-| `EmotionStore` | NPC별 감정 상태 CRUD | 라이브러리 사용자가 구현 |
-| `SceneStore` | Scene 애그리거트 CRUD (`get_scene`/`save_scene`/`clear_scene`) | 라이브러리 사용자가 구현 |
+| `NpcWorld` | NPC/관계/오브젝트 조회 및 관계 갱신 | `InMemoryRepository` (기본) |
+| `EmotionStore` | NPC별 감정 상태 CRUD | `InMemoryRepository` (기본) |
+| `SceneStore` | Scene 애그리거트 CRUD (`get_scene`/`save_scene`/`clear_scene`) | `InMemoryRepository` (기본) |
 | `MindRepository` | 위 3개 포트 통합 (super-trait) | 자동 blanket impl |
 | `Appraiser` | 감정 평가 엔진 | `AppraisalEngine` (기본) |
 | `StimulusProcessor` | 자극 처리 엔진 | `StimulusEngine` (기본) |

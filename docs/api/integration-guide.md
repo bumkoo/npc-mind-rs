@@ -33,73 +33,48 @@ npc-mind = { git = "https://github.com/bumkoo/npc-mind-rs.git" }
 npc-mind = { git = "https://github.com/bumkoo/npc-mind-rs.git", features = ["embed"] }
 ```
 
-## 2. Repository 구현
+## 2. Repository 설정
 
-`MindRepository`는 3개의 포트 트레이트(`NpcWorld`, `EmotionStore`, `SceneStore`)를 통합한 super-trait입니다. 3개를 모두 구현하면 자동으로 `MindRepository`가 파생됩니다.
+라이브러리에 내장된 `InMemoryRepository`를 사용합니다. Mind Studio에서 저장한 scenario.json을 로드하거나, 프로그래밍 방식으로 데이터를 등록할 수 있습니다.
+
+### 방법 A: Mind Studio JSON 로드 (권장)
+
+Mind Studio에서 NPC, 관계, 오브젝트, Scene을 만들어 저장한 JSON을 한 줄로 로드합니다:
 
 ```rust
-use std::collections::HashMap;
+use npc_mind::InMemoryRepository;
+
+let repo = InMemoryRepository::from_file("data/my_scenario/scenario.json")?;
+// NPC, 관계, 오브젝트, Scene 모두 자동 로드
+```
+
+### 방법 B: 프로그래밍 방식
+
+```rust
+use npc_mind::InMemoryRepository;
+
+let mut repo = InMemoryRepository::new();
+repo.add_npc(npc);
+repo.add_relationship(rel);
+repo.add_object("sword", "명검 천하제일검");
+```
+
+### 방법 C: 커스텀 저장소
+
+DB 연동 등 특수한 경우에는 3개의 포트 트레이트를 직접 구현합니다:
+
+```rust
 use npc_mind::{NpcWorld, EmotionStore, SceneStore};
-use npc_mind::domain::personality::Npc;
-use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, Scene};
 
-pub struct GameRepository {
-    npcs: HashMap<String, Npc>,
-    relationships: HashMap<(String, String), Relationship>,
-    emotions: HashMap<String, EmotionState>,
-    scene: Option<Scene>,
-    objects: HashMap<String, String>,
-}
-
-impl NpcWorld for GameRepository {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        self.npcs.get(id).cloned()
-    }
-
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        self.relationships.get(&(owner_id.to_string(), target_id.to_string())).cloned()
-    }
-
-    fn get_object_description(&self, object_id: &str) -> Option<String> {
-        self.objects.get(object_id).cloned()
-    }
-
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        self.relationships.insert((owner_id.to_string(), target_id.to_string()), rel);
-    }
-}
-
-impl EmotionStore for GameRepository {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.emotions.get(npc_id).cloned()
-    }
-
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        self.emotions.insert(npc_id.to_string(), state);
-    }
-
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        self.emotions.remove(npc_id);
-    }
-}
-
-impl SceneStore for GameRepository {
-    fn get_scene(&self) -> Option<Scene> {
-        self.scene.clone()
-    }
-
-    fn save_scene(&mut self, scene: Scene) {
-        self.scene = Some(scene);
-    }
-
-    fn clear_scene(&mut self) {
-        self.scene = None;
-    }
-}
+impl NpcWorld for MyGameDB { /* ... */ }
+impl EmotionStore for MyGameDB { /* ... */ }
+impl SceneStore for MyGameDB { /* ... */ }
+// → MindRepository 자동 파생
 ```
 
 ## 3. NPC 생성
+
+> Mind Studio JSON 로드(방법 A)를 사용하면 이 단계가 불필요합니다.
 
 `NpcBuilder`로 HEXACO 24 패싯 성격을 정의합니다.
 
@@ -153,12 +128,14 @@ let mu_baek = NpcBuilder::new("mu_baek", "무백")
     .build();
 
 // Repository에 등록
-repo.npcs.insert("mu_baek".into(), mu_baek);
+repo.add_npc(mu_baek);
 ```
 
 > **Tip:** `Score::clamped(value)`를 사용하면 범위 초과 시 자동 클램프됩니다. `Score::neutral()`은 0.0입니다.
 
 ## 4. 관계 생성
+
+> Mind Studio JSON 로드(방법 A)를 사용하면 이 단계가 불필요합니다.
 
 ```rust
 use npc_mind::domain::relationship::{RelationshipBuilder, Score};
@@ -169,7 +146,7 @@ let rel = RelationshipBuilder::new("mu_baek", "player")
     .power(Score::clamped(0.0))       // 대등
     .build();
 
-repo.relationships.insert(("mu_baek".into(), "player".into()), rel);
+repo.add_relationship(rel);
 ```
 
 **축 설명:**
@@ -183,9 +160,13 @@ repo.relationships.insert(("mu_baek".into(), "player".into()), rel);
 ## 5. 서비스 생성
 
 ```rust
-use npc_mind::FormattedMindService;
+use npc_mind::{InMemoryRepository, FormattedMindService};
 
-// 한국어 로케일
+// Mind Studio JSON에서 바로 서비스 생성 (가장 간단한 방법)
+let repo = InMemoryRepository::from_file("data/my_scenario/scenario.json")?;
+let mut service = FormattedMindService::new(repo, "ko")?;
+
+// 또는 프로그래밍 방식으로 구성한 repo 사용
 let mut service = FormattedMindService::new(repo, "ko")?;
 
 // 무협 세계관 용어 오버라이드

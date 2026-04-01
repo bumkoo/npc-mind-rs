@@ -139,16 +139,37 @@ Given a scene where a close ally has betrayed the NPC:
 
 ## Quick Start
 
-### Library Usage
+### From Mind Studio scenario (recommended)
+
+Design NPCs, relationships, and scenes in [Mind Studio](#mind-studio-development-tool), save as JSON, then load with two lines:
 
 ```rust
-use npc_mind::{FormattedMindService, AppraiseRequest};
+use npc_mind::{InMemoryRepository, FormattedMindService};
+
+let repo = InMemoryRepository::from_file("data/my_scenario/scenario.json")?;
+let mut service = FormattedMindService::new(repo, "ko")?;
+```
+
+### Programmatic usage
+
+```rust
+use npc_mind::{InMemoryRepository, FormattedMindService, AppraiseRequest};
 use npc_mind::application::dto::{SituationInput, EventInput, ActionInput};
+use npc_mind::domain::personality::{NpcBuilder, Score};
+use npc_mind::domain::relationship::RelationshipBuilder;
 
-// 1. Create service with Korean locale
-let mut service = FormattedMindService::new(my_repository, "ko")?;
+// 1. Build repository
+let mut repo = InMemoryRepository::new();
+repo.add_npc(NpcBuilder::new("mu_baek", "무백")
+    .description("의리를 지키는 정직한 검객")
+    .honesty_humility(|h| { h.sincerity = Score::clamped(0.8); h.fairness = Score::clamped(0.7); })
+    .build());
+repo.add_relationship(RelationshipBuilder::new("mu_baek", "player").build());
 
-// 2. Evaluate a scene
+// 2. Create service with Korean locale
+let mut service = FormattedMindService::new(repo, "ko")?;
+
+// 3. Evaluate a scene
 let response = service.appraise(AppraiseRequest {
     npc_id: "mu_baek".into(),
     partner_id: "player".into(),
@@ -169,7 +190,7 @@ let response = service.appraise(AppraiseRequest {
     },
 }, || {}, || vec![])?;
 
-// 3. Send response.prompt to your LLM
+// 4. Send response.prompt to your LLM
 println!("{}", response.prompt);
 ```
 
@@ -229,7 +250,7 @@ Ports (interfaces)
   Appraiser · GuideFormatter · TextEmbedder
        │
 Adapters
-  OrtEmbedder (BGE-M3 ONNX) · LocaleFormatter · WebUI
+  InMemoryRepository · OrtEmbedder (BGE-M3 ONNX) · LocaleFormatter · WebUI
 ```
 
 Domain-Driven Design + Hexagonal Architecture. The core emotion logic has zero external dependencies.
@@ -314,6 +335,7 @@ The engine is being validated against real literary scenes (currently: *Adventur
 - ✅ PAD anchor externalization (PadAnchorSource port + TOML/JSON adapters)
 - ✅ Power → tone mapping (PowerLevel in ActingDirective)
 - ✅ Devcontainer / GitHub Codespaces support
+- ✅ InMemoryRepository built-in adapter (Mind Studio JSON load)
 - 🔄 Literary validation sessions ongoing
 - 🔜 Multi-NPC dialogue context
 
