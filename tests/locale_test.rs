@@ -142,7 +142,7 @@ fn appraise_req() -> AppraiseRequest {
 #[test]
 fn formatted_service_한국어_프롬프트_생성() {
     let mut service = make_formatted_service("ko");
-    let response = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     assert!(!response.prompt.is_empty());
     assert!(response.prompt.contains("[NPC:"));
@@ -153,7 +153,7 @@ fn formatted_service_한국어_프롬프트_생성() {
 #[test]
 fn formatted_service_영어_프롬프트_생성() {
     let mut service = make_formatted_service("en");
-    let response = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     assert!(!response.prompt.is_empty());
     assert!(response.prompt.contains("[NPC:"));
@@ -173,8 +173,8 @@ fn formatted_service_한국어와_영어_프롬프트가_다름() {
     let mut ko_service = make_formatted_service("ko");
     let mut en_service = make_formatted_service("en");
 
-    let ko_response = ko_service.appraise(appraise_req(), || {}, || vec![]).unwrap();
-    let en_response = en_service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let ko_response = ko_service.appraise(appraise_req(), || {}, Vec::new).unwrap();
+    let en_response = en_service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     // 동일한 감정이 생성되어야 함 (도메인 로직은 동일)
     assert_eq!(ko_response.emotions.len(), en_response.emotions.len());
@@ -201,7 +201,7 @@ section_npc = "[인물: {name}]"
 "#;
 
     let mut service = FormattedMindService::with_overrides(repo, "ko", overrides).unwrap();
-    let response = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     // 오버라이드된 섹션 헤더
     assert!(response.prompt.contains("[인물:"));
@@ -231,7 +231,7 @@ fn formatted_service_커스텀_locale() {
     let en_toml = builtin_toml("en").unwrap();
     let mut service = FormattedMindService::with_custom_locale(repo, en_toml).unwrap();
 
-    let response = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
     assert!(response.prompt.contains("[Personality]"));
 }
 
@@ -271,7 +271,7 @@ fn formatted_service_커스텀_formatter_주입() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = FormattedMindService::with_formatter(repo, TestFormatter);
-    let response = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     assert!(response.prompt.starts_with("TEST_PROMPT:"));
     assert!(response.prompt.contains("무백"));
@@ -289,7 +289,7 @@ fn mind_service_결과에서_나중에_포맷팅() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    let result = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let result = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     // ActingGuide에 직접 접근
     assert_eq!(result.guide.npc_name, "무백");
@@ -312,7 +312,7 @@ fn mind_service_stimulus_결과_포맷팅() {
     let mut service = MindService::new(repo);
 
     // 먼저 감정 생성
-    service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     // stimulus 적용
     let stim_req = StimulusRequest {
@@ -323,7 +323,7 @@ fn mind_service_stimulus_결과_포맷팅() {
         arousal: 0.2,
         dominance: 0.0,
     };
-    let result = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
+    let result = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
 
     // StimulusResult 필드 확인
     assert!(!result.beat_changed);
@@ -345,7 +345,7 @@ fn mind_service_guide_결과_포맷팅() {
     repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
 
     let mut service = MindService::new(repo);
-    service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     let guide_req = GuideRequest {
         npc_id: "mu_baek".to_string(),
@@ -370,7 +370,7 @@ fn formatted_service_전체_흐름() {
     let mut service = make_formatted_service("ko");
 
     // 1. Appraise
-    let res1 = service.appraise(appraise_req(), || {}, || vec![]).unwrap();
+    let res1 = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
     assert!(!res1.emotions.is_empty());
     assert!(res1.prompt.contains("[NPC:"));
 
@@ -383,7 +383,7 @@ fn formatted_service_전체_흐름() {
         arousal: 0.2,
         dominance: 0.0,
     };
-    let res2 = service.apply_stimulus(stim_req, || {}, || vec![]).unwrap();
+    let res2 = service.apply_stimulus(stim_req, || {}, Vec::new).unwrap();
     assert!(!res2.prompt.is_empty());
 
     // 3. Generate Guide
