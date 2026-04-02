@@ -205,6 +205,108 @@ pub trait MindRepository: NpcWorld + EmotionStore + SceneStore {}
 /// 3개 포트를 모두 구현한 타입은 자동으로 MindRepository
 impl<T: NpcWorld + EmotionStore + SceneStore> MindRepository for T {}
 
+// ---------------------------------------------------------------------------
+// 대화 에이전트 포트 (chat feature)
+// ---------------------------------------------------------------------------
+
+/// 대화 턴 — 세션 내 한 턴의 발화
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DialogueTurn {
+    pub role: DialogueRole,
+    pub content: String,
+}
+
+/// 발화 역할
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum DialogueRole {
+    /// 시스템 프롬프트 (ActingGuide)
+    System,
+    /// 대화 상대 (Player 또는 상대 NPC)
+    User,
+    /// 이 NPC의 응답 (LLM 출력)
+    Assistant,
+}
+
+/// 대화 에이전트 오류
+#[cfg(feature = "chat")]
+#[derive(Debug, thiserror::Error)]
+pub enum ConversationError {
+    #[error("LLM 연결 실패: {0}")]
+    ConnectionError(String),
+    #[error("세션을 찾을 수 없습니다: {0}")]
+    SessionNotFound(String),
+    #[error("LLM 추론 오류: {0}")]
+    InferenceError(String),
+}
+
+/// 대화 에이전트 포트 — LLM과의 다턴 대화 세션을 추상화
+///
+/// Mind Engine이 생성한 프롬프트를 system prompt로 사용하여
+/// LLM과 다턴 대화를 수행한다.
+///
+/// `rig`, `reqwest`, 또는 목(mock) 구현 등 구체적 LLM 클라이언트를
+/// 교체할 수 있도록 포트로 추상화한다.
+///
+/// # 대화 흐름
+///
+/// ```rust,ignore
+/// // 1. appraise()로 생성한 프롬프트로 세션 시작
+/// port.start_session("s1", &prompt).await?;
+///
+/// // 2. 상대 대사 → NPC 응답
+/// let npc_reply = port.send_message("s1", "오랜만이군.").await?;
+///
+/// // 3. Beat 전환 시 프롬프트 갱신
+/// port.update_system_prompt("s1", &new_prompt).await?;
+///
+/// // 4. 대화 종료 → 이력 반환
+/// let history = port.end_session("s1").await?;
+/// ```
+#[cfg(feature = "chat")]
+#[async_trait::async_trait]
+pub trait ConversationPort: Send + Sync {
+    /// 새 대화 세션을 시작한다.
+    ///
+    /// `system_prompt`: MindEngine이 생성한 ActingGuide 프롬프트.
+    /// 내부적으로 LLM Agent를 system_prompt로 초기화한다.
+    async fn start_session(
+        &self,
+        session_id: &str,
+        system_prompt: &str,
+    ) -> Result<(), ConversationError>;
+
+    /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 받는다.
+    ///
+    /// 대화 이력은 세션 내부에서 자동 관리된다.
+    async fn send_message(
+        &self,
+        session_id: &str,
+        user_message: &str,
+    ) -> Result<String, ConversationError>;
+
+    /// system_prompt를 갱신한다 (Beat 전환 시).
+    ///
+    /// 대화 이력은 유지하면서 LLM Agent의 system prompt만 교체한다.
+    /// 감정 변화가 즉시 연기에 반영되도록 한다.
+    async fn update_system_prompt(
+        &self,
+        session_id: &str,
+        new_prompt: &str,
+    ) -> Result<(), ConversationError>;
+
+    /// 세션을 종료하고 전체 대화 이력을 반환한다.
+    async fn end_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<DialogueTurn>, ConversationError>;
+}
+
+// ---------------------------------------------------------------------------
+// 가이드 포맷터 포트
+// ---------------------------------------------------------------------------
+
 /// 연기 가이드 포맷터 포트 — 가이드를 특정 형식으로 변환
 ///
 /// 다국어 지원, 다른 LLM 포맷 등 다양한 출력 형식을 제공할 수 있다.

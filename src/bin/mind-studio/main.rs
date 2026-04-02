@@ -21,7 +21,7 @@ use state::AppState;
 
 /// API 라우터를 생성합니다 (테스트에서도 재사용).
 fn build_api_router(state: AppState) -> Router {
-    Router::new()
+    let router = Router::new()
         .route(
             "/api/npcs",
             get(handlers::list_npcs).post(handlers::upsert_npc),
@@ -55,8 +55,19 @@ fn build_api_router(state: AppState) -> Router {
             get(handlers::get_situation).put(handlers::put_situation),
         )
         .route("/api/save", post(handlers::save_state))
-        .route("/api/load", post(handlers::load_state))
-        .with_state(state)
+        .route("/api/load", post(handlers::load_state));
+
+    // chat feature 활성 시 대화 테스트 엔드포인트 추가
+    #[cfg(feature = "chat")]
+    let router = router
+        .route("/api/chat/start", post(handlers::chat_handlers::chat_start))
+        .route(
+            "/api/chat/message",
+            post(handlers::chat_handlers::chat_message),
+        )
+        .route("/api/chat/end", post(handlers::chat_handlers::chat_end));
+
+    router.with_state(state)
 }
 
 /// embed feature 활성 시 PadAnalyzer 초기화
@@ -112,7 +123,19 @@ async fn main() {
         .init();
 
     let analyzer = init_analyzer();
-    let state = AppState::new(collector, analyzer);
+    let mut state = AppState::new(collector, analyzer);
+
+    // chat feature 활성 시 RigChatAdapter 초기화
+    #[cfg(feature = "chat")]
+    {
+        let chat_url = std::env::var("NPC_MIND_CHAT_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
+        let chat_model = std::env::var("NPC_MIND_CHAT_MODEL")
+            .unwrap_or_else(|_| "local-model".to_string());
+        let adapter = npc_mind::RigChatAdapter::new(&chat_url, &chat_model);
+        state = state.with_chat(adapter);
+        println!("Chat Agent: 초기화 완료 (url={chat_url}, model={chat_model})");
+    }
 
     // 정적 파일 경로
     let static_dir =

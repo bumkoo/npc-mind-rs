@@ -7,6 +7,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 default = []
 embed = ["dep:bge-m3-onnx-rust"]
+chat = ["dep:rig-core", "dep:async-trait", "dep:tokio"]
 mind-studio = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing-subscriber"]
 
 [dependencies]
@@ -16,6 +17,8 @@ thiserror = "2"
 toml = "1.1"
 tracing = "0.1"
 bge-m3-onnx-rust = { git = "https://github.com/bumkoo/bge-m3-onnx-rust.git", optional = true }
+rig-core = { version = "0.33", optional = true, default-features = false, features = ["reqwest-native-tls"] }
+async-trait = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }

@@ -773,3 +773,192 @@ pub async fn scene(
 
     Ok(Json(response))
 }
+
+// ---------------------------------------------------------------------------
+// Chat: LLM 대화 테스트 (chat feature)
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "chat")]
+pub mod chat_handlers {
+    use super::*;
+    use npc_mind::application::dialogue_test_service::*;
+
+    /// POST /api/chat/start — 대화 세션 시작 (appraise + LLM agent 생성)
+    pub async fn chat_start(
+        State(state): State<AppState>,
+        Json(req): Json<ChatStartRequest>,
+    ) -> Result<Json<ChatStartResponse>, AppError> {
+        let chat_state = state
+            .chat
+            .as_ref()
+            .ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
+
+        // 1. appraise로 프롬프트 생성
+        let mut inner = state.inner.write().await;
+        let collector = state.collector.clone();
+
+        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+        let result = service.appraise(
+            req.appraise.clone(),
+            || {
+                collector.take_entries();
+            },
+            || collector.take_entries(),
+        )?;
+        drop(service);
+
+        let response = result.format(&*state.formatter);
+
+        // 2. LLM 세션 시작
+        chat_state
+            .start_session(&req.session_id, &response.prompt)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // 턴 기록
+        let turn_num = inner.turn_history.len() + 1;
+        inner.turn_history.push(TurnRecord {
+            label: format!("Turn {}: chat/start ({})", turn_num, req.session_id),
+            action: "chat_start".into(),
+            request: serde_json::to_value(&req).unwrap_or_default(),
+            response: serde_json::to_value(&response).unwrap_or_default(),
+        });
+
+        Ok(Json(ChatStartResponse {
+            session_id: req.session_id,
+            appraise: response,
+        }))
+    }
+
+    /// POST /api/chat/message — 대사 전송 → NPC 응답 + 감정 변화
+    pub async fn chat_message(
+        State(state): State<AppState>,
+        Json(req): Json<ChatTurnRequest>,
+    ) -> Result<Json<ChatTurnResponse>, AppError> {
+        let chat_state = state
+            .chat
+            .as_ref()
+            .ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
+
+        // 1. LLM에 대사 전달 → NPC 응답
+        let npc_response = chat_state
+            .send_message(&req.session_id, &req.utterance)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // 2. PAD 결정 (수동 입력 > 자동 분석 > 없음)
+        let pad = if let Some(ref pad_input) = req.pad {
+            Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
+        } else if let Some(ref analyzer) = state.analyzer {
+            let mut analyzer = analyzer.lock().await;
+            match analyzer.analyze(&req.utterance) {
+                Ok(p) => Some((p.pleasure, p.arousal, p.dominance)),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        // 3. stimulus 적용
+        let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
+            let stim_req = StimulusRequest {
+                npc_id: req.npc_id.clone(),
+                partner_id: req.partner_id.clone(),
+                pleasure: p,
+                arousal: a,
+                dominance: d,
+                situation_description: req.situation_description.clone(),
+            };
+
+            let mut inner = state.inner.write().await;
+            let collector = state.collector.clone();
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+            let result = service.apply_stimulus(
+                stim_req,
+                || {
+                    collector.take_entries();
+                },
+                || collector.take_entries(),
+            )?;
+            drop(service);
+
+            let stim_resp = result.format(&*state.formatter);
+            let changed = stim_resp.beat_changed;
+
+            // 4. Beat 전환 시 system_prompt 갱신
+            if changed {
+                chat_state
+                    .update_system_prompt(&req.session_id, &stim_resp.prompt)
+                    .await
+                    .map_err(|e| AppError::Internal(e.to_string()))?;
+            }
+
+            // 턴 기록
+            let turn_num = inner.turn_history.len() + 1;
+            inner.turn_history.push(TurnRecord {
+                label: format!(
+                    "Turn {}: chat/message [{}→{}]",
+                    turn_num, req.partner_id, req.npc_id
+                ),
+                action: "chat_message".into(),
+                request: serde_json::to_value(&req).unwrap_or_default(),
+                response: serde_json::to_value(&stim_resp).unwrap_or_default(),
+            });
+
+            (Some(stim_resp), changed)
+        } else {
+            // PAD 없이 — 대사만 교환 (감정 변화 없음)
+            let mut inner = state.inner.write().await;
+            let turn_num = inner.turn_history.len() + 1;
+            inner.turn_history.push(TurnRecord {
+                label: format!(
+                    "Turn {}: chat/message [{}→{}] (no PAD)",
+                    turn_num, req.partner_id, req.npc_id
+                ),
+                action: "chat_message".into(),
+                request: serde_json::to_value(&req).unwrap_or_default(),
+                response: serde_json::json!({ "npc_response": &npc_response }),
+            });
+
+            (None, false)
+        };
+
+        Ok(Json(ChatTurnResponse {
+            npc_response,
+            stimulus,
+            beat_changed,
+        }))
+    }
+
+    /// POST /api/chat/end — 세션 종료 + 대화 이력 반환
+    pub async fn chat_end(
+        State(state): State<AppState>,
+        Json(req): Json<ChatEndRequest>,
+    ) -> Result<Json<ChatEndResponse>, AppError> {
+        let chat_state = state
+            .chat
+            .as_ref()
+            .ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
+
+        // 1. 세션 종료 → 이력
+        let dialogue_history = chat_state
+            .end_session(&req.session_id)
+            .await
+            .map_err(|e| AppError::Internal(e.to_string()))?;
+
+        // 2. 관계 갱신 (선택)
+        let after_dialogue = if let Some(after_req) = req.after_dialogue {
+            let mut inner = state.inner.write().await;
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+            let resp = service.after_dialogue(after_req)?;
+            Some(resp)
+        } else {
+            None
+        };
+
+        Ok(Json(ChatEndResponse {
+            dialogue_history,
+            after_dialogue,
+        }))
+    }
+}

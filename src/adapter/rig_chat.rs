@@ -1,0 +1,191 @@
+//! rig-core 기반 ConversationPort 구현
+//!
+//! OpenAI-compatible API를 사용하는 로컬 추론 서버에 연결하여
+//! Mind Engine의 ActingGuide 프롬프트로 다턴 대화를 수행한다.
+//!
+//! # 사용 예시
+//!
+//! ```rust,ignore
+//! let adapter = RigChatAdapter::new(
+//!     "http://127.0.0.1:8081/v1",
+//!     "local-model",
+//! );
+//! adapter.start_session("s1", &prompt).await?;
+//! let reply = adapter.send_message("s1", "안녕하시오.").await?;
+//! ```
+
+use crate::ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn};
+use rig::client::CompletionClient;
+use rig::completion::{Chat, Message};
+use rig::providers::openai;
+use std::collections::HashMap;
+use tokio::sync::RwLock;
+
+/// rig-core OpenAI provider를 사용하는 대화 어댑터
+///
+/// 세션별로 system_prompt + 대화 이력을 관리하며,
+/// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
+pub struct RigChatAdapter {
+    client: openai::CompletionsClient,
+    model_name: String,
+    sessions: RwLock<HashMap<String, ChatSession>>,
+}
+
+/// 개별 대화 세션 상태
+struct ChatSession {
+    system_prompt: String,
+    /// rig Message 형식의 대화 이력 (LLM API 전달용)
+    rig_history: Vec<Message>,
+    /// 도메인 형식의 대화 이력 (반환용)
+    dialogue_history: Vec<DialogueTurn>,
+}
+
+impl RigChatAdapter {
+    /// 새 어댑터를 생성한다.
+    ///
+    /// - `base_url`: OpenAI-compatible API URL (예: `"http://127.0.0.1:8081/v1"`)
+    /// - `model_name`: 추론 서버의 모델 이름 (예: `"local-model"`, `"qwen2.5"`)
+    pub fn new(base_url: &str, model_name: &str) -> Self {
+        // rig 0.33부터 OpenAI provider의 기본 API가 Responses API로 변경됨.
+        // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
+        // completions_api()로 명시적 전환이 필요함.
+        let client = openai::Client::builder()
+            .api_key("no-key-needed")
+            .base_url(base_url)
+            .build()
+            .expect("OpenAI 호환 클라이언트 생성 실패")
+            .completions_api();
+
+        Self {
+            client,
+            model_name: model_name.to_string(),
+            sessions: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// rig Agent를 빌드하고 chat()을 호출하는 내부 헬퍼
+    async fn chat_with_agent(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+        history: Vec<Message>,
+    ) -> Result<String, ConversationError> {
+        let agent = self
+            .client
+            .agent(&self.model_name)
+            .preamble(system_prompt)
+            .build();
+
+        let response: String = Chat::chat(&agent, user_message, history)
+            .await
+            .map_err(|e: rig::completion::PromptError| {
+                ConversationError::InferenceError(e.to_string())
+            })?;
+
+        Ok(response)
+    }
+}
+
+#[async_trait::async_trait]
+impl ConversationPort for RigChatAdapter {
+    async fn start_session(
+        &self,
+        session_id: &str,
+        system_prompt: &str,
+    ) -> Result<(), ConversationError> {
+        let session = ChatSession {
+            system_prompt: system_prompt.to_string(),
+            rig_history: Vec::new(),
+            dialogue_history: vec![DialogueTurn {
+                role: DialogueRole::System,
+                content: system_prompt.to_string(),
+            }],
+        };
+
+        self.sessions
+            .write()
+            .await
+            .insert(session_id.to_string(), session);
+
+        Ok(())
+    }
+
+    async fn send_message(
+        &self,
+        session_id: &str,
+        user_message: &str,
+    ) -> Result<String, ConversationError> {
+        // 1. 세션에서 현재 상태를 읽어옴
+        let (system_prompt, history) = {
+            let sessions = self.sessions.read().await;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+            (session.system_prompt.clone(), session.rig_history.clone())
+        };
+
+        // 2. rig agent로 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
+        let response = self
+            .chat_with_agent(&system_prompt, user_message, history)
+            .await?;
+
+        // 3. 이력 업데이트
+        {
+            let mut sessions = self.sessions.write().await;
+            let session = sessions
+                .get_mut(session_id)
+                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+
+            // rig 이력 (다음 API 호출에 전달)
+            session.rig_history.push(Message::user(user_message));
+            session
+                .rig_history
+                .push(Message::assistant(&response));
+
+            // 도메인 이력 (반환용)
+            session.dialogue_history.push(DialogueTurn {
+                role: DialogueRole::User,
+                content: user_message.to_string(),
+            });
+            session.dialogue_history.push(DialogueTurn {
+                role: DialogueRole::Assistant,
+                content: response.clone(),
+            });
+        }
+
+        Ok(response)
+    }
+
+    async fn update_system_prompt(
+        &self,
+        session_id: &str,
+        new_prompt: &str,
+    ) -> Result<(), ConversationError> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(session_id)
+            .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+
+        session.system_prompt = new_prompt.to_string();
+
+        // 프롬프트 변경을 이력에 기록 (디버깅용)
+        session.dialogue_history.push(DialogueTurn {
+            role: DialogueRole::System,
+            content: new_prompt.to_string(),
+        });
+
+        Ok(())
+    }
+
+    async fn end_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<DialogueTurn>, ConversationError> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .remove(session_id)
+            .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+
+        Ok(session.dialogue_history)
+    }
+}

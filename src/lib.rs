@@ -27,3 +27,13 @@ pub use ports::{
 };
 pub use presentation::builtin_toml;
 pub use presentation::formatter::LocaleFormatter;
+
+#[cfg(feature = "chat")]
+pub use adapter::rig_chat::RigChatAdapter;
+#[cfg(feature = "chat")]
+pub use application::dialogue_test_service::{
+    ChatEndRequest, ChatEndResponse, ChatStartRequest, ChatStartResponse, ChatTurnRequest,
+    ChatTurnResponse, DialogueTestError, DialogueTestService, PadInput,
+};
+#[cfg(feature = "chat")]
+pub use ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn};

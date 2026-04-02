@@ -19,6 +19,12 @@ pub struct AppState {
     pub analyzer: Option<Arc<Mutex<PadAnalyzer>>>,
     /// 연기 가이드 포맷터 (서버 시작 시 한 번 생성, 모든 핸들러에서 공유)
     pub formatter: Arc<dyn npc_mind::ports::GuideFormatter>,
+    /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
+    #[cfg(feature = "chat")]
+    pub chat: Option<Arc<dyn npc_mind::ports::ConversationPort>>,
+    /// chat feature 비활성 시 컴파일 호환용
+    #[cfg(not(feature = "chat"))]
+    pub chat: Option<()>,
 }
 
 impl AppState {
@@ -28,7 +34,15 @@ impl AppState {
             collector,
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a))),
             formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
+            chat: None,
         }
+    }
+
+    /// LLM 대화 에이전트를 설정한다 (chat feature 활성 시).
+    #[cfg(feature = "chat")]
+    pub fn with_chat(mut self, chat: impl npc_mind::ports::ConversationPort + 'static) -> Self {
+        self.chat = Some(Arc::new(chat));
+        self
     }
 }
 
