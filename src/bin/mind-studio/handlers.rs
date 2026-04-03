@@ -419,53 +419,38 @@ pub async fn scene(
     Ok(Json(response))
 }
 
+// ---------------------------------------------------------------------------
+// Chat: LLM 대화 테스트 (chat feature)
+// ---------------------------------------------------------------------------
+
 #[cfg(feature = "chat")]
 pub mod chat_handlers {
     use super::*;
-    pub async fn chat_start(State(state): State<AppState>, Json(req): Json<ChatStartRequest>) -> Result<Json<ChatStartResponse>, AppError> {
-        let chat_state = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let mut inner = state.inner.write().await;
-        let collector = state.collector.clone();
-        let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner });
-        let npc = service.repository().get_npc(&req.appraise.npc_id).ok_or_else(|| AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id)))?;
-        let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
-        let response = result.format(&*state.formatter);
-        let mut llm_model_info = state.llm_info.as_ref().map(|info| info.get_model_info()).unwrap_or_default();
-        llm_model_info.apply_npc_personality(&npc);
-        chat_state.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone())).await.map_err(|e| AppError::Internal(e.to_string()))?;
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/start ({})", turn_num, req.session_id), action: "chat_start".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::to_value(&response).unwrap_or_default(), llm_model: Some(llm_model_info.clone()) });
-        Ok(Json(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info) }))
+
+    /// POST /api/chat/start — 대화 세션 시작
+    pub async fn chat_start(
+        State(state): State<AppState>,
+        Json(req): Json<ChatStartRequest>,
+    ) -> Result<Json<ChatStartResponse>, AppError> {
+        let response = StudioService::perform_chat_start(&state, req).await?;
+        Ok(Json(response))
     }
 
-    pub async fn chat_message(State(state): State<AppState>, Json(req): Json<ChatTurnRequest>) -> Result<Json<ChatTurnResponse>, AppError> {
-        let chat_state = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let npc_response = chat_state.send_message(&req.session_id, &req.utterance).await?;
-        let pad = if let Some(ref pad_input) = req.pad { Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance)) } else if let Some(ref analyzer) = state.analyzer { let mut analyzer = analyzer.lock().await; match analyzer.analyze(&req.utterance) { Ok(p) => Some((p.pleasure, p.arousal, p.dominance)), Err(_) => None } } else { None };
-        let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
-            let stim_req = StimulusRequest { npc_id: req.npc_id.clone(), partner_id: req.partner_id.clone(), pleasure: p, arousal: a, dominance: d, situation_description: req.situation_description.clone() };
-            let mut inner = state.inner.write().await;
-            let collector = state.collector.clone();
-            let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner });
-            let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
-            let stim_resp = result.format(&*state.formatter);
-            let changed = stim_resp.beat_changed;
-            if changed { chat_state.update_system_prompt(&req.session_id, &stim_resp.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?; }
-            let turn_num = inner.turn_history.len() + 1;
-            let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
-            if let serde_json::Value::Object(ref mut map) = resp_val { map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone())); }
-            inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}]", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: resp_val, llm_model: None });
-            (Some(stim_resp), changed)
-        } else {
-            let mut inner = state.inner.write().await;
-            let turn_num = inner.turn_history.len() + 1;
-            inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}] (no PAD)", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::json!({ "npc_response": &npc_response }), llm_model: None });
-            (None, false)
-        };
-        Ok(Json(ChatTurnResponse { npc_response, stimulus, beat_changed }))
+    /// POST /api/chat/message — 대사 전송 → NPC 응답 + 감정 변화
+    pub async fn chat_message(
+        State(state): State<AppState>,
+        Json(req): Json<ChatTurnRequest>,
+    ) -> Result<Json<ChatTurnResponse>, AppError> {
+        let response = StudioService::perform_chat_message(&state, req).await?;
+        Ok(Json(response))
     }
 
-    pub async fn chat_message_stream(State(state): State<AppState>, Json(req): Json<ChatTurnRequest>) -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
+    /// POST /api/chat/message/stream — 대사 전송 → NPC 응답 스트리밍 + 감정 변화
+    pub async fn chat_message_stream(
+        State(state): State<AppState>,
+        Json(req): Json<ChatTurnRequest>,
+    ) -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>
+    {
         let stream = async_stream::stream! {
             let chat_state = match state.chat.as_ref() { Some(c) => c, None => { yield Ok(axum::response::sse::Event::default().event("error").data("chat feature가 비활성입니다.")); return; } };
             let (token_tx, mut token_rx) = tokio::sync::mpsc::channel::<String>(64);
@@ -475,6 +460,9 @@ pub mod chat_handlers {
             let llm_task = tokio::spawn(async move { chat_state_clone.send_message_stream(&session_id, &utterance, token_tx).await });
             while let Some(token) = token_rx.recv().await { yield Ok(axum::response::sse::Event::default().event("token").data(token)); }
             let npc_response = match llm_task.await { Ok(Ok(resp)) => resp, Ok(Err(e)) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(format!("태스크 패닉: {e}"))); return; } };
+            
+            // 스트리밍 완료 후 턴 처리 로직은 perform_chat_message의 내부 로직 재사용 가능하도록 리팩토링 여지 있으나,
+            // 일단은 handlers.rs의 스트림 특수성 유지
             let pad = if let Some(ref pad_input) = req.pad { Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance)) } else if let Some(ref analyzer) = state.analyzer { let mut analyzer = analyzer.lock().await; match analyzer.analyze(&req.utterance) { Ok(p) => Some((p.pleasure, p.arousal, p.dominance)), Err(_) => None } } else { None };
             let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
                 let stim_req = StimulusRequest { npc_id: req.npc_id.clone(), partner_id: req.partner_id.clone(), pleasure: p, arousal: a, dominance: d, situation_description: req.situation_description.clone() };
@@ -493,10 +481,12 @@ pub mod chat_handlers {
         axum::response::Sse::new(stream)
     }
 
-    pub async fn chat_end(State(state): State<AppState>, Json(req): Json<ChatEndRequest>) -> Result<Json<ChatEndResponse>, AppError> {
-        let chat_state = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let dialogue_history = chat_state.end_session(&req.session_id).await.map_err(|e| AppError::Internal(e.to_string()))?;
-        let after_dialogue = if let Some(after_req) = req.after_dialogue { let mut inner = state.inner.write().await; let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner }); let resp = service.after_dialogue(after_req)?; Some(resp) } else { None };
-        Ok(Json(ChatEndResponse { dialogue_history, after_dialogue }))
+    /// POST /api/chat/end — 세션 종료 + 대화 이력 반환
+    pub async fn chat_end(
+        State(state): State<AppState>,
+        Json(req): Json<ChatEndRequest>,
+    ) -> Result<Json<ChatEndResponse>, AppError> {
+        let response = StudioService::perform_chat_end(&state, req).await?;
+        Ok(Json(response))
     }
 }
