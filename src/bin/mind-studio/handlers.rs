@@ -21,21 +21,19 @@ use crate::state::*;
 // ---------------------------------------------------------------------------
 // WebUI 전용 에러 타입
 // ---------------------------------------------------------------------------
+#[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    Service(MindServiceError),
+    #[error(transparent)]
+    Service(#[from] MindServiceError),
+    #[error("Internal error: {0}")]
     Internal(String),
-    /// 향후 리소스 조회 실패 핸들링용 — 현재 CRUD는 빈 결과를 허용하므로 미사용
-    #[allow(dead_code)]
+    #[error("Not found: {0}")]
     NotFound(String),
+    #[error("Not implemented: {0}")]
     NotImplemented(String),
 }
 
-impl From<MindServiceError> for AppError {
-    fn from(e: MindServiceError) -> Self {
-        AppError::Service(e)
-    }
-}
-
+#[cfg(feature = "chat")]
 impl From<npc_mind::ports::ConversationError> for AppError {
     fn from(e: npc_mind::ports::ConversationError) -> Self {
         AppError::Internal(e.to_string())
@@ -45,20 +43,18 @@ impl From<npc_mind::ports::ConversationError> for AppError {
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
-            AppError::Service(e) => match e {
+            AppError::Service(ref e) => match e {
                 MindServiceError::NpcNotFound(_) | MindServiceError::RelationshipNotFound(_, _) => {
                     (StatusCode::NOT_FOUND, e.to_string())
                 }
                 MindServiceError::InvalidSituation(_) | MindServiceError::EmotionStateNotFound => {
                     (StatusCode::BAD_REQUEST, e.to_string())
                 }
-                MindServiceError::LocaleError(_) => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-                }
+                _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             },
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::NotImplemented(msg) => (StatusCode::NOT_IMPLEMENTED, msg),
-            AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg),
+            AppError::NotFound(ref msg) => (StatusCode::NOT_FOUND, msg.clone()),
+            AppError::NotImplemented(ref msg) => (StatusCode::NOT_IMPLEMENTED, msg.clone()),
+            AppError::Internal(ref msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
         };
 
         let body = Json(serde_json::json!({

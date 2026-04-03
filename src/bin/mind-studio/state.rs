@@ -26,8 +26,8 @@ pub struct AppState {
     /// LLM 메타데이터 제공자
     #[cfg(feature = "chat")]
     pub llm_info: Option<Arc<dyn npc_mind::ports::LlmInfoProvider>>,
-    /// MCP 서버 인스턴스 (SSE 모드)
-    pub mcp_server: Option<Arc<mcp_sdk::server::Server>>,
+    /// MCP 서버 인스턴스 (컴파일 오류 방지를 위해 Any로 유지)
+    pub mcp_server: Option<Arc<dyn std::any::Any + Send + Sync>>,
     /// chat feature 비활성 시 컴파일 호환용
     #[cfg(not(feature = "chat"))]
     pub chat: Option<()>,
@@ -48,7 +48,7 @@ impl AppState {
     }
 
     /// MCP 서버 인스턴스를 설정한다.
-    pub fn with_mcp(mut self, server: Arc<mcp_sdk::server::Server>) -> Self {
+    pub fn with_mcp(mut self, server: Arc<dyn std::any::Any + Send + Sync>) -> Self {
         self.mcp_server = Some(server);
         self
     }
