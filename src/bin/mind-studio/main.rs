@@ -13,6 +13,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 mod handlers;
 mod mcp_server;
 mod state;
+mod studio_service;
 mod trace_collector;
 
 #[cfg(test)]

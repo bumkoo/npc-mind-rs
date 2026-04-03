@@ -13,12 +13,8 @@ use tokio::sync::{mpsc, RwLock};
 use uuid::Uuid;
 use std::collections::HashMap;
 
-// rmcp 0.16.0 타입
-use rmcp::model::{Tool};
-
-use crate::handlers::{
-    perform_appraise,
-};
+use crate::studio_service::StudioService;
+use crate::handlers::AppError;
 use npc_mind::application::dto::{AppraiseRequest};
 use crate::state::AppState;
 
@@ -70,7 +66,7 @@ impl MindMcpService {
         }
     }
 
-    /// 도구 목록 조회 (Claude가 가장 먼저 호출함)
+    /// 도구 목록 조회
     pub fn list_tools(&self) -> Vec<Value> {
         vec![
             serde_json::json!({
@@ -116,9 +112,9 @@ impl MindMcpService {
             "appraise" => {
                 let args: AppraiseRequest =
                     serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
-                let resp = perform_appraise(&self.state, args)
+                let resp = StudioService::perform_appraise(&self.state, args)
                     .await
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e: AppError| e.to_string())?;
                 Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
             }
             "get_npc_llm_config" => {
@@ -141,15 +137,6 @@ pub fn create_mcp_server(state: AppState) -> Arc<MindMcpService> {
     Arc::new(MindMcpService::new(state))
 }
 
-// ---------------------------------------------------------------------------
-// Axum SSE / Message 핸들러
-// ---------------------------------------------------------------------------
-
-#[derive(Deserialize)]
-pub struct SessionQuery {
-    pub session_id: String,
-}
-
 pub fn mcp_router() -> Router<AppState> {
     Router::new()
         .route("/mcp/sse", get(mcp_sse_handler))
@@ -162,16 +149,13 @@ async fn mcp_sse_handler(
     let mcp = state.mcp_server.as_ref().expect("MCP server not initialized");
     let (session_id, rx) = mcp.session_manager.create_session().await;
 
-    // 1. 첫 번째 메시지로 엔드포인트 정보 알림 (MCP SSE 표준)
     let initial_event = Event::default()
         .event("endpoint")
         .data(format!("/mcp/message?session_id={}", session_id));
 
-    // 2. 채널로부터 오는 데이터를 SSE 이벤트로 변환
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
         .map(|msg| Ok(Event::default().data(msg)));
 
-    // 초기 이벤트와 스트림 결합
     let combined_stream = futures_util::stream::once(async move { Ok(initial_event) })
         .chain(stream);
 
@@ -185,8 +169,6 @@ async fn mcp_message_handler(
 ) -> Json<Value> {
     let mcp = state.mcp_server.as_ref().unwrap();
     let id = payload["id"].clone();
-
-    // JSON-RPC 메서드에 따른 분기
     let method = payload["method"].as_str().unwrap_or("");
     
     let result = match method {
@@ -201,8 +183,6 @@ async fn mcp_message_handler(
         _ => Err(format!("Unsupported method: {}", method)),
     };
 
-    // 결과를 SSE로 보낼 수도 있고, HTTP 응답으로 직접 줄 수도 있음
-    // SSE 방식에서는 응답을 SSE 스트림으로 흘려보내는 것이 일반적임
     match result {
         Ok(res_val) => {
             let json_res = serde_json::json!({
@@ -223,4 +203,9 @@ async fn mcp_message_handler(
             Json(serde_json::json!({"status": "error_sent"}))
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct SessionQuery {
+    pub session_id: String,
 }
