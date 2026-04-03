@@ -1,4 +1,4 @@
-use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
+use crate::state::{AppState, StateInner, TurnRecord, RelationshipData, FORMAT_SCENARIO, FORMAT_RESULT};
 use npc_mind::application::dto::*;
 #[cfg(feature = "chat")]
 use npc_mind::application::dialogue_test_service::{
@@ -13,6 +13,25 @@ use serde::Serialize;
 pub struct StudioService;
 
 impl StudioService {
+    /// 턴 기록을 저장하는 공통 헬퍼 메서드
+    fn record_turn(
+        inner: &mut StateInner,
+        label_prefix: &str,
+        action: &str,
+        request: &impl Serialize,
+        response: &impl Serialize,
+        llm_model: Option<npc_mind::ports::LlmModelInfo>,
+    ) {
+        let turn_num = inner.turn_history.len() + 1;
+        inner.turn_history.push(TurnRecord {
+            label: format!("Turn {}: {}", turn_num, label_prefix),
+            action: action.to_string(),
+            request: serde_json::to_value(request).unwrap_or_default(),
+            response: serde_json::to_value(response).unwrap_or_default(),
+            llm_model,
+        });
+    }
+
     /// 상황 평가 및 프롬프트 생성 로직
     pub async fn perform_appraise(
         state: &AppState,
@@ -33,18 +52,15 @@ impl StudioService {
 
         let response = result.format(&*state.formatter);
 
-        // 턴 기록 저장
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord {
-            label: format!(
-                "Turn {}: appraise ({}→{})",
-                turn_num, req.npc_id, req.partner_id
-            ),
-            action: "appraise".into(),
-            request: serde_json::to_value(&req).unwrap_or_default(),
-            response: serde_json::to_value(&response).unwrap_or_default(),
-            llm_model: None,
-        });
+        // 턴 기록 통합 저장
+        Self::record_turn(
+            &mut *inner,
+            &format!("appraise ({}→{})", req.npc_id, req.partner_id),
+            "appraise",
+            &req,
+            &response,
+            None,
+        );
 
         inner.scenario_modified = true;
         Ok(response)
@@ -70,25 +86,15 @@ impl StudioService {
 
         let response = result.format(&*state.formatter);
 
-        // 턴 기록
-        let turn_num = inner.turn_history.len() + 1;
+        // 레이블 결정
         let label = if response.beat_changed {
-            format!(
-                "Turn {}: stimulus+beat [{}] ({})",
-                turn_num,
-                response.active_focus_id.as_deref().unwrap_or("?"),
-                req.npc_id
-            )
+            format!("stimulus+beat [{}] ({})", response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
         } else {
-            format!("Turn {}: stimulus ({})", turn_num, req.npc_id)
+            format!("stimulus ({})", req.npc_id)
         };
-        inner.turn_history.push(TurnRecord {
-            label,
-            action: "stimulus".into(),
-            request: serde_json::to_value(&req).unwrap_or_default(),
-            response: serde_json::to_value(&response).unwrap_or_default(),
-            llm_model: None,
-        });
+
+        // 턴 기록 통합 저장
+        Self::record_turn(&mut *inner, &label, "stimulus", &req, &response, None);
 
         Ok(response)
     }
@@ -103,18 +109,15 @@ impl StudioService {
 
         let response = service.after_dialogue(req.clone())?;
 
-        // 턴 기록
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord {
-            label: format!(
-                "Turn {}: after_dialogue ({}→{})",
-                turn_num, req.npc_id, req.partner_id
-            ),
-            action: "after_dialogue".into(),
-            request: serde_json::to_value(&req).unwrap_or_default(),
-            response: serde_json::to_value(&response).unwrap_or_default(),
-            llm_model: None,
-        });
+        // 턴 기록 통합 저장
+        Self::record_turn(
+            &mut *inner,
+            &format!("after_dialogue ({}→{})", req.npc_id, req.partner_id),
+            "after_dialogue",
+            &req,
+            &response,
+            None,
+        );
 
         Ok(response)
     }
@@ -300,8 +303,8 @@ impl StudioService {
         
         chat_port.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone())).await.map_err(|e| AppError::Internal(e.to_string()))?;
         
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/start ({})", turn_num, req.session_id), action: "chat_start".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::to_value(&response).unwrap_or_default(), llm_model: Some(llm_model_info.clone()) });
+        // 턴 기록 통합 저장
+        Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
         
         Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info) })
     }
@@ -349,31 +352,34 @@ impl StudioService {
                 chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?;
             }
 
-            let turn_num = inner.turn_history.len() + 1;
             let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
             if let serde_json::Value::Object(ref mut map) = resp_val {
                 map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
             }
             
-            inner.turn_history.push(TurnRecord {
-                label: format!("Turn {}: chat/message [{}→{}]", turn_num, req.partner_id, req.npc_id),
-                action: "chat_message".into(),
-                request: serde_json::to_value(&req).unwrap_or_default(),
-                response: resp_val,
-                llm_model: None,
-            });
+            // 턴 기록 통합 저장
+            Self::record_turn(
+                &mut *inner, 
+                &format!("chat/message [{}→{}]", req.partner_id, req.npc_id), 
+                "chat_message", 
+                req, 
+                &resp_val, 
+                None
+            );
 
             Ok((Some(stim_resp), changed))
         } else {
             let mut inner = state.inner.write().await;
-            let turn_num = inner.turn_history.len() + 1;
-            inner.turn_history.push(TurnRecord {
-                label: format!("Turn {}: chat/message [{}→{}] (no PAD)", turn_num, req.partner_id, req.npc_id),
-                action: "chat_message".into(),
-                request: serde_json::to_value(&req).unwrap_or_default(),
-                response: serde_json::json!({ "npc_response": &npc_response }),
-                llm_model: None,
-            });
+            
+            // 턴 기록 통합 저장 (no PAD)
+            Self::record_turn(
+                &mut *inner, 
+                &format!("chat/message [{}→{}] (no PAD)", req.partner_id, req.npc_id), 
+                "chat_message", 
+                req, 
+                &serde_json::json!({ "npc_response": &npc_response }), 
+                None
+            );
             Ok((None, false))
         }
     }
