@@ -13,7 +13,9 @@ use crate::trace_collector::AppraisalCollector;
 
 /// 테스트용 AppState 생성 (embed 없음)
 fn test_state() -> AppState {
-    AppState::new(AppraisalCollector::new(), None)
+    let state = AppState::new(AppraisalCollector::new(), None);
+    let mcp = crate::mcp_server::create_mcp_server(state.clone());
+    state.with_mcp(mcp)
 }
 
 /// 테스트용 라우터 생성
@@ -1267,7 +1269,8 @@ async fn mcp_tool_call_logic() {
         },
         "id": 1
     });
-    let res: serde_json::Value = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
+    let mcp = state.mcp_server.as_ref().unwrap();
+    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
     assert_eq!(res.as_array().unwrap().len(), 1);
     assert_eq!(res[0]["id"], "mu_baek");
 
@@ -1280,7 +1283,7 @@ async fn mcp_tool_call_logic() {
         },
         "id": 2
     });
-    let res: serde_json::Value = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
+    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
     assert!(res["temperature"].as_f64().is_some());
     assert!(res["top_p"].as_f64().is_some());
 
@@ -1303,6 +1306,6 @@ async fn mcp_tool_call_logic() {
         },
         "id": 3
     });
-    let res: serde_json::Value = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
+    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
     assert!(res["mood"].as_f64().unwrap() > 0.0);
 }

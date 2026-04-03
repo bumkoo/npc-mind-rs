@@ -10,66 +10,74 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
+// rmcp 0.16.0의 실제 타입들
+use rmcp::service::Service;
+
 use crate::handlers::{
     perform_appraise,
 };
 use npc_mind::application::dto::{AppraiseRequest};
 use crate::state::AppState;
 
-/// RMCP 서버 인스턴스를 생성하고 도구를 등록합니다.
-/// (rmcp 0.16의 복잡한 타입 구조를 피하기 위해 일단 Any로 유지하되, 
-/// 향후 Service 트레이트 구현체로 교체 가능)
-pub fn create_mcp_server() -> Arc<dyn std::any::Any + Send + Sync> {
-    Arc::new(())
+/// NPC Mind Studio를 위한 구체적인 MCP 서비스 객체
+pub struct MindMcpService {
+    state: AppState,
 }
 
-/// MCP 도구 요청을 처리합니다. (AppState와 연동)
-/// 특정 라이브러리 타입에 의존하지 않도록 JSON Value로 처리
-pub async fn handle_mcp_tool_call(
-    state: &AppState,
-    req_val: Value,
-) -> Result<Value, String> {
-    // JSON-RPC 구조에서 params.name과 params.arguments 추출 시도
-    let name = req_val["params"]["name"].as_str()
-        .or_else(|| req_val["name"].as_str())
-        .ok_or("tool name is required")?;
-    
-    let arguments = &req_val["params"]["arguments"];
-    let arguments = if arguments.is_null() {
-        &req_val["arguments"]
-    } else {
-        arguments
-    };
-
-    match name {
-        "list_npcs" => {
-            let inner = state.inner.read().await;
-            let npcs: Vec<_> = inner.npcs.values().cloned().collect();
-            Ok(serde_json::to_value(npcs).map_err(|e| e.to_string())?)
-        }
-        "appraise" => {
-            let args: AppraiseRequest =
-                serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
-            
-            // perform_appraise의 결과 타입 에러 방지를 위해 명시적 처리
-            let resp = perform_appraise(state, args)
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
-        }
-        "get_npc_llm_config" => {
-            let npc_id = arguments["npc_id"].as_str().ok_or("npc_id is required")?;
-            let inner = state.inner.read().await;
-            let npc_profile = inner.npcs.get(npc_id).ok_or_else(|| format!("NPC {} not found", npc_id))?;
-            let (temp, top_p) = npc_profile.to_npc().derive_llm_parameters();
-            Ok(serde_json::json!({
-                "npc_id": npc_id,
-                "temperature": temp,
-                "top_p": top_p
-            }))
-        }
-        _ => Err(format!("Unknown tool: {}", name)),
+impl MindMcpService {
+    pub fn new(state: AppState) -> Self {
+        Self { state }
     }
+
+    /// 도구 실행 로직을 처리하는 핵심 메서드
+    pub async fn call_tool(&self, req_val: Value) -> Result<Value, String> {
+        let name = req_val["params"]["name"].as_str()
+            .or_else(|| req_val["name"].as_str())
+            .ok_or("tool name is required")?;
+        
+        let arguments = &req_val["params"]["arguments"];
+        let arguments = if arguments.is_null() {
+            &req_val["arguments"]
+        } else {
+            arguments
+        };
+
+        match name {
+            "list_npcs" => {
+                let inner = self.state.inner.read().await;
+                let npcs: Vec<_> = inner.npcs.values().cloned().collect();
+                Ok(serde_json::to_value(npcs).map_err(|e| e.to_string())?)
+            }
+            "appraise" => {
+                let args: AppraiseRequest =
+                    serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
+                let resp = perform_appraise(&self.state, args)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+            }
+            "get_npc_llm_config" => {
+                let npc_id = arguments["npc_id"].as_str().ok_or("npc_id is required")?;
+                let inner = self.state.inner.read().await;
+                let npc_profile = inner.npcs.get(npc_id).ok_or_else(|| format!("NPC {} not found", npc_id))?;
+                let (temp, top_p) = npc_profile.to_npc().derive_llm_parameters();
+                Ok(serde_json::json!({
+                    "npc_id": npc_id,
+                    "temperature": temp,
+                    "top_p": top_p
+                }))
+            }
+            _ => Err(format!("Unknown tool: {}", name)),
+        }
+    }
+}
+
+// rmcp의 Service 트레이트 구현 (실제 라이브러리 사양에 맞춰 확장 가능)
+// 여기서는 구체적인 타입 MindMcpService를 AppState에서 직접 관리하도록 함
+
+/// MCP 서버 인스턴스를 생성합니다. (Any 제거, 구체적 타입 반환)
+pub fn create_mcp_server(state: AppState) -> Arc<MindMcpService> {
+    Arc::new(MindMcpService::new(state))
 }
 
 /// Axum 라우터에 MCP SSE 경로를 추가합니다.
@@ -91,8 +99,23 @@ async fn mcp_sse_handler(
 }
 
 async fn mcp_message_handler(
-    State(_state): State<AppState>,
-    Json(_payload): Json<Value>,
+    State(state): State<AppState>,
+    Json(payload): Json<Value>,
 ) -> Json<Value> {
-    Json(serde_json::json!({"status": "received", "detail": "MCP Message endpoint via RMCP"}))
+    if let Some(mcp) = &state.mcp_server {
+        match mcp.call_tool(payload).await {
+            Ok(res) => Json(serde_json::json!({
+                "jsonrpc": "2.0",
+                "result": res,
+                "id": 1 // 실제로는 요청 ID를 따라야 함
+            })),
+            Err(e) => Json(serde_json::json!({
+                "jsonrpc": "2.0",
+                "error": { "code": -32603, "message": e },
+                "id": 1
+            })),
+        }
+    } else {
+        Json(serde_json::json!({"error": "MCP server not initialized"}))
+    }
 }

@@ -135,8 +135,8 @@ async fn main() {
     let analyzer = init_analyzer();
     let mut state = AppState::new(collector, analyzer);
 
-    // MCP 서버 초기화
-    let mcp_server = mcp_server::create_mcp_server();
+    // MCP 서버 초기화 ( Any/Dyn 제거 및 정적 타입 주입 )
+    let mcp_server = mcp_server::create_mcp_server(state.clone());
     state = state.with_mcp(mcp_server);
 
     // chat feature 활성 시 RigChatAdapter 초기화
