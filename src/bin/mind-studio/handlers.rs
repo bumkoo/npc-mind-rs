@@ -11,7 +11,8 @@ use npc_mind::application::mind_service::{MindServiceError};
 use npc_mind::ports::UtteranceAnalyzer;
 
 use crate::state::*;
-use crate::studio_service::{StudioService, ReadOnlyAppStateRepo, ScenarioInfo, SaveDirInfo};
+use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
+use crate::repository::{AppStateRepository, ReadOnlyAppStateRepo};
 
 // ---------------------------------------------------------------------------
 // WebUI 전용 에러 타입
@@ -214,7 +215,7 @@ pub async fn guide(
         }
     }
 
-    let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner });
+    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
     let result = service.generate_guide(req)?;
     Ok(Json(result.format(&*state.formatter)))
 }
@@ -409,7 +410,7 @@ pub async fn scene(
 ) -> Result<Json<SceneResponse>, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
-    let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner });
+    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
     let result = service.start_scene(req.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
     let response = result.format(&*state.formatter);
     if response.initial_appraise.is_some() {

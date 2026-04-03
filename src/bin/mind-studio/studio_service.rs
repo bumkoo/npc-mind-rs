@@ -1,19 +1,12 @@
-use std::sync::Arc;
-use crate::state::{AppState, StateInner, TurnRecord, RelationshipData, FORMAT_SCENARIO, FORMAT_RESULT};
-use npc_mind::application::dto::{
-    AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse,
-    StimulusRequest, StimulusResponse, SceneRequest, SceneFocusInput, SceneInfoResult,
-};
+use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
+use npc_mind::application::dto::*;
 #[cfg(feature = "chat")]
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
 };
 use npc_mind::application::mind_service::{MindService};
-use npc_mind::domain::personality::Npc;
-use npc_mind::domain::relationship::Relationship;
-use npc_mind::domain::emotion::{EmotionState, Scene};
-use npc_mind::ports::{NpcWorld, EmotionStore, SceneStore};
 use crate::handlers::AppError;
+use crate::repository::AppStateRepository;
 use serde::Serialize;
 
 /// Mind Studio 전용 비즈니스 로직 서비스
@@ -314,7 +307,6 @@ impl StudioService {
     }
 
     /// 대화 응답 수신 후 후속 처리 (PAD 분석, 심리 자극, 기록 저장)
-    /// 일반 대화와 스트리밍 대화에서 공통으로 사용
     #[cfg(feature = "chat")]
     pub async fn process_chat_turn_result(
         state: &AppState,
@@ -323,7 +315,6 @@ impl StudioService {
     ) -> Result<(Option<StimulusResponse>, bool), AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
         
-        // 1. PAD 수치 결정 (수동 입력 우선 -> 자동 분석 fallback)
         let pad = if let Some(ref pad_input) = req.pad {
             Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
         } else if let Some(ref analyzer) = state.analyzer {
@@ -336,7 +327,6 @@ impl StudioService {
             None
         };
 
-        // 2. 심리 자극 적용 및 기록
         if let Some((p, a, d)) = pad {
             let stim_req = StimulusRequest {
                 npc_id: req.npc_id.clone(),
@@ -375,7 +365,6 @@ impl StudioService {
 
             Ok((Some(stim_resp), changed))
         } else {
-            // PAD 정보를 얻을 수 없는 경우에도 대사 기록은 남김
             let mut inner = state.inner.write().await;
             let turn_num = inner.turn_history.len() + 1;
             inner.turn_history.push(TurnRecord {
@@ -395,13 +384,8 @@ impl StudioService {
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        
-        // LLM 대사 생성
         let npc_response = chat_port.send_message(&req.session_id, &req.utterance).await?;
-        
-        // 후속 처리 (심리 업데이트 및 기록)
         let (stimulus, beat_changed) = Self::process_chat_turn_result(state, &req, npc_response.clone()).await?;
-        
         Ok(ChatTurnResponse { npc_response, stimulus, beat_changed })
     }
 
@@ -436,157 +420,4 @@ pub struct SaveDirInfo {
     pub scenario_modified: bool,
     pub has_turn_history: bool,
     pub has_existing_results: bool,
-}
-
-// ---------------------------------------------------------------------------
-// Repository Wrappers (내부용)
-// ---------------------------------------------------------------------------
-
-pub struct AppStateRepository<'a> {
-    pub inner: &'a mut StateInner,
-}
-
-impl<'a> NpcWorld for AppStateRepository<'a> {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        self.inner.npcs.get(id).map(|p| p.to_npc())
-    }
-
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        self.inner
-            .find_relationship(owner_id, target_id)
-            .map(|r| r.to_relationship())
-    }
-
-    fn get_object_description(&self, object_id: &str) -> Option<String> {
-        self.inner
-            .objects
-            .get(object_id)
-            .map(|o| o.description.clone())
-    }
-
-    fn save_relationship(&mut self, owner_id: &str, target_id: &str, rel: Relationship) {
-        let key = format!("{}:{}", owner_id, target_id);
-        let existing_key = if self.inner.relationships.contains_key(&key) {
-            key
-        } else {
-            let rev_key = format!("{}:{}", target_id, owner_id);
-            if self.inner.relationships.contains_key(&rev_key) {
-                rev_key
-            } else {
-                key
-            }
-        };
-
-        self.inner.relationships.insert(
-            existing_key,
-            RelationshipData {
-                owner_id: owner_id.to_string(),
-                target_id: target_id.to_string(),
-                closeness: rel.closeness().value(),
-                trust: rel.trust().value(),
-                power: rel.power().value(),
-            },
-        );
-    }
-}
-
-impl<'a> EmotionStore for AppStateRepository<'a> {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.inner.emotions.get(npc_id).cloned()
-    }
-
-    fn save_emotion_state(&mut self, npc_id: &str, state: EmotionState) {
-        self.inner.emotions.insert(npc_id.to_string(), state);
-    }
-
-    fn clear_emotion_state(&mut self, npc_id: &str) {
-        self.inner.emotions.remove(npc_id);
-    }
-}
-
-impl<'a> SceneStore for AppStateRepository<'a> {
-    fn get_scene(&self) -> Option<Scene> {
-        let npc_id = self.inner.scene_npc_id.as_ref()?;
-        let partner_id = self.inner.scene_partner_id.as_ref()?;
-        let mut scene = Scene::new(
-            npc_id.clone(),
-            partner_id.clone(),
-            self.inner.scene_focuses.clone(),
-        );
-        if let Some(ref id) = self.inner.active_focus_id {
-            scene.set_active_focus(id.clone());
-        }
-        Some(scene)
-    }
-
-    fn save_scene(&mut self, scene: Scene) {
-        self.inner.scene_npc_id = Some(scene.npc_id().to_string());
-        self.inner.scene_partner_id = Some(scene.partner_id().to_string());
-        self.inner.scene_focuses = scene.focuses().to_vec();
-        self.inner.active_focus_id = scene.active_focus_id().map(|s| s.to_string());
-    }
-
-    fn clear_scene(&mut self) {
-        self.inner.scene_npc_id = None;
-        self.inner.scene_partner_id = None;
-        self.inner.scene_focuses.clear();
-        self.inner.active_focus_id = None;
-    }
-}
-
-/// 읽기 전용 저장소 래퍼 (scene_info 등 불변 메서드용)
-pub struct ReadOnlyAppStateRepo<'a> {
-    pub inner: &'a StateInner,
-}
-
-impl<'a> NpcWorld for ReadOnlyAppStateRepo<'a> {
-    fn get_npc(&self, id: &str) -> Option<Npc> {
-        self.inner.npcs.get(id).map(|p| p.to_npc())
-    }
-    fn get_relationship(&self, owner_id: &str, target_id: &str) -> Option<Relationship> {
-        self.inner
-            .find_relationship(owner_id, target_id)
-            .map(|r| r.to_relationship())
-    }
-    fn get_object_description(&self, _: &str) -> Option<String> {
-        None
-    }
-    fn save_relationship(&mut self, _: &str, _: &str, _: Relationship) {
-        unreachable!("read-only")
-    }
-}
-
-impl<'a> EmotionStore for ReadOnlyAppStateRepo<'a> {
-    fn get_emotion_state(&self, npc_id: &str) -> Option<EmotionState> {
-        self.inner.emotions.get(npc_id).cloned()
-    }
-    fn save_emotion_state(&mut self, _: &str, _: EmotionState) {
-        unreachable!("read-only")
-    }
-    fn clear_emotion_state(&mut self, _: &str) {
-        unreachable!("read-only")
-    }
-}
-
-impl<'a> SceneStore for ReadOnlyAppStateRepo<'a> {
-    fn get_scene(&self) -> Option<Scene> {
-        let npc_id = self.inner.scene_npc_id.as_ref()?;
-        let partner_id = self.inner.scene_partner_id.as_ref()?;
-        let mut scene = Scene::new(
-            npc_id.clone(),
-            partner_id.clone(),
-            self.inner.scene_focuses.clone(),
-        );
-        if let Some(ref id) = self.inner.active_focus_id {
-            scene.set_active_focus(id.clone());
-        }
-        Some(scene)
-    }
-
-    fn save_scene(&mut self, _: Scene) {
-        unreachable!("read-only")
-    }
-    fn clear_scene(&mut self) {
-        unreachable!("read-only")
-    }
 }
