@@ -231,6 +231,7 @@ pub async fn list_npcs(State(state): State<AppState>) -> Json<Vec<NpcProfile>> {
 pub async fn upsert_npc(State(state): State<AppState>, Json(npc): Json<NpcProfile>) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.npcs.insert(npc.id.clone(), npc);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -241,6 +242,7 @@ pub async fn delete_npc(
 ) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.npcs.remove(&id);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -264,6 +266,7 @@ pub async fn upsert_relationship(
     let mut inner = state.inner.write().await;
     let key = rel.key();
     inner.relationships.insert(key, rel);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -275,6 +278,7 @@ pub async fn delete_relationship(
     let mut inner = state.inner.write().await;
     let key = format!("{owner}:{target}");
     inner.relationships.remove(&key);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -297,6 +301,7 @@ pub async fn upsert_object(
 ) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.objects.insert(obj.id.clone(), obj);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -307,6 +312,7 @@ pub async fn delete_object(
 ) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.objects.remove(&id);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -543,6 +549,7 @@ pub async fn put_situation(
 ) -> StatusCode {
     let mut inner = state.inner.write().await;
     inner.current_situation = Some(body);
+    inner.scenario_modified = true;
     StatusCode::OK
 }
 
@@ -553,18 +560,99 @@ pub async fn put_situation(
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {
     pub path: String,
+    /// "scenario" | "result" — 저장 유형 (기본: turn_history 유무로 자동 결정)
+    #[serde(default)]
+    pub save_type: Option<String>,
 }
 
 /// POST /api/save — JSON 파일로 저장
+/// 결과 저장 응답 (저장된 경로 반환)
+#[derive(Serialize)]
+pub struct SaveResponse {
+    pub path: String,
+}
+
 pub async fn save_state(
     State(state): State<AppState>,
     Json(req): Json<SaveRequest>,
-) -> Result<StatusCode, AppError> {
-    let inner = state.inner.read().await;
+) -> Result<Json<SaveResponse>, AppError> {
+    let mut inner = state.inner.write().await;
+    let save_path = req.path.clone();
+    if save_path.is_empty() {
+        return Err(AppError::Internal("저장 경로가 비어있습니다".into()));
+    }
+    let as_scenario = match req.save_type.as_deref() {
+        Some("scenario") => true,
+        Some("result") => false,
+        _ => inner.turn_history.is_empty(), // 미지정 시 자동 결정
+    };
     inner
-        .save_to_file(std::path::Path::new(&req.path))
+        .save_to_file(std::path::Path::new(&save_path), as_scenario)
         .map_err(|e| AppError::Internal(e))?;
-    Ok(StatusCode::OK)
+    if as_scenario {
+        inner.scenario_modified = false;
+        // 신규 이름으로 저장 시 loaded_path 갱신 → result 폴더 경로가 새 시나리오 기준으로 바뀜
+        inner.loaded_path = Some(save_path.clone());
+    }
+    Ok(Json(SaveResponse { path: save_path }))
+}
+
+/// GET /api/save-dir — loaded_path 기반 결과 저장 폴더 경로 반환
+/// 예: loaded="data/foo/scenario.json" → "data/foo/scenario_result"
+pub async fn save_dir(
+    State(state): State<AppState>,
+) -> Result<Json<SaveDirResponse>, AppError> {
+    let inner = state.inner.read().await;
+    let loaded = inner
+        .loaded_path
+        .as_deref()
+        .ok_or_else(|| AppError::Internal("로드된 시나리오가 없습니다".into()))?;
+
+    let p = std::path::Path::new(loaded);
+    let parent = p.parent().unwrap_or(std::path::Path::new("data"));
+    let stem = p
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("scenario");
+    let result_dir = parent.join(format!("{}_result", stem));
+
+    // 폴더 생성 (없으면)
+    std::fs::create_dir_all(&result_dir)
+        .map_err(|e| AppError::Internal(format!("폴더 생성 실패: {}", e)))?;
+
+    // 결과 폴더에 기존 파일 존재 여부
+    let has_existing_results = result_dir.is_dir()
+        && std::fs::read_dir(&result_dir)
+            .ok()
+            .map(|entries| entries.flatten().any(|e| {
+                e.path().extension().map(|ext| ext == "json").unwrap_or(false)
+            }))
+            .unwrap_or(false);
+
+    Ok(Json(SaveDirResponse {
+        dir: result_dir.to_string_lossy().replace('\\', "/"),
+        loaded_path: loaded.to_string(),
+        scenario_name: inner.scenario.name.clone(),
+        scenario_modified: inner.scenario_modified,
+        has_turn_history: !inner.turn_history.is_empty(),
+        has_existing_results,
+    }))
+}
+
+#[derive(Serialize)]
+pub struct SaveDirResponse {
+    /// 결과 저장 폴더 경로
+    pub dir: String,
+    /// 원본 시나리오 파일 경로
+    pub loaded_path: String,
+    /// 시나리오 이름
+    pub scenario_name: String,
+    /// 시나리오 수정 여부
+    pub scenario_modified: bool,
+    /// 대화 기록 존재 여부 (대화 종료 후)
+    pub has_turn_history: bool,
+    /// 결과 폴더에 기존 결과 파일 존재 여부
+    pub has_existing_results: bool,
 }
 
 /// POST /api/load — JSON 파일에서 로드 (scene 필드가 있으면 자동 Focus 등록, turn_history 무시)
@@ -577,6 +665,8 @@ pub async fn load_state(
 
     // 시나리오 로드 시 turn_history는 비움 (깨끗한 상태에서 시작)
     loaded.turn_history.clear();
+    // 로드 경로 기억 (결과 저장 시 자동 경로 계산용)
+    loaded.loaded_path = Some(req.path.clone());
 
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
@@ -596,6 +686,9 @@ pub async fn load_result(
 ) -> Result<Json<LoadResultResponse>, AppError> {
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
         .map_err(|e| AppError::Internal(e))?;
+
+    // 로드 경로 기억
+    loaded.loaded_path = Some(req.path.clone());
 
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
@@ -722,7 +815,9 @@ fn build_situation_map(
 // 시나리오 목록 (data/ 폴더 스캔)
 // ---------------------------------------------------------------------------
 
-/// GET /api/scenarios — data/ 폴더에서 scenario.json 파일 목록 반환
+use crate::state::{FORMAT_SCENARIO, FORMAT_RESULT};
+
+/// GET /api/scenarios — data/ 폴더에서 Mind Studio JSON 파일 목록 반환
 pub async fn list_scenarios() -> Json<Vec<ScenarioInfo>> {
     let data_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
     let mut scenarios = Vec::new();
@@ -733,45 +828,63 @@ pub async fn list_scenarios() -> Json<Vec<ScenarioInfo>> {
 
 #[derive(Serialize)]
 pub struct ScenarioInfo {
-    /// data/ 기준 상대 경로 (슬래시 구분)
+    /// data/ 기준 상대 경로 (슬래시 구분, 파일명 포함)
     pub path: String,
-    /// 표시용 이름 (폴더 구조에서 추출)
+    /// 표시용 이름
     pub label: String,
-    /// turn_history가 포함된 결과 파일인지 여부
+    /// 테스트 결과 파일인지 여부
     pub has_results: bool,
 }
 
+/// data/ 재귀 스캔: 모든 .json → format 필드 또는 npcs 유무로 Mind Studio 파일 판별
 fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<ScenarioInfo>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
                 scan_scenarios(base, &path, out);
-            } else if path
-                .file_name()
-                .map(|f| f == "scenario.json")
-                .unwrap_or(false)
+                continue;
+            }
+            // .json 파일만 처리
+            let is_json = path.extension().map(|e| e == "json").unwrap_or(false);
+            if !is_json {
+                continue;
+            }
+            // 빠른 파싱
+            let val = match std::fs::read_to_string(&path)
+                .ok()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
             {
-                if let Ok(rel) = path.parent().unwrap_or(&path).strip_prefix(base) {
-                    let rel_str = rel.to_string_lossy().replace('\\', "/");
-                    let label = rel_str.replace('/', " / ");
-                    // turn_history 유무 확인 (빠른 파싱)
-                    let has_results = std::fs::read_to_string(&path)
-                        .ok()
-                        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-                        .map(|v| {
-                            v.get("turn_history")
-                                .and_then(|t| t.as_array())
-                                .map(|a| !a.is_empty())
-                                .unwrap_or(false)
-                        })
-                        .unwrap_or(false);
-                    out.push(ScenarioInfo {
-                        path: rel_str,
-                        label,
-                        has_results,
-                    });
-                }
+                Some(v) => v,
+                None => continue,
+            };
+            // format 필드로 판별 (필수)
+            let format_str = match val.get("format").and_then(|f| f.as_str()) {
+                Some(f) => f,
+                None => continue, // format 필드 없으면 무시
+            };
+
+            // Mind Studio 파일만 인식
+            let has_results = if format_str == FORMAT_RESULT {
+                true
+            } else if format_str == FORMAT_SCENARIO {
+                false
+            } else {
+                continue; // 알 수 없는 format → 무시
+            };
+
+            // 상대 경로 (파일명 포함)
+            if let Ok(rel) = path.strip_prefix(base) {
+                let rel_str = rel.to_string_lossy().replace('\\', "/");
+                // 라벨: 폴더/파일명에서 .json 제거, / → " / "
+                let label = rel_str
+                    .trim_end_matches(".json")
+                    .replace('/', " / ");
+                out.push(ScenarioInfo {
+                    path: rel_str,
+                    label,
+                    has_results,
+                });
             }
         }
     }
@@ -940,8 +1053,12 @@ pub mod chat_handlers {
                     .map_err(|e| AppError::Internal(e.to_string()))?;
             }
 
-            // 턴 기록
+            // 턴 기록 — npc_response 텍스트를 response에 포함
             let turn_num = inner.turn_history.len() + 1;
+            let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
+            if let serde_json::Value::Object(ref mut map) = resp_val {
+                map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
+            }
             inner.turn_history.push(TurnRecord {
                 label: format!(
                     "Turn {}: chat/message [{}→{}]",
@@ -949,7 +1066,7 @@ pub mod chat_handlers {
                 ),
                 action: "chat_message".into(),
                 request: serde_json::to_value(&req).unwrap_or_default(),
-                response: serde_json::to_value(&stim_resp).unwrap_or_default(),
+                response: resp_val,
             });
 
             (Some(stim_resp), changed)
@@ -1096,10 +1213,14 @@ pub mod chat_handlers {
                     }
                 }
 
-                // 턴 기록
+                // 턴 기록 — npc_response 텍스트를 response에 포함
                 {
                     let mut inner = state.inner.write().await;
                     let turn_num = inner.turn_history.len() + 1;
+                    let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
+                    if let serde_json::Value::Object(ref mut map) = resp_val {
+                        map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
+                    }
                     inner.turn_history.push(TurnRecord {
                         label: format!(
                             "Turn {}: chat/message [{}→{}]",
@@ -1107,7 +1228,7 @@ pub mod chat_handlers {
                         ),
                         action: "chat_message".into(),
                         request: serde_json::to_value(&req).unwrap_or_default(),
-                        response: serde_json::to_value(&stim_resp).unwrap_or_default(),
+                        response: resp_val,
                     });
                 }
 

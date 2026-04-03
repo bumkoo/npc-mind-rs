@@ -1303,6 +1303,8 @@
                 onNewNpc,
                 onNewRel,
                 onNewObj,
+                disabled,
+                disabledMsg,
             }) {
                 const [openSections, setOpenSections] = useState({
                     npc: true,
@@ -1313,7 +1315,16 @@
                     setOpenSections((p) => ({ ...p, [k]: !p[k] }));
 
                 return (
-                    <div className="sidebar">
+                    <div className="sidebar" style={disabled ? { opacity: 0.5, pointerEvents: "none" } : {}}>
+                        {disabled && (
+                            <div style={{
+                                padding: "8px 12px", background: "#fff3cd", color: "#856404",
+                                fontSize: 12, borderRadius: 4, margin: "0 8px 8px",
+                                textAlign: "center", pointerEvents: "auto",
+                            }}>
+                                {disabledMsg || "수정할 수 없습니다"}
+                            </div>
+                        )}
                         {/* NPC */}
                         <div className="sidebar-section">
                             <div
@@ -1580,6 +1591,7 @@
                 savedSituation,
                 sceneInfo,
                 toast,
+                disabled,
             }) {
                 const npcIds = ["player", ...npcs.map((n) => n.id)];
                 const [desc, setDesc] = useState("");
@@ -1612,6 +1624,7 @@
 
                 // --- 시나리오 로드 시 상황설정 복원 ---
                 const restoreKeyRef = React.useRef(null);
+                const skipSituationSaveRef = React.useRef(false);
                 React.useEffect(() => {
                     if (!savedSituation || savedSituation === restoreKeyRef.current) return;
                     restoreKeyRef.current = savedSituation;
@@ -1639,6 +1652,8 @@
                             objAp: s.objAp || 0,
                         });
                     }
+                    // 복원으로 인한 state 변경이 auto-save를 트리거하지 않도록 스킵 플래그 설정
+                    skipSituationSaveRef.current = true;
                 }, [savedSituation]);
 
                 // --- 상황설정 변경 시 자동 저장 (debounced) ---
@@ -1646,6 +1661,11 @@
                 const allDeps = JSON.stringify({ desc, significance, focusSettings, singleFs, npcId, partnerId });
                 React.useEffect(() => {
                     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+                    // 로드 직후 첫 자동저장은 건너뜀 (scenario_modified 오염 방지)
+                    if (skipSituationSaveRef.current) {
+                        skipSituationSaveRef.current = false;
+                        return;
+                    }
                     saveTimerRef.current = setTimeout(() => {
                         const activeFs = sceneInfo ? focusSettings : { _single: singleFs };
                         const data = { desc, npcId, partnerId, significance, focusSettings: activeFs,
@@ -1693,8 +1713,17 @@
                 const focuses = sceneInfo?.focuses || [];
 
                 return (
-                    <div className="center">
+                    <div className="center" style={disabled ? { opacity: 0.6, pointerEvents: "none" } : {}}>
                         <h2>상황 설정</h2>
+                        {disabled && (
+                            <div style={{
+                                padding: "8px 12px", background: "#fff3cd", color: "#856404",
+                                fontSize: 12, borderRadius: 4, marginBottom: 8,
+                                textAlign: "center", pointerEvents: "auto",
+                            }}>
+                                대화 종료됨 — 결과를 저장하거나 시나리오를 다시 로드하세요
+                            </div>
+                        )}
                         {/* NPC pair */}
                         <div className="pair-select">
                             <div>
@@ -2806,6 +2835,7 @@
                 const [chatLoading, setChatLoading] = useState(false);
                 const [chatScenarioTurns, setChatScenarioTurns] = useState([]);
                 const [chatScenarioIdx, setChatScenarioIdx] = useState(0);
+                const [chatEnded, setChatEnded] = useState(false); // 대화 종료 후 잠금 상태
                 const [selectedMsgIdx, setSelectedMsgIdx] = useState(null);
                 const [stimulusUtterance, setStimulusUtterance] = useState("");
                 const [resultTab, setResultTab] = useState("emotions");
@@ -2847,34 +2877,45 @@
                 // Sidebar → NPC selection syncs to situation panel
                 const handleSelectNpc = (id) => setNpcId(id);
 
-                // --- CRUD handlers ---
+                // --- CRUD handlers (대화 중/종료 후 수정 차단) ---
+                const guardChat = () => {
+                    if (chatMode) { toast("대화 중에는 수정할 수 없습니다", "error"); return true; }
+                    if (chatEnded) { toast("결과를 저장하거나 시나리오를 다시 로드하세요", "error"); return true; }
+                    return false;
+                };
                 const saveNpc = async (data) => {
+                    if (guardChat()) return;
                     await api.post("/api/npcs", data);
                     setModal(null);
                     refresh();
                 };
                 const deleteNpc = async (id) => {
+                    if (guardChat()) return;
                     await api.del(`/api/npcs/${id}`);
                     setModal(null);
                     if (npcId === id) setNpcId("");
                     refresh();
                 };
                 const saveRel = async (data) => {
+                    if (guardChat()) return;
                     await api.post("/api/relationships", data);
                     setModal(null);
                     refresh();
                 };
                 const deleteRel = async (oid, tid) => {
+                    if (guardChat()) return;
                     await api.del(`/api/relationships/${oid}/${tid}`);
                     setModal(null);
                     refresh();
                 };
                 const saveObj = async (data) => {
+                    if (guardChat()) return;
                     await api.post("/api/objects", data);
                     setModal(null);
                     refresh();
                 };
                 const deleteObj = async (id) => {
+                    if (guardChat()) return;
                     await api.del(`/api/objects/${id}`);
                     setModal(null);
                     refresh();
@@ -3005,6 +3046,23 @@
                 const handleStartChat = async (situation) => {
                     if (!npcId || !partnerId)
                         return toast("NPC와 대화 상대를 선택하세요", "error");
+                    // 대화 종료 후 잠금 상태면 차단
+                    if (chatEnded) {
+                        toast("테스트 결과를 저장하거나 시나리오를 다시 로드하세요", "error");
+                        return;
+                    }
+                    // 시나리오 변경 있으면 먼저 저장 요구
+                    try {
+                        const dirRes = await fetch("/api/save-dir");
+                        if (dirRes.ok) {
+                            const info = await dirRes.json();
+                            if (info.scenario_modified) {
+                                const ok = await saveScenario();
+                                if (!ok) return; // 저장 취소 → 대화 시작 취소
+                                await refresh();
+                            }
+                        }
+                    } catch (_) {}
                     const sessionId = `chat-${Date.now()}`;
                     setChatLoading(true);
                     try {
@@ -3275,6 +3333,7 @@
                     setChatScenarioTurns([]);
                     setChatScenarioIdx(0);
                     setSelectedMsgIdx(null);
+                    setChatEnded(true); // 대화 종료 후 잠금
                     refresh();
                 };
 
@@ -3337,6 +3396,19 @@
                                 setResult(nextAssistant.snapshot);
                             }
                         }
+                        // 자극 탭에 상대(user) 대사 자동 입력
+                        if (msg) {
+                            if (msg.role === "user" && msg.content) {
+                                setStimulusUtterance(msg.content);
+                            } else if (msg.role === "assistant") {
+                                for (let j = idx - 1; j >= 0; j--) {
+                                    if (resultMessages[j]?.role === "user" && resultMessages[j]?.content) {
+                                        setStimulusUtterance(resultMessages[j].content);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
                 };
 
@@ -3353,24 +3425,91 @@
                 }, [chatMode]);
 
                 // --- Save / Load ---
-                const saveState = async () => {
-                    const sub = prompt("저장 경로 (data/ 기준):", "");
-                    if (!sub) return;
-                    const path = `data/${sub}${sub.endsWith(".json") ? "" : ".json"}`;
+                // --- 저장 헬퍼 ---
+                const doSave = async (path, saveType) => {
                     const res = await fetch("/api/save", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ path }),
+                        body: JSON.stringify({ path, save_type: saveType || null }),
                     });
-                    if (res.ok) {
-                        toast("저장 완료", "success");
-                        refresh();
-                    } else toast("저장 실패: " + (await res.text()), "error");
+                    if (res.ok) return (await res.json()).path;
+                    throw new Error(await res.text());
+                };
+
+                // --- 시나리오 저장 헬퍼 (대화 시작 전 팝업에서도 재사용) ---
+                const saveScenario = async () => {
+                    let info = null;
+                    try {
+                        const dirRes = await fetch("/api/save-dir");
+                        if (dirRes.ok) info = await dirRes.json();
+                    } catch (_) {}
+                    if (!info) { toast("시나리오를 먼저 로드하세요", "error"); return false; }
+                    const { loaded_path, scenario_name, has_existing_results } = info;
+                    if (has_existing_results) {
+                        const displayDir = (loaded_path || "").replace(/^data\//, "").replace(/\/[^/]+$/, "/");
+                        const name = prompt(`[${scenario_name}] 시나리오 저장\n기존 테스트 결과가 있어 원본을 덮어쓸 수 없습니다.\n위치: ${displayDir}\n새 파일 이름:`, "");
+                        if (!name) return false;
+                        const filename = name.endsWith(".json") ? name : name + ".json";
+                        const parentDir = (loaded_path || "data").replace(/\/[^/]+$/, "");
+                        try {
+                            await doSave(`${parentDir}/${filename}`, "scenario");
+                        } catch (e) { toast("시나리오 저장 실패: " + e.message, "error"); return false; }
+                    } else {
+                        try {
+                            await doSave(loaded_path, "scenario");
+                        } catch (e) { toast("시나리오 저장 실패: " + e.message, "error"); return false; }
+                    }
+                    toast("시나리오 저장 완료", "success");
+                    return true;
+                };
+
+                const saveState = async () => {
+                    // 0) 대화 진행 중이면 차단
+                    if (chatMode) {
+                        toast("대화 종료 후 저장 가능합니다", "error");
+                        return;
+                    }
+                    // 1) 서버에서 상태 조회
+                    let info = null;
+                    try {
+                        const dirRes = await fetch("/api/save-dir");
+                        if (dirRes.ok) info = await dirRes.json();
+                    } catch (_) {}
+                    if (!info) { toast("시나리오를 먼저 로드하세요", "error"); return; }
+
+                    const { dir, loaded_path, scenario_name, scenario_modified, has_turn_history, has_existing_results } = info;
+
+                    // --- 대화 종료 후: 결과만 저장 (시나리오는 대화 시작 전에 이미 저장됨) ---
+                    if (chatEnded) {
+                        if (!has_turn_history) {
+                            toast("저장할 대화 기록이 없습니다", "info");
+                            return;
+                        }
+                        const displayDir = dir.replace(/^data\//, "") + "/";
+                        const name = prompt(`[${scenario_name}] 테스트 결과 저장\n저장 위치: ${displayDir}\n파일 이름:`, "");
+                        if (!name) return;
+                        const filename = name.endsWith(".json") ? name : name + ".json";
+                        try {
+                            await doSave(`${dir}/${filename}`, "result");
+                            toast("테스트 결과 저장 완료", "success");
+                        } catch (e) { toast("결과 저장 실패: " + e.message, "error"); }
+                        return;
+                    }
+
+                    // --- 대화 전: 시나리오 저장 ---
+                    if (scenario_modified) {
+                        const ok = await saveScenario();
+                        if (!ok) return;
+                        toast("시나리오 저장 완료", "success");
+                        return;
+                    }
+
+                    toast("저장할 변경사항이 없습니다", "info");
                 };
 
                 const loadScenario = async (scenPath) => {
                     if (!scenPath) return;
-                    const path = `data/${scenPath}/scenario.json`;
+                    const path = `data/${scenPath}`;
                     const res = await fetch("/api/load", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -3378,7 +3517,8 @@
                     });
                     if (res.ok) {
                         toast("시나리오 로드 완료", "success");
-                        // 결과 뷰 모드 해제
+                        // 상태 초기화
+                        setChatEnded(false);
                         setResultViewMode(false);
                         setResultViewActive(false);
                         setResultTurnHistory([]);
@@ -3410,7 +3550,7 @@
 
                 const loadResult = async (scenPath) => {
                     if (!scenPath) return;
-                    const path = `data/${scenPath}/scenario.json`;
+                    const path = `data/${scenPath}`;
                     const res = await fetch("/api/load-result", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -3418,7 +3558,8 @@
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        toast("결과 로드 완료", "success");
+                        setChatEnded(false);
+                        toast("테스트 결과 로드 완료", "success");
                         await refresh();
                         // 상황설정 복원
                         try {
@@ -3470,24 +3611,23 @@
                                     mood: resp.mood,
                                     snapshot: resp,
                                 });
-                            } else if (turn.action === "chat_turn") {
-                                // LLM 대화 턴
-                                const stimResp = resp.stimulus || resp;
+                            } else if (turn.action === "chat_message") {
+                                // LLM 대화 턴 — response에 npc_response + stimulus 결과가 병합됨
                                 const emotions = {};
-                                (stimResp.emotions || []).forEach((e) => { emotions[e.emotion_type] = e.intensity; });
+                                (resp.emotions || []).forEach((e) => { emotions[e.emotion_type] = e.intensity; });
                                 msgs.push({
                                     role: "user",
                                     content: req.utterance || "",
-                                    pad: stimResp.input_pad || null,
+                                    pad: resp.input_pad || null,
                                 });
                                 msgs.push({
                                     role: "assistant",
                                     content: resp.npc_response || turn.label,
                                     emotions,
-                                    mood: stimResp.mood,
-                                    snapshot: stimResp,
-                                    beat_changed: resp.beat_changed || stimResp.beat_changed,
-                                    new_focus: stimResp.active_focus_id,
+                                    mood: resp.mood,
+                                    snapshot: resp,
+                                    beat_changed: resp.beat_changed,
+                                    new_focus: resp.active_focus_id,
                                 });
                             } else if (turn.action === "after_dialogue") {
                                 msgs.push({
@@ -3581,7 +3721,7 @@
                                 >
                                     저장
                                 </button>
-                                <button className="btn small" onClick={refresh}>
+                                <button className="btn small" onClick={() => window.location.reload()}>
                                     새로고침
                                 </button>
                             </div>
@@ -3595,24 +3735,32 @@
                                 objects={objects}
                                 selectedNpcId={npcId}
                                 onSelectNpc={handleSelectNpc}
-                                onEditNpc={(n) =>
-                                    setModal({ type: "npc", data: n })
-                                }
-                                onEditRel={(r) =>
-                                    setModal({ type: "rel", data: r })
-                                }
-                                onEditObj={(o) =>
-                                    setModal({ type: "obj", data: o })
-                                }
-                                onNewNpc={() =>
-                                    setModal({ type: "npc", data: null })
-                                }
-                                onNewRel={() =>
-                                    setModal({ type: "rel", data: null })
-                                }
-                                onNewObj={() =>
-                                    setModal({ type: "obj", data: null })
-                                }
+                                disabled={chatMode || chatEnded}
+                                disabledMsg={chatMode ? "대화 중에는 수정할 수 없습니다" : chatEnded ? "결과 저장 또는 시나리오 로드 필요" : ""}
+                                onEditNpc={(n) => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "npc", data: n });
+                                }}
+                                onEditRel={(r) => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "rel", data: r });
+                                }}
+                                onEditObj={(o) => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "obj", data: o });
+                                }}
+                                onNewNpc={() => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "npc", data: null });
+                                }}
+                                onNewRel={() => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "rel", data: null });
+                                }}
+                                onNewObj={() => {
+                                    if (chatMode) return toast("대화 중에는 수정할 수 없습니다", "error");
+                                    setModal({ type: "obj", data: null });
+                                }}
                             />
                             {chatMode ? (
                                 <ChatPanel
@@ -3647,23 +3795,26 @@
                                     npcs={npcs}
                                     objects={objects}
                                     npcId={npcId}
-                                    setNpcId={setNpcId}
+                                    setNpcId={chatEnded ? () => {} : setNpcId}
                                     partnerId={partnerId}
-                                    setPartnerId={setPartnerId}
-                                    onAppraise={handleAppraise}
-                                    onStartChat={resultViewMode ? () => {
-                                        // 결과 뷰 모드: "대화 로드" — resultMessages를 표시
-                                        if (resultMessages.length > 0) {
-                                            setResultViewActive(true);
-                                            setResultTab("emotions");
-                                            setResult(resultMessages[0]?.snapshot || null);
-                                        }
-                                    } : handleStartChat}
+                                    setPartnerId={chatEnded ? () => {} : setPartnerId}
+                                    onAppraise={chatEnded ? null : handleAppraise}
+                                    onStartChat={
+                                        chatEnded ? null :
+                                        resultViewMode ? () => {
+                                            if (resultMessages.length > 0) {
+                                                setResultViewActive(true);
+                                                setResultTab("emotions");
+                                                setResult(resultMessages[0]?.snapshot || null);
+                                            }
+                                        } : handleStartChat
+                                    }
                                     startChatLabel={resultViewMode ? "대화 로드" : null}
                                     loading={loading}
                                     savedSituation={savedSituation}
                                     sceneInfo={sceneInfo}
                                     toast={toast}
+                                    disabled={chatEnded}
                                 />
                             )}
                             <ResultPanel
@@ -3674,8 +3825,8 @@
                                 onStimulus={handleStimulus}
                                 toast={toast}
                                 sceneInfo={sceneInfo}
-                                chatMessages={chatMessages}
-                                selectedMsgIdx={selectedMsgIdx}
+                                chatMessages={resultViewActive ? resultMessages : chatMessages}
+                                selectedMsgIdx={resultViewActive ? resultSelectedIdx : selectedMsgIdx}
                                 stimulusUtterance={stimulusUtterance}
                                 onStimulusUtteranceChange={setStimulusUtterance}
                                 tab={resultTab}

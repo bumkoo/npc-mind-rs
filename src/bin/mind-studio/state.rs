@@ -46,9 +46,16 @@ impl AppState {
     }
 }
 
+/// 파일 포맷 식별자
+pub const FORMAT_SCENARIO: &str = "mind-studio/scenario";
+pub const FORMAT_RESULT: &str = "mind-studio/result";
+
 /// 내부 상태 (RwLock으로 보호)
 #[derive(Default, Serialize, Deserialize)]
 pub struct StateInner {
+    /// 파일 포맷 식별자 ("mind-studio/scenario" | "mind-studio/result")
+    #[serde(default)]
+    pub format: String,
     /// NPC 프로필 레지스트리 (key: npc_id)
     pub npcs: HashMap<String, NpcProfile>,
     /// 관계 레지스트리 (key: "owner_id:target_id")
@@ -81,6 +88,12 @@ pub struct StateInner {
     /// 현재 Scene의 대화 상대 ID (런타임)
     #[serde(skip)]
     pub scene_partner_id: Option<String>,
+    /// 로드한 파일 경로 (런타임 — 결과 저장 시 자동 경로 계산용)
+    #[serde(skip)]
+    pub loaded_path: Option<String>,
+    /// 시나리오 수정 여부 (런타임 — 저장 분기 판단용)
+    #[serde(skip)]
+    pub scenario_modified: bool,
 }
 
 /// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존
@@ -268,9 +281,25 @@ impl StateInner {
             .or_else(|| self.relationships.get(&key2))
     }
 
-    /// JSON 파일로 저장
-    pub fn save_to_file(&self, path: &std::path::Path) -> Result<(), String> {
-        let json = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+    /// JSON 파일로 저장 (format 자동 설정)
+    /// `as_scenario` = true → 시나리오로 저장 (turn_history 제외, format=scenario)
+    /// `as_scenario` = false → 결과로 저장 (turn_history 포함, format=result)
+    pub fn save_to_file(&self, path: &std::path::Path, as_scenario: bool) -> Result<(), String> {
+        let mut snapshot = serde_json::to_value(self).map_err(|e| e.to_string())?;
+        if as_scenario {
+            snapshot["format"] = serde_json::Value::String(FORMAT_SCENARIO.to_string());
+            // 시나리오 저장 시 turn_history 제외
+            if let serde_json::Value::Object(ref mut map) = snapshot {
+                map.remove("turn_history");
+            }
+        } else {
+            snapshot["format"] = serde_json::Value::String(FORMAT_RESULT.to_string());
+        }
+        let json = serde_json::to_string_pretty(&snapshot).map_err(|e| e.to_string())?;
+        // 부모 디렉토리가 없으면 생성
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
         std::fs::write(path, json).map_err(|e| e.to_string())
     }
 

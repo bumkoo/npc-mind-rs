@@ -55,6 +55,7 @@ fn build_api_router(state: AppState) -> Router {
             get(handlers::get_situation).put(handlers::put_situation),
         )
         .route("/api/save", post(handlers::save_state))
+        .route("/api/save-dir", get(handlers::save_dir))
         .route("/api/load", post(handlers::load_state))
         .route("/api/load-result", post(handlers::load_result));
 

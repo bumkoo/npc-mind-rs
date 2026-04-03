@@ -497,3 +497,724 @@ async fn scenario_meta_empty_initially() {
     let json = body_json(resp).await;
     assert_eq!(json["name"], "");
 }
+
+// =========================================================================
+// 상태머신 회귀 테스트 — scenario_modified / save_type / loaded_path
+// =========================================================================
+
+/// tempdir 하위에 고유 테스트 경로를 생성하는 헬퍼
+fn test_path(name: &str) -> String {
+    let dir = std::env::temp_dir().join("npc_mind_test");
+    std::fs::create_dir_all(&dir).unwrap();
+    dir.join(name).to_string_lossy().replace('\\', "/")
+}
+
+/// 테스트 끝나고 임시 파일 정리
+fn cleanup_test_path(path: &str) {
+    let _ = std::fs::remove_file(path);
+}
+
+/// NPC + 관계 등록 헬퍼 (CRUD 후 scenario_modified = true)
+async fn seed_data(app: &axum::Router) {
+    app.clone()
+        .oneshot(json_post("/api/npcs", mu_baek_profile()))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post("/api/npcs", gyo_ryong_profile()))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post("/api/relationships", relationship_data()))
+        .await
+        .unwrap();
+}
+
+// =========================================================================
+// scenario_modified 플래그 — CRUD 후 true, save 후 false
+// =========================================================================
+
+#[tokio::test]
+async fn scenario_modified_set_after_npc_crud() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    // 초기: modified = false
+    {
+        let inner = state.inner.read().await;
+        assert!(!inner.scenario_modified, "초기 상태는 modified=false");
+    }
+
+    // NPC 생성 → modified = true
+    app.clone()
+        .oneshot(json_post("/api/npcs", mu_baek_profile()))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(inner.scenario_modified, "NPC 생성 후 modified=true");
+    }
+}
+
+#[tokio::test]
+async fn scenario_modified_set_after_relationship_crud() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    app.clone()
+        .oneshot(json_post("/api/relationships", relationship_data()))
+        .await
+        .unwrap();
+
+    let inner = state.inner.read().await;
+    assert!(inner.scenario_modified, "관계 생성 후 modified=true");
+}
+
+#[tokio::test]
+async fn scenario_modified_set_after_object_crud() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    let obj = serde_json::json!({
+        "id": "sword", "description": "검", "category": "weapon"
+    });
+    app.clone()
+        .oneshot(json_post("/api/objects", obj))
+        .await
+        .unwrap();
+
+    let inner = state.inner.read().await;
+    assert!(inner.scenario_modified, "오브젝트 생성 후 modified=true");
+}
+
+#[tokio::test]
+async fn scenario_modified_set_after_put_situation() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    let sit = serde_json::json!({"description": "테스트"});
+    app.clone()
+        .oneshot(json_put("/api/situation", sit))
+        .await
+        .unwrap();
+
+    let inner = state.inner.read().await;
+    assert!(inner.scenario_modified, "상황 저장 후 modified=true");
+}
+
+#[tokio::test]
+async fn scenario_modified_reset_after_scenario_save() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("modified_reset_test.json");
+
+    // CRUD → modified = true
+    app.clone()
+        .oneshot(json_post("/api/npcs", mu_baek_profile()))
+        .await
+        .unwrap();
+
+    // scenario 저장 → modified = false
+    let save_req = serde_json::json!({
+        "path": path,
+        "save_type": "scenario"
+    });
+    let resp = app.clone()
+        .oneshot(json_post("/api/save", save_req))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    {
+        let inner = state.inner.read().await;
+        assert!(!inner.scenario_modified, "시나리오 저장 후 modified=false");
+    }
+
+    cleanup_test_path(&path);
+}
+
+// =========================================================================
+// save_type 분기 — scenario vs result 포맷
+// =========================================================================
+
+#[tokio::test]
+async fn save_type_scenario_excludes_turn_history() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("save_scenario_format.json");
+
+    // 데이터 등록
+    seed_data(&app).await;
+
+    // 시나리오 저장
+    let save_req = serde_json::json!({
+        "path": path,
+        "save_type": "scenario"
+    });
+    app.clone()
+        .oneshot(json_post("/api/save", save_req))
+        .await
+        .unwrap();
+
+    // 파일 파싱: format=scenario, turn_history 없음
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(content["format"], "mind-studio/scenario");
+    assert!(
+        content.get("turn_history").is_none(),
+        "시나리오 파일에 turn_history가 없어야 함"
+    );
+
+    cleanup_test_path(&path);
+}
+
+#[tokio::test]
+async fn save_type_result_includes_turn_history() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("save_result_format.json");
+
+    // 데이터 + appraise → turn_history 생성
+    seed_data(&app).await;
+    let appraise_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "situation": {
+            "description": "조우",
+            "event": {
+                "description": "만남",
+                "desirability_for_self": -0.3,
+                "other": null,
+                "prospect": null
+            }
+        }
+    });
+    app.clone()
+        .oneshot(json_post("/api/appraise", appraise_req))
+        .await
+        .unwrap();
+
+    // 결과 저장
+    let save_req = serde_json::json!({
+        "path": path,
+        "save_type": "result"
+    });
+    app.clone()
+        .oneshot(json_post("/api/save", save_req))
+        .await
+        .unwrap();
+
+    // 파일 파싱: format=result, turn_history 존재
+    let content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(content["format"], "mind-studio/result");
+    assert!(
+        content["turn_history"].as_array().unwrap().len() > 0,
+        "결과 파일에 turn_history가 있어야 함"
+    );
+
+    cleanup_test_path(&path);
+}
+
+// =========================================================================
+// loaded_path 갱신 — save-as 후 경로 변경
+// =========================================================================
+
+#[tokio::test]
+async fn loaded_path_updated_on_scenario_save() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path1 = test_path("loaded_path_s1.json");
+    let path2 = test_path("loaded_path_s2.json");
+
+    seed_data(&app).await;
+
+    // 첫 번째 시나리오 저장 → loaded_path = path1
+    let save1 = serde_json::json!({"path": path1, "save_type": "scenario"});
+    app.clone()
+        .oneshot(json_post("/api/save", save1))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(inner.loaded_path.as_deref(), Some(path1.as_str()));
+    }
+
+    // 다른 이름으로 시나리오 저장 → loaded_path = path2
+    let save2 = serde_json::json!({"path": path2, "save_type": "scenario"});
+    app.clone()
+        .oneshot(json_post("/api/save", save2))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(
+            inner.loaded_path.as_deref(),
+            Some(path2.as_str()),
+            "save-as 후 loaded_path가 새 경로로 갱신되어야 함"
+        );
+    }
+
+    cleanup_test_path(&path1);
+    cleanup_test_path(&path2);
+}
+
+#[tokio::test]
+async fn loaded_path_not_changed_on_result_save() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let scenario_path = test_path("lp_scenario.json");
+    let result_path = test_path("lp_result.json");
+
+    seed_data(&app).await;
+
+    // 시나리오 저장 → loaded_path = scenario_path
+    let save_s = serde_json::json!({"path": scenario_path, "save_type": "scenario"});
+    app.clone()
+        .oneshot(json_post("/api/save", save_s))
+        .await
+        .unwrap();
+
+    // 결과 저장 → loaded_path 유지 (scenario_path)
+    let save_r = serde_json::json!({"path": result_path, "save_type": "result"});
+    app.clone()
+        .oneshot(json_post("/api/save", save_r))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(
+            inner.loaded_path.as_deref(),
+            Some(scenario_path.as_str()),
+            "결과 저장은 loaded_path를 변경하지 않아야 함"
+        );
+    }
+
+    cleanup_test_path(&scenario_path);
+    cleanup_test_path(&result_path);
+}
+
+// =========================================================================
+// 시나리오 로드 → turn_history 비움 + loaded_path 설정
+// =========================================================================
+
+#[tokio::test]
+async fn load_scenario_clears_turn_history_and_sets_loaded_path() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("load_scenario_test.json");
+
+    seed_data(&app).await;
+
+    // 시나리오 저장
+    let save_req = serde_json::json!({"path": path, "save_type": "scenario"});
+    app.clone()
+        .oneshot(json_post("/api/save", save_req))
+        .await
+        .unwrap();
+
+    // appraise → turn_history 1건 생성
+    let appraise_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "situation": {
+            "description": "테스트",
+            "event": {
+                "description": "이벤트",
+                "desirability_for_self": -0.5,
+                "other": null,
+                "prospect": null
+            }
+        }
+    });
+    app.clone()
+        .oneshot(json_post("/api/appraise", appraise_req))
+        .await
+        .unwrap();
+
+    // history에 1건 존재 확인
+    let resp = app.clone().oneshot(get("/api/history")).await.unwrap();
+    let history = body_json(resp).await;
+    assert_eq!(history.as_array().unwrap().len(), 1);
+
+    // 시나리오 다시 로드 → turn_history 비워짐
+    let load_req = serde_json::json!({"path": path});
+    let resp = app.clone()
+        .oneshot(json_post("/api/load", load_req))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // history 비워짐 확인
+    let resp = app.clone().oneshot(get("/api/history")).await.unwrap();
+    let history = body_json(resp).await;
+    assert_eq!(
+        history.as_array().unwrap().len(),
+        0,
+        "시나리오 로드 후 turn_history가 비워져야 함"
+    );
+
+    // loaded_path 설정 확인
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(inner.loaded_path.as_deref(), Some(path.as_str()));
+    }
+
+    cleanup_test_path(&path);
+}
+
+// =========================================================================
+// 결과 로드 → turn_history 포함 반환
+// =========================================================================
+
+#[tokio::test]
+async fn load_result_returns_turn_history() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let scenario_path = test_path("lr_scenario.json");
+    let result_path = test_path("lr_result.json");
+
+    seed_data(&app).await;
+
+    // 시나리오 저장
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": scenario_path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    // appraise
+    let appraise_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "situation": {
+            "description": "조우",
+            "event": {
+                "description": "이벤트",
+                "desirability_for_self": -0.3,
+                "other": null,
+                "prospect": null
+            }
+        }
+    });
+    app.clone()
+        .oneshot(json_post("/api/appraise", appraise_req))
+        .await
+        .unwrap();
+
+    // 결과 저장
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": result_path, "save_type": "result"}),
+        ))
+        .await
+        .unwrap();
+
+    // 결과 로드
+    let resp = app
+        .clone()
+        .oneshot(json_post(
+            "/api/load-result",
+            serde_json::json!({"path": result_path}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let json = body_json(resp).await;
+    let history = json["turn_history"].as_array().unwrap();
+    assert!(
+        !history.is_empty(),
+        "결과 로드 시 turn_history가 반환되어야 함"
+    );
+    assert_eq!(history[0]["action"], "appraise");
+
+    cleanup_test_path(&scenario_path);
+    cleanup_test_path(&result_path);
+}
+
+// =========================================================================
+// 전체 워크플로우 — 로드→수정→시나리오저장→평가→자극→결과저장→결과로드
+// =========================================================================
+
+#[tokio::test]
+async fn full_state_machine_workflow() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let s1_path = test_path("wf_s1.json");
+    let s2_path = test_path("wf_s2.json");
+    let result_path = test_path("wf_s2_result/1.json");
+
+    // === 1. 초기 시나리오 생성 + 저장 ===
+    seed_data(&app).await;
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": s1_path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    // === 2. 시나리오 로드 ===
+    app.clone()
+        .oneshot(json_post("/api/load", serde_json::json!({"path": s1_path})))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(inner.loaded_path.as_deref(), Some(s1_path.as_str()));
+        assert!(!inner.scenario_modified, "로드 직후 modified=false");
+    }
+
+    // === 3. 수정 (NPC 추가) → modified=true ===
+    let extra_npc = serde_json::json!({
+        "id": "extra", "name": "추가NPC", "description": "테스트용"
+    });
+    app.clone()
+        .oneshot(json_post("/api/npcs", extra_npc))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(inner.scenario_modified, "수정 후 modified=true");
+    }
+
+    // === 4. 다른 이름으로 시나리오 저장 → loaded_path 갱신 ===
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": s2_path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(
+            inner.loaded_path.as_deref(),
+            Some(s2_path.as_str()),
+            "save-as 후 loaded_path가 s2로 변경"
+        );
+        assert!(!inner.scenario_modified, "저장 후 modified=false");
+    }
+
+    // === 5. 감정 평가 ===
+    let appraise_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "situation": {
+            "description": "대치",
+            "event": {
+                "description": "교룡 재등장",
+                "desirability_for_self": -0.6,
+                "other": null,
+                "prospect": null
+            },
+            "action": {
+                "description": "위협",
+                "agent_id": "gyo_ryong",
+                "praiseworthiness": -0.7
+            }
+        }
+    });
+    let resp = app.clone()
+        .oneshot(json_post("/api/appraise", appraise_req))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // === 6. 자극 적용 ===
+    let stim_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "pleasure": -0.4,
+        "arousal": 0.5,
+        "dominance": -0.2
+    });
+    let resp = app.clone()
+        .oneshot(json_post("/api/stimulus", stim_req))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // === 7. after_dialogue ===
+    let after_req = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "significance": 0.5
+    });
+    app.clone()
+        .oneshot(json_post("/api/after-dialogue", after_req))
+        .await
+        .unwrap();
+
+    // === 8. 결과 저장 (loaded_path 유지) ===
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": result_path, "save_type": "result"}),
+        ))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert_eq!(
+            inner.loaded_path.as_deref(),
+            Some(s2_path.as_str()),
+            "결과 저장 후에도 loaded_path는 시나리오 경로 유지"
+        );
+    }
+
+    // === 9. 결과 파일 검증 ===
+    let result_content: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&result_path).unwrap()).unwrap();
+    assert_eq!(result_content["format"], "mind-studio/result");
+    assert!(result_content["turn_history"].as_array().unwrap().len() >= 3);
+
+    // === 10. 결과 로드 ===
+    let resp = app.clone()
+        .oneshot(json_post(
+            "/api/load-result",
+            serde_json::json!({"path": result_path}),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    let history = json["turn_history"].as_array().unwrap();
+    assert!(history.len() >= 3, "결과 로드 시 전체 turn_history 반환");
+
+    // 정리
+    cleanup_test_path(&s1_path);
+    cleanup_test_path(&s2_path);
+    cleanup_test_path(&result_path);
+    let _ = std::fs::remove_dir(test_path("wf_s2_result"));
+}
+
+// =========================================================================
+// NPC 삭제 후 scenario_modified 확인
+// =========================================================================
+
+#[tokio::test]
+async fn scenario_modified_set_after_npc_delete() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("delete_modified.json");
+
+    // NPC 생성 + 시나리오 저장 → modified=false
+    app.clone()
+        .oneshot(json_post("/api/npcs", mu_baek_profile()))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(!inner.scenario_modified);
+    }
+
+    // NPC 삭제 → modified=true
+    app.clone()
+        .oneshot(delete("/api/npcs/mu_baek"))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(inner.scenario_modified, "NPC 삭제 후 modified=true");
+    }
+
+    cleanup_test_path(&path);
+}
+
+// =========================================================================
+// 관계 삭제 후 scenario_modified 확인
+// =========================================================================
+
+#[tokio::test]
+async fn scenario_modified_set_after_relationship_delete() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("rel_delete_modified.json");
+
+    // 관계 생성 + 시나리오 저장 → modified=false
+    app.clone()
+        .oneshot(json_post("/api/relationships", relationship_data()))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    // 관계 삭제 → modified=true
+    app.clone()
+        .oneshot(delete("/api/relationships/mu_baek/gyo_ryong"))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(inner.scenario_modified, "관계 삭제 후 modified=true");
+    }
+
+    cleanup_test_path(&path);
+}
+
+// =========================================================================
+// 오브젝트 삭제 후 scenario_modified 확인
+// =========================================================================
+
+#[tokio::test]
+async fn scenario_modified_set_after_object_delete() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("obj_delete_modified.json");
+
+    let obj = serde_json::json!({
+        "id": "sword", "description": "검", "category": "weapon"
+    });
+    app.clone()
+        .oneshot(json_post("/api/objects", obj))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/save",
+            serde_json::json!({"path": path, "save_type": "scenario"}),
+        ))
+        .await
+        .unwrap();
+
+    // 오브젝트 삭제 → modified=true
+    app.clone()
+        .oneshot(delete("/api/objects/sword"))
+        .await
+        .unwrap();
+
+    {
+        let inner = state.inner.read().await;
+        assert!(inner.scenario_modified, "오브젝트 삭제 후 modified=true");
+    }
+
+    cleanup_test_path(&path);
+}

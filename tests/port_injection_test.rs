@@ -186,6 +186,7 @@ fn scene_req_with_initial() -> SceneRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
         description: "테스트 장면".to_string(),
+        significance: None,
         focuses: vec![
             SceneFocusInput {
                 id: "initial_focus".to_string(),
@@ -258,6 +259,7 @@ fn start_scene_focus가_없으면_appraise_없음() {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
         description: "장면".to_string(),
+        significance: None,
         focuses: vec![SceneFocusInput {
             id: "conditional".to_string(),
             description: "조건부".to_string(),
@@ -391,6 +393,7 @@ fn stimulus_beat_전환_trigger_충족() {
         npc_id: "gyo_ryong".to_string(),
         partner_id: "mu_baek".to_string(),
         description: "장면".to_string(),
+        significance: None,
         focuses: vec![
             SceneFocusInput {
                 id: "initial".to_string(),
@@ -470,6 +473,7 @@ fn stimulus_beat_전환_후_active_focus_변경() {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
         description: "장면".to_string(),
+        significance: None,
         focuses: vec![
             SceneFocusInput {
                 id: "happy".to_string(),
@@ -567,7 +571,7 @@ fn load_scene_focuses_초기_appraise() {
     }];
 
     let result = service
-        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string())
+        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string(), 0.5)
         .unwrap();
 
     assert!(result.is_some());
@@ -607,7 +611,7 @@ fn load_scene_focuses_initial_없으면_appraise_없음() {
     }];
 
     let result = service
-        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string())
+        .load_scene_focuses(focuses, "mu_baek".to_string(), "gyo_ryong".to_string(), 0.5)
         .unwrap();
 
     assert!(result.is_none());
@@ -658,6 +662,7 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
         description: "장면".to_string(),
+        significance: None,
         focuses: vec![
             SceneFocusInput {
                 id: "start".to_string(),
