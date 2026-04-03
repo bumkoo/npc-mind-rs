@@ -969,13 +969,10 @@ pub mod chat_handlers {
 
         let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
         
-        // NPC 정보로 파라미터 계산 (대화 시작 시 1회)
-        let (temp, top_p) = {
-            let npc = service.repository().get_npc(&req.appraise.npc_id).ok_or_else(|| {
-                AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id))
-            })?;
-            npc.derive_llm_parameters()
-        };
+        // 1. NPC 정보 조회
+        let npc = service.repository().get_npc(&req.appraise.npc_id).ok_or_else(|| {
+            AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id))
+        })?;
 
         let result = service.appraise(
             req.appraise.clone(),
@@ -988,22 +985,13 @@ pub mod chat_handlers {
 
         let response = result.format(&*state.formatter);
 
-        // 3. 모델 정보 캡처 (글로벌 정보 + NPC별 파라미터)
-        let mut llm_model_info = state.llm_info.as_ref().map(|info| info.get_model_info()).unwrap_or(LlmModelInfo {
-            provider_url: "unknown".into(),
-            model_name: "unknown".into(),
-            temperature: None,
-            max_tokens: None,
-            top_p: None,
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop_sequences: None,
-            seed: None,
-        });
-        llm_model_info.temperature = Some(temp);
-        llm_model_info.top_p = Some(top_p);
+        // 2. 모델 정보 구성 및 성격 기반 파라미터 적용
+        let mut llm_model_info = state.llm_info.as_ref()
+            .map(|info| info.get_model_info())
+            .unwrap_or_default();
+        llm_model_info.apply_npc_personality(&npc);
 
-        // 2. LLM 세션 시작 (파라미터 고정 전달)
+        // 3. LLM 세션 시작 (유도된 파라미터 적용)
         chat_state
             .start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone()))
             .await

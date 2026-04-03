@@ -207,33 +207,24 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
         &mut self,
         req: ChatStartRequest,
     ) -> Result<ChatStartResponse, DialogueTestError> {
-        // 1. 성격 기반 파라미터 계산 (ID 사용을 위해 appraise 전 조회)
+        // 1. NPC 정보 조회 및 파라미터 유도
         let npc_profile = self
             .mind
             .repository()
             .get_npc(&req.appraise.npc_id)
             .ok_or_else(|| DialogueTestError::MindService(MindServiceError::NpcNotFound(req.appraise.npc_id.clone())))?;
-        let (temp, top_p) = npc_profile.derive_llm_parameters();
 
-        let generation_config = crate::ports::LlmModelInfo {
-            provider_url: String::new(),
-            model_name: String::new(),
-            temperature: Some(temp),
-            max_tokens: None,
-            top_p: Some(top_p),
-            frequency_penalty: None,
-            presence_penalty: None,
-            stop_sequences: None,
-            seed: None,
-        };
+        let mut generation_config = crate::ports::LlmModelInfo::default();
+        generation_config.apply_npc_personality(&npc_profile);
 
-        // 2. 감정 평가 → 프롬프트 생성 (req.appraise 소유권 이동)
+        // 2. 감정 평가 실행
         let appraise_resp = self.mind.appraise(req.appraise, || {}, || Vec::new())?;
 
-        // 3. LLM 세션 시작 (프롬프트를 system prompt로, 고정 파라미터 전달)
+        // 3. LLM 세션 시작 (유도된 파라미터 적용)
         self.chat
             .start_session(&req.session_id, &appraise_resp.prompt, Some(generation_config.clone()))
             .await?;
+
 
         Ok(ChatStartResponse {
             session_id: req.session_id,

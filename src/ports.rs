@@ -291,6 +291,31 @@ pub struct LlmModelInfo {
     pub seed: Option<u64>,
 }
 
+impl Default for LlmModelInfo {
+    fn default() -> Self {
+        Self {
+            provider_url: "unknown".into(),
+            model_name: "unknown".into(),
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            seed: None,
+        }
+    }
+}
+
+impl LlmModelInfo {
+    /// NPC의 성격을 바탕으로 파라미터를 덮어씁니다.
+    pub fn apply_npc_personality(&mut self, npc: &crate::domain::personality::Npc) {
+        let (temp, top_p) = npc.derive_llm_parameters();
+        self.temperature = Some(temp);
+        self.top_p = Some(top_p);
+    }
+}
+
 /// LLM 모델의 특성 및 메타데이터를 제공하는 포트
 pub trait LlmInfoProvider: Send + Sync {
     fn get_model_info(&self) -> LlmModelInfo;
