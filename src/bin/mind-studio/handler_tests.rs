@@ -1234,9 +1234,9 @@ async fn mcp_endpoints_reachable() {
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(resp.headers()["content-type"], "text/event-stream");
 
-    // 2. Message 엔드포인트 확인
-    let req = serde_json::json!({"jsonrpc": "2.0", "method": "test", "id": 1});
-    let resp = app.clone().oneshot(json_post("/mcp/message", req)).await.unwrap();
+    // 2. Message 엔드포인트 확인 (session_id 쿼리 필수)
+    let req = serde_json::json!({"jsonrpc": "2.0", "method": "tools/list", "id": 1});
+    let resp = app.clone().oneshot(json_post("/mcp/message?session_id=test-session", req)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 }
 
@@ -1261,51 +1261,27 @@ async fn mcp_tool_call_logic() {
     }
 
     // 1. list_npcs 도구 테스트 (JSON 구조 사용)
-    let req = serde_json::json!({
-        "method": "tools/call",
-        "params": {
-            "name": "list_npcs",
-            "arguments": {}
-        },
-        "id": 1
-    });
     let mcp = state.mcp_server.as_ref().unwrap();
-    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
+    let res: serde_json::Value = mcp.call_tool("list_npcs", &serde_json::json!({})).await.unwrap();
     assert_eq!(res.as_array().unwrap().len(), 1);
     assert_eq!(res[0]["id"], "mu_baek");
 
     // 2. get_npc_llm_config 도구 테스트
-    let req = serde_json::json!({
-        "method": "tools/call",
-        "params": {
-            "name": "get_npc_llm_config",
-            "arguments": {"npc_id": "mu_baek"}
-        },
-        "id": 2
-    });
-    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
+    let res: serde_json::Value = mcp.call_tool("get_npc_llm_config", &serde_json::json!({"npc_id": "mu_baek"})).await.unwrap();
     assert!(res["temperature"].as_f64().is_some());
     assert!(res["top_p"].as_f64().is_some());
 
     // 3. appraise 도구 테스트
-    let req = serde_json::json!({
-        "method": "tools/call",
-        "params": {
-            "name": "appraise",
-            "arguments": {
-                "npc_id": "mu_baek",
-                "partner_id": "player",
-                "situation": {
-                    "description": "테스트 상황",
-                    "event": {
-                        "description": "선물",
-                        "desirability_for_self": 0.8
-                    }
-                }
+    let res: serde_json::Value = mcp.call_tool("appraise", &serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "player",
+        "situation": {
+            "description": "테스트 상황",
+            "event": {
+                "description": "선물",
+                "desirability_for_self": 0.8
             }
-        },
-        "id": 3
-    });
-    let res: serde_json::Value = mcp.call_tool(req).await.unwrap();
+        }
+    })).await.unwrap();
     assert!(res["mood"].as_f64().unwrap() > 0.0);
 }

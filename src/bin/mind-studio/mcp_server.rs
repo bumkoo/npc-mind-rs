@@ -1,17 +1,20 @@
 use std::sync::Arc;
 use std::convert::Infallible;
 use axum::{
-    extract::State,
+    extract::{State, Query},
     response::sse::{Event, Sse},
     routing::{get, post},
     Json, Router,
 };
-use futures_util::StreamExt;
+use futures_util::stream::{Stream, StreamExt};
+use serde::Deserialize;
 use serde_json::Value;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
+use uuid::Uuid;
+use std::collections::HashMap;
 
-// rmcp 0.16.0의 실제 타입들
-use rmcp::service::Service;
+// rmcp 0.16.0 타입
+use rmcp::model::{Tool};
 
 use crate::handlers::{
     perform_appraise,
@@ -19,29 +22,91 @@ use crate::handlers::{
 use npc_mind::application::dto::{AppraiseRequest};
 use crate::state::AppState;
 
-/// NPC Mind Studio를 위한 구체적인 MCP 서비스 객체
+/// SSE 세션 관리자
+pub struct McpSessionManager {
+    /// 세션 ID -> SSE 전송 채널
+    sessions: RwLock<HashMap<String, mpsc::Sender<String>>>,
+}
+
+impl McpSessionManager {
+    pub fn new() -> Self {
+        Self {
+            sessions: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub async fn create_session(&self) -> (String, mpsc::Receiver<String>) {
+        let (tx, rx) = mpsc::channel(100);
+        let session_id = Uuid::new_v4().to_string();
+        self.sessions.write().await.insert(session_id.clone(), tx);
+        (session_id, rx)
+    }
+
+    pub async fn remove_session(&self, id: &str) {
+        self.sessions.write().await.remove(id);
+    }
+
+    pub async fn send_to_session(&self, id: &str, msg: String) -> Result<(), String> {
+        let sessions = self.sessions.read().await;
+        if let Some(tx) = sessions.get(id) {
+            tx.send(msg).await.map_err(|e| e.to_string())
+        } else {
+            Err("Session not found".into())
+        }
+    }
+}
+
+/// MCP 서비스 객체
 pub struct MindMcpService {
     state: AppState,
+    pub session_manager: McpSessionManager,
 }
 
 impl MindMcpService {
     pub fn new(state: AppState) -> Self {
-        Self { state }
+        Self { 
+            state,
+            session_manager: McpSessionManager::new(),
+        }
     }
 
-    /// 도구 실행 로직을 처리하는 핵심 메서드
-    pub async fn call_tool(&self, req_val: Value) -> Result<Value, String> {
-        let name = req_val["params"]["name"].as_str()
-            .or_else(|| req_val["name"].as_str())
-            .ok_or("tool name is required")?;
-        
-        let arguments = &req_val["params"]["arguments"];
-        let arguments = if arguments.is_null() {
-            &req_val["arguments"]
-        } else {
-            arguments
-        };
+    /// 도구 목록 조회 (Claude가 가장 먼저 호출함)
+    pub fn list_tools(&self) -> Vec<Value> {
+        vec![
+            serde_json::json!({
+                "name": "list_npcs",
+                "description": "등록된 모든 NPC 목록을 조회합니다.",
+                "input_schema": { "type": "object", "properties": {} }
+            }),
+            serde_json::json!({
+                "name": "appraise",
+                "description": "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "npc_id": { "type": "string" },
+                        "partner_id": { "type": "string" },
+                        "situation": { "type": "object" }
+                    },
+                    "required": ["npc_id", "partner_id", "situation"]
+                }
+            }),
+            serde_json::json!({
+                "name": "get_npc_llm_config",
+                "description": "NPC의 성격에 최적화된 LLM 생성 파라미터를 조회합니다.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "npc_id": { "type": "string" }
+                    },
+                    "required": ["npc_id"]
+                }
+            })
+        ]
+    }
 
+    /// 도구 실행 로직
+    pub async fn call_tool(&self, name: &str, arguments: &Value) -> Result<Value, String> {
         match name {
             "list_npcs" => {
                 let inner = self.state.inner.read().await;
@@ -72,15 +137,19 @@ impl MindMcpService {
     }
 }
 
-// rmcp의 Service 트레이트 구현 (실제 라이브러리 사양에 맞춰 확장 가능)
-// 여기서는 구체적인 타입 MindMcpService를 AppState에서 직접 관리하도록 함
-
-/// MCP 서버 인스턴스를 생성합니다. (Any 제거, 구체적 타입 반환)
 pub fn create_mcp_server(state: AppState) -> Arc<MindMcpService> {
     Arc::new(MindMcpService::new(state))
 }
 
-/// Axum 라우터에 MCP SSE 경로를 추가합니다.
+// ---------------------------------------------------------------------------
+// Axum SSE / Message 핸들러
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+pub struct SessionQuery {
+    pub session_id: String,
+}
+
 pub fn mcp_router() -> Router<AppState> {
     Router::new()
         .route("/mcp/sse", get(mcp_sse_handler))
@@ -88,34 +157,70 @@ pub fn mcp_router() -> Router<AppState> {
 }
 
 async fn mcp_sse_handler(
-    State(_state): State<AppState>,
-) -> Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>> {
-    let (_tx, rx) = mpsc::channel::<String>(100);
-    
+    State(state): State<AppState>,
+) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let mcp = state.mcp_server.as_ref().expect("MCP server not initialized");
+    let (session_id, rx) = mcp.session_manager.create_session().await;
+
+    // 1. 첫 번째 메시지로 엔드포인트 정보 알림 (MCP SSE 표준)
+    let initial_event = Event::default()
+        .event("endpoint")
+        .data(format!("/mcp/message?session_id={}", session_id));
+
+    // 2. 채널로부터 오는 데이터를 SSE 이벤트로 변환
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
         .map(|msg| Ok(Event::default().data(msg)));
 
-    Sse::new(stream)
+    // 초기 이벤트와 스트림 결합
+    let combined_stream = futures_util::stream::once(async move { Ok(initial_event) })
+        .chain(stream);
+
+    Sse::new(combined_stream)
 }
 
 async fn mcp_message_handler(
     State(state): State<AppState>,
+    Query(query): Query<SessionQuery>,
     Json(payload): Json<Value>,
 ) -> Json<Value> {
-    if let Some(mcp) = &state.mcp_server {
-        match mcp.call_tool(payload).await {
-            Ok(res) => Json(serde_json::json!({
+    let mcp = state.mcp_server.as_ref().unwrap();
+    let id = payload["id"].clone();
+
+    // JSON-RPC 메서드에 따른 분기
+    let method = payload["method"].as_str().unwrap_or("");
+    
+    let result = match method {
+        "tools/list" => {
+            Ok(serde_json::json!({ "tools": mcp.list_tools() }))
+        },
+        "tools/call" => {
+            let name = payload["params"]["name"].as_str().unwrap_or("");
+            let args = &payload["params"]["arguments"];
+            mcp.call_tool(name, args).await
+        },
+        _ => Err(format!("Unsupported method: {}", method)),
+    };
+
+    // 결과를 SSE로 보낼 수도 있고, HTTP 응답으로 직접 줄 수도 있음
+    // SSE 방식에서는 응답을 SSE 스트림으로 흘려보내는 것이 일반적임
+    match result {
+        Ok(res_val) => {
+            let json_res = serde_json::json!({
                 "jsonrpc": "2.0",
-                "result": res,
-                "id": 1 // 실제로는 요청 ID를 따라야 함
-            })),
-            Err(e) => Json(serde_json::json!({
+                "id": id,
+                "result": res_val
+            });
+            let _ = mcp.session_manager.send_to_session(&query.session_id, json_res.to_string()).await;
+            Json(serde_json::json!({"status": "sent"}))
+        },
+        Err(e) => {
+            let json_err = serde_json::json!({
                 "jsonrpc": "2.0",
-                "error": { "code": -32603, "message": e },
-                "id": 1
-            })),
+                "id": id,
+                "error": { "code": -32603, "message": e }
+            });
+            let _ = mcp.session_manager.send_to_session(&query.session_id, json_err.to_string()).await;
+            Json(serde_json::json!({"status": "error_sent"}))
         }
-    } else {
-        Json(serde_json::json!({"error": "MCP server not initialized"}))
     }
 }
