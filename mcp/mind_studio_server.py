@@ -509,6 +509,130 @@ async def delete_object(id: str) -> str:
 
 
 # =========================================================================
+# LLM 대화 테스트 (chat feature 필요)
+# =========================================================================
+
+
+@mcp.tool(annotations={"readOnlyHint": False})
+async def start_chat(
+    session_id: str,
+    npc_id: str,
+    partner_id: str,
+    situation_description: str,
+    event_description: str | None = None,
+    desirability_for_self: float | None = None,
+    action_description: str | None = None,
+    agent_id: str | None = None,
+    praiseworthiness: float | None = None,
+) -> str:
+    """LLM 대화 세션을 시작합니다. 감정 평가 후 프롬프트를 system prompt로 설정합니다.
+
+    세션이 시작되면 chat_turn으로 대사를 전송하여 NPC와 다턴 대화를 수행합니다.
+    Mind Studio 브라우저에서 동시에 감정 변화를 실시간으로 관찰할 수 있습니다.
+
+    Args:
+        session_id: 고유 세션 ID (예: "test-001")
+        npc_id: NPC ID
+        partner_id: 대화 상대 ID
+        situation_description: 상황 설명
+        event_description: 사건 설명 (선택)
+        desirability_for_self: 사건의 바람직함 -1.0~1.0 (event 사용 시 필수)
+        action_description: 행위 설명 (선택)
+        agent_id: 행위자 ID (action 사용 시 필수)
+        praiseworthiness: 행위의 칭찬가능성 -1.0~1.0 (action 사용 시 필수)
+    """
+    situation = {"description": situation_description}
+    if event_description is not None:
+        situation["event"] = {
+            "description": event_description,
+            "desirability_for_self": desirability_for_self or 0.0,
+        }
+    if action_description is not None:
+        situation["action"] = {
+            "description": action_description,
+            "agent_id": agent_id or partner_id,
+            "praiseworthiness": praiseworthiness or 0.0,
+        }
+
+    body = {
+        "session_id": session_id,
+        "appraise": {
+            "npc_id": npc_id,
+            "partner_id": partner_id,
+            "situation": situation,
+        },
+    }
+    return await _request("POST", "/api/chat/start", body)
+
+
+@mcp.tool(annotations={"readOnlyHint": False})
+async def chat_turn(
+    session_id: str,
+    npc_id: str,
+    partner_id: str,
+    utterance: str,
+    pleasure: float | None = None,
+    arousal: float | None = None,
+    dominance: float | None = None,
+) -> str:
+    """대사를 전송하고 NPC의 LLM 응답을 받습니다. PAD 자극이 자동 적용되어 감정이 변합니다.
+
+    NPC 응답을 확인한 뒤, 다음 대사를 판단하여 다시 호출하세요.
+    Beat 전환이 발생하면 system_prompt가 자동으로 갱신됩니다.
+
+    Args:
+        session_id: start_chat에서 사용한 세션 ID
+        npc_id: NPC ID
+        partner_id: 대화 상대 ID
+        utterance: 상대방의 대사
+        pleasure: PAD P값 -1.0~1.0 (선택, embed feature 시 자동 분석)
+        arousal: PAD A값 -1.0~1.0 (선택)
+        dominance: PAD D값 -1.0~1.0 (선택)
+    """
+    body = {
+        "session_id": session_id,
+        "npc_id": npc_id,
+        "partner_id": partner_id,
+        "utterance": utterance,
+    }
+    if pleasure is not None:
+        body["pad"] = {
+            "pleasure": pleasure,
+            "arousal": arousal or 0.0,
+            "dominance": dominance or 0.0,
+        }
+    return await _request("POST", "/api/chat/message", body)
+
+
+@mcp.tool(annotations={"readOnlyHint": False})
+async def end_chat(
+    session_id: str,
+    npc_id: str,
+    partner_id: str,
+    significance: float = 0.5,
+) -> str:
+    """대화 세션을 종료하고 관계를 갱신합니다.
+
+    Args:
+        session_id: 세션 ID
+        npc_id: NPC ID
+        partner_id: 대화 상대 ID
+        significance: 대화 중요도 0.0~1.0 (높을수록 관계 변화 큼)
+    """
+    body = {
+        "session_id": session_id,
+        "npc_id": npc_id,
+        "partner_id": partner_id,
+        "after_dialogue": {
+            "npc_id": npc_id,
+            "partner_id": partner_id,
+            "significance": significance,
+        },
+    }
+    return await _request("POST", "/api/chat/end", body)
+
+
+# =========================================================================
 # Entry Point
 # =========================================================================
 

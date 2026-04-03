@@ -1,0 +1,171 @@
+{
+  "npcs": {
+    "jim": {
+      "id": "jim",
+      "name": "Jim",
+      "description": "Miss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.",
+      "sincerity": 0.7,
+      "fairness": 0.6,
+      "greed_avoidance": 0.5,
+      "modesty": 0.7,
+      "fearfulness": 0.6,
+      "anxiety": 0.5,
+      "dependence": 0.4,
+      "sentimentality": 0.8,
+      "social_self_esteem": -0.4,
+      "social_boldness": -0.5,
+      "sociability": 0.3,
+      "liveliness": 0.2,
+      "forgiveness": 0.8,
+      "gentleness": 0.7,
+      "flexibility": 0.6,
+      "patience": 0.7,
+      "organization": 0.3,
+      "diligence": 0.6,
+      "perfectionism": 0.3,
+      "prudence": 0.5,
+      "aesthetic_appreciation": 0.3,
+      "inquisitiveness": 0.2,
+      "creativity": 0.1,
+      "unconventionality": -0.3
+    },
+    "huck": {
+      "id": "huck",
+      "name": "Huck Finn",
+      "description": "13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.",
+      "sincerity": -0.3,
+      "fairness": 0.2,
+      "greed_avoidance": 0.4,
+      "modesty": 0.3,
+      "fearfulness": -0.5,
+      "anxiety": -0.3,
+      "dependence": -0.7,
+      "sentimentality": -0.2,
+      "social_self_esteem": -0.2,
+      "social_boldness": 0.4,
+      "sociability": 0.1,
+      "liveliness": 0.3,
+      "forgiveness": 0.3,
+      "gentleness": 0.2,
+      "flexibility": 0.5,
+      "patience": 0.3,
+      "organization": -0.6,
+      "diligence": -0.3,
+      "perfectionism": -0.5,
+      "prudence": -0.4,
+      "aesthetic_appreciation": 0.2,
+      "inquisitiveness": 0.6,
+      "creativity": 0.5,
+      "unconventionality": 0.8
+    }
+  },
+  "relationships": {
+    "huck:jim": {
+      "owner_id": "huck",
+      "target_id": "jim",
+      "closeness": 0.45,
+      "trust": 0.4,
+      "power": 0.3
+    },
+    "jim:huck": {
+      "owner_id": "jim",
+      "target_id": "huck",
+      "closeness": 0.446875,
+      "trust": 0.6,
+      "power": -0.3
+    }
+  },
+  "objects": {},
+  "scenario": {
+    "name": "Ch.15 Fog & Trash Speech",
+    "description": "안개 속 이별 후 재회. 헉의 거짓말 발각 → 짐의 Trash 연설 → 헉의 사과. 신뢰 파열과 회복 테스트.",
+    "notes": []
+  },
+  "turn_history": [],
+  "current_situation": {
+    "desc": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+    "focusSettings": {
+      "apology": {
+        "acDesc": "헉이 스스로 잘못을 인정하고 진심으로 사과",
+        "agentId": "huck",
+        "evDesc": "헉이 자존심을 꺾고 사과함",
+        "evSelf": 0.7,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": 0.7
+      },
+      "betrayal": {
+        "acDesc": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+        "agentId": "huck",
+        "evDesc": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+        "evSelf": -0.8,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": -0.8
+      }
+    },
+    "npcId": "jim",
+    "partnerId": "huck",
+    "significance": 0.5
+  },
+  "scene": {
+    "description": "Ch.15 안개 재회 — 거짓말 발각과 사과",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 짐의 진심어린 걱정을 이용해 거짓말로 기만함",
+          "praiseworthiness": -0.8
+        },
+        "description": "거짓말 발각 — 헉이 짐의 진심을 이용해 거짓말로 기만함",
+        "event": {
+          "description": "짐이 걱정하며 울었는데 헉은 그걸 장난감으로 삼아 거짓말로 속였다",
+          "desirability_for_self": -0.8
+        },
+        "id": "betrayal",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 스스로 잘못을 인정하고 진심으로 사과",
+          "praiseworthiness": 0.7
+        },
+        "description": "사과 수용 — 헉이 자존심을 꺾고 진심으로 사과함",
+        "event": {
+          "description": "헉이 자존심을 꺾고 사과함",
+          "desirability_for_self": 0.7
+        },
+        "id": "apology",
+        "trigger": [
+          [
+            {
+              "below": 0.4,
+              "emotion": "Anger"
+            },
+            {
+              "below": 0.3,
+              "emotion": "Distress"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "jim",
+    "partner_id": "huck"
+  }
+}

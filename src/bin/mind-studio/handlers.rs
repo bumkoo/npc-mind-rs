@@ -567,13 +567,16 @@ pub async fn save_state(
     Ok(StatusCode::OK)
 }
 
-/// POST /api/load — JSON 파일에서 로드 (scene 필드가 있으면 자동 Focus 등록)
+/// POST /api/load — JSON 파일에서 로드 (scene 필드가 있으면 자동 Focus 등록, turn_history 무시)
 pub async fn load_state(
     State(state): State<AppState>,
     Json(req): Json<SaveRequest>,
 ) -> Result<StatusCode, AppError> {
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
         .map_err(|e| AppError::Internal(e))?;
+
+    // 시나리오 로드 시 turn_history는 비움 (깨끗한 상태에서 시작)
+    loaded.turn_history.clear();
 
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
@@ -584,6 +587,34 @@ pub async fn load_state(
     let mut inner = state.inner.write().await;
     *inner = loaded;
     Ok(StatusCode::OK)
+}
+
+/// POST /api/load-result — 테스트 결과 로드 (turn_history 포함, 읽기전용 뷰용)
+pub async fn load_result(
+    State(state): State<AppState>,
+    Json(req): Json<SaveRequest>,
+) -> Result<Json<LoadResultResponse>, AppError> {
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path))
+        .map_err(|e| AppError::Internal(e))?;
+
+    if let Some(ref scene_val) = loaded.scene {
+        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
+            load_scene_into_state(&mut loaded, &scene_req);
+        }
+    }
+
+    // turn_history를 응답에 포함
+    let history = loaded.turn_history.clone();
+
+    let mut inner = state.inner.write().await;
+    *inner = loaded;
+
+    Ok(Json(LoadResultResponse { turn_history: history }))
+}
+
+#[derive(Serialize)]
+pub struct LoadResultResponse {
+    pub turn_history: Vec<TurnRecord>,
 }
 
 /// Scene 필드를 파싱하여 Focus 등록 + UI 폼 복원용 situation 생성
@@ -600,11 +631,13 @@ fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
         .collect();
     drop(repo);
 
+    let significance = scene_req.significance.unwrap_or(0.5);
     let mut service = MindService::new(AppStateRepository { inner: loaded });
     let _ = service.load_scene_focuses(
         focuses,
         scene_req.npc_id.clone(),
         scene_req.partner_id.clone(),
+        significance,
     );
     drop(service);
 
@@ -704,6 +737,8 @@ pub struct ScenarioInfo {
     pub path: String,
     /// 표시용 이름 (폴더 구조에서 추출)
     pub label: String,
+    /// turn_history가 포함된 결과 파일인지 여부
+    pub has_results: bool,
 }
 
 fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<ScenarioInfo>) {
@@ -720,9 +755,21 @@ fn scan_scenarios(base: &std::path::Path, dir: &std::path::Path, out: &mut Vec<S
                 if let Ok(rel) = path.parent().unwrap_or(&path).strip_prefix(base) {
                     let rel_str = rel.to_string_lossy().replace('\\', "/");
                     let label = rel_str.replace('/', " / ");
+                    // turn_history 유무 확인 (빠른 파싱)
+                    let has_results = std::fs::read_to_string(&path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+                        .map(|v| {
+                            v.get("turn_history")
+                                .and_then(|t| t.as_array())
+                                .map(|a| !a.is_empty())
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
                     out.push(ScenarioInfo {
                         path: rel_str,
                         label,
+                        has_results,
                     });
                 }
             }
@@ -928,6 +975,172 @@ pub mod chat_handlers {
             stimulus,
             beat_changed,
         }))
+    }
+
+    /// POST /api/chat/message/stream — 대사 전송 → NPC 응답 스트리밍 + 감정 변화
+    ///
+    /// SSE 이벤트 형식:
+    /// - `event: token` / `data: <text_chunk>` — 토큰 청크
+    /// - `event: done`  / `data: <ChatTurnResponse JSON>` — 완료 + stimulus 결과
+    /// - `event: error` / `data: <message>` — 에러
+    pub async fn chat_message_stream(
+        State(state): State<AppState>,
+        Json(req): Json<ChatTurnRequest>,
+    ) -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>
+    {
+        let stream = async_stream::stream! {
+            // chat feature 확인
+            let chat_state = match state.chat.as_ref() {
+                Some(c) => c,
+                None => {
+                    yield Ok(axum::response::sse::Event::default()
+                        .event("error")
+                        .data("chat feature가 비활성입니다."));
+                    return;
+                }
+            };
+
+            // 1. 토큰 스트리밍을 위한 mpsc 채널
+            let (token_tx, mut token_rx) = tokio::sync::mpsc::channel::<String>(64);
+
+            // 2. LLM 스트리밍 호출을 백그라운드 태스크로 실행
+            let session_id = req.session_id.clone();
+            let utterance = req.utterance.clone();
+            let chat_state_clone = chat_state.clone();
+            let llm_task = tokio::spawn(async move {
+                chat_state_clone
+                    .send_message_stream(&session_id, &utterance, token_tx)
+                    .await
+            });
+
+            // 3. 토큰 도착마다 SSE event 전송
+            while let Some(token) = token_rx.recv().await {
+                yield Ok(axum::response::sse::Event::default()
+                    .event("token")
+                    .data(token));
+            }
+
+            // 4. LLM 응답 완료 — 전체 응답 수집
+            let npc_response = match llm_task.await {
+                Ok(Ok(resp)) => resp,
+                Ok(Err(e)) => {
+                    yield Ok(axum::response::sse::Event::default()
+                        .event("error")
+                        .data(e.to_string()));
+                    return;
+                }
+                Err(e) => {
+                    yield Ok(axum::response::sse::Event::default()
+                        .event("error")
+                        .data(format!("태스크 패닉: {e}")));
+                    return;
+                }
+            };
+
+            // 5. PAD 결정 (수동 입력 > 자동 분석 > 없음)
+            let pad = if let Some(ref pad_input) = req.pad {
+                Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
+            } else if let Some(ref analyzer) = state.analyzer {
+                let mut analyzer = analyzer.lock().await;
+                match analyzer.analyze(&req.utterance) {
+                    Ok(p) => Some((p.pleasure, p.arousal, p.dominance)),
+                    Err(_) => None,
+                }
+            } else {
+                None
+            };
+
+            // 6. stimulus 적용
+            let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
+                let stim_req = StimulusRequest {
+                    npc_id: req.npc_id.clone(),
+                    partner_id: req.partner_id.clone(),
+                    pleasure: p,
+                    arousal: a,
+                    dominance: d,
+                    situation_description: req.situation_description.clone(),
+                };
+
+                let result = {
+                    let mut inner = state.inner.write().await;
+                    let collector = state.collector.clone();
+                    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+                    match service.apply_stimulus(
+                        stim_req,
+                        || { collector.take_entries(); },
+                        || collector.take_entries(),
+                    ) {
+                        Ok(r) => r,
+                        Err(e) => {
+                            yield Ok(axum::response::sse::Event::default()
+                                .event("error")
+                                .data(e.to_string()));
+                            return;
+                        }
+                    }
+                };
+
+                let stim_resp = result.format(&*state.formatter);
+                let changed = stim_resp.beat_changed;
+
+                // Beat 전환 시 system_prompt 갱신
+                if changed {
+                    if let Err(e) = chat_state
+                        .update_system_prompt(&req.session_id, &stim_resp.prompt)
+                        .await
+                    {
+                        yield Ok(axum::response::sse::Event::default()
+                            .event("error")
+                            .data(e.to_string()));
+                        return;
+                    }
+                }
+
+                // 턴 기록
+                {
+                    let mut inner = state.inner.write().await;
+                    let turn_num = inner.turn_history.len() + 1;
+                    inner.turn_history.push(TurnRecord {
+                        label: format!(
+                            "Turn {}: chat/message [{}→{}]",
+                            turn_num, req.partner_id, req.npc_id
+                        ),
+                        action: "chat_message".into(),
+                        request: serde_json::to_value(&req).unwrap_or_default(),
+                        response: serde_json::to_value(&stim_resp).unwrap_or_default(),
+                    });
+                }
+
+                (Some(stim_resp), changed)
+            } else {
+                // PAD 없이 — 대사만 교환 (감정 변화 없음)
+                let mut inner = state.inner.write().await;
+                let turn_num = inner.turn_history.len() + 1;
+                inner.turn_history.push(TurnRecord {
+                    label: format!(
+                        "Turn {}: chat/message [{}→{}] (no PAD)",
+                        turn_num, req.partner_id, req.npc_id
+                    ),
+                    action: "chat_message".into(),
+                    request: serde_json::to_value(&req).unwrap_or_default(),
+                    response: serde_json::json!({ "npc_response": &npc_response }),
+                });
+
+                (None, false)
+            };
+
+            // 7. 최종 결과를 done 이벤트로 전송
+            let final_response = ChatTurnResponse {
+                npc_response,
+                stimulus,
+                beat_changed,
+            };
+            yield Ok(axum::response::sse::Event::default()
+                .event("done")
+                .data(serde_json::to_string(&final_response).unwrap_or_default()));
+        };
+
+        axum::response::Sse::new(stream)
     }
 
     /// POST /api/chat/end — 세션 종료 + 대화 이력 반환

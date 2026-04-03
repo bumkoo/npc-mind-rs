@@ -414,7 +414,6 @@ fn formatted_service_전체_흐름() {
     let after_req = AfterDialogueRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        praiseworthiness: Some(0.5),
         significance: None,
     };
     let res4 = service.after_dialogue(after_req).unwrap();

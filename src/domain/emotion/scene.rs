@@ -15,6 +15,9 @@ pub struct Scene {
     focuses: Vec<SceneFocus>,
     /// 현재 활성 Focus ID
     active_focus_id: Option<String>,
+    /// 상황 중요도 — 게임이 설정하는 값 (0.0~1.0)
+    /// 대화 종료 시 관계 갱신 배율에 반영됨: 1 + significance × SIGNIFICANCE_SCALE
+    significance: f32,
 }
 
 impl Scene {
@@ -24,6 +27,23 @@ impl Scene {
             partner_id,
             focuses,
             active_focus_id: None,
+            significance: 0.5,
+        }
+    }
+
+    /// 상황 중요도를 설정하여 Scene을 생성한다.
+    pub fn with_significance(
+        npc_id: String,
+        partner_id: String,
+        focuses: Vec<SceneFocus>,
+        significance: f32,
+    ) -> Self {
+        Self {
+            npc_id,
+            partner_id,
+            focuses,
+            active_focus_id: None,
+            significance: significance.clamp(0.0, 1.0),
         }
     }
 
@@ -38,6 +58,9 @@ impl Scene {
     }
     pub fn active_focus_id(&self) -> Option<&str> {
         self.active_focus_id.as_deref()
+    }
+    pub fn significance(&self) -> f32 {
+        self.significance
     }
 
     /// 현재 감정 상태를 기반으로 전환할 Focus를 찾습니다.

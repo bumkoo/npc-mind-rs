@@ -581,6 +581,162 @@
                 margin-top: 1px;
             }
 
+            /* Chat Panel */
+            .chat-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 0;
+                margin-bottom: 8px;
+                border-bottom: 1px solid var(--border);
+            }
+            .chat-header .chat-title {
+                font-size: 13px;
+                font-weight: 600;
+                color: var(--accent);
+            }
+            .chat-header .chat-mode {
+                font-size: 10px;
+                color: var(--fg3);
+                padding: 2px 6px;
+                background: var(--bg3);
+                border-radius: 10px;
+            }
+            .chat-messages {
+                flex: 1;
+                min-height: 0;
+                overflow-y: auto;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+                padding-bottom: 8px;
+            }
+            .chat-msg {
+                padding: 8px 10px;
+                border-radius: var(--radius);
+                font-size: 12px;
+                cursor: pointer;
+                line-height: 1.5;
+                max-width: 95%;
+                white-space: pre-wrap;
+            }
+            .chat-msg.user {
+                background: var(--bg4);
+                color: var(--fg);
+                align-self: flex-end;
+                border-bottom-right-radius: 2px;
+            }
+            .chat-msg.assistant {
+                background: linear-gradient(135deg, rgba(108,156,255,0.08), rgba(78,205,196,0.08));
+                border: 1px solid var(--border);
+                align-self: flex-start;
+                border-bottom-left-radius: 2px;
+            }
+            .chat-msg.system {
+                background: rgba(179,136,255,0.08);
+                border: 1px solid rgba(179,136,255,0.2);
+                font-size: 11px;
+                color: var(--purple);
+                align-self: center;
+                text-align: center;
+                max-width: 100%;
+            }
+            .chat-msg .msg-role {
+                font-size: 10px;
+                font-weight: 600;
+                color: var(--fg3);
+                margin-bottom: 2px;
+            }
+            .chat-msg .msg-emotions {
+                font-size: 10px;
+                color: var(--accent2);
+                margin-top: 4px;
+                cursor: pointer;
+            }
+            .chat-msg .msg-emotions:hover {
+                color: var(--accent);
+            }
+            .chat-msg.streaming::after {
+                content: "▊";
+                animation: blink 0.8s infinite;
+                color: var(--accent);
+            }
+            @keyframes blink {
+                0%, 100% { opacity: 1; }
+                50% { opacity: 0; }
+            }
+            .chat-msg.selected {
+                outline: 2px solid var(--accent);
+                outline-offset: -2px;
+            }
+            .chat-beat-divider {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin: 6px 0;
+                font-size: 11px;
+                color: var(--warn);
+            }
+            .chat-beat-divider::before,
+            .chat-beat-divider::after {
+                content: '';
+                flex: 1;
+                border-top: 1px dashed var(--warn);
+                opacity: 0.4;
+            }
+            .chat-input-area {
+                display: flex;
+                gap: 6px;
+                padding-top: 8px;
+                border-top: 1px solid var(--border);
+                flex-shrink: 0;
+            }
+            .chat-input-area textarea {
+                flex: 1;
+                min-height: 36px;
+                max-height: 80px;
+                resize: none;
+            }
+            .chat-scenario-bar {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 0;
+                border-top: 1px solid var(--border);
+                flex-shrink: 0;
+            }
+            .chat-scenario-bar .turn-preview {
+                flex: 1;
+                font-size: 11px;
+                color: var(--fg2);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            .chat-scenario-bar .turn-count {
+                font-size: 10px;
+                color: var(--fg3);
+                flex-shrink: 0;
+            }
+            .chat-loading {
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                padding: 6px 0;
+                font-size: 11px;
+                color: var(--fg3);
+            }
+            .chat-loading .dots::after {
+                content: '...';
+                animation: chatDots 1.2s steps(4, end) infinite;
+            }
+            @keyframes chatDots {
+                0% { content: ''; }
+                25% { content: '.'; }
+                50% { content: '..'; }
+                75% { content: '...'; }
+            }
+
             /* Toast */
             .toast-container {
                 position: fixed;
@@ -1286,6 +1442,130 @@
                 );
             }
             // --- Center: Situation Setup ---
+            // --- Focus 내부 Event/Action/Object 편집 서브컴포넌트 ---
+            function FocusEditor({ fs, onChange, npcIds, objects }) {
+                const set = (key, val) => onChange({ ...fs, [key]: val });
+                return (
+                    <div style={{ marginTop: 4 }}>
+                        {/* Event */}
+                        <div className="section" style={{ margin: "4px 0" }}>
+                            <div className="section-header" style={{ padding: "2px 8px" }}>
+                                <input type="checkbox" checked={fs.hasEvent}
+                                    onChange={(e) => set("hasEvent", e.target.checked)} />
+                                <span className="title" style={{ fontSize: 11 }}>Event</span>
+                            </div>
+                            {fs.hasEvent && (
+                                <div className="section-body" style={{ padding: "4px 8px" }}>
+                                    <input type="text" value={fs.evDesc}
+                                        onChange={(e) => set("evDesc", e.target.value)}
+                                        placeholder="사건 설명..." />
+                                    <Slider label="자기 영향" value={fs.evSelf} onChange={(v) => set("evSelf", v)} />
+                                    <label style={{ display: "inline", fontSize: 11 }}>
+                                        <input type="checkbox" checked={fs.hasOther}
+                                            onChange={(e) => set("hasOther", e.target.checked)} /> 타인 영향
+                                    </label>
+                                    {fs.hasOther && (
+                                        <div style={{ marginLeft: 16, marginTop: 4 }}>
+                                            <select value={fs.otherTarget}
+                                                onChange={(e) => set("otherTarget", e.target.value)}
+                                                style={{ marginBottom: 4 }}>
+                                                <option value="">대상 선택...</option>
+                                                {npcIds.map((id) => (
+                                                    <option key={id} value={id}>{id}</option>
+                                                ))}
+                                            </select>
+                                            <Slider label="타인 영향" value={fs.otherD} onChange={(v) => set("otherD", v)} />
+                                        </div>
+                                    )}
+                                    <label style={{ fontSize: 11 }}>전망</label>
+                                    <select value={fs.prospect}
+                                        onChange={(e) => set("prospect", e.target.value)}>
+                                        <option value="">없음</option>
+                                        <option value="anticipation">Anticipation (전망)</option>
+                                        <option value="hope_fulfilled">HopeFulfilled</option>
+                                        <option value="hope_unfulfilled">HopeUnfulfilled</option>
+                                        <option value="fear_unrealized">FearUnrealized</option>
+                                        <option value="fear_confirmed">FearConfirmed</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+                        {/* Action */}
+                        <div className="section" style={{ margin: "4px 0" }}>
+                            <div className="section-header" style={{ padding: "2px 8px" }}>
+                                <input type="checkbox" checked={fs.hasAction}
+                                    onChange={(e) => set("hasAction", e.target.checked)} />
+                                <span className="title" style={{ fontSize: 11 }}>Action</span>
+                            </div>
+                            {fs.hasAction && (
+                                <div className="section-body" style={{ padding: "4px 8px" }}>
+                                    <input type="text" value={fs.acDesc}
+                                        onChange={(e) => set("acDesc", e.target.value)}
+                                        placeholder="행동 설명..." />
+                                    <label style={{ fontSize: 11 }}>행위자</label>
+                                    <select value={fs.agentId}
+                                        onChange={(e) => set("agentId", e.target.value)}>
+                                        <option value="">자기 (NPC 본인)</option>
+                                        {npcIds.map((id) => (
+                                            <option key={id} value={id}>{id}</option>
+                                        ))}
+                                    </select>
+                                    <Slider label="도덕성" value={fs.pw} onChange={(v) => set("pw", v)} />
+                                </div>
+                            )}
+                        </div>
+                        {/* Object */}
+                        <div className="section" style={{ margin: "4px 0" }}>
+                            <div className="section-header" style={{ padding: "2px 8px" }}>
+                                <input type="checkbox" checked={fs.hasObject}
+                                    onChange={(e) => set("hasObject", e.target.checked)} />
+                                <span className="title" style={{ fontSize: 11 }}>Object</span>
+                            </div>
+                            {fs.hasObject && (
+                                <div className="section-body" style={{ padding: "4px 8px" }}>
+                                    <select value={fs.objTarget}
+                                        onChange={(e) => set("objTarget", e.target.value)}>
+                                        <option value="">대상 선택...</option>
+                                        {objects.map((o) => (
+                                            <option key={o.id} value={o.id}>
+                                                {o.id} — {o.description?.substring(0, 20)}
+                                            </option>
+                                        ))}
+                                        {npcIds.map((id) => (
+                                            <option key={"npc_" + id} value={id}>{id} (NPC)</option>
+                                        ))}
+                                    </select>
+                                    <Slider label="매력도" value={fs.objAp} onChange={(v) => set("objAp", v)} />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // --- Focus 설정 기본값 생성 헬퍼 ---
+            function makeFocusSettings(focusInfo) {
+                const ev = focusInfo?.event;
+                const ac = focusInfo?.action;
+                const ob = focusInfo?.object;
+                return {
+                    hasEvent: !!ev,
+                    evDesc: ev?.description || "",
+                    evSelf: ev?.desirability_for_self || 0,
+                    hasOther: ev?.has_other || false,
+                    otherTarget: "",
+                    otherD: ev?.desirability_for_other || 0,
+                    prospect: "",
+                    hasAction: !!ac,
+                    acDesc: ac?.description || "",
+                    agentId: ac?.agent_id || "",
+                    pw: ac?.praiseworthiness || 0,
+                    hasObject: !!ob,
+                    objTarget: ob?.target_id || "",
+                    objAp: ob?.appealingness || 0,
+                };
+            }
+
             function SituationPanel({
                 npcs,
                 objects,
@@ -1294,112 +1574,83 @@
                 partnerId,
                 setPartnerId,
                 onAppraise,
-                onStimulus,
-                onAfterDialogue,
+                onStartChat,
+                startChatLabel,
                 loading,
                 savedSituation,
+                sceneInfo,
                 toast,
             }) {
                 const npcIds = ["player", ...npcs.map((n) => n.id)];
                 const [desc, setDesc] = useState("");
-                // Event
-                const [hasEvent, setHasEvent] = useState(true);
-                const [evDesc, setEvDesc] = useState("");
-                const [evSelf, setEvSelf] = useState(0);
-                const [hasOther, setHasOther] = useState(false);
-                const [otherTarget, setOtherTarget] = useState("");
-                const [otherD, setOtherD] = useState(0);
-                const [prospect, setProspect] = useState("");
-                // Action
-                const [hasAction, setHasAction] = useState(false);
-                const [acDesc, setAcDesc] = useState("");
-                const [agentId, setAgentId] = useState("");
-                const [pw, setPw] = useState(0);
-                // Object
-                const [hasObject, setHasObject] = useState(false);
-                const [objTarget, setObjTarget] = useState("");
-                const [objAp, setObjAp] = useState(0);
-                // PAD
-                const [padP, setPadP] = useState(0);
-                const [padA, setPadA] = useState(0);
-                const [padD, setPadD] = useState(0);
-                const [utterance, setUtterance] = useState("");
-                const [analyzing, setAnalyzing] = useState(false);
-                // After-dialogue praiseworthiness
-                const [hasPw, setHasPw] = useState(false);
-                const [adPw, setAdPw] = useState(0);
                 const [significance, setSignificance] = useState(0);
+
+                // Focus별 설정 (Scene 모드)
+                const [focusSettings, setFocusSettings] = useState({});
+                // 펼침 상태: { focusId: true/false }
+                const [expanded, setExpanded] = useState({});
+
+                // 단일 모드 (Scene 없을 때) — 기존 호환
+                const [singleFs, setSingleFs] = useState(makeFocusSettings(null));
+
+                // Scene focuses가 바뀌면 focusSettings 초기화
+                const sceneKeyRef = React.useRef(null);
+                React.useEffect(() => {
+                    if (!sceneInfo?.focuses) return;
+                    const key = sceneInfo.focuses.map(f => f.id).join(",");
+                    if (key === sceneKeyRef.current) return;
+                    sceneKeyRef.current = key;
+                    const settings = {};
+                    const exp = {};
+                    sceneInfo.focuses.forEach((f) => {
+                        settings[f.id] = makeFocusSettings(f);
+                        exp[f.id] = f.is_active; // 활성 Focus만 펼침
+                    });
+                    setFocusSettings(settings);
+                    setExpanded(exp);
+                }, [sceneInfo]);
 
                 // --- 시나리오 로드 시 상황설정 복원 ---
                 const restoreKeyRef = React.useRef(null);
                 React.useEffect(() => {
-                    if (
-                        !savedSituation ||
-                        savedSituation === restoreKeyRef.current
-                    )
-                        return;
+                    if (!savedSituation || savedSituation === restoreKeyRef.current) return;
                     restoreKeyRef.current = savedSituation;
                     const s = savedSituation;
                     if (s.desc != null) setDesc(s.desc);
                     if (s.npcId != null) setNpcId(s.npcId);
                     if (s.partnerId != null) setPartnerId(s.partnerId);
-                    // Event
-                    setHasEvent(s.hasEvent ?? true);
-                    if (s.evDesc != null) setEvDesc(s.evDesc);
-                    if (s.evSelf != null) setEvSelf(s.evSelf);
-                    setHasOther(s.hasOther ?? false);
-                    if (s.otherTarget != null) setOtherTarget(s.otherTarget);
-                    if (s.otherD != null) setOtherD(s.otherD);
-                    if (s.prospect != null) setProspect(s.prospect);
-                    // Action
-                    setHasAction(s.hasAction ?? false);
-                    if (s.acDesc != null) setAcDesc(s.acDesc);
-                    if (s.agentId != null) setAgentId(s.agentId);
-                    if (s.pw != null) setPw(s.pw);
-                    // Object
-                    setHasObject(s.hasObject ?? false);
-                    if (s.objTarget != null) setObjTarget(s.objTarget);
-                    if (s.objAp != null) setObjAp(s.objAp);
-                    // PAD
-                    if (s.padP != null) setPadP(s.padP);
-                    if (s.padA != null) setPadA(s.padA);
-                    if (s.padD != null) setPadD(s.padD);
-                    // After-dialogue
-                    setHasPw(s.hasPw ?? false);
-                    if (s.adPw != null) setAdPw(s.adPw);
                     if (s.significance != null) setSignificance(s.significance);
+                    // 단일 모드 복원
+                    if (!sceneInfo) {
+                        setSingleFs({
+                            hasEvent: s.hasEvent ?? true,
+                            evDesc: s.evDesc || "",
+                            evSelf: s.evSelf || 0,
+                            hasOther: s.hasOther || false,
+                            otherTarget: s.otherTarget || "",
+                            otherD: s.otherD || 0,
+                            prospect: s.prospect || "",
+                            hasAction: s.hasAction || false,
+                            acDesc: s.acDesc || "",
+                            agentId: s.agentId || "",
+                            pw: s.pw || 0,
+                            hasObject: s.hasObject || false,
+                            objTarget: s.objTarget || "",
+                            objAp: s.objAp || 0,
+                        });
+                    }
                 }, [savedSituation]);
 
                 // --- 상황설정 변경 시 자동 저장 (debounced) ---
                 const saveTimerRef = React.useRef(null);
+                const allDeps = JSON.stringify({ desc, significance, focusSettings, singleFs, npcId, partnerId });
                 React.useEffect(() => {
-                    if (saveTimerRef.current)
-                        clearTimeout(saveTimerRef.current);
+                    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
                     saveTimerRef.current = setTimeout(() => {
-                        const data = {
-                            desc,
-                            npcId,
-                            partnerId,
-                            hasEvent,
-                            evDesc,
-                            evSelf,
-                            hasOther,
-                            otherTarget,
-                            otherD,
-                            prospect,
-                            hasAction,
-                            acDesc,
-                            agentId,
-                            pw,
-                            hasObject,
-                            objTarget,
-                            objAp,
-                            padP,
-                            padA,
-                            padD,
-                            hasPw,
-                            adPw,
-                            significance,
+                        const activeFs = sceneInfo ? focusSettings : { _single: singleFs };
+                        const data = { desc, npcId, partnerId, significance, focusSettings: activeFs,
+                            // 하위 호환: 단일 모드일 때 기존 필드도 저장
+                            ...(!sceneInfo ? singleFs : {}),
                         };
                         fetch("/api/situation", {
                             method: "PUT",
@@ -1407,62 +1658,40 @@
                             body: JSON.stringify(data),
                         }).catch(() => {});
                     }, 500);
-                    return () => {
-                        if (saveTimerRef.current)
-                            clearTimeout(saveTimerRef.current);
-                    };
-                }, [
-                    desc,
-                    npcId,
-                    partnerId,
-                    hasEvent,
-                    evDesc,
-                    evSelf,
-                    hasOther,
-                    otherTarget,
-                    otherD,
-                    prospect,
-                    hasAction,
-                    acDesc,
-                    agentId,
-                    pw,
-                    hasObject,
-                    objTarget,
-                    objAp,
-                    padP,
-                    padA,
-                    padD,
-                    hasPw,
-                    adPw,
-                    significance,
-                ]);
+                    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+                }, [allDeps]);
 
-                const buildSituation = () => ({
+                const buildSituationFromFs = (fs) => ({
                     description: desc,
-                    event: hasEvent
-                        ? {
-                              description: evDesc,
-                              desirability_for_self: evSelf,
-                              other: hasOther
-                                  ? {
-                                        target_id: otherTarget,
-                                        desirability: otherD,
-                                    }
-                                  : null,
-                              prospect: prospect || null,
-                          }
-                        : null,
-                    action: hasAction
-                        ? {
-                              description: acDesc,
-                              agent_id: agentId || null,
-                              praiseworthiness: pw,
-                          }
-                        : null,
-                    object: hasObject
-                        ? { target_id: objTarget, appealingness: objAp }
-                        : null,
+                    event: fs.hasEvent ? {
+                        description: fs.evDesc,
+                        desirability_for_self: fs.evSelf,
+                        other: fs.hasOther ? { target_id: fs.otherTarget, desirability: fs.otherD } : null,
+                        prospect: fs.prospect || null,
+                    } : null,
+                    action: fs.hasAction ? {
+                        description: fs.acDesc,
+                        agent_id: fs.agentId || null,
+                        praiseworthiness: fs.pw,
+                    } : null,
+                    object: fs.hasObject ? { target_id: fs.objTarget, appealingness: fs.objAp } : null,
                 });
+
+                const buildSituation = () => {
+                    if (sceneInfo?.focuses) {
+                        const active = sceneInfo.focuses.find(f => f.is_active);
+                        if (active && focusSettings[active.id]) {
+                            return buildSituationFromFs(focusSettings[active.id]);
+                        }
+                    }
+                    return buildSituationFromFs(singleFs);
+                };
+
+                const toggleExpand = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+                const updateFocusSetting = (id, newFs) => setFocusSettings(prev => ({ ...prev, [id]: newFs }));
+
+                const focuses = sceneInfo?.focuses || [];
+
                 return (
                     <div className="center">
                         <h2>상황 설정</h2>
@@ -1470,456 +1699,98 @@
                         <div className="pair-select">
                             <div>
                                 <label>NPC (주체)</label>
-                                <select
-                                    value={npcId}
-                                    onChange={(e) => setNpcId(e.target.value)}
-                                >
+                                <select value={npcId} onChange={(e) => setNpcId(e.target.value)}>
                                     <option value="">선택...</option>
                                     {npcs.map((n) => (
-                                        <option key={n.id} value={n.id}>
-                                            {n.name || n.id}
-                                        </option>
+                                        <option key={n.id} value={n.id}>{n.name || n.id}</option>
                                     ))}
                                 </select>
                             </div>
-                            <div
-                                style={{
-                                    display: "flex",
-                                    alignItems: "flex-end",
-                                    padding: "0 0 2px",
-                                    color: "var(--fg3)",
-                                }}
-                            >
-                                ↔
-                            </div>
+                            <div style={{ display: "flex", alignItems: "flex-end", padding: "0 0 2px", color: "var(--fg3)" }}>↔</div>
                             <div>
                                 <label>대화 상대</label>
-                                <select
-                                    value={partnerId}
-                                    onChange={(e) =>
-                                        setPartnerId(e.target.value)
-                                    }
-                                >
+                                <select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
                                     <option value="">선택...</option>
                                     {npcIds.map((id) => (
-                                        <option key={id} value={id}>
-                                            {id}
-                                        </option>
+                                        <option key={id} value={id}>{id}</option>
                                     ))}
                                 </select>
                             </div>
                         </div>
-                        <label>상황 설명</label>
-                        <textarea
-                            value={desc}
-                            onChange={(e) => setDesc(e.target.value)}
-                            rows={2}
-                            placeholder="전체 상황 맥락..."
-                        />
-
-                        {/* Event */}
                         <div className="section">
                             <div className="section-header">
-                                <input
-                                    type="checkbox"
-                                    checked={hasEvent}
-                                    onChange={(e) =>
-                                        setHasEvent(e.target.checked)
-                                    }
-                                />
-                                <span className="title">Event (사건)</span>
+                                <span className="title">상황 설명</span>
                             </div>
-                            {hasEvent && (
-                                <div className="section-body">
-                                    <input
-                                        type="text"
-                                        value={evDesc}
-                                        onChange={(e) =>
-                                            setEvDesc(e.target.value)
-                                        }
-                                        placeholder="사건 설명..."
-                                    />
-                                    <Slider
-                                        label="자기 영향"
-                                        value={evSelf}
-                                        onChange={setEvSelf}
-                                    />
-                                    <label
-                                        style={{
-                                            display: "inline",
-                                            fontSize: 11,
-                                        }}
-                                    >
-                                        <input
-                                            type="checkbox"
-                                            checked={hasOther}
-                                            onChange={(e) =>
-                                                setHasOther(e.target.checked)
-                                            }
-                                        />{" "}
-                                        타인 영향
-                                    </label>
-                                    {hasOther && (
-                                        <div
-                                            style={{
-                                                marginLeft: 16,
-                                                marginTop: 4,
-                                            }}
-                                        >
-                                            <select
-                                                value={otherTarget}
-                                                onChange={(e) =>
-                                                    setOtherTarget(
-                                                        e.target.value,
-                                                    )
-                                                }
-                                                style={{ marginBottom: 4 }}
-                                            >
-                                                <option value="">
-                                                    대상 선택...
-                                                </option>
-                                                {npcIds.map((id) => (
-                                                    <option key={id} value={id}>
-                                                        {id}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                            <Slider
-                                                label="타인 영향"
-                                                value={otherD}
-                                                onChange={setOtherD}
+                            <div className="section-body">
+                                <textarea value={desc} onChange={(e) => setDesc(e.target.value)}
+                                    rows={2} placeholder="전체 상황 맥락..." />
+                                <Slider label="중요도" value={significance} onChange={setSignificance}
+                                    min={0} max={1} step={0.1} />
+                            </div>
+                        </div>
+
+                        {/* Scene 모드: Focus별 접기/펼치기 */}
+                        {focuses.length > 0 ? (
+                            focuses.map((f, fi) => (
+                                <React.Fragment key={f.id}>
+                                    <div className="section" style={{ marginBottom: 2 }}>
+                                        <div className="section-header"
+                                            style={{ cursor: "pointer", userSelect: "none" }}
+                                            onClick={() => toggleExpand(f.id)}>
+                                            <span style={{ fontSize: 12, marginRight: 6, color: f.is_active ? "var(--accent)" : "var(--fg3)" }}>
+                                                {f.is_active ? "●" : "○"}
+                                            </span>
+                                            <span className="title" style={{ flex: 1 }}>
+                                                {f.id}
+                                            </span>
+                                            <span style={{ fontSize: 10, color: "var(--fg3)" }}>
+                                                {expanded[f.id] ? "▼" : "▶"}
+                                            </span>
+                                        </div>
+                                        <div style={{ padding: "0 10px 4px", fontSize: 11, color: "var(--fg2)" }}>
+                                            {f.description}
+                                        </div>
+                                        {expanded[f.id] && focusSettings[f.id] && (
+                                            <FocusEditor
+                                                fs={focusSettings[f.id]}
+                                                onChange={(newFs) => updateFocusSetting(f.id, newFs)}
+                                                npcIds={npcIds}
+                                                objects={objects}
                                             />
+                                        )}
+                                    </div>
+                                    {/* 전환 조건 (다음 Focus가 있고, 현재가 마지막이 아닐 때) */}
+                                    {fi < focuses.length - 1 && focuses[fi + 1].trigger_display && focuses[fi + 1].trigger_display !== "initial" && (
+                                        <div style={{
+                                            textAlign: "center", fontSize: 10, color: "var(--warn)",
+                                            padding: "3px 0", margin: "0 8px",
+                                            borderLeft: "1px dashed var(--border)", borderRight: "1px dashed var(--border)",
+                                        }}>
+                                            전환 조건: {focuses[fi + 1].trigger_display}
                                         </div>
                                     )}
-                                    <label style={{ fontSize: 11 }}>전망</label>
-                                    <select
-                                        value={prospect}
-                                        onChange={(e) =>
-                                            setProspect(e.target.value)
-                                        }
-                                    >
-                                        <option value="">없음</option>
-                                        <option value="anticipation">
-                                            Anticipation (전망)
-                                        </option>
-                                        <option value="hope_fulfilled">
-                                            HopeFulfilled
-                                        </option>
-                                        <option value="hope_unfulfilled">
-                                            HopeUnfulfilled
-                                        </option>
-                                        <option value="fear_unrealized">
-                                            FearUnrealized
-                                        </option>
-                                        <option value="fear_confirmed">
-                                            FearConfirmed
-                                        </option>
-                                    </select>
-                                </div>
-                            )}
-                        </div>
+                                </React.Fragment>
+                            ))
+                        ) : (
+                            /* 단일 모드: Scene 없을 때 기존 UI */
+                            <FocusEditor
+                                fs={singleFs}
+                                onChange={setSingleFs}
+                                npcIds={npcIds}
+                                objects={objects}
+                            />
+                        )}
 
-                        {/* Action */}
-                        <div className="section">
-                            <div className="section-header">
-                                <input
-                                    type="checkbox"
-                                    checked={hasAction}
-                                    onChange={(e) =>
-                                        setHasAction(e.target.checked)
-                                    }
-                                />
-                                <span className="title">Action (행동)</span>
-                            </div>
-                            {hasAction && (
-                                <div className="section-body">
-                                    <input
-                                        type="text"
-                                        value={acDesc}
-                                        onChange={(e) =>
-                                            setAcDesc(e.target.value)
-                                        }
-                                        placeholder="행동 설명..."
-                                    />
-                                    <label style={{ fontSize: 11 }}>
-                                        행위자
-                                    </label>
-                                    <select
-                                        value={agentId}
-                                        onChange={(e) =>
-                                            setAgentId(e.target.value)
-                                        }
-                                    >
-                                        <option value="">
-                                            자기 (NPC 본인)
-                                        </option>
-                                        {npcIds.map((id) => (
-                                            <option key={id} value={id}>
-                                                {id}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <Slider
-                                        label="도덕성"
-                                        value={pw}
-                                        onChange={setPw}
-                                    />
-                                </div>
-                            )}
-                        </div>
+                        {/* Action buttons */}
+                        {onStartChat && (
+                            <button className="btn btn-full"
+                                style={{ marginTop: 4, borderColor: "var(--purple)", color: "var(--purple)" }}
+                                disabled={loading}
+                                onClick={() => onStartChat(buildSituation())}>
+                                {startChatLabel || "💬 대화 시작"}
+                            </button>
+                        )}
 
-                        {/* Object */}
-                        <div className="section">
-                            <div className="section-header">
-                                <input
-                                    type="checkbox"
-                                    checked={hasObject}
-                                    onChange={(e) =>
-                                        setHasObject(e.target.checked)
-                                    }
-                                />
-                                <span className="title">Object (대상)</span>
-                            </div>
-                            {hasObject && (
-                                <div className="section-body">
-                                    <select
-                                        value={objTarget}
-                                        onChange={(e) =>
-                                            setObjTarget(e.target.value)
-                                        }
-                                    >
-                                        <option value="">대상 선택...</option>
-                                        {objects.map((o) => (
-                                            <option key={o.id} value={o.id}>
-                                                {o.id} —{" "}
-                                                {o.description?.substring(
-                                                    0,
-                                                    20,
-                                                )}
-                                            </option>
-                                        ))}
-                                        {npcIds.map((id) => (
-                                            <option
-                                                key={"npc_" + id}
-                                                value={id}
-                                            >
-                                                {id} (NPC)
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <Slider
-                                        label="매력도"
-                                        value={objAp}
-                                        onChange={setObjAp}
-                                    />
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Appraise button */}
-                        <button
-                            className="btn primary btn-full"
-                            disabled={loading}
-                            style={{ marginTop: 4 }}
-                            onClick={() => onAppraise(buildSituation())}
-                        >
-                            {loading ? "처리 중..." : "감정 평가 실행"}
-                        </button>
-
-                        {/* PAD Stimulus */}
-                        <div className="section" style={{ marginTop: 8 }}>
-                            <div className="section-header">
-                                <span
-                                    className="title"
-                                    style={{ color: "var(--warn)" }}
-                                >
-                                    PAD 자극 적용
-                                </span>
-                            </div>
-                            <div className="section-body">
-                                <label
-                                    style={{
-                                        fontSize: 11,
-                                        color: "var(--fg2)",
-                                    }}
-                                >
-                                    상대 대사
-                                </label>
-                                <div
-                                    style={{
-                                        display: "flex",
-                                        gap: 4,
-                                        marginBottom: 6,
-                                    }}
-                                >
-                                    <input
-                                        type="text"
-                                        value={utterance}
-                                        onChange={(e) =>
-                                            setUtterance(e.target.value)
-                                        }
-                                        placeholder="상대방의 대사를 입력..."
-                                        style={{
-                                            flex: 1,
-                                            background: "var(--bg3)",
-                                            color: "var(--fg)",
-                                            border: "1px solid var(--border)",
-                                            borderRadius: "var(--radius)",
-                                            padding: "4px 8px",
-                                            fontSize: 12,
-                                        }}
-                                    />
-                                    <button
-                                        className="btn small"
-                                        disabled={
-                                            !utterance.trim() || analyzing
-                                        }
-                                        onClick={async () => {
-                                            setAnalyzing(true);
-                                            try {
-                                                const res = await fetch(
-                                                    "/api/analyze-utterance",
-                                                    {
-                                                        method: "POST",
-                                                        headers: {
-                                                            "Content-Type":
-                                                                "application/json",
-                                                        },
-                                                        body: JSON.stringify({
-                                                            utterance:
-                                                                utterance.trim(),
-                                                        }),
-                                                    },
-                                                );
-                                                if (res.status === 501) {
-                                                    toast(
-                                                        "임베딩 미지원 — PAD를 수동 입력하세요",
-                                                        "warn",
-                                                    );
-                                                    return;
-                                                }
-                                                if (!res.ok) {
-                                                    toast(
-                                                        "분석 실패: " +
-                                                            (await res.text()),
-                                                        "error",
-                                                    );
-                                                    return;
-                                                }
-                                                const pad = await res.json();
-                                                setPadP(
-                                                    Math.round(
-                                                        pad.pleasure * 100,
-                                                    ) / 100,
-                                                );
-                                                setPadA(
-                                                    Math.round(
-                                                        pad.arousal * 100,
-                                                    ) / 100,
-                                                );
-                                                setPadD(
-                                                    Math.round(
-                                                        pad.dominance * 100,
-                                                    ) / 100,
-                                                );
-                                                toast(
-                                                    "PAD 분석 완료",
-                                                    "success",
-                                                );
-                                            } catch (e) {
-                                                toast("분석 오류", "error");
-                                            } finally {
-                                                setAnalyzing(false);
-                                            }
-                                        }}
-                                    >
-                                        {analyzing ? "분석중..." : "분석"}
-                                    </button>
-                                </div>
-                                <Slider
-                                    label="P (쾌)"
-                                    value={padP}
-                                    onChange={setPadP}
-                                />
-                                <Slider
-                                    label="A (각성)"
-                                    value={padA}
-                                    onChange={setPadA}
-                                />
-                                <Slider
-                                    label="D (지배)"
-                                    value={padD}
-                                    onChange={setPadD}
-                                />
-                                <button
-                                    className="btn btn-full"
-                                    style={{ marginTop: 4 }}
-                                    onClick={() =>
-                                        onStimulus({
-                                            pleasure: padP,
-                                            arousal: padA,
-                                            dominance: padD,
-                                            situation_description: desc || null,
-                                        })
-                                    }
-                                >
-                                    자극 적용
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* After dialogue */}
-                        <div className="section" style={{ marginTop: 8 }}>
-                            <div className="section-header">
-                                <span
-                                    className="title"
-                                    style={{ color: "var(--err)" }}
-                                >
-                                    대화 종료
-                                </span>
-                            </div>
-                            <div className="section-body">
-                                <label
-                                    style={{ display: "inline", fontSize: 11 }}
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={hasPw}
-                                        onChange={(e) =>
-                                            setHasPw(e.target.checked)
-                                        }
-                                    />{" "}
-                                    도덕성 평가 포함
-                                </label>
-                                {hasPw && (
-                                    <Slider
-                                        label="도덕성"
-                                        value={adPw}
-                                        onChange={setAdPw}
-                                    />
-                                )}
-                                <Slider
-                                    label="상황 중요도"
-                                    value={significance}
-                                    onChange={setSignificance}
-                                    min={0}
-                                    max={1}
-                                    step={0.1}
-                                />
-                                <button
-                                    className="btn danger btn-full"
-                                    style={{ marginTop: 4 }}
-                                    onClick={() =>
-                                        onAfterDialogue(
-                                            hasPw ? adPw : null,
-                                            significance,
-                                        )
-                                    }
-                                >
-                                    대화 종료 (관계 갱신)
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 );
             }
@@ -1929,10 +1800,20 @@
                 history,
                 traceHistory,
                 onGuide,
+                onStimulus,
                 toast,
                 sceneInfo,
+                chatMessages,
+                selectedMsgIdx,
+                stimulusUtterance,
+                onStimulusUtteranceChange,
+                tab,
+                onTabChange,
             }) {
-                const [tab, setTab] = useState("emotions");
+                const setTab = onTabChange;
+
+                // 메시지 선택 시: 탭 전환 없이 데이터만 업데이트
+                // (각 탭이 selectedMsgIdx 기준으로 해당 시점 데이터를 표시)
 
                 return (
                     <div className="right">
@@ -1947,7 +1828,13 @@
                                 className={`result-tab ${tab === "prompt" ? "active" : ""}`}
                                 onClick={() => setTab("prompt")}
                             >
-                                프롬프트
+                                컨텍스트
+                            </div>
+                            <div
+                                className={`result-tab ${tab === "stimulus" ? "active" : ""}`}
+                                onClick={() => setTab("stimulus")}
+                            >
+                                자극
                             </div>
                             <div
                                 className={`result-tab ${tab === "trace" ? "active" : ""}`}
@@ -1966,7 +1853,7 @@
                             {tab === "emotions" && (
                                 <ScenePanel sceneInfo={sceneInfo} />
                             )}
-                            {!result && tab !== "history" ? (
+                            {!result && tab !== "history" && tab !== "stimulus" ? (
                                 <div className="empty">
                                     {!sceneInfo && (
                                         <div
@@ -2002,16 +1889,14 @@
                                 <>
                                     {tab === "emotions" &&
                                         result &&
-                                        (result.afterDialogue ? (
-                                            <AfterDialogueView data={result} />
-                                        ) : (
-                                            <EmotionView result={result} />
-                                        ))}
+                                        <EmotionView result={result} />}
                                     {tab === "prompt" &&
                                         result &&
                                         !result.afterDialogue && (
-                                            <PromptView
+                                            <ContextView
                                                 prompt={result.prompt}
+                                                chatMessages={chatMessages}
+                                                selectedMsgIdx={selectedMsgIdx}
                                                 onRegenerate={onGuide}
                                                 onCopy={() =>
                                                     toast &&
@@ -2022,6 +1907,27 @@
                                                 }
                                             />
                                         )}
+                                    {tab === "stimulus" && (
+                                        <StimulusView
+                                            utterance={stimulusUtterance}
+                                            onUtteranceChange={onStimulusUtteranceChange}
+                                            initialPad={
+                                                selectedMsgIdx != null && chatMessages
+                                                && chatMessages[selectedMsgIdx]?.role === "user"
+                                                && chatMessages[selectedMsgIdx]?.pad
+                                                    ? chatMessages[selectedMsgIdx].pad
+                                                    : null
+                                            }
+                                            onApply={(pad) => {
+                                                onStimulus({
+                                                    ...pad,
+                                                    situation_description: null,
+                                                });
+                                                setTab("emotions");
+                                            }}
+                                            toast={toast}
+                                        />
+                                    )}
                                     {tab === "trace" &&
                                         result &&
                                         !result.afterDialogue && (
@@ -2038,6 +1944,326 @@
                     </div>
                 );
             }
+            // --- Center: Chat Panel (대화 모드) ---
+            function ChatPanel({
+                npcId,
+                partnerId,
+                npcs,
+                messages,
+                scenarioTurns,
+                scenarioIndex,
+                chatLoading,
+                selectedMsgIdx,
+                onSend,
+                onNextTurn,
+                onSelectMsg,
+                onEndChat,
+            }) {
+                const [input, setInput] = useState("");
+                const messagesEndRef = useRef(null);
+                const npc = npcs.find((n) => n.id === npcId);
+                const partner = npcs.find((n) => n.id === partnerId);
+                const hasScenario =
+                    scenarioTurns && scenarioTurns.length > 0;
+                const nextTurn =
+                    hasScenario && scenarioIndex < scenarioTurns.length
+                        ? scenarioTurns[scenarioIndex]
+                        : null;
+
+                useEffect(() => {
+                    messagesEndRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                    });
+                }, [messages]);
+
+                const handleSend = () => {
+                    const text = input.trim();
+                    if (!text || chatLoading) return;
+                    onSend(text);
+                    setInput("");
+                };
+
+                const handleKeyDown = (e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                    }
+                };
+
+                return (
+                    <div
+                        className="center"
+                        style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                        }}
+                    >
+                        {/* Header */}
+                        <div className="chat-header">
+                            <div>
+                                <span className="chat-title">
+                                    💬 {npc?.name || npcId} ↔{" "}
+                                    {partner?.name || partnerId}
+                                </span>
+                                {hasScenario && (
+                                    <span className="chat-mode">
+                                        시나리오
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                className="btn small danger"
+                                onClick={onEndChat}
+                            >
+                                대화 종료
+                            </button>
+                        </div>
+
+                        {/* Messages */}
+                        <div className="chat-messages">
+                            {messages.map((msg, i) => {
+                                if (msg.beat_changed) {
+                                    return (
+                                        <React.Fragment key={i}>
+                                            <div className="chat-beat-divider">
+                                                🔄 Beat 전환
+                                                {msg.new_focus
+                                                    ? `: ${msg.new_focus}`
+                                                    : ""}
+                                            </div>
+                                            <div
+                                                className={`chat-msg ${msg.role} ${selectedMsgIdx === i ? "selected" : ""} ${msg.streaming ? "streaming" : ""}`}
+                                                onClick={() => onSelectMsg(i)}
+                                            >
+                                                <div className="msg-role">
+                                                    {msg.role === "assistant"
+                                                        ? npc?.name || npcId
+                                                        : msg.role ===
+                                                            "user"
+                                                          ? partner?.name ||
+                                                            partnerId
+                                                          : "System"}
+                                                </div>
+                                                {msg.content}
+                                                {msg.emotions && (
+                                                    <div className="msg-emotions">
+                                                        📊{" "}
+                                                        {Object.entries(
+                                                            msg.emotions,
+                                                        )
+                                                            .map(
+                                                                ([k, v]) =>
+                                                                    `${k} ${v.toFixed(3)}`,
+                                                            )
+                                                            .join(" · ")}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </React.Fragment>
+                                    );
+                                }
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`chat-msg ${msg.role} ${selectedMsgIdx === i ? "selected" : ""} ${msg.streaming ? "streaming" : ""}`}
+                                        onClick={() => onSelectMsg(i)}
+                                    >
+                                        <div className="msg-role">
+                                            {msg.role === "assistant"
+                                                ? npc?.name || npcId
+                                                : msg.role === "user"
+                                                  ? partner?.name ||
+                                                    partnerId
+                                                  : "System"}
+                                        </div>
+                                        {msg.content}
+                                        {msg.emotions && (
+                                            <div className="msg-emotions">
+                                                📊{" "}
+                                                {Object.entries(msg.emotions)
+                                                    .map(
+                                                        ([k, v]) =>
+                                                            `${k} ${v.toFixed(3)}`,
+                                                    )
+                                                    .join(" · ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                            {chatLoading && (
+                                <div className="chat-loading">
+                                    <span>
+                                        {npc?.name || npcId} 응답 중
+                                    </span>
+                                    <span className="dots"></span>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input area */}
+                        {hasScenario ? (
+                            <div className="chat-scenario-bar">
+                                {nextTurn ? (
+                                    <>
+                                        <span className="turn-preview">
+                                            다음: "{nextTurn.utterance}"
+                                        </span>
+                                        <span className="turn-count">
+                                            {scenarioIndex + 1}/
+                                            {scenarioTurns.length}
+                                        </span>
+                                        <button
+                                            className="btn small primary"
+                                            onClick={onNextTurn}
+                                            disabled={chatLoading}
+                                        >
+                                            전송 ▶
+                                        </button>
+                                    </>
+                                ) : (
+                                    <span
+                                        style={{
+                                            fontSize: 11,
+                                            color: "var(--accent2)",
+                                        }}
+                                    >
+                                        ✓ 시나리오 완료 ({scenarioTurns.length}턴)
+                                    </span>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="chat-input-area">
+                                <textarea
+                                    value={input}
+                                    onChange={(e) =>
+                                        setInput(e.target.value)
+                                    }
+                                    onKeyDown={handleKeyDown}
+                                    placeholder="대사를 입력하세요... (Enter로 전송)"
+                                    disabled={chatLoading}
+                                />
+                                <button
+                                    className="btn primary"
+                                    onClick={handleSend}
+                                    disabled={chatLoading || !input.trim()}
+                                    style={{ alignSelf: "flex-end" }}
+                                >
+                                    전송
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            // --- ResultViewPanel: 테스트 결과 읽기전용 대화 뷰어 ---
+            function ResultViewPanel({
+                npcId,
+                partnerId,
+                npcs,
+                messages,
+                selectedMsgIdx,
+                onSelectMsg,
+                onClose,
+            }) {
+                const npc = npcs.find((n) => n.id === npcId);
+                const partner = npcs.find((n) => n.id === partnerId);
+
+                return (
+                    <div
+                        className="center"
+                        style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            overflow: "hidden",
+                        }}
+                    >
+                        {/* Header */}
+                        <div className="chat-header">
+                            <div>
+                                <span className="chat-title">
+                                    📋 {npc?.name || npcId} ↔{" "}
+                                    {partner?.name || partnerId}
+                                </span>
+                                <span className="chat-mode">결과 보기</span>
+                            </div>
+                            <button
+                                className="btn small"
+                                onClick={onClose}
+                            >
+                                닫기
+                            </button>
+                        </div>
+
+                        {/* Messages (read-only) */}
+                        <div className="chat-messages">
+                            {messages.map((msg, i) => {
+                                if (msg.beat_changed) {
+                                    return (
+                                        <React.Fragment key={i}>
+                                            <div className="chat-beat-divider">
+                                                🔄 Beat 전환
+                                                {msg.new_focus
+                                                    ? `: ${msg.new_focus}`
+                                                    : ""}
+                                            </div>
+                                            <div
+                                                className={`chat-msg ${msg.role} ${selectedMsgIdx === i ? "selected" : ""}`}
+                                                onClick={() => onSelectMsg(i)}
+                                            >
+                                                <div className="msg-role">
+                                                    {msg.role === "assistant"
+                                                        ? npc?.name || npcId
+                                                        : msg.role === "user"
+                                                          ? partner?.name || partnerId
+                                                          : "System"}
+                                                </div>
+                                                {msg.content}
+                                                {msg.emotions && (
+                                                    <div className="msg-emotions">
+                                                        📊{" "}
+                                                        {Object.entries(msg.emotions)
+                                                            .map(([k, v]) => `${k} ${v.toFixed(3)}`)
+                                                            .join(" · ")}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </React.Fragment>
+                                    );
+                                }
+                                return (
+                                    <div
+                                        key={i}
+                                        className={`chat-msg ${msg.role} ${selectedMsgIdx === i ? "selected" : ""}`}
+                                        onClick={() => onSelectMsg(i)}
+                                    >
+                                        <div className="msg-role">
+                                            {msg.role === "assistant"
+                                                ? npc?.name || npcId
+                                                : msg.role === "user"
+                                                  ? partner?.name || partnerId
+                                                  : "System"}
+                                        </div>
+                                        {msg.content}
+                                        {msg.emotions && (
+                                            <div className="msg-emotions">
+                                                📊{" "}
+                                                {Object.entries(msg.emotions)
+                                                    .map(([k, v]) => `${k} ${v.toFixed(3)}`)
+                                                    .join(" · ")}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            }
+
             function ScenePanel({ sceneInfo }) {
                 if (!sceneInfo) return null;
                 return (
@@ -2106,6 +2332,13 @@
                 );
             }
             function EmotionView({ result }) {
+                const hasEmotions = result.emotions && result.emotions.length > 0;
+                const relMetrics = [
+                    { key: "closeness", label: "친밀도", color: "var(--accent2)" },
+                    { key: "trust", label: "신뢰도", color: "var(--accent)" },
+                    { key: "power", label: "상하관계", color: "var(--purple)" },
+                ];
+                const toPercent = (v) => ((v + 1) / 2) * 100;
                 return (
                     <div>
                         {result.beat_changed && (
@@ -2138,71 +2371,196 @@
                                 )}
                             </div>
                         )}
-                        <div className="mood-bar">
-                            전반적 분위기:{" "}
-                            <span
-                                style={{
-                                    color:
-                                        result.mood >= 0
-                                            ? "var(--green)"
-                                            : "var(--err)",
-                                    fontWeight: 600,
-                                }}
-                            >
-                                {result.mood.toFixed(3)}
-                            </span>
-                        </div>
-                        {result.emotions.map((e, i) => (
-                            <div key={i} className="emotion-row">
-                                <span className="etype">{e.emotion_type}</span>
-                                <div className="bar-bg">
-                                    <div
-                                        className="bar-fill"
+                        {hasEmotions && (
+                            <>
+                                <div className="mood-bar">
+                                    전반적 분위기:{" "}
+                                    <span
                                         style={{
-                                            width: `${Math.min(e.intensity * 100, 100)}%`,
-                                            background: emotionColor(
-                                                e.emotion_type,
-                                            ),
+                                            color:
+                                                result.mood >= 0
+                                                    ? "var(--green)"
+                                                    : "var(--err)",
+                                            fontWeight: 600,
                                         }}
-                                    />
-                                </div>
-                                <span className="intensity">
-                                    {e.intensity.toFixed(3)}
-                                </span>
-                                {e.context && (
-                                    <span className="ctx" title={e.context}>
-                                        — {e.context}
+                                    >
+                                        {result.mood != null ? result.mood.toFixed(3) : "—"}
                                     </span>
-                                )}
+                                </div>
+                                {result.emotions.map((e, i) => (
+                                    <div key={i} className="emotion-row">
+                                        <span className="etype">{e.emotion_type}</span>
+                                        <div className="bar-bg">
+                                            <div
+                                                className="bar-fill"
+                                                style={{
+                                                    width: `${Math.min(e.intensity * 100, 100)}%`,
+                                                    background: emotionColor(
+                                                        e.emotion_type,
+                                                    ),
+                                                }}
+                                            />
+                                        </div>
+                                        <span className="intensity">
+                                            {e.intensity.toFixed(3)}
+                                        </span>
+                                        {e.context && (
+                                            <span className="ctx" title={e.context}>
+                                                — {e.context}
+                                            </span>
+                                        )}
+                                    </div>
+                                ))}
+                            </>
+                        )}
+                        {/* 대화 종료 — 관계 변화 */}
+                        {result.afterDialogue && result.before && result.after && (
+                            <div style={{ marginTop: hasEmotions ? 16 : 0 }}>
+                                <div
+                                    className="dominant-card"
+                                    style={{ borderColor: "var(--accent2)" }}
+                                >
+                                    <div
+                                        className="d-type"
+                                        style={{ color: "var(--accent2)" }}
+                                    >
+                                        대화 종료 — 관계 변화
+                                    </div>
+                                    <div className="d-ctx">
+                                        {result.npc_id} → {result.partner_id}
+                                    </div>
+                                </div>
+                                {relMetrics.map((m) => {
+                                    const before = result.before[m.key];
+                                    const after = result.after[m.key];
+                                    const delta = after - before;
+                                    return (
+                                        <div key={m.key} className="rel-change">
+                                            <div className="rc-label">
+                                                <span>{m.label}</span>
+                                                <span style={{ fontFamily: "monospace" }}>
+                                                    {before.toFixed(3)} → {after.toFixed(3)}
+                                                </span>
+                                            </div>
+                                            <div className="rc-bar">
+                                                <div
+                                                    className="rc-fill rc-before"
+                                                    style={{ width: `${toPercent(before)}%` }}
+                                                />
+                                                <div
+                                                    className="rc-fill rc-after"
+                                                    style={{
+                                                        width: `${toPercent(after)}%`,
+                                                        background: m.color,
+                                                    }}
+                                                />
+                                            </div>
+                                            <div
+                                                className="rc-delta"
+                                                style={{
+                                                    color:
+                                                        delta > 0
+                                                            ? "var(--green)"
+                                                            : delta < 0
+                                                              ? "var(--err)"
+                                                              : "var(--fg3)",
+                                                }}
+                                            >
+                                                {delta > 0 ? "+" : ""}{delta.toFixed(3)}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        ))}
+                        )}
                     </div>
                 );
             }
 
-            function PromptView({ prompt, onRegenerate, onCopy }) {
+            function ContextView({ prompt, chatMessages, selectedMsgIdx, onRegenerate, onCopy }) {
+                // selectedMsgIdx가 있으면: 해당 시점의 activePrompt + 그 이전 대화만 표시
+                const isHistorical = selectedMsgIdx !== null && selectedMsgIdx !== undefined;
+                const selectedMsg = isHistorical && chatMessages ? chatMessages[selectedMsgIdx] : null;
+                const displayPrompt = (isHistorical && selectedMsg?.activePrompt) ? selectedMsg.activePrompt : prompt;
+
+                const llmHistory = chatMessages
+                    ? (isHistorical
+                        // 선택된 메시지 이전까지만 (선택된 메시지 자체 포함하지 않음)
+                        ? chatMessages.slice(0, selectedMsgIdx).filter((m) => m.role === "user" || m.role === "assistant")
+                        : chatMessages.filter((m) => m.role === "user" || m.role === "assistant"))
+                    : [];
                 return (
-                    <div>
-                        <div className="prompt-box">{prompt}</div>
-                        <div className="btn-row" style={{ marginTop: 8 }}>
-                            <button
-                                className="btn small"
-                                onClick={() => {
-                                    navigator.clipboard.writeText(prompt);
-                                    if (onCopy) onCopy();
-                                }}
-                            >
-                                클립보드 복사
-                            </button>
-                            {onRegenerate && (
+                    <div style={{ display: "flex", flexDirection: "column", height: "100%", gap: 8 }}>
+                        {/* 시스템 프롬프트 */}
+                        {isHistorical && (
+                            <div style={{ fontSize: 10, color: "var(--warning)", marginBottom: 2, fontWeight: 600 }}>
+                                📌 선택된 응답 시점의 컨텍스트
+                            </div>
+                        )}
+                        <div style={{ flex: llmHistory.length > 0 ? "0 0 auto" : 1, maxHeight: llmHistory.length > 0 ? "45%" : "none", overflowY: "auto" }}>
+                            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent)", marginBottom: 4 }}>
+                                System Prompt {isHistorical && "(해당 시점)"}
+                            </div>
+                            <div className="prompt-box">{displayPrompt}</div>
+                            <div className="btn-row" style={{ marginTop: 6 }}>
                                 <button
                                     className="btn small"
-                                    onClick={onRegenerate}
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(displayPrompt);
+                                        if (onCopy) onCopy();
+                                    }}
                                 >
-                                    가이드 재생성
+                                    클립보드 복사
                                 </button>
-                            )}
+                                {onRegenerate && !isHistorical && (
+                                    <button
+                                        className="btn small"
+                                        onClick={onRegenerate}
+                                    >
+                                        가이드 재생성
+                                    </button>
+                                )}
+                            </div>
                         </div>
+                        {/* LLM 대화 이력 */}
+                        {llmHistory.length > 0 && (
+                            <div style={{ flex: 1, minHeight: 0, overflowY: "auto", borderTop: "1px solid var(--border)", paddingTop: 8 }}>
+                                <div style={{ fontSize: 11, fontWeight: 600, color: "var(--accent2)", marginBottom: 4 }}>
+                                    LLM 대화 이력 ({Math.ceil(llmHistory.length / 2)}턴){isHistorical && " — 이 시점까지"}
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                    {llmHistory.map((msg, i) => (
+                                        <div
+                                            key={i}
+                                            style={{
+                                                padding: "6px 8px",
+                                                borderRadius: "var(--radius)",
+                                                background: msg.role === "user" ? "var(--bg4)" : "var(--bg3)",
+                                                borderLeft: msg.role === "user"
+                                                    ? "3px solid var(--fg3)"
+                                                    : "3px solid var(--accent)",
+                                                fontSize: 12,
+                                                whiteSpace: "pre-wrap",
+                                                wordBreak: "break-word",
+                                            }}
+                                        >
+                                            <div style={{
+                                                fontSize: 10,
+                                                fontWeight: 600,
+                                                color: msg.role === "user" ? "var(--fg3)" : "var(--accent)",
+                                                marginBottom: 2,
+                                            }}>
+                                                {msg.role === "user" ? "👤 User" : "🤖 NPC"}
+                                            </div>
+                                            {(() => {
+                                                const trimmed = msg.content.split("\n").filter(l => l.trim() !== "").join("\n");
+                                                return trimmed.length > 200 ? trimmed.substring(0, 200) + "..." : trimmed;
+                                            })()}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 );
             }
@@ -2237,80 +2595,142 @@
                 );
             }
 
-            function AfterDialogueView({ data }) {
-                const metrics = [
-                    {
-                        key: "closeness",
-                        label: "친밀도",
-                        color: "var(--accent2)",
-                    },
-                    { key: "trust", label: "신뢰도", color: "var(--accent)" },
-                    { key: "power", label: "상하관계", color: "var(--purple)" },
-                ];
-                const toPercent = (v) => ((v + 1) / 2) * 100; // -1~1 → 0~100%
+            function StimulusView({ utterance, onUtteranceChange, initialPad, onApply, toast }) {
+                const [padP, setPadP] = useState(0);
+                const [padA, setPadA] = useState(0);
+                const [padD, setPadD] = useState(0);
+                const [analyzing, setAnalyzing] = useState(false);
+                const [analyzed, setAnalyzed] = useState(false);
+
+                // initialPad가 바뀌면 슬라이더에 반영 (메시지 선택 시)
+                const prevPadRef = React.useRef(null);
+                React.useEffect(() => {
+                    if (initialPad && initialPad !== prevPadRef.current) {
+                        setPadP(Math.round(initialPad.pleasure * 100) / 100);
+                        setPadA(Math.round(initialPad.arousal * 100) / 100);
+                        setPadD(Math.round(initialPad.dominance * 100) / 100);
+                    }
+                    prevPadRef.current = initialPad;
+                }, [initialPad]);
+
+                const doAnalyze = async () => {
+                    if (!utterance || !utterance.trim()) return;
+                    setAnalyzing(true);
+                    try {
+                        const res = await fetch("/api/analyze-utterance", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ utterance: utterance.trim() }),
+                        });
+                        if (res.status === 501) {
+                            toast("임베딩 미지원 — PAD를 수동 입력하세요", "warn");
+                            return;
+                        }
+                        if (!res.ok) {
+                            toast("분석 실패: " + (await res.text()), "error");
+                            return;
+                        }
+                        const pad = await res.json();
+                        const p = Math.round(pad.pleasure * 100) / 100;
+                        const a = Math.round(pad.arousal * 100) / 100;
+                        const d = Math.round(pad.dominance * 100) / 100;
+                        setPadP(p);
+                        setPadA(a);
+                        setPadD(d);
+                        setAnalyzed(true);
+                    } catch (e) {
+                        toast("분석 오류", "error");
+                    } finally {
+                        setAnalyzing(false);
+                    }
+                };
+
                 return (
                     <div>
-                        <div
-                            className="dominant-card"
-                            style={{ borderColor: "var(--accent2)" }}
-                        >
-                            <div
-                                className="d-type"
-                                style={{ color: "var(--accent2)" }}
-                            >
-                                대화 종료 — 관계 변화
+                        {/* 자극 적용 (상단) */}
+                        <div className="section">
+                            <div className="section-header">
+                                <span className="title" style={{ color: "var(--warn)" }}>
+                                    자극 적용
+                                </span>
+                                {initialPad && (
+                                    <span style={{ fontSize: 10, color: "var(--fg3)", marginLeft: 8 }}>
+                                        대사 PAD 반영됨
+                                    </span>
+                                )}
                             </div>
-                            <div className="d-ctx">
-                                {data.npc_id} → {data.partner_id}
+                            <div className="section-body">
+                                <Slider label="P (쾌)" value={padP} onChange={setPadP} />
+                                <Slider label="A (각성)" value={padA} onChange={setPadA} />
+                                <Slider label="D (지배)" value={padD} onChange={setPadD} />
+                                <button
+                                    className="btn primary btn-full"
+                                    style={{ marginTop: 6 }}
+                                    onClick={() => onApply({ pleasure: padP, arousal: padA, dominance: padD })}
+                                >
+                                    자극 적용
+                                </button>
                             </div>
                         </div>
-                        {metrics.map((m) => {
-                            const before = data.before[m.key];
-                            const after = data.after[m.key];
-                            const delta = after - before;
-                            return (
-                                <div key={m.key} className="rel-change">
-                                    <div className="rc-label">
-                                        <span>{m.label}</span>
-                                        <span
-                                            style={{ fontFamily: "monospace" }}
-                                        >
-                                            {before.toFixed(3)} →{" "}
-                                            {after.toFixed(3)}
-                                        </span>
-                                    </div>
-                                    <div className="rc-bar">
-                                        <div
-                                            className="rc-fill rc-before"
-                                            style={{
-                                                width: `${toPercent(before)}%`,
-                                            }}
-                                        />
-                                        <div
-                                            className="rc-fill rc-after"
-                                            style={{
-                                                width: `${toPercent(after)}%`,
-                                                background: m.color,
-                                            }}
-                                        />
-                                    </div>
-                                    <div
-                                        className="rc-delta"
-                                        style={{
-                                            color:
-                                                delta > 0
-                                                    ? "var(--green)"
-                                                    : delta < 0
-                                                      ? "var(--err)"
-                                                      : "var(--fg3)",
+
+                        {/* 대사 분석 (하단) */}
+                        <div className="section" style={{ marginTop: 8 }}>
+                            <div className="section-header">
+                                <span className="title" style={{ color: "var(--accent)" }}>
+                                    대사 분석
+                                </span>
+                            </div>
+                            <div className="section-body">
+                                <label style={{ fontSize: 11, color: "var(--fg2)" }}>
+                                    상대 대사
+                                </label>
+                                <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                                    <input
+                                        type="text"
+                                        value={utterance}
+                                        onChange={(e) => {
+                                            onUtteranceChange(e.target.value);
+                                            setAnalyzed(false);
                                         }}
+                                        placeholder="대사를 입력하거나 채팅에서 선택..."
+                                        style={{
+                                            flex: 1,
+                                            background: "var(--bg3)",
+                                            color: "var(--fg)",
+                                            border: "1px solid var(--border)",
+                                            borderRadius: "var(--radius)",
+                                            padding: "4px 8px",
+                                            fontSize: 12,
+                                        }}
+                                    />
+                                    <button
+                                        className="btn small"
+                                        disabled={!utterance || !utterance.trim() || analyzing}
+                                        onClick={doAnalyze}
                                     >
-                                        {delta > 0 ? "+" : ""}
-                                        {delta.toFixed(3)}
-                                    </div>
+                                        {analyzing ? "분석중..." : "분석"}
+                                    </button>
                                 </div>
-                            );
-                        })}
+                                {analyzed && (
+                                    <div style={{
+                                        background: "var(--bg3)",
+                                        borderRadius: "var(--radius)",
+                                        padding: "8px 10px",
+                                        fontSize: 12,
+                                        fontFamily: "monospace",
+                                    }}>
+                                        <div style={{ color: "var(--fg2)", fontSize: 10, marginBottom: 4 }}>
+                                            분석 결과
+                                        </div>
+                                        <span style={{ color: "var(--accent2)" }}>P</span> {padP >= 0 ? "+" : ""}{padP.toFixed(2)}
+                                        {"  "}
+                                        <span style={{ color: "var(--warn)" }}>A</span> {padA >= 0 ? "+" : ""}{padA.toFixed(2)}
+                                        {"  "}
+                                        <span style={{ color: "var(--purple)" }}>D</span> {padD >= 0 ? "+" : ""}{padD.toFixed(2)}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </div>
                 );
             }
@@ -2378,6 +2798,23 @@
 
                 // Modal state: {type:'npc'|'rel'|'obj', data:...} or null
                 const [modal, setModal] = useState(null);
+
+                // Chat state
+                const [chatMode, setChatMode] = useState(false);
+                const [chatSessionId, setChatSessionId] = useState(null);
+                const [chatMessages, setChatMessages] = useState([]);
+                const [chatLoading, setChatLoading] = useState(false);
+                const [chatScenarioTurns, setChatScenarioTurns] = useState([]);
+                const [chatScenarioIdx, setChatScenarioIdx] = useState(0);
+                const [selectedMsgIdx, setSelectedMsgIdx] = useState(null);
+                const [stimulusUtterance, setStimulusUtterance] = useState("");
+                const [resultTab, setResultTab] = useState("emotions");
+                // 결과 뷰 모드 (테스트 결과 읽기전용 로드)
+                const [resultViewMode, setResultViewMode] = useState(false); // 결과 로드됨
+                const [resultViewActive, setResultViewActive] = useState(false); // 대화 뷰 표시중
+                const [resultTurnHistory, setResultTurnHistory] = useState([]);
+                const [resultMessages, setResultMessages] = useState([]);
+                const [resultSelectedIdx, setResultSelectedIdx] = useState(null);
 
                 const refresh = useCallback(async () => {
                     try {
@@ -2533,7 +2970,7 @@
                     }
                 };
 
-                const handleAfterDialogue = async (pw, sig) => {
+                const handleAfterDialogue = async (sig) => {
                     if (!npcId || !partnerId)
                         return toast("NPC와 대화 상대를 선택하세요", "error");
                     try {
@@ -2543,7 +2980,6 @@
                             body: JSON.stringify({
                                 npc_id: npcId,
                                 partner_id: partnerId,
-                                praiseworthiness: pw,
                                 significance: sig,
                             }),
                         });
@@ -2552,17 +2988,369 @@
                             return;
                         }
                         const data = await res.json();
-                        setResult({
+                        setResult((prev) => ({
+                            ...(prev || {}),
                             afterDialogue: true,
                             npc_id: npcId,
                             partner_id: partnerId,
                             ...data,
-                        });
+                        }));
                         refresh();
                     } catch (e) {
                         toast("요청 실패: " + e, "error");
                     }
                 };
+
+                // --- Chat handlers ---
+                const handleStartChat = async (situation) => {
+                    if (!npcId || !partnerId)
+                        return toast("NPC와 대화 상대를 선택하세요", "error");
+                    const sessionId = `chat-${Date.now()}`;
+                    setChatLoading(true);
+                    try {
+                        const res = await fetch("/api/chat/start", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({
+                                session_id: sessionId,
+                                appraise: {
+                                    npc_id: npcId,
+                                    partner_id: partnerId,
+                                    situation,
+                                },
+                            }),
+                        });
+                        if (!res.ok) {
+                            toast("대화 시작 실패: " + (await res.text()), "error");
+                            return;
+                        }
+                        const data = await res.json();
+                        setChatSessionId(sessionId);
+                        setChatMode(true);
+                        setResultTab("emotions");
+                        setResult(data.appraise);
+                        setTraceHistory([
+                            { label: "chat/start", trace: data.appraise.trace || [] },
+                        ]);
+
+                        // 초기 시스템 메시지
+                        const initEmotions = {};
+                        (data.appraise.emotions || []).forEach((e) => {
+                            initEmotions[e.emotion_type] = e.intensity;
+                        });
+                        setChatMessages([
+                            {
+                                role: "system",
+                                content: `대화 시작 — ${data.appraise.dominant?.emotion_type || "neutral"} (${(data.appraise.mood || 0).toFixed(3)})`,
+                                emotions: initEmotions,
+                                mood: data.appraise.mood,
+                                snapshot: data.appraise,
+                                activePrompt: data.appraise.prompt || "",
+                            },
+                        ]);
+                        setSelectedMsgIdx(null);
+
+                        // 시나리오 turns 로드 (sceneInfo에서)
+                        if (sceneInfo && sceneInfo.turns) {
+                            setChatScenarioTurns(sceneInfo.turns);
+                            setChatScenarioIdx(0);
+                        } else {
+                            setChatScenarioTurns([]);
+                            setChatScenarioIdx(0);
+                        }
+
+                        refresh();
+                        toast("대화 시작", "success");
+                    } catch (e) {
+                        toast("요청 실패: " + e, "error");
+                    } finally {
+                        setChatLoading(false);
+                    }
+                };
+
+                const handleChatSend = async (utterance, pad) => {
+                    if (!chatSessionId) return;
+                    setChatLoading(true);
+
+                    // 현재 시점의 프롬프트 캡처 (이 응답 생성에 사용된 컨텍스트)
+                    const currentPrompt = result?.prompt || "";
+
+                    // 유저 메시지 즉시 추가
+                    setChatMessages((prev) => [
+                        ...prev,
+                        { role: "user", content: utterance, emotions: null, mood: null },
+                    ]);
+
+                    // NPC 응답 플레이스홀더 추가 (스트리밍으로 업데이트)
+                    const assistantIdx = { current: null };
+                    setChatMessages((prev) => {
+                        assistantIdx.current = prev.length;
+                        return [
+                            ...prev,
+                            {
+                                role: "assistant",
+                                content: "",
+                                emotions: null,
+                                mood: null,
+                                beat_changed: false,
+                                new_focus: null,
+                                snapshot: null,
+                                activePrompt: currentPrompt,
+                                streaming: true,
+                            },
+                        ];
+                    });
+
+                    try {
+                        const body = {
+                            session_id: chatSessionId,
+                            npc_id: npcId,
+                            partner_id: partnerId,
+                            utterance,
+                        };
+                        if (pad) body.pad = pad;
+
+                        const res = await fetch("/api/chat/message/stream", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body),
+                        });
+
+                        if (!res.ok) {
+                            toast("대사 전송 실패: " + (await res.text()), "error");
+                            // 플레이스홀더 제거
+                            setChatMessages((prev) => prev.filter((_, i) => i !== assistantIdx.current));
+                            return;
+                        }
+
+                        // SSE 스트림 파싱
+                        const reader = res.body.getReader();
+                        const decoder = new TextDecoder();
+                        let buffer = "";
+
+                        while (true) {
+                            const { done, value } = await reader.read();
+                            if (done) break;
+
+                            buffer += decoder.decode(value, { stream: true });
+                            const lines = buffer.split("\n");
+                            buffer = lines.pop(); // 마지막 미완성 라인 보존
+
+                            let eventType = "";
+                            for (const line of lines) {
+                                if (line.startsWith("event: ")) {
+                                    eventType = line.slice(7).trim();
+                                } else if (line.startsWith("data: ")) {
+                                    const data = line.slice(6);
+
+                                    if (eventType === "token") {
+                                        // 토큰 도착 → 플레이스홀더에 누적
+                                        setChatMessages((prev) => {
+                                            const updated = [...prev];
+                                            const msg = { ...updated[assistantIdx.current] };
+                                            msg.content += data;
+                                            updated[assistantIdx.current] = msg;
+                                            return updated;
+                                        });
+                                    } else if (eventType === "done") {
+                                        // 완료 → 최종 결과로 업데이트
+                                        const result = JSON.parse(data);
+                                        const emotions = {};
+                                        if (result.stimulus && result.stimulus.emotions) {
+                                            result.stimulus.emotions.forEach((e) => {
+                                                emotions[e.emotion_type] = e.intensity;
+                                            });
+                                        }
+
+                                        setChatMessages((prev) => {
+                                            const updated = [...prev];
+                                            // assistant 메시지 업데이트
+                                            updated[assistantIdx.current] = {
+                                                ...updated[assistantIdx.current],
+                                                content: result.npc_response,
+                                                emotions: result.stimulus ? emotions : null,
+                                                mood: result.stimulus?.mood || null,
+                                                beat_changed: result.beat_changed,
+                                                new_focus: result.stimulus?.active_focus_id || null,
+                                                snapshot: result.stimulus || null,
+                                                activePrompt: result.stimulus?.prompt || currentPrompt,
+                                                streaming: false,
+                                            };
+                                            // user 메시지에 input_pad 저장
+                                            const userIdx = assistantIdx.current - 1;
+                                            if (userIdx >= 0 && updated[userIdx]?.role === "user" && result.stimulus?.input_pad) {
+                                                updated[userIdx] = {
+                                                    ...updated[userIdx],
+                                                    pad: result.stimulus.input_pad,
+                                                };
+                                            }
+                                            return updated;
+                                        });
+
+                                        // ResultPanel 업데이트
+                                        if (result.stimulus) {
+                                            setResult(result.stimulus);
+                                            setTraceHistory((prev) => [
+                                                ...prev,
+                                                { label: "chat/message", trace: result.stimulus.trace || [] },
+                                            ]);
+                                        }
+                                    } else if (eventType === "error") {
+                                        toast("LLM 오류: " + data, "error");
+                                    }
+                                    eventType = "";
+                                }
+                            }
+                        }
+
+                        refresh();
+                    } catch (e) {
+                        toast("요청 실패: " + e, "error");
+                    } finally {
+                        setChatLoading(false);
+                    }
+                };
+
+                const handleChatNextTurn = () => {
+                    if (chatScenarioIdx >= chatScenarioTurns.length) return;
+                    const turn = chatScenarioTurns[chatScenarioIdx];
+                    setChatScenarioIdx((prev) => prev + 1);
+                    handleChatSend(turn.utterance, turn.pad || null);
+                };
+
+                const handleEndChat = async () => {
+                    if (!chatSessionId) {
+                        setChatMode(false);
+                        return;
+                    }
+                    try {
+                        // Scene에서 significance 가져오기
+                        let significance = null;
+                        try {
+                            const siRes = await fetch("/api/scene-info");
+                            if (siRes.ok) {
+                                const si = await siRes.json();
+                                if (si.has_scene && si.significance != null) {
+                                    significance = si.significance;
+                                }
+                            }
+                        } catch (_) {}
+
+                        const body = {
+                            session_id: chatSessionId,
+                            after_dialogue: npcId && partnerId ? {
+                                npc_id: npcId,
+                                partner_id: partnerId,
+                                significance: significance,
+                            } : undefined,
+                        };
+                        const res = await fetch("/api/chat/end", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(body),
+                        });
+                        if (res.ok) {
+                            const data = await res.json();
+                            if (data.after_dialogue) {
+                                setResult((prev) => ({
+                                    ...(prev || {}),
+                                    afterDialogue: true,
+                                    npc_id: npcId,
+                                    partner_id: partnerId,
+                                    ...data.after_dialogue,
+                                }));
+                                setResultTab("emotions");
+                                toast("대화 종료 — 관계 갱신 완료", "success");
+                            } else {
+                                setResultTab("emotions");
+                                toast("대화 종료", "success");
+                            }
+                        }
+                    } catch (e) {
+                        toast("대화 종료 실패: " + e, "error");
+                    }
+                    setChatMode(false);
+                    setChatSessionId(null);
+                    setChatMessages([]);
+                    setChatScenarioTurns([]);
+                    setChatScenarioIdx(0);
+                    setSelectedMsgIdx(null);
+                    refresh();
+                };
+
+                const handleSelectMsg = (idx) => {
+                    if (selectedMsgIdx === idx) {
+                        setSelectedMsgIdx(null);
+                        // 최신 상태로 복원
+                        const lastSnap = [...chatMessages]
+                            .reverse()
+                            .find((m) => m.snapshot);
+                        if (lastSnap) setResult(lastSnap.snapshot);
+                    } else {
+                        setSelectedMsgIdx(idx);
+                        const msg = chatMessages[idx];
+                        if (msg && msg.snapshot) {
+                            // assistant 메시지: 직접 snapshot 사용
+                            setResult(msg.snapshot);
+                        } else if (msg && msg.role === "user") {
+                            // user 메시지: 바로 다음 assistant의 snapshot 사용 (해당 대사 처리 후 상태)
+                            const nextAssistant = chatMessages[idx + 1];
+                            if (nextAssistant && nextAssistant.snapshot) {
+                                setResult(nextAssistant.snapshot);
+                            }
+                        }
+                        // 자극 탭에 상대(user) 대사 자동 입력
+                        if (msg) {
+                            if (msg.role === "user" && msg.content) {
+                                // user 대사 직접 클릭
+                                setStimulusUtterance(msg.content);
+                            } else if (msg.role === "assistant") {
+                                // NPC 대사 클릭 → 직전 상대(user) 대사 찾기
+                                for (let j = idx - 1; j >= 0; j--) {
+                                    if (chatMessages[j]?.role === "user" && chatMessages[j]?.content) {
+                                        setStimulusUtterance(chatMessages[j].content);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                // --- 결과 뷰 메시지 선택 핸들러 ---
+                const handleResultSelectMsg = (idx) => {
+                    if (resultSelectedIdx === idx) {
+                        setResultSelectedIdx(null);
+                        // 최신 상태로 복원
+                        const lastSnap = [...resultMessages]
+                            .reverse()
+                            .find((m) => m.snapshot);
+                        if (lastSnap) setResult(lastSnap.snapshot);
+                    } else {
+                        setResultSelectedIdx(idx);
+                        const msg = resultMessages[idx];
+                        if (msg && msg.snapshot) {
+                            setResult(msg.snapshot);
+                        } else if (msg && msg.role === "user") {
+                            const nextAssistant = resultMessages[idx + 1];
+                            if (nextAssistant && nextAssistant.snapshot) {
+                                setResult(nextAssistant.snapshot);
+                            }
+                        }
+                    }
+                };
+
+                // --- Polling for MCP mode (2s interval when chatMode) ---
+                useEffect(() => {
+                    if (!chatMode) return;
+                    const interval = setInterval(async () => {
+                        try {
+                            const h = await api.get("/api/history");
+                            setHistory(h);
+                        } catch (e) {}
+                    }, 2000);
+                    return () => clearInterval(interval);
+                }, [chatMode]);
 
                 // --- Save / Load ---
                 const saveState = async () => {
@@ -2590,10 +3378,23 @@
                     });
                     if (res.ok) {
                         toast("시나리오 로드 완료", "success");
+                        // 결과 뷰 모드 해제
+                        setResultViewMode(false);
+                        setResultViewActive(false);
+                        setResultTurnHistory([]);
+                        setResultMessages([]);
+                        setResultSelectedIdx(null);
                         await refresh();
                         // 상황설정 복원
                         try {
                             const sit = await api.get("/api/situation");
+                            // scene-info에서 significance 보완
+                            try {
+                                const si = await api.get("/api/scene-info");
+                                if (si && si.has_scene && si.significance != null) {
+                                    sit.significance = si.significance;
+                                }
+                            } catch (_) {}
                             if (
                                 sit &&
                                 typeof sit === "object" &&
@@ -2605,6 +3406,106 @@
                         setResult(null);
                         setTraceHistory([]);
                     } else toast("로드 실패: " + (await res.text()), "error");
+                };
+
+                const loadResult = async (scenPath) => {
+                    if (!scenPath) return;
+                    const path = `data/${scenPath}/scenario.json`;
+                    const res = await fetch("/api/load-result", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ path }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        toast("결과 로드 완료", "success");
+                        await refresh();
+                        // 상황설정 복원
+                        try {
+                            const sit = await api.get("/api/situation");
+                            try {
+                                const si = await api.get("/api/scene-info");
+                                if (si && si.has_scene && si.significance != null) {
+                                    sit.significance = si.significance;
+                                }
+                            } catch (_) {}
+                            if (sit && typeof sit === "object" && Object.keys(sit).length > 0) {
+                                setSavedSituation(sit);
+                            }
+                        } catch (e) {}
+                        // turn_history → 대화 메시지로 변환
+                        const msgs = [];
+                        (data.turn_history || []).forEach((turn) => {
+                            const resp = turn.response || {};
+                            const req = turn.request || {};
+                            if (turn.action === "stimulus") {
+                                // stimulus 턴: 상대 대사(request) + NPC 감정 변화(response)
+                                const utterance = req.situation_description || req.utterance || "";
+                                const emotions = {};
+                                (resp.emotions || []).forEach((e) => { emotions[e.emotion_type] = e.intensity; });
+                                if (utterance) {
+                                    msgs.push({
+                                        role: "user",
+                                        content: utterance,
+                                        pad: req.pleasure != null ? { pleasure: req.pleasure, arousal: req.arousal, dominance: req.dominance } : null,
+                                    });
+                                }
+                                msgs.push({
+                                    role: "assistant",
+                                    content: turn.label,
+                                    emotions,
+                                    mood: resp.mood,
+                                    snapshot: resp,
+                                    beat_changed: resp.beat_changed,
+                                    new_focus: resp.active_focus_id,
+                                });
+                            } else if (turn.action === "scene" || turn.action === "appraise" || turn.action === "chat_start") {
+                                // 초기 평가
+                                const emotions = {};
+                                (resp.emotions || []).forEach((e) => { emotions[e.emotion_type] = e.intensity; });
+                                msgs.push({
+                                    role: "system",
+                                    content: `${turn.label}`,
+                                    emotions,
+                                    mood: resp.mood,
+                                    snapshot: resp,
+                                });
+                            } else if (turn.action === "chat_turn") {
+                                // LLM 대화 턴
+                                const stimResp = resp.stimulus || resp;
+                                const emotions = {};
+                                (stimResp.emotions || []).forEach((e) => { emotions[e.emotion_type] = e.intensity; });
+                                msgs.push({
+                                    role: "user",
+                                    content: req.utterance || "",
+                                    pad: stimResp.input_pad || null,
+                                });
+                                msgs.push({
+                                    role: "assistant",
+                                    content: resp.npc_response || turn.label,
+                                    emotions,
+                                    mood: stimResp.mood,
+                                    snapshot: stimResp,
+                                    beat_changed: resp.beat_changed || stimResp.beat_changed,
+                                    new_focus: stimResp.active_focus_id,
+                                });
+                            } else if (turn.action === "after_dialogue") {
+                                msgs.push({
+                                    role: "system",
+                                    content: `대화 종료 — ${turn.label}`,
+                                    snapshot: resp,
+                                });
+                            }
+                        });
+                        setResultViewMode(true);
+                        setResultViewActive(false);
+                        setResultTurnHistory(data.turn_history || []);
+                        setResultMessages(msgs);
+                        setResultSelectedIdx(null);
+                        setResult(msgs.length > 0 && msgs[0].snapshot ? msgs[0].snapshot : null);
+                        setResultTab("emotions");
+                        setTraceHistory([]);
+                    } else toast("결과 로드 실패: " + (await res.text()), "error");
                 };
                 return (
                     <div className="app">
@@ -2647,17 +3548,32 @@
                                         maxWidth: 220,
                                     }}
                                     onChange={(e) => {
-                                        if (e.target.value)
-                                            loadScenario(e.target.value);
+                                        const val = e.target.value;
+                                        if (val) {
+                                            if (val.startsWith("result:")) {
+                                                loadResult(val.slice(7));
+                                            } else {
+                                                loadScenario(val);
+                                            }
+                                        }
                                         e.target.value = "";
                                     }}
                                 >
                                     <option value="">시나리오 로드...</option>
-                                    {scenarios.map((s) => (
-                                        <option key={s.path} value={s.path}>
-                                            {s.label}
-                                        </option>
-                                    ))}
+                                    {scenarios.filter(s => !s.has_results).length > 0 && (
+                                        <optgroup label="시나리오">
+                                            {scenarios.filter(s => !s.has_results).map((s) => (
+                                                <option key={s.path} value={s.path}>{s.label}</option>
+                                            ))}
+                                        </optgroup>
+                                    )}
+                                    {scenarios.filter(s => s.has_results).length > 0 && (
+                                        <optgroup label="테스트 결과">
+                                            {scenarios.filter(s => s.has_results).map((s) => (
+                                                <option key={"result:" + s.path} value={"result:" + s.path}>{s.label}</option>
+                                            ))}
+                                        </optgroup>
+                                    )}
                                 </select>
                                 <button
                                     className="btn small"
@@ -2698,27 +3614,72 @@
                                     setModal({ type: "obj", data: null })
                                 }
                             />
-                            <SituationPanel
-                                npcs={npcs}
-                                objects={objects}
-                                npcId={npcId}
-                                setNpcId={setNpcId}
-                                partnerId={partnerId}
-                                setPartnerId={setPartnerId}
-                                onAppraise={handleAppraise}
-                                onStimulus={handleStimulus}
-                                onAfterDialogue={handleAfterDialogue}
-                                loading={loading}
-                                savedSituation={savedSituation}
-                                toast={toast}
-                            />
+                            {chatMode ? (
+                                <ChatPanel
+                                    npcId={npcId}
+                                    partnerId={partnerId}
+                                    npcs={npcs}
+                                    messages={chatMessages}
+                                    scenarioTurns={chatScenarioTurns}
+                                    scenarioIndex={chatScenarioIdx}
+                                    chatLoading={chatLoading}
+                                    selectedMsgIdx={selectedMsgIdx}
+                                    onSend={handleChatSend}
+                                    onNextTurn={handleChatNextTurn}
+                                    onSelectMsg={handleSelectMsg}
+                                    onEndChat={handleEndChat}
+                                />
+                            ) : resultViewActive && resultMessages.length > 0 ? (
+                                <ResultViewPanel
+                                    npcId={npcId}
+                                    partnerId={partnerId}
+                                    npcs={npcs}
+                                    messages={resultMessages}
+                                    selectedMsgIdx={resultSelectedIdx}
+                                    onSelectMsg={handleResultSelectMsg}
+                                    onClose={() => {
+                                        setResultViewActive(false);
+                                        setResultSelectedIdx(null);
+                                    }}
+                                />
+                            ) : (
+                                <SituationPanel
+                                    npcs={npcs}
+                                    objects={objects}
+                                    npcId={npcId}
+                                    setNpcId={setNpcId}
+                                    partnerId={partnerId}
+                                    setPartnerId={setPartnerId}
+                                    onAppraise={handleAppraise}
+                                    onStartChat={resultViewMode ? () => {
+                                        // 결과 뷰 모드: "대화 로드" — resultMessages를 표시
+                                        if (resultMessages.length > 0) {
+                                            setResultViewActive(true);
+                                            setResultTab("emotions");
+                                            setResult(resultMessages[0]?.snapshot || null);
+                                        }
+                                    } : handleStartChat}
+                                    startChatLabel={resultViewMode ? "대화 로드" : null}
+                                    loading={loading}
+                                    savedSituation={savedSituation}
+                                    sceneInfo={sceneInfo}
+                                    toast={toast}
+                                />
+                            )}
                             <ResultPanel
                                 result={result}
                                 history={history}
                                 traceHistory={traceHistory}
                                 onGuide={handleGuide}
+                                onStimulus={handleStimulus}
                                 toast={toast}
                                 sceneInfo={sceneInfo}
+                                chatMessages={chatMessages}
+                                selectedMsgIdx={selectedMsgIdx}
+                                stimulusUtterance={stimulusUtterance}
+                                onStimulusUtteranceChange={setStimulusUtterance}
+                                tab={resultTab}
+                                onTabChange={setResultTab}
                             />
                         </div>
 

@@ -215,6 +215,16 @@ pub struct StimulusResponse {
     pub beat_changed: bool,
     /// 현재 활성 Focus ID (전환 시 새 Focus ID)
     pub active_focus_id: Option<String>,
+    /// stimulus 엔진에 입력된 PAD 값 (프론트엔드 자극 탭용)
+    pub input_pad: Option<PadOutput>,
+}
+
+/// PAD 축 값 출력
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PadOutput {
+    pub pleasure: f32,
+    pub arousal: f32,
+    pub dominance: f32,
 }
 
 /// 개별 감정 출력
@@ -290,6 +300,8 @@ pub struct StimulusResult {
     pub beat_changed: bool,
     /// 전환된 Focus ID (전환 시에만 `Some`)
     pub active_focus_id: Option<String>,
+    /// stimulus 엔진에 입력된 PAD 값
+    pub input_pad: Option<PadOutput>,
 }
 
 impl StimulusResult {
@@ -303,6 +315,7 @@ impl StimulusResult {
             trace: self.trace,
             beat_changed: self.beat_changed,
             active_focus_id: self.active_focus_id,
+            input_pad: self.input_pad,
         }
     }
 }
@@ -385,8 +398,6 @@ pub struct AfterDialogueRequest {
     pub npc_id: String,
     /// 대화 상대의 ID
     pub partner_id: String,
-    /// 대화 중 상대 행동의 칭찬/비난 정도 (-1.0 ~ 1.0). trust에 영향.
-    pub praiseworthiness: Option<f32>,
     /// 상황 중요도 (0.0~1.0). 중대한 사건일수록 관계 변동 폭이 커진다.
     /// `None`이면 기본값 0.0 (일상 대화 수준).
     pub significance: Option<f32>,
@@ -447,6 +458,14 @@ pub struct SceneRequest {
     pub description: String,
     /// Focus 옵션 목록 (Initial 1개 + Condition N개)
     pub focuses: Vec<SceneFocusInput>,
+    /// 상황 중요도 (0.0~1.0). 대화 종료 시 관계 변동 배율에 반영.
+    /// `None`이면 기본값 0.5.
+    #[serde(default = "default_significance")]
+    pub significance: Option<f32>,
+}
+
+fn default_significance() -> Option<f32> {
+    Some(0.5)
 }
 
 /// Focus 옵션 입력 — Beat 전환의 단위
@@ -603,6 +622,8 @@ pub struct SceneInfoResult {
     pub partner_id: Option<String>,
     /// 현재 활성 Focus ID
     pub active_focus_id: Option<String>,
+    /// 상황 중요도 (0.0~1.0). Scene에 설정된 값.
+    pub significance: Option<f32>,
     /// 모든 Focus 옵션의 상태 목록
     pub focuses: Vec<FocusInfoItem>,
 }
@@ -618,6 +639,38 @@ pub struct FocusInfoItem {
     pub is_active: bool,
     /// 트리거 조건의 사람이 읽을 수 있는 표현 (예: `"Joy > 0.5 AND Distress absent"`)
     pub trigger_display: String,
+    /// 이 Focus의 사건 평가 설정
+    pub event: Option<FocusEventInfo>,
+    /// 이 Focus의 행위 평가 설정
+    pub action: Option<FocusActionInfo>,
+    /// 이 Focus의 대상 평가 설정
+    pub object: Option<FocusObjectInfo>,
+}
+
+/// Focus 내 Event 정보 (scene-info 조회용)
+#[derive(Serialize, Clone)]
+pub struct FocusEventInfo {
+    pub description: String,
+    pub desirability_for_self: f32,
+    pub has_other: bool,
+    pub desirability_for_other: Option<f32>,
+    pub prospect: Option<String>,
+}
+
+/// Focus 내 Action 정보 (scene-info 조회용)
+#[derive(Serialize, Clone)]
+pub struct FocusActionInfo {
+    pub description: String,
+    pub agent_id: Option<String>,
+    pub praiseworthiness: f32,
+}
+
+/// Focus 내 Object 정보 (scene-info 조회용)
+#[derive(Serialize, Clone)]
+pub struct FocusObjectInfo {
+    pub target_id: String,
+    pub target_description: String,
+    pub appealingness: f32,
 }
 
 impl FocusInfoItem {
@@ -644,11 +697,41 @@ impl FocusInfoItem {
                 .join(" OR "),
         };
 
+        let event = f.event.as_ref().map(|e| {
+            let (has_other, desirability_for_other) = match &e.desirability_for_other {
+                Some(d) => (true, Some(d.desirability)),
+                None => (false, None),
+            };
+            let prospect = e.prospect.as_ref().map(|p| format!("{:?}", p));
+            FocusEventInfo {
+                description: e.description.clone(),
+                desirability_for_self: e.desirability_for_self,
+                has_other,
+                desirability_for_other,
+                prospect,
+            }
+        });
+
+        let action = f.action.as_ref().map(|a| FocusActionInfo {
+            description: a.description.clone(),
+            agent_id: a.agent_id.clone(),
+            praiseworthiness: a.praiseworthiness,
+        });
+
+        let object = f.object.as_ref().map(|o| FocusObjectInfo {
+            target_id: o.target_id.clone(),
+            target_description: o.target_description.clone(),
+            appealingness: o.appealingness,
+        });
+
         Self {
             id: f.id.clone(),
             description: f.description.clone(),
             is_active,
             trigger_display,
+            event,
+            action,
+            object,
         }
     }
 }

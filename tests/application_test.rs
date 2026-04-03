@@ -67,7 +67,6 @@ fn test_mind_service_full_flow() {
     let after_req = AfterDialogueRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        praiseworthiness: Some(0.5), // 좋은 행동으로 마무리
         significance: None,
     };
 
@@ -204,7 +203,6 @@ fn after_beat_감정_유지() {
     let beat_req = AfterDialogueRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        praiseworthiness: Some(0.5),
         significance: None,
     };
     service.after_beat(beat_req).expect("after_beat failed");
@@ -255,7 +253,6 @@ fn after_dialogue_감정_초기화() {
     let dialogue_req = AfterDialogueRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        praiseworthiness: Some(0.5),
         significance: None,
     };
     service
@@ -320,7 +317,6 @@ fn test_scene_persistence_and_clear() {
     let after_req = AfterDialogueRequest {
         npc_id: "mu_baek".into(),
         partner_id: "gyo_ryong".into(),
-        praiseworthiness: Some(0.0),
         significance: Some(0.5),
     };
     service.after_dialogue(after_req).unwrap();

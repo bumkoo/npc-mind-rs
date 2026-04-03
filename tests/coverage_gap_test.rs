@@ -184,7 +184,6 @@ fn 역방향_관계_조회로_after_dialogue_성공() {
     let result = service.after_dialogue(AfterDialogueRequest {
         npc_id: npc_id.into(),
         partner_id: partner_id.into(),
-        praiseworthiness: Some(0.5),
         significance: Some(0.3),
     });
 
@@ -203,7 +202,6 @@ fn 관계_없으면_after_dialogue_에러() {
     let result = ctx.service().after_dialogue(AfterDialogueRequest {
         npc_id: "mu_baek".into(),
         partner_id: "unknown".into(),
-        praiseworthiness: None,
         significance: None,
     });
 
@@ -398,25 +396,6 @@ fn format_prompt_관계_포함_빈_감정() {
 // P3: trust/closeness 수식 정밀 검증
 // ===========================================================================
 
-#[test]
-fn trust_음수_praiseworthiness면_하락() {
-    let rel = RelationshipBuilder::new("a", "b").trust(s(0.5)).build();
-    let updated = rel.with_updated_trust(-0.8, 0.0);
-    assert!(
-        updated.trust().value() < 0.5,
-        "음수 PW → trust 하락: {}",
-        updated.trust().value()
-    );
-
-    // delta = -0.8 * 0.1 * 1.0 = -0.08
-    let expected = 0.5 - 0.08;
-    assert!(
-        (updated.trust().value() - expected).abs() < 0.001,
-        "trust: got {}, expected {}",
-        updated.trust().value(),
-        expected
-    );
-}
 
 #[test]
 fn closeness_음수_valence면_하락() {
@@ -461,29 +440,6 @@ fn trust_하한_클램핑() {
     );
 }
 
-#[test]
-fn after_dialogue_praiseworthiness_none이면_trust_미갱신() {
-    let rel = RelationshipBuilder::new("a", "b")
-        .trust(s(0.5))
-        .closeness(s(0.0))
-        .build();
-
-    let mut state = EmotionState::new();
-    state.add(Emotion::new(EmotionType::Joy, 0.8));
-
-    let updated = rel.after_dialogue(&state, None, 0.0);
-
-    assert!(
-        (updated.trust().value() - 0.5).abs() < 0.001,
-        "PW=None → trust 미갱신: {}",
-        updated.trust().value()
-    );
-    assert!(
-        updated.closeness().value() > 0.0,
-        "closeness는 항상 갱신: {}",
-        updated.closeness().value()
-    );
-}
 
 #[test]
 fn after_dialogue_power는_변경_없음() {

@@ -15,9 +15,12 @@
 //! ```
 
 use crate::ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn};
+use futures::StreamExt;
+use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::openai;
+use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
@@ -84,6 +87,49 @@ impl RigChatAdapter {
 
         Ok(response)
     }
+
+    /// rig Agent를 빌드하고 stream_chat()으로 토큰 스트리밍하는 내부 헬퍼
+    ///
+    /// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답을 반환한다.
+    async fn stream_chat_with_agent(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+        history: Vec<Message>,
+        token_tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, ConversationError> {
+        let agent = self
+            .client
+            .agent(&self.model_name)
+            .preamble(system_prompt)
+            .build();
+
+        let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
+
+        let mut full_response = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(
+                    StreamedAssistantContent::Text(text),
+                )) => {
+                    let s = text.text;
+                    if !s.is_empty() {
+                        full_response.push_str(&s);
+                        let _ = token_tx.send(s).await;
+                    }
+                }
+                Ok(_) => {
+                    // ToolCall, Reasoning, FinalResponse 등은 무시
+                }
+                Err(e) => {
+                    return Err(ConversationError::InferenceError(e.to_string()));
+                }
+            }
+        }
+
+        Ok(full_response)
+    }
 }
 
 #[async_trait::async_trait]
@@ -143,6 +189,51 @@ impl ConversationPort for RigChatAdapter {
                 .push(Message::assistant(&response));
 
             // 도메인 이력 (반환용)
+            session.dialogue_history.push(DialogueTurn {
+                role: DialogueRole::User,
+                content: user_message.to_string(),
+            });
+            session.dialogue_history.push(DialogueTurn {
+                role: DialogueRole::Assistant,
+                content: response.clone(),
+            });
+        }
+
+        Ok(response)
+    }
+
+    async fn send_message_stream(
+        &self,
+        session_id: &str,
+        user_message: &str,
+        token_tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, ConversationError> {
+        // 1. 세션에서 현재 상태를 읽어옴
+        let (system_prompt, history) = {
+            let sessions = self.sessions.read().await;
+            let session = sessions
+                .get(session_id)
+                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+            (session.system_prompt.clone(), session.rig_history.clone())
+        };
+
+        // 2. 스트리밍 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
+        let response = self
+            .stream_chat_with_agent(&system_prompt, user_message, history, token_tx)
+            .await?;
+
+        // 3. 이력 업데이트
+        {
+            let mut sessions = self.sessions.write().await;
+            let session = sessions
+                .get_mut(session_id)
+                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+
+            session.rig_history.push(Message::user(user_message));
+            session
+                .rig_history
+                .push(Message::assistant(&response));
+
             session.dialogue_history.push(DialogueTurn {
                 role: DialogueRole::User,
                 content: user_message.to_string(),

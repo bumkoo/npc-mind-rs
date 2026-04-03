@@ -273,6 +273,11 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             trace: vec![],
             beat_changed: false,
             active_focus_id: None,
+            input_pad: Some(PadOutput {
+                pleasure: req.pleasure,
+                arousal: req.arousal,
+                dominance: req.dominance,
+            }),
         })
     }
 
@@ -331,6 +336,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             trace: app_result.trace,
             beat_changed: true,
             active_focus_id: Some(focus_id),
+            input_pad: None,
         })
     }
 
@@ -338,7 +344,6 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let beat_req = AfterDialogueRequest {
             npc_id: scene.npc_id().to_string(),
             partner_id: scene.partner_id().to_string(),
-            praiseworthiness: Some(0.0),
             significance: Some(BEAT_DEFAULT_SIGNIFICANCE),
         };
         let _ = self.update_relationship(&beat_req);
@@ -368,7 +373,9 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             .collect::<Result<Vec<_>, _>>()?;
 
         let focus_count = focuses.len();
-        let mut scene = Scene::new(req.npc_id.clone(), req.partner_id.clone(), focuses);
+        let significance = req.significance.unwrap_or(0.5);
+        let mut scene =
+            Scene::with_significance(req.npc_id.clone(), req.partner_id.clone(), focuses, significance);
 
         let (initial_appraise, active_focus_id) =
             self.appraise_initial_focus(&mut scene, before_eval, after_eval)?;
@@ -392,6 +399,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 npc_id: None,
                 partner_id: None,
                 active_focus_id: None,
+                significance: None,
                 focuses: vec![],
             };
         };
@@ -408,6 +416,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             npc_id: Some(scene.npc_id().to_string()),
             partner_id: Some(scene.partner_id().to_string()),
             active_focus_id: scene.active_focus_id().map(|s| s.to_string()),
+            significance: Some(scene.significance()),
             focuses: focus_infos,
         }
     }
@@ -422,8 +431,9 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         focuses: Vec<SceneFocus>,
         npc_id: String,
         partner_id: String,
+        significance: f32,
     ) -> Result<Option<AppraiseResult>, MindServiceError> {
-        let mut scene = Scene::new(npc_id, partner_id, focuses);
+        let mut scene = Scene::with_significance(npc_id, partner_id, focuses, significance);
         let (result, _) = self.appraise_initial_focus(&mut scene, || {}, Vec::new)?;
         self.repository.save_scene(scene);
         Ok(result)
@@ -486,8 +496,8 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
 
     /// 대화(Scene) 종료 후 관계를 갱신하고 감정을 초기화합니다.
     ///
-    /// 대화 중 누적된 감정(Joy, Anger 등)과 `praiseworthiness`를 바탕으로
-    /// closeness, trust, power를 조정합니다. `significance` (0.0~1.0)가
+    /// 대화 중 누적된 감정(Joy, Anger 등)을 바탕으로
+    /// closeness를 조정합니다. `significance` (0.0~1.0)가
     /// 높을수록 관계 변동 폭이 커집니다.
     ///
     /// 호출 후 해당 NPC의 감정 상태와 Scene이 모두 초기화됩니다.
@@ -542,8 +552,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         };
 
         let significance = req.significance.unwrap_or(0.0).clamp(0.0, 1.0);
-        let new_rel =
-            relationship.after_dialogue(&emotion_state, req.praiseworthiness, significance);
+        let new_rel = relationship.after_dialogue(&emotion_state, significance);
 
         let after = RelationshipValues {
             closeness: new_rel.closeness().value(),

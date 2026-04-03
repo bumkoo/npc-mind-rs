@@ -28,7 +28,6 @@ use super::personality::Score;
 use crate::domain::tuning::{
     CLOSENESS_UPDATE_RATE, REL_CLOSENESS_EMPATHY_WEIGHT, REL_CLOSENESS_HOSTILITY_WEIGHT,
     REL_CLOSENESS_INTENSITY_WEIGHT, REL_TRUST_EMOTION_WEIGHT, SIGNIFICANCE_SCALE,
-    TRUST_UPDATE_RATE,
 };
 
 // ---------------------------------------------------------------------------
@@ -158,19 +157,6 @@ impl Relationship {
 
     // --- 새 인스턴스 반환 (Value Object 패턴) ---
 
-    /// trust를 갱신한 새 Relationship 반환
-    /// Action 분기의 praiseworthiness 기반. 점진적 변화.
-    pub fn with_updated_trust(&self, praiseworthiness: f32, significance: f32) -> Self {
-        let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
-        Self {
-            trust: updated_score(
-                self.trust,
-                praiseworthiness * TRUST_UPDATE_RATE * multiplier,
-            ),
-            ..self.clone()
-        }
-    }
-
     /// closeness를 갱신한 새 Relationship 반환
     /// 대화의 전체 감정 결과(overall_valence) 기반. 매우 점진적.
     pub fn with_updated_closeness(&self, overall_valence: f32, significance: f32) -> Self {
@@ -195,27 +181,16 @@ impl Relationship {
 
     /// 대화 종료 후 갱신된 새 Relationship 반환
     ///
-    /// - trust: praiseworthiness 기반 (점진적). None이면 미갱신.
     /// - closeness: 대화 최종 감정 결과 기반 (매우 점진적)
+    /// - trust: 변경 없음 (향후 LLM 평가로 갱신 예정)
     /// - power: 변경 없음 (서사 이벤트에서만)
     /// - significance: 상황 중요도 (0.0~1.0). 클수록 변동 폭 증가.
     pub fn after_dialogue(
         &self,
         final_state: &EmotionState,
-        praiseworthiness: Option<f32>,
         significance: f32,
     ) -> Self {
-        let mut result = self.clone();
-
-        // trust: praiseworthiness가 있을 때만 갱신
-        if let Some(pw) = praiseworthiness {
-            result = result.with_updated_trust(pw, significance);
-        }
-
-        // closeness: 항상 갱신 (전체 감정 결과 기반)
-        result = result.with_updated_closeness(final_state.overall_valence(), significance);
-
-        result
+        self.with_updated_closeness(final_state.overall_valence(), significance)
     }
 }
 

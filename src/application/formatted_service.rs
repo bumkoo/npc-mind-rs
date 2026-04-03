@@ -161,8 +161,10 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> FormattedMindService
         focuses: Vec<SceneFocus>,
         npc_id: String,
         partner_id: String,
+        significance: f32,
     ) -> Result<Option<AppraiseResult>, MindServiceError> {
-        self.service.load_scene_focuses(focuses, npc_id, partner_id)
+        self.service
+            .load_scene_focuses(focuses, npc_id, partner_id, significance)
     }
 
     /// 현재 감정 상태 기반으로 포맷팅된 가이드를 생성합니다.

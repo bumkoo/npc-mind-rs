@@ -286,6 +286,18 @@ pub trait ConversationPort: Send + Sync {
         user_message: &str,
     ) -> Result<String, ConversationError>;
 
+    /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 스트리밍으로 받는다.
+    ///
+    /// 토큰 청크를 `tokio::sync::mpsc::Sender`를 통해 실시간 전송하고,
+    /// 스트림 완료 후 전체 응답을 이력에 저장한다.
+    /// 반환값은 완성된 전체 응답 문자열이다.
+    async fn send_message_stream(
+        &self,
+        session_id: &str,
+        user_message: &str,
+        token_tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, ConversationError>;
+
     /// system_prompt를 갱신한다 (Beat 전환 시).
     ///
     /// 대화 이력은 유지하면서 LLM Agent의 system prompt만 교체한다.

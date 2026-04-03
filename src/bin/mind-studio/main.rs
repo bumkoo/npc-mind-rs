@@ -55,7 +55,8 @@ fn build_api_router(state: AppState) -> Router {
             get(handlers::get_situation).put(handlers::put_situation),
         )
         .route("/api/save", post(handlers::save_state))
-        .route("/api/load", post(handlers::load_state));
+        .route("/api/load", post(handlers::load_state))
+        .route("/api/load-result", post(handlers::load_result));
 
     // chat feature 활성 시 대화 테스트 엔드포인트 추가
     #[cfg(feature = "chat")]
@@ -64,6 +65,10 @@ fn build_api_router(state: AppState) -> Router {
         .route(
             "/api/chat/message",
             post(handlers::chat_handlers::chat_message),
+        )
+        .route(
+            "/api/chat/message/stream",
+            post(handlers::chat_handlers::chat_message_stream),
         )
         .route("/api/chat/end", post(handlers::chat_handlers::chat_end));
 

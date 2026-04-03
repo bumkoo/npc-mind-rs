@@ -419,7 +419,6 @@ async fn full_pipeline_appraise_stimulus_after_dialogue() {
     let after_req = serde_json::json!({
         "npc_id": "mu_baek",
         "partner_id": "gyo_ryong",
-        "praiseworthiness": -0.3,
         "significance": 0.6
     });
     let resp = app
