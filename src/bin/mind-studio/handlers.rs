@@ -323,14 +323,14 @@ pub async fn delete_object(
 }
 
 // ---------------------------------------------------------------------------
-// 파이프라인: 감정 평가
+// 공통 비즈니스 로직 (REST & MCP 공유)
 // ---------------------------------------------------------------------------
 
-/// POST /api/appraise — 감정 평가 실행
-pub async fn appraise(
-    State(state): State<AppState>,
-    Json(req): Json<AppraiseRequest>,
-) -> Result<Json<AppraiseResponse>, AppError> {
+/// 상황 평가 및 프롬프트 생성 로직 (공통)
+pub async fn perform_appraise(
+    state: &AppState,
+    req: AppraiseRequest,
+) -> Result<AppraiseResponse, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
 
@@ -359,18 +359,14 @@ pub async fn appraise(
         llm_model: None,
     });
 
-    Ok(Json(response))
+    Ok(response)
 }
 
-// ---------------------------------------------------------------------------
-// 파이프라인: PAD 자극 적용
-// ---------------------------------------------------------------------------
-
-/// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + Focus 전환 판단
-pub async fn stimulus(
-    State(state): State<AppState>,
-    Json(req): Json<StimulusRequest>,
-) -> Result<Json<StimulusResponse>, AppError> {
+/// PAD 자극 적용 로직 (공통)
+pub async fn perform_stimulus(
+    state: &AppState,
+    req: StimulusRequest,
+) -> Result<StimulusResponse, AppError> {
     let mut inner = state.inner.write().await;
     let collector = state.collector.clone();
 
@@ -406,6 +402,58 @@ pub async fn stimulus(
         llm_model: None,
     });
 
+    Ok(response)
+}
+
+/// 대화 종료 후 관계 갱신 로직 (공통)
+pub async fn perform_after_dialogue(
+    state: &AppState,
+    req: AfterDialogueRequest,
+) -> Result<AfterDialogueResponse, AppError> {
+    let mut inner = state.inner.write().await;
+    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+
+    let response = service.after_dialogue(req.clone())?;
+
+    // 턴 기록
+    let turn_num = inner.turn_history.len() + 1;
+    inner.turn_history.push(TurnRecord {
+        label: format!(
+            "Turn {}: after_dialogue ({}→{})",
+            turn_num, req.npc_id, req.partner_id
+        ),
+        action: "after_dialogue".into(),
+        request: serde_json::to_value(&req).unwrap_or_default(),
+        response: serde_json::to_value(&response).unwrap_or_default(),
+        llm_model: None,
+    });
+
+    Ok(response)
+}
+
+// ---------------------------------------------------------------------------
+// 파이프라인: 감정 평가
+// ---------------------------------------------------------------------------
+
+/// POST /api/appraise — 감정 평가 실행
+pub async fn appraise(
+    State(state): State<AppState>,
+    Json(req): Json<AppraiseRequest>,
+) -> Result<Json<AppraiseResponse>, AppError> {
+    let response = perform_appraise(&state, req).await?;
+    Ok(Json(response))
+}
+
+// ---------------------------------------------------------------------------
+// 파이프라인: PAD 자극 적용
+// ---------------------------------------------------------------------------
+
+/// POST /api/stimulus — PAD 자극 적용 → 감정 변동 + Focus 전환 판단
+pub async fn stimulus(
+    State(state): State<AppState>,
+    Json(req): Json<StimulusRequest>,
+) -> Result<Json<StimulusResponse>, AppError> {
+    let response = perform_stimulus(&state, req).await?;
     Ok(Json(response))
 }
 
@@ -445,24 +493,7 @@ pub async fn after_dialogue(
     State(state): State<AppState>,
     Json(req): Json<AfterDialogueRequest>,
 ) -> Result<Json<AfterDialogueResponse>, AppError> {
-    let mut inner = state.inner.write().await;
-    let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-
-    let response = service.after_dialogue(req.clone())?;
-
-    // 턴 기록
-    let turn_num = inner.turn_history.len() + 1;
-    inner.turn_history.push(TurnRecord {
-        label: format!(
-            "Turn {}: after_dialogue ({}→{})",
-            turn_num, req.npc_id, req.partner_id
-        ),
-        action: "after_dialogue".into(),
-        request: serde_json::to_value(&req).unwrap_or_default(),
-        response: serde_json::to_value(&response).unwrap_or_default(),
-        llm_model: None,
-    });
-
+    let response = perform_after_dialogue(&state, req).await?;
     Ok(Json(response))
 }
 

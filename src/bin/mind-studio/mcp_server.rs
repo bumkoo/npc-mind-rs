@@ -13,6 +13,10 @@ use serde_json::Value;
 use tokio_stream::StreamExt;
 use tokio::sync::mpsc;
 
+use crate::handlers::{
+    perform_after_dialogue, perform_appraise, perform_stimulus, AfterDialogueRequest,
+    AppraiseRequest, StimulusRequest,
+};
 use crate::state::AppState;
 
 /// MCP 서버 인스턴스를 생성하고 도구를 등록합니다.
@@ -22,41 +26,76 @@ pub fn create_mcp_server() -> Arc<Server> {
         .description("HEXACO 기반 NPC 심리 엔진 시뮬레이터 (SSE 모드)");
 
     // 1. NPC 목록 조회 도구
-    builder = builder.tool(
-        Tool::new("list_npcs", "등록된 모든 NPC 목록을 조회합니다.")
-    );
+    builder = builder.tool(Tool::new("list_npcs", "등록된 모든 NPC 목록을 조회합니다."));
 
     // 2. 상황 평가 도구
     builder = builder.tool(
-        Tool::new("appraise", "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다.")
-            .input_schema(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "npc_id": { "type": "string" },
-                    "partner_id": { "type": "string" },
-                    "situation": { "type": "object" }
-                },
-                "required": ["npc_id", "partner_id", "situation"]
-            }))
+        Tool::new(
+            "appraise",
+            "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다.",
+        )
+        .input_schema(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "npc_id": { "type": "string" },
+                "partner_id": { "type": "string" },
+                "situation": { "type": "object" }
+            },
+            "required": ["npc_id", "partner_id", "situation"]
+        })),
     );
 
     // 3. 대사 PAD 자극 도구
     builder = builder.tool(
-        Tool::new("apply_stimulus", "대사의 PAD 수치를 입력하여 NPC의 실시간 감정을 갱신합니다.")
-            .input_schema(serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "npc_id": { "type": "string" },
-                    "partner_id": { "type": "string" },
-                    "pleasure": { "type": "number" },
-                    "arousal": { "type": "number" },
-                    "dominance": { "type": "number" }
-                },
-                "required": ["npc_id", "partner_id", "pleasure", "arousal", "dominance"]
-            }))
+        Tool::new(
+            "apply_stimulus",
+            "대사의 PAD 수치를 입력하여 NPC의 실시간 감정을 갱신합니다.",
+        )
+        .input_schema(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "npc_id": { "type": "string" },
+                "partner_id": { "type": "string" },
+                "pleasure": { "type": "number" },
+                "arousal": { "type": "number" },
+                "dominance": { "type": "number" }
+            },
+            "required": ["npc_id", "partner_id", "pleasure", "arousal", "dominance"]
+        })),
     );
 
     Arc::new(builder.build())
+}
+
+/// MCP 도구 요청을 처리합니다. (AppState와 연동)
+pub async fn handle_mcp_tool_call(
+    state: &AppState,
+    req: CallToolRequest,
+) -> Result<Value, String> {
+    match req.name.as_str() {
+        "list_npcs" => {
+            let inner = state.inner.read().await;
+            let npcs: Vec<_> = inner.npcs.values().cloned().collect();
+            Ok(serde_json::to_value(npcs).map_err(|e| e.to_string())?)
+        }
+        "appraise" => {
+            let args: AppraiseRequest =
+                serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let resp = perform_appraise(state, args)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+        }
+        "apply_stimulus" => {
+            let args: StimulusRequest =
+                serde_json::from_value(req.arguments).map_err(|e| e.to_string())?;
+            let resp = perform_stimulus(state, args)
+                .await
+                .map_err(|e| e.to_string())?;
+            Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+        }
+        _ => Err(format!("Unknown tool: {}", req.name)),
+    }
 }
 
 /// Axum 라우터에 MCP SSE 경로를 추가합니다.
