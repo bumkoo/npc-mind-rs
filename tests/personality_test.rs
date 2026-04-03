@@ -616,3 +616,81 @@ fn test_empathy_and_hostility_weights() {
     let host = saint.personality().hostility_weight(1.0);
     assert_eq!(host, 0.0, "정직하면 적대감(Resentment) 0");
 }
+
+#[test]
+fn test_derive_llm_parameters() {
+    use npc_mind::domain::personality::{HexacoProfile, Score};
+
+    let low = Score::clamped(-1.0);
+    let high = Score::clamped(1.0);
+
+    // 1. Creative profile: High O, High X, Low C -> Expect high temperature
+    let mut creative_profile = HexacoProfile::neutral();
+    
+    // O (Openness) all high -> avg = 1.0
+    creative_profile.openness.aesthetic_appreciation = high;
+    creative_profile.openness.inquisitiveness = high;
+    creative_profile.openness.creativity = high;
+    creative_profile.openness.unconventionality = high;
+
+    // X (Extraversion) all high -> avg = 1.0
+    creative_profile.extraversion.social_self_esteem = high;
+    creative_profile.extraversion.social_boldness = high;
+    creative_profile.extraversion.sociability = high;
+    creative_profile.extraversion.liveliness = high;
+
+    // C (Conscientiousness) all low -> avg = -1.0
+    creative_profile.conscientiousness.organization = low;
+    creative_profile.conscientiousness.diligence = low;
+    creative_profile.conscientiousness.perfectionism = low;
+    creative_profile.conscientiousness.prudence = low;
+
+    // H (Honesty-Humility) all low -> avg = -1.0
+    creative_profile.honesty_humility.sincerity = low;
+    creative_profile.honesty_humility.fairness = low;
+    creative_profile.honesty_humility.greed_avoidance = low;
+    creative_profile.honesty_humility.modesty = low;
+
+    let (temp1, top_p1) = creative_profile.derive_llm_parameters();
+    
+    // Formula: temp = 0.8 + (1.0*0.1) + (1.0*0.05) - (-1.0*0.1) - (-1.0*0.05) = 0.8 + 0.1 + 0.05 + 0.1 + 0.05 = 1.1
+    // Formula: top_p = 0.9 + (1.0*0.05) - (-1.0*0.05) = 0.9 + 0.05 + 0.05 = 1.0 (clamped to 1.0)
+    assert!((temp1 as f32 - 1.1).abs() < 0.001, "Expected temp 1.1, got {}", temp1);
+    assert!((top_p1 as f32 - 1.0).abs() < 0.001, "Expected top_p 1.0, got {}", top_p1);
+
+    // 2. Rigid profile: Low O, Low X, High C -> Expect low temperature
+    let mut rigid_profile = HexacoProfile::neutral();
+    
+    rigid_profile.openness.aesthetic_appreciation = low;
+    rigid_profile.openness.inquisitiveness = low;
+    rigid_profile.openness.creativity = low;
+    rigid_profile.openness.unconventionality = low;
+
+    rigid_profile.extraversion.social_self_esteem = low;
+    rigid_profile.extraversion.social_boldness = low;
+    rigid_profile.extraversion.sociability = low;
+    rigid_profile.extraversion.liveliness = low;
+
+    rigid_profile.conscientiousness.organization = high;
+    rigid_profile.conscientiousness.diligence = high;
+    rigid_profile.conscientiousness.perfectionism = high;
+    rigid_profile.conscientiousness.prudence = high;
+
+    rigid_profile.honesty_humility.sincerity = high;
+    rigid_profile.honesty_humility.fairness = high;
+    rigid_profile.honesty_humility.greed_avoidance = high;
+    rigid_profile.honesty_humility.modesty = high;
+
+    let (temp2, top_p2) = rigid_profile.derive_llm_parameters();
+    
+    // Formula: temp = 0.8 + (-1.0*0.1) + (-1.0*0.05) - (1.0*0.1) - (1.0*0.05) = 0.8 - 0.1 - 0.05 - 0.1 - 0.05 = 0.5
+    // Formula: top_p = 0.9 + (-1.0*0.05) - (1.0*0.05) = 0.9 - 0.05 - 0.05 = 0.8
+    assert!((temp2 as f32 - 0.5).abs() < 0.001, "Expected temp 0.5, got {}", temp2);
+    assert!((top_p2 as f32 - 0.8).abs() < 0.001, "Expected top_p 0.8, got {}", top_p2);
+
+    // 3. Neutral profile
+    let neutral_profile = HexacoProfile::neutral();
+    let (temp3, top_p3) = neutral_profile.derive_llm_parameters();
+    assert!((temp3 as f32 - 0.8).abs() < 0.001, "Expected temp 0.8, got {}", temp3);
+    assert!((top_p3 as f32 - 0.9).abs() < 0.001, "Expected top_p 0.9, got {}", top_p3);
+}
