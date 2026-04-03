@@ -293,7 +293,7 @@ impl StudioService {
         let mut inner = state.inner.write().await;
         let collector = state.collector.clone();
         
-        // 1. NPC 정보 조회 및 파라미터 유도 (NpcProfile 메서드 사용)
+        // 1. NPC 정보 조회 및 파라미터 유도
         let npc_profile = inner.npcs.get(&req.appraise.npc_id).ok_or_else(|| AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id)))?;
         let (temp, top_p) = npc_profile.derive_llm_parameters();
 
@@ -313,36 +313,95 @@ impl StudioService {
         Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info) })
     }
 
+    /// 대화 응답 수신 후 후속 처리 (PAD 분석, 심리 자극, 기록 저장)
+    /// 일반 대화와 스트리밍 대화에서 공통으로 사용
+    #[cfg(feature = "chat")]
+    pub async fn process_chat_turn_result(
+        state: &AppState,
+        req: &ChatTurnRequest,
+        npc_response: String,
+    ) -> Result<(Option<StimulusResponse>, bool), AppError> {
+        let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
+        
+        // 1. PAD 수치 결정 (수동 입력 우선 -> 자동 분석 fallback)
+        let pad = if let Some(ref pad_input) = req.pad {
+            Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
+        } else if let Some(ref analyzer) = state.analyzer {
+            let mut analyzer = analyzer.lock().await;
+            match analyzer.analyze(&npc_response) {
+                Ok(p) => Some((p.pleasure, p.arousal, p.dominance)),
+                Err(_) => None
+            }
+        } else {
+            None
+        };
+
+        // 2. 심리 자극 적용 및 기록
+        if let Some((p, a, d)) = pad {
+            let stim_req = StimulusRequest {
+                npc_id: req.npc_id.clone(),
+                partner_id: req.partner_id.clone(),
+                pleasure: p,
+                arousal: a,
+                dominance: d,
+                situation_description: req.situation_description.clone(),
+            };
+            
+            let mut inner = state.inner.write().await;
+            let collector = state.collector.clone();
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+            
+            let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
+            let stim_resp = result.format(&*state.formatter);
+            
+            let changed = stim_resp.beat_changed;
+            if changed {
+                chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?;
+            }
+
+            let turn_num = inner.turn_history.len() + 1;
+            let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
+            if let serde_json::Value::Object(ref mut map) = resp_val {
+                map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
+            }
+            
+            inner.turn_history.push(TurnRecord {
+                label: format!("Turn {}: chat/message [{}→{}]", turn_num, req.partner_id, req.npc_id),
+                action: "chat_message".into(),
+                request: serde_json::to_value(&req).unwrap_or_default(),
+                response: resp_val,
+                llm_model: None,
+            });
+
+            Ok((Some(stim_resp), changed))
+        } else {
+            // PAD 정보를 얻을 수 없는 경우에도 대사 기록은 남김
+            let mut inner = state.inner.write().await;
+            let turn_num = inner.turn_history.len() + 1;
+            inner.turn_history.push(TurnRecord {
+                label: format!("Turn {}: chat/message [{}→{}] (no PAD)", turn_num, req.partner_id, req.npc_id),
+                action: "chat_message".into(),
+                request: serde_json::to_value(&req).unwrap_or_default(),
+                response: serde_json::json!({ "npc_response": &npc_response }),
+                llm_model: None,
+            });
+            Ok((None, false))
+        }
+    }
+
     #[cfg(feature = "chat")]
     pub async fn perform_chat_message(
         state: &AppState,
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
+        
+        // LLM 대사 생성
         let npc_response = chat_port.send_message(&req.session_id, &req.utterance).await?;
         
-        let pad = if let Some(ref pad_input) = req.pad { Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance)) } else if let Some(ref analyzer) = state.analyzer { let mut analyzer = analyzer.lock().await; match analyzer.analyze(&req.utterance) { Ok(p) => Some((p.pleasure, p.arousal, p.dominance)), Err(_) => None } } else { None };
+        // 후속 처리 (심리 업데이트 및 기록)
+        let (stimulus, beat_changed) = Self::process_chat_turn_result(state, &req, npc_response.clone()).await?;
         
-        let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
-            let stim_req = StimulusRequest { npc_id: req.npc_id.clone(), partner_id: req.partner_id.clone(), pleasure: p, arousal: a, dominance: d, situation_description: req.situation_description.clone() };
-            let mut inner = state.inner.write().await;
-            let collector = state.collector.clone();
-            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-            let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
-            let stim_resp = result.format(&*state.formatter);
-            let changed = stim_resp.beat_changed;
-            if changed { chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?; }
-            let turn_num = inner.turn_history.len() + 1;
-            let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
-            if let serde_json::Value::Object(ref mut map) = resp_val { map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone())); }
-            inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}]", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: resp_val, llm_model: None });
-            (Some(stim_resp), changed)
-        } else {
-            let mut inner = state.inner.write().await;
-            let turn_num = inner.turn_history.len() + 1;
-            inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}] (no PAD)", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::json!({ "npc_response": &npc_response }), llm_model: None });
-            (None, false)
-        };
         Ok(ChatTurnResponse { npc_response, stimulus, beat_changed })
     }
 

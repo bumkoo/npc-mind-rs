@@ -461,20 +461,12 @@ pub mod chat_handlers {
             while let Some(token) = token_rx.recv().await { yield Ok(axum::response::sse::Event::default().event("token").data(token)); }
             let npc_response = match llm_task.await { Ok(Ok(resp)) => resp, Ok(Err(e)) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(format!("태스크 패닉: {e}"))); return; } };
             
-            // 스트리밍 완료 후 턴 처리 로직은 perform_chat_message의 내부 로직 재사용 가능하도록 리팩토링 여지 있으나,
-            // 일단은 handlers.rs의 스트림 특수성 유지
-            let pad = if let Some(ref pad_input) = req.pad { Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance)) } else if let Some(ref analyzer) = state.analyzer { let mut analyzer = analyzer.lock().await; match analyzer.analyze(&req.utterance) { Ok(p) => Some((p.pleasure, p.arousal, p.dominance)), Err(_) => None } } else { None };
-            let (stimulus, beat_changed) = if let Some((p, a, d)) = pad {
-                let stim_req = StimulusRequest { npc_id: req.npc_id.clone(), partner_id: req.partner_id.clone(), pleasure: p, arousal: a, dominance: d, situation_description: req.situation_description.clone() };
-                let result = { let mut inner = state.inner.write().await; let collector = state.collector.clone(); let mut service = npc_mind::application::mind_service::MindService::new(crate::studio_service::AppStateRepository { inner: &mut *inner }); match service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries()) { Ok(r) => r, Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } } };
-                let stim_resp = result.format(&*state.formatter);
-                let changed = stim_resp.beat_changed;
-                if changed { if let Err(e) = chat_state.update_system_prompt(&req.session_id, &stim_resp.prompt).await { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } }
-                { let mut inner = state.inner.write().await; let turn_num = inner.turn_history.len() + 1; let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default(); if let serde_json::Value::Object(ref mut map) = resp_val { map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone())); } inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}]", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: resp_val, llm_model: None }); }
-                (Some(stim_resp), changed)
-            } else {
-                let mut inner = state.inner.write().await; let turn_num = inner.turn_history.len() + 1; inner.turn_history.push(TurnRecord { label: format!("Turn {}: chat/message [{}→{}] (no PAD)", turn_num, req.partner_id, req.npc_id), action: "chat_message".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::json!({ "npc_response": &npc_response }), llm_model: None }); (None, false)
+            // 후속 처리 로직 통합 호출
+            let (stimulus, beat_changed) = match StudioService::process_chat_turn_result(&state, &req, npc_response.clone()).await {
+                Ok(res) => res,
+                Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; }
             };
+
             let final_response = ChatTurnResponse { npc_response, stimulus, beat_changed };
             yield Ok(axum::response::sse::Event::default().event("done").data(serde_json::to_string(&final_response).unwrap_or_default()));
         };
