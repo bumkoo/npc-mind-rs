@@ -6,10 +6,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use futures_util::stream::Stream;
-use rmcp::model::{CallToolRequest, Tool};
+use futures_util::StreamExt;
 use serde_json::Value;
-use tokio_stream::StreamExt;
 use tokio::sync::mpsc;
 
 use crate::handlers::{
@@ -19,9 +17,9 @@ use npc_mind::application::dto::{AppraiseRequest};
 use crate::state::AppState;
 
 /// RMCP 서버 인스턴스를 생성하고 도구를 등록합니다.
-/// (rmcp 0.16은 McpService 또는 유사한 구조를 사용할 수 있음)
+/// (rmcp 0.16의 복잡한 타입 구조를 피하기 위해 일단 Any로 유지하되, 
+/// 향후 Service 트레이트 구현체로 교체 가능)
 pub fn create_mcp_server() -> Arc<dyn std::any::Any + Send + Sync> {
-    // 0.16 SDK의 구체적인 서버 타입을 맞추기 위해 일단 Any로 우회
     Arc::new(())
 }
 
@@ -52,6 +50,8 @@ pub async fn handle_mcp_tool_call(
         "appraise" => {
             let args: AppraiseRequest =
                 serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
+            
+            // perform_appraise의 결과 타입 에러 방지를 위해 명시적 처리
             let resp = perform_appraise(state, args)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -81,7 +81,7 @@ pub fn mcp_router() -> Router<AppState> {
 
 async fn mcp_sse_handler(
     State(_state): State<AppState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+) -> Sse<impl futures_util::stream::Stream<Item = Result<Event, Infallible>>> {
     let (_tx, rx) = mpsc::channel::<String>(100);
     
     let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
