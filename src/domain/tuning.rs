@@ -104,3 +104,43 @@ pub const LEVEL_VERY_LOW_THRESHOLD: f32 = -0.6;
 
 /// Beat 전환 시 기본 significance 값
 pub const BEAT_DEFAULT_SIGNIFICANCE: f32 = 0.5;
+
+// ---------------------------------------------------------------------------
+// LLM 파라미터 유도 (Gemma 3 최적화)
+// ---------------------------------------------------------------------------
+
+/// 기본 Temperature 값
+pub const LLM_BASE_TEMPERATURE: f32 = 0.8;
+
+/// 개방성(O)에 의한 Temperature 변조 계수
+pub const LLM_TEMP_OPENNESS_WEIGHT: f32 = 0.1;
+
+/// 외향성(X)에 의한 Temperature 변조 계수
+pub const LLM_TEMP_EXTRAVERSION_WEIGHT: f32 = 0.05;
+
+/// 성실성(C)에 의한 Temperature 변조 계수 (차감)
+pub const LLM_TEMP_CONSCIENTIOUSNESS_WEIGHT: f32 = 0.1;
+
+/// 정직-겸손성(H)에 의한 Temperature 변조 계수 (차감)
+pub const LLM_TEMP_HONESTY_WEIGHT: f32 = 0.05;
+
+/// 기본 Top P 값
+pub const LLM_BASE_TOP_P: f32 = 0.9;
+
+/// 개방성(O)에 의한 Top P 변조 계수
+pub const LLM_TOP_P_OPENNESS_WEIGHT: f32 = 0.05;
+
+/// 성실성(C)에 의한 Top P 변조 계수 (차감)
+pub const LLM_TOP_P_CONSCIENTIOUSNESS_WEIGHT: f32 = 0.05;
+
+/// Temperature 최소값
+pub const LLM_TEMP_MIN: f32 = 0.1;
+
+/// Temperature 최대값
+pub const LLM_TEMP_MAX: f32 = 1.1;
+
+/// Top P 최소값
+pub const LLM_TOP_P_MIN: f32 = 0.8;
+
+/// Top P 최대값
+pub const LLM_TOP_P_MAX: f32 = 1.0;

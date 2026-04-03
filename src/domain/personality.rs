@@ -375,9 +375,11 @@ impl Npc {
 }
 
 impl HexacoProfile {
-    /// 성격 지표를 기반으로 LLM 생성 파라미터를 도출한다 (Gemma 3 12B 최적화)
-    /// 반환값: (temperature, top_p)
+    /// 성격 지표를 기반으로 LLM 생성 파라미터를 유도 (Gemma 3 12B 최적화)
+    /// 반환: (temperature, top_p)
     pub fn derive_llm_parameters(&self) -> (f32, f32) {
+        use crate::domain::tuning::*;
+
         let avg = self.dimension_averages();
         let h = avg.h.value();
         let _e = avg.e.value();
@@ -386,17 +388,25 @@ impl HexacoProfile {
         let c = avg.c.value();
         let o = avg.o.value();
 
-        // Temperature = 0.8 + (O * 0.1) + (X * 0.05) - (C * 0.1) - (H * 0.05)
-        // Gemma 3 안정성을 위해 0.1 ~ 1.1 범위로 제한
-        let temperature = 0.8 + (o * 0.1) + (x * 0.05) - (c * 0.1) - (h * 0.05);
+        // Temperature = Base + (O * Wo) + (X * Wx) - (C * Wc) - (H * Wh)
+        let temperature = LLM_BASE_TEMPERATURE 
+            + (o * LLM_TEMP_OPENNESS_WEIGHT) 
+            + (x * LLM_TEMP_EXTRAVERSION_WEIGHT) 
+            - (c * LLM_TEMP_CONSCIENTIOUSNESS_WEIGHT) 
+            - (h * LLM_TEMP_HONESTY_WEIGHT);
 
-        // Top P = 0.9 + (O * 0.05) - (C * 0.05)
-        // Gemma 3 권장값 중심 0.8 ~ 1.0 범위로 제한
-        let top_p = 0.9 + (o * 0.05) - (c * 0.05);
+        // Top P = Base + (O * Wo) - (C * Wc)
+        let top_p = LLM_BASE_TOP_P 
+            + (o * LLM_TOP_P_OPENNESS_WEIGHT) 
+            - (c * LLM_TOP_P_CONSCIENTIOUSNESS_WEIGHT);
 
-        (temperature.clamp(0.1, 1.1), top_p.clamp(0.8, 1.0))
+        (
+            temperature.clamp(LLM_TEMP_MIN, LLM_TEMP_MAX), 
+            top_p.clamp(LLM_TOP_P_MIN, LLM_TOP_P_MAX)
+        )
     }
-}
+    }
+
 
 // ---------------------------------------------------------------------------
 // NPC 빌더 — 무협 캐릭터를 편리하게 생성
