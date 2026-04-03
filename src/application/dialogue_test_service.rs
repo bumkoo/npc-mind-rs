@@ -70,6 +70,10 @@ pub struct ChatStartResponse {
     pub session_id: String,
     /// 초기 감정 평가 결과 (프롬프트 포함)
     pub appraise: AppraiseResponse,
+    /// 세션에 사용된 LLM 모델 정보
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub llm_model_info: Option<crate::ports::LlmModelInfo>,
 }
 
 /// 대화 턴 요청
@@ -203,17 +207,38 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
         &mut self,
         req: ChatStartRequest,
     ) -> Result<ChatStartResponse, DialogueTestError> {
-        // 1. 감정 평가 → 프롬프트 생성
+        // 1. 성격 기반 파라미터 계산 (ID 사용을 위해 appraise 전 조회)
+        let npc_profile = self
+            .mind
+            .repository()
+            .get_npc(&req.appraise.npc_id)
+            .ok_or_else(|| DialogueTestError::MindService(MindServiceError::NpcNotFound(req.appraise.npc_id.clone())))?;
+        let (temp, top_p) = npc_profile.derive_llm_parameters();
+
+        let generation_config = crate::ports::LlmModelInfo {
+            provider_url: String::new(),
+            model_name: String::new(),
+            temperature: Some(temp),
+            max_tokens: None,
+            top_p: Some(top_p),
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            seed: None,
+        };
+
+        // 2. 감정 평가 → 프롬프트 생성 (req.appraise 소유권 이동)
         let appraise_resp = self.mind.appraise(req.appraise, || {}, || Vec::new())?;
 
-        // 2. LLM 세션 시작 (프롬프트를 system prompt로)
+        // 3. LLM 세션 시작 (프롬프트를 system prompt로, 고정 파라미터 전달)
         self.chat
-            .start_session(&req.session_id, &appraise_resp.prompt)
+            .start_session(&req.session_id, &appraise_resp.prompt, Some(generation_config.clone()))
             .await?;
 
         Ok(ChatStartResponse {
             session_id: req.session_id,
             appraise: appraise_resp,
+            llm_model_info: Some(generation_config),
         })
     }
 
@@ -227,7 +252,7 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
         &mut self,
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, DialogueTestError> {
-        // 1. LLM에 상대 대사 전달 → NPC 응답
+        // 1. LLM에 상대 대사 전달 → NPC 응답 (세션 고정 파라미터 사용)
         let npc_response = self
             .chat
             .send_message(&req.session_id, &req.utterance)

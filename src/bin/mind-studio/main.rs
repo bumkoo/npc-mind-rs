@@ -138,8 +138,8 @@ async fn main() {
             .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
         let chat_model = std::env::var("NPC_MIND_CHAT_MODEL")
             .unwrap_or_else(|_| "local-model".to_string());
-        let adapter = npc_mind::RigChatAdapter::new(&chat_url, &chat_model);
-        state = state.with_chat(adapter);
+        let adapter = std::sync::Arc::new(npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, &chat_model));
+        state = state.with_chat(adapter.clone()).with_llm_info(adapter);
         println!("Chat Agent: 초기화 완료 (url={chat_url}, model={chat_model})");
     }
 

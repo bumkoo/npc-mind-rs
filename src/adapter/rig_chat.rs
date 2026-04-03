@@ -14,7 +14,7 @@
 //! let reply = adapter.send_message("s1", "안녕하시오.").await?;
 //! ```
 
-use crate::ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn};
+use crate::ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlmInfoProvider, LlmModelInfo};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
@@ -31,6 +31,7 @@ use tokio::sync::RwLock;
 pub struct RigChatAdapter {
     client: openai::CompletionsClient,
     model_name: String,
+    base_url: String,
     sessions: RwLock<HashMap<String, ChatSession>>,
 }
 
@@ -41,6 +42,8 @@ struct ChatSession {
     rig_history: Vec<Message>,
     /// 도메인 형식의 대화 이력 (반환용)
     dialogue_history: Vec<DialogueTurn>,
+    /// 세션 고정 생성 설정
+    generation_config: Option<LlmModelInfo>,
 }
 
 impl RigChatAdapter {
@@ -62,6 +65,7 @@ impl RigChatAdapter {
         Self {
             client,
             model_name: model_name.to_string(),
+            base_url: base_url.to_string(),
             sessions: RwLock::new(HashMap::new()),
         }
     }
@@ -72,12 +76,24 @@ impl RigChatAdapter {
         system_prompt: &str,
         user_message: &str,
         history: Vec<Message>,
+        config: &Option<LlmModelInfo>,
     ) -> Result<String, ConversationError> {
-        let agent = self
-            .client
-            .agent(&self.model_name)
-            .preamble(system_prompt)
-            .build();
+        let mut builder = self.client.agent(&self.model_name).preamble(system_prompt);
+
+        // 동적 파라미터 적용
+        if let Some(c) = config {
+            if let Some(t) = c.temperature {
+                builder = builder.temperature(t as f64);
+            }
+            if let Some(tp) = c.top_p {
+                builder = builder.additional_params(serde_json::json!({ "top_p": tp }));
+            }
+            if let Some(mt) = c.max_tokens {
+                builder = builder.max_tokens(mt.into());
+            }
+        }
+
+        let agent = builder.build();
 
         let response: String = Chat::chat(&agent, user_message, history)
             .await
@@ -97,12 +113,24 @@ impl RigChatAdapter {
         user_message: &str,
         history: Vec<Message>,
         token_tx: tokio::sync::mpsc::Sender<String>,
+        config: &Option<LlmModelInfo>,
     ) -> Result<String, ConversationError> {
-        let agent = self
-            .client
-            .agent(&self.model_name)
-            .preamble(system_prompt)
-            .build();
+        let mut builder = self.client.agent(&self.model_name).preamble(system_prompt);
+
+        // 동적 파라미터 적용
+        if let Some(c) = config {
+            if let Some(t) = c.temperature {
+                builder = builder.temperature(t as f64);
+            }
+            if let Some(tp) = c.top_p {
+                builder = builder.additional_params(serde_json::json!({ "top_p": tp }));
+            }
+            if let Some(mt) = c.max_tokens {
+                builder = builder.max_tokens(mt.into());
+            }
+        }
+
+        let agent = builder.build();
 
         let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
 
@@ -138,6 +166,7 @@ impl ConversationPort for RigChatAdapter {
         &self,
         session_id: &str,
         system_prompt: &str,
+        generation_config: Option<LlmModelInfo>,
     ) -> Result<(), ConversationError> {
         let session = ChatSession {
             system_prompt: system_prompt.to_string(),
@@ -146,6 +175,7 @@ impl ConversationPort for RigChatAdapter {
                 role: DialogueRole::System,
                 content: system_prompt.to_string(),
             }],
+            generation_config,
         };
 
         self.sessions
@@ -162,17 +192,21 @@ impl ConversationPort for RigChatAdapter {
         user_message: &str,
     ) -> Result<String, ConversationError> {
         // 1. 세션에서 현재 상태를 읽어옴
-        let (system_prompt, history) = {
+        let (system_prompt, history, config) = {
             let sessions = self.sessions.read().await;
             let session = sessions
                 .get(session_id)
                 .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
-            (session.system_prompt.clone(), session.rig_history.clone())
+            (
+                session.system_prompt.clone(),
+                session.rig_history.clone(),
+                session.generation_config.clone(),
+            )
         };
 
         // 2. rig agent로 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
         let response = self
-            .chat_with_agent(&system_prompt, user_message, history)
+            .chat_with_agent(&system_prompt, user_message, history, &config)
             .await?;
 
         // 3. 이력 업데이트
@@ -209,18 +243,24 @@ impl ConversationPort for RigChatAdapter {
         token_tx: tokio::sync::mpsc::Sender<String>,
     ) -> Result<String, ConversationError> {
         // 1. 세션에서 현재 상태를 읽어옴
-        let (system_prompt, history) = {
+        let (system_prompt, history, config) = {
             let sessions = self.sessions.read().await;
             let session = sessions
                 .get(session_id)
                 .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
-            (session.system_prompt.clone(), session.rig_history.clone())
+            (
+                session.system_prompt.clone(),
+                session.rig_history.clone(),
+                session.generation_config.clone(),
+            )
         };
 
         // 2. 스트리밍 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
         let response = self
-            .stream_chat_with_agent(&system_prompt, user_message, history, token_tx)
+            .stream_chat_with_agent(&system_prompt, user_message, history, token_tx, &config)
             .await?;
+
+
 
         // 3. 이력 업데이트
         {
@@ -278,5 +318,21 @@ impl ConversationPort for RigChatAdapter {
             .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
 
         Ok(session.dialogue_history)
+    }
+}
+
+impl LlmInfoProvider for RigChatAdapter {
+    fn get_model_info(&self) -> LlmModelInfo {
+        LlmModelInfo {
+            provider_url: self.base_url.clone(),
+            model_name: self.model_name.clone(),
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            seed: None,
+        }
     }
 }

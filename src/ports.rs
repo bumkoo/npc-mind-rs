@@ -264,22 +264,55 @@ pub enum ConversationError {
 /// // 4. 대화 종료 → 이력 반환
 /// let history = port.end_session("s1").await?;
 /// ```
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct LlmModelInfo {
+    pub provider_url: String,
+    pub model_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub temperature: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub top_p: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub frequency_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub presence_penalty: Option<f32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub stop_sequences: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub seed: Option<u64>,
+}
+
+/// LLM 모델의 특성 및 메타데이터를 제공하는 포트
+pub trait LlmInfoProvider: Send + Sync {
+    fn get_model_info(&self) -> LlmModelInfo;
+}
+
 #[cfg(feature = "chat")]
 #[async_trait::async_trait]
 pub trait ConversationPort: Send + Sync {
     /// 새 대화 세션을 시작한다.
     ///
     /// `system_prompt`: MindEngine이 생성한 ActingGuide 프롬프트.
-    /// 내부적으로 LLM Agent를 system_prompt로 초기화한다.
+    /// `generation_config`: NPC 성격 등에 기반한 고정 생성 파라미터 (temp, top_p 등)
     async fn start_session(
         &self,
         session_id: &str,
         system_prompt: &str,
+        generation_config: Option<LlmModelInfo>,
     ) -> Result<(), ConversationError>;
 
     /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 받는다.
     ///
-    /// 대화 이력은 세션 내부에서 자동 관리된다.
+    /// 대화 이력 및 생성 파라미터는 세션 내부에서 관리된다.
     async fn send_message(
         &self,
         session_id: &str,
@@ -287,10 +320,6 @@ pub trait ConversationPort: Send + Sync {
     ) -> Result<String, ConversationError>;
 
     /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 스트리밍으로 받는다.
-    ///
-    /// 토큰 청크를 `tokio::sync::mpsc::Sender`를 통해 실시간 전송하고,
-    /// 스트림 완료 후 전체 응답을 이력에 저장한다.
-    /// 반환값은 완성된 전체 응답 문자열이다.
     async fn send_message_stream(
         &self,
         session_id: &str,

@@ -9,6 +9,7 @@ use crate::trace_collector::AppraisalCollector;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
 use npc_mind::domain::pad::PadAnalyzer;
+use npc_mind::ports::LlmModelInfo;
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -22,6 +23,9 @@ pub struct AppState {
     /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
     #[cfg(feature = "chat")]
     pub chat: Option<Arc<dyn npc_mind::ports::ConversationPort>>,
+    /// LLM 메타데이터 제공자
+    #[cfg(feature = "chat")]
+    pub llm_info: Option<Arc<dyn npc_mind::ports::LlmInfoProvider>>,
     /// chat feature 비활성 시 컴파일 호환용
     #[cfg(not(feature = "chat"))]
     pub chat: Option<()>,
@@ -35,13 +39,22 @@ impl AppState {
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a))),
             formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
             chat: None,
+            #[cfg(feature = "chat")]
+            llm_info: None,
         }
     }
 
     /// LLM 대화 에이전트를 설정한다 (chat feature 활성 시).
     #[cfg(feature = "chat")]
-    pub fn with_chat(mut self, chat: impl npc_mind::ports::ConversationPort + 'static) -> Self {
-        self.chat = Some(Arc::new(chat));
+    pub fn with_chat(mut self, chat: Arc<dyn npc_mind::ports::ConversationPort>) -> Self {
+        self.chat = Some(chat);
+        self
+    }
+
+    /// LLM 메타데이터 제공자를 설정한다.
+    #[cfg(feature = "chat")]
+    pub fn with_llm_info(mut self, llm_info: Arc<dyn npc_mind::ports::LlmInfoProvider>) -> Self {
+        self.llm_info = Some(llm_info);
         self
     }
 }
@@ -107,6 +120,10 @@ pub struct TurnRecord {
     pub request: serde_json::Value,
     /// 응답 결과 (감정, 프롬프트, trace 등)
     pub response: serde_json::Value,
+    /// 첫 턴에 기록되는 모델 스냅샷
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub llm_model: Option<LlmModelInfo>,
 }
 
 /// 시나리오 메타데이터

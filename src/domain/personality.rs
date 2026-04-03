@@ -366,6 +366,36 @@ impl Npc {
     pub fn personality(&self) -> &HexacoProfile {
         &self.personality
     }
+
+    /// 성격 지표를 기반으로 LLM 생성 파라미터를 도출한다 (Gemma 3 12B 최적화)
+    /// 반환값: (temperature, top_p)
+    pub fn derive_llm_parameters(&self) -> (f32, f32) {
+        self.personality.derive_llm_parameters()
+    }
+}
+
+impl HexacoProfile {
+    /// 성격 지표를 기반으로 LLM 생성 파라미터를 도출한다 (Gemma 3 12B 최적화)
+    /// 반환값: (temperature, top_p)
+    pub fn derive_llm_parameters(&self) -> (f32, f32) {
+        let avg = self.dimension_averages();
+        let h = avg.h.value();
+        let _e = avg.e.value();
+        let x = avg.x.value();
+        let _a = avg.a.value();
+        let c = avg.c.value();
+        let o = avg.o.value();
+
+        // Temperature = 0.8 + (O * 0.1) + (X * 0.05) - (C * 0.1) - (H * 0.05)
+        // Gemma 3 안정성을 위해 0.1 ~ 1.1 범위로 제한
+        let temperature = 0.8 + (o * 0.1) + (x * 0.05) - (c * 0.1) - (h * 0.05);
+
+        // Top P = 0.9 + (O * 0.05) - (C * 0.05)
+        // Gemma 3 권장값 중심 0.8 ~ 1.0 범위로 제한
+        let top_p = 0.9 + (o * 0.05) - (c * 0.05);
+
+        (temperature.clamp(0.1, 1.1), top_p.clamp(0.8, 1.0))
+    }
 }
 
 // ---------------------------------------------------------------------------

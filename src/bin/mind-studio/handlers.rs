@@ -14,7 +14,7 @@ use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::{
     EmotionStore, MindService, MindServiceError, NpcWorld, SceneStore,
 };
-use npc_mind::ports::UtteranceAnalyzer;
+use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
 
 use crate::state::*;
 
@@ -33,6 +33,12 @@ pub enum AppError {
 impl From<MindServiceError> for AppError {
     fn from(e: MindServiceError) -> Self {
         AppError::Service(e)
+    }
+}
+
+impl From<npc_mind::ports::ConversationError> for AppError {
+    fn from(e: npc_mind::ports::ConversationError) -> Self {
+        AppError::Internal(e.to_string())
     }
 }
 
@@ -350,6 +356,7 @@ pub async fn appraise(
         action: "appraise".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
+        llm_model: None,
     });
 
     Ok(Json(response))
@@ -396,6 +403,7 @@ pub async fn stimulus(
         action: "stimulus".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
+        llm_model: None,
     });
 
     Ok(Json(response))
@@ -452,6 +460,7 @@ pub async fn after_dialogue(
         action: "after_dialogue".into(),
         request: serde_json::to_value(&req).unwrap_or_default(),
         response: serde_json::to_value(&response).unwrap_or_default(),
+        llm_model: None,
     });
 
     Ok(Json(response))
@@ -928,6 +937,7 @@ pub async fn scene(
             action: "scene".into(),
             request: serde_json::to_value(&req).unwrap_or_default(),
             response: serde_json::to_value(&response).unwrap_or_default(),
+            llm_model: None,
         });
     }
 
@@ -958,6 +968,15 @@ pub mod chat_handlers {
         let collector = state.collector.clone();
 
         let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+        
+        // NPC 정보로 파라미터 계산 (대화 시작 시 1회)
+        let (temp, top_p) = {
+            let npc = service.repository().get_npc(&req.appraise.npc_id).ok_or_else(|| {
+                AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id))
+            })?;
+            npc.derive_llm_parameters()
+        };
+
         let result = service.appraise(
             req.appraise.clone(),
             || {
@@ -969,9 +988,24 @@ pub mod chat_handlers {
 
         let response = result.format(&*state.formatter);
 
-        // 2. LLM 세션 시작
+        // 3. 모델 정보 캡처 (글로벌 정보 + NPC별 파라미터)
+        let mut llm_model_info = state.llm_info.as_ref().map(|info| info.get_model_info()).unwrap_or(LlmModelInfo {
+            provider_url: "unknown".into(),
+            model_name: "unknown".into(),
+            temperature: None,
+            max_tokens: None,
+            top_p: None,
+            frequency_penalty: None,
+            presence_penalty: None,
+            stop_sequences: None,
+            seed: None,
+        });
+        llm_model_info.temperature = Some(temp);
+        llm_model_info.top_p = Some(top_p);
+
+        // 2. LLM 세션 시작 (파라미터 고정 전달)
         chat_state
-            .start_session(&req.session_id, &response.prompt)
+            .start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone()))
             .await
             .map_err(|e| AppError::Internal(e.to_string()))?;
 
@@ -982,11 +1016,13 @@ pub mod chat_handlers {
             action: "chat_start".into(),
             request: serde_json::to_value(&req).unwrap_or_default(),
             response: serde_json::to_value(&response).unwrap_or_default(),
+            llm_model: Some(llm_model_info.clone()),
         });
 
         Ok(Json(ChatStartResponse {
             session_id: req.session_id,
             appraise: response,
+            llm_model_info: Some(llm_model_info),
         }))
     }
 
@@ -1000,11 +1036,10 @@ pub mod chat_handlers {
             .as_ref()
             .ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
 
-        // 1. LLM에 대사 전달 → NPC 응답
+        // 1. LLM에 대사 전달 → NPC 응답 (파라미터는 이미 세션에 저장됨)
         let npc_response = chat_state
             .send_message(&req.session_id, &req.utterance)
-            .await
-            .map_err(|e| AppError::Internal(e.to_string()))?;
+            .await?;
 
         // 2. PAD 결정 (수동 입력 > 자동 분석 > 없음)
         let pad = if let Some(ref pad_input) = req.pad {
@@ -1059,15 +1094,16 @@ pub mod chat_handlers {
             if let serde_json::Value::Object(ref mut map) = resp_val {
                 map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
             }
-            inner.turn_history.push(TurnRecord {
-                label: format!(
-                    "Turn {}: chat/message [{}→{}]",
-                    turn_num, req.partner_id, req.npc_id
-                ),
-                action: "chat_message".into(),
-                request: serde_json::to_value(&req).unwrap_or_default(),
-                response: resp_val,
-            });
+                    inner.turn_history.push(TurnRecord {
+                        label: format!(
+                            "Turn {}: chat/message [{}→{}]",
+                            turn_num, req.partner_id, req.npc_id
+                        ),
+                        action: "chat_message".into(),
+                        request: serde_json::to_value(&req).unwrap_or_default(),
+                        response: resp_val,
+                        llm_model: None,
+                    });
 
             (Some(stim_resp), changed)
         } else {
@@ -1082,6 +1118,7 @@ pub mod chat_handlers {
                 action: "chat_message".into(),
                 request: serde_json::to_value(&req).unwrap_or_default(),
                 response: serde_json::json!({ "npc_response": &npc_response }),
+                llm_model: None,
             });
 
             (None, false)
@@ -1229,6 +1266,7 @@ pub mod chat_handlers {
                         action: "chat_message".into(),
                         request: serde_json::to_value(&req).unwrap_or_default(),
                         response: resp_val,
+                        llm_model: None,
                     });
                 }
 
@@ -1245,6 +1283,7 @@ pub mod chat_handlers {
                     action: "chat_message".into(),
                     request: serde_json::to_value(&req).unwrap_or_default(),
                     response: serde_json::json!({ "npc_response": &npc_response }),
+                    llm_model: None,
                 });
 
                 (None, false)

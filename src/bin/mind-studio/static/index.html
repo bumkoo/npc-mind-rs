@@ -1838,6 +1838,7 @@
                 onStimulusUtteranceChange,
                 tab,
                 onTabChange,
+                llmModelInfo,
             }) {
                 const setTab = onTabChange;
 
@@ -1876,6 +1877,12 @@
                                 onClick={() => setTab("history")}
                             >
                                 히스토리 ({history.length})
+                            </div>
+                            <div
+                                className={`result-tab ${tab === "model" ? "active" : ""}`}
+                                onClick={() => setTab("model")}
+                            >
+                                LLM Model
                             </div>
                         </div>
                         <div className="result-content">
@@ -1966,6 +1973,9 @@
                                         )}
                                     {tab === "history" && (
                                         <HistoryView history={history} />
+                                    )}
+                                    {tab === "model" && (
+                                        <ModelInfoView info={llmModelInfo} />
                                     )}
                                 </>
                             )}
@@ -2805,6 +2815,39 @@
                     </div>
                 );
             }
+            // --- ModelInfoView ---
+            function ModelInfoView({ info }) {
+                if (!info) return <div className="text-gray-500 italic p-4">LLM 모델 정보가 없습니다.</div>;
+
+                const renderItem = (label, value) => {
+                    if (value === null || value === undefined) return null;
+                    const displayValue = Array.isArray(value) ? JSON.stringify(value) : String(value);
+                    return (
+                        <div className="flex justify-between border-b border-gray-100 py-2 text-sm">
+                            <span className="text-gray-600 font-medium whitespace-nowrap mr-4">{label} :</span>
+                            <span className="text-gray-800 break-all text-right">{displayValue}</span>
+                        </div>
+                    );
+                };
+
+                return (
+                    <div className="bg-white rounded shadow p-4">
+                        <h3 className="text-md font-bold text-gray-800 mb-3 border-b pb-2">LLM Environment</h3>
+                        <div className="space-y-1">
+                            {renderItem("Provider URL", info.provider_url)}
+                            {renderItem("Model Name", info.model_name)}
+                            {renderItem("Temperature", info.temperature)}
+                            {renderItem("Max Tokens", info.max_tokens)}
+                            {renderItem("Top P", info.top_p)}
+                            {renderItem("Frequency Penalty", info.frequency_penalty)}
+                            {renderItem("Presence Penalty", info.presence_penalty)}
+                            {renderItem("Stop Sequences", info.stop_sequences)}
+                            {renderItem("Seed", info.seed)}
+                        </div>
+                    </div>
+                );
+            }
+
             // --- App ---
             function App() {
                 const [npcs, setNpcs] = useState([]);
@@ -2819,6 +2862,7 @@
                 const [savedSituation, setSavedSituation] = useState(null);
                 const [loading, setLoading] = useState(false);
                 const [sceneInfo, setSceneInfo] = useState(null);
+                const [llmModelInfo, setLlmModelInfo] = useState(null);
                 const { toasts, toast } = useToast();
 
                 // Selection state
@@ -3087,6 +3131,7 @@
                         setChatMode(true);
                         setResultTab("emotions");
                         setResult(data.appraise);
+                        setLlmModelInfo(data.llm_model_info || null);
                         setTraceHistory([
                             { label: "chat/start", trace: data.appraise.trace || [] },
                         ]);
@@ -3102,7 +3147,7 @@
                                 content: `대화 시작 — ${data.appraise.dominant?.emotion_type || "neutral"} (${(data.appraise.mood || 0).toFixed(3)})`,
                                 emotions: initEmotions,
                                 mood: data.appraise.mood,
-                                snapshot: data.appraise,
+                                snapshot: { ...data.appraise, llm_model: data.llm_model_info },
                                 activePrompt: data.appraise.prompt || "",
                             },
                         ]);
@@ -3260,6 +3305,27 @@
                                 }
                             }
                         }
+
+                        // 히스토리 싱크 (llm_model 정보 등 보완)
+                        try {
+                            const histRes = await fetch("/api/history");
+                            if (histRes.ok) {
+                                const history = await histRes.json();
+                                if (history.length > 0) {
+                                    const lastTurn = history[history.length - 1];
+                                    setChatMessages((prev) => {
+                                        const updated = [...prev];
+                                        if (updated[assistantIdx.current]) {
+                                            updated[assistantIdx.current].snapshot = {
+                                                ...updated[assistantIdx.current].snapshot,
+                                                llm_model: lastTurn.llm_model
+                                            };
+                                        }
+                                        return updated;
+                                    });
+                                }
+                            }
+                        } catch (e) {}
 
                         refresh();
                     } catch (e) {
@@ -3574,9 +3640,15 @@
                                 setSavedSituation(sit);
                             }
                         } catch (e) {}
-                        // turn_history → 대화 메시지로 변환
+                        // turn_history → 대화 메시지 및 LLM 모델 변환
                         const msgs = [];
-                        (data.turn_history || []).forEach((turn) => {
+                        const history = data.turn_history || [];
+                        if (history.length > 0 && history[0].llm_model) {
+                            setLlmModelInfo(history[0].llm_model);
+                        } else {
+                            setLlmModelInfo(null);
+                        }
+                        history.forEach((turn) => {
                             const resp = turn.response || {};
                             const req = turn.request || {};
                             if (turn.action === "stimulus") {
@@ -3596,7 +3668,7 @@
                                     content: turn.label,
                                     emotions,
                                     mood: resp.mood,
-                                    snapshot: resp,
+                                    snapshot: { ...resp, llm_model: turn.llm_model },
                                     beat_changed: resp.beat_changed,
                                     new_focus: resp.active_focus_id,
                                 });
@@ -3609,7 +3681,7 @@
                                     content: `${turn.label}`,
                                     emotions,
                                     mood: resp.mood,
-                                    snapshot: resp,
+                                    snapshot: { ...resp, llm_model: turn.llm_model },
                                 });
                             } else if (turn.action === "chat_message") {
                                 // LLM 대화 턴 — response에 npc_response + stimulus 결과가 병합됨
@@ -3625,7 +3697,7 @@
                                     content: resp.npc_response || turn.label,
                                     emotions,
                                     mood: resp.mood,
-                                    snapshot: resp,
+                                    snapshot: { ...resp, llm_model: turn.llm_model },
                                     beat_changed: resp.beat_changed,
                                     new_focus: resp.active_focus_id,
                                 });
@@ -3831,6 +3903,7 @@
                                 onStimulusUtteranceChange={setStimulusUtterance}
                                 tab={resultTab}
                                 onTabChange={setResultTab}
+                                llmModelInfo={llmModelInfo}
                             />
                         </div>
 
