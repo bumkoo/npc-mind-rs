@@ -6,6 +6,9 @@
 
 use axum::Router;
 use axum::routing::{delete, get, post};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -20,61 +23,103 @@ mod trace_collector;
 #[cfg(test)]
 mod handler_tests;
 
-use state::AppState;
+use crate::state::AppState;
+use crate::trace_collector::AppraisalCollector;
 
-/// API 라우터를 생성합니다 (테스트에서도 재사용).
+#[tokio::main]
+async fn main() {
+    // 1. 로깅 초기화
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "npc_mind_studio=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let analyzer = init_analyzer();
+    let collector = AppraisalCollector::new();
+    let mut state = AppState::new(collector, analyzer);
+
+    // MCP 서버 초기화 ( Any/Dyn 제거 및 정적 타입 주입 )
+    let mcp_server = mcp_server::create_mcp_server(state.clone());
+    state = state.with_mcp(mcp_server);
+
+    // chat feature 활성 시 RigChatAdapter 초기화
+    #[cfg(feature = "chat")]
+    {
+        let chat_url = std::env::var("NPC_MIND_CHAT_URL")
+            .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
+        let chat_model = std::env::var("NPC_MIND_CHAT_MODEL").unwrap_or_else(|_| "model".to_string());
+
+        let adapter = npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, &chat_model);
+        let arc_adapter = Arc::new(adapter);
+        state = state.with_chat(arc_adapter.clone());
+        state = state.with_llm_info(arc_adapter);
+    }
+
+    // 2. 라우터 빌드
+    let app = build_api_router(state);
+
+    // 3. 서버 실행
+    let port = std::env::var("MIND_STUDIO_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3000);
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+
+    tracing::info!("NPC Mind Studio 서버 시작: http://{}", addr);
+    tracing::info!("Static UI: http://{}/", addr);
+    tracing::info!("MCP SSE: http://{}/mcp/sse", addr);
+
+    let listener = tokio::net::TcpListener::bind(&addr)
+        .await
+        .expect("Mind Studio 서버 포트 바인딩 실패 — MIND_STUDIO_PORT 환경변수를 확인하세요");
+    axum::serve(listener, app)
+        .await
+        .expect("Mind Studio 서버 실행 중 오류 발생");
+}
+
 fn build_api_router(state: AppState) -> Router {
     let router = Router::new()
-        .route(
-            "/api/npcs",
-            get(handlers::list_npcs).post(handlers::upsert_npc),
-        )
-        .route("/api/npcs/{id}", delete(handlers::delete_npc))
-        .route(
-            "/api/relationships",
-            get(handlers::list_relationships).post(handlers::upsert_relationship),
-        )
-        .route(
-            "/api/relationships/{owner}/{target}",
-            delete(handlers::delete_relationship),
-        )
-        .route(
-            "/api/objects",
-            get(handlers::list_objects).post(handlers::upsert_object),
-        )
-        .route("/api/objects/{id}", delete(handlers::delete_object))
-        .route("/api/appraise", post(handlers::appraise))
-        .route("/api/stimulus", post(handlers::stimulus))
-        .route("/api/scene", post(handlers::scene))
-        .route("/api/guide", post(handlers::guide))
-        .route("/api/after-dialogue", post(handlers::after_dialogue))
-        .route("/api/scenarios", get(handlers::list_scenarios))
-        .route("/api/scenario-meta", get(handlers::get_scenario_meta))
-        .route("/api/scene-info", get(handlers::get_scene_info))
-        .route("/api/analyze-utterance", post(handlers::analyze_utterance))
-        .route("/api/history", get(handlers::get_history))
-        .route(
-            "/api/situation",
-            get(handlers::get_situation).put(handlers::put_situation),
-        )
-        .route("/api/save", post(handlers::save_state))
-        .route("/api/save-dir", get(handlers::save_dir))
-        .route("/api/load", post(handlers::load_state))
-        .route("/api/load-result", post(handlers::load_result));
+        // 정적 파일 서빙 (UI)
+        .fallback_service(ServeDir::new("src/bin/mind-studio/static"))
+        // CORS 허용
+        .layer(CorsLayer::permissive())
+        // NPC
+        .route("/api/npcs", get(handlers::npc::list_npcs).post(handlers::npc::upsert_npc))
+        .route("/api/npcs/{id}", delete(handlers::npc::delete_npc))
+        // Relationship
+        .route("/api/relationships", get(handlers::relationship::list_relationships).post(handlers::relationship::upsert_relationship))
+        .route("/api/relationships/{owner_id}/{target_id}", delete(handlers::relationship::delete_relationship))
+        // Object
+        .route("/api/objects", get(handlers::object::list_objects).post(handlers::object::upsert_object))
+        .route("/api/objects/{id}", delete(handlers::object::delete_object))
+        // Scenario & Action
+        .route("/api/scenarios", get(handlers::scenario::list_scenarios))
+        .route("/api/scenario-meta", get(handlers::scenario::get_scenario_meta))
+        .route("/api/appraise", post(handlers::scenario::appraise))
+        .route("/api/stimulus", post(handlers::scenario::stimulus))
+        .route("/api/after-dialogue", post(handlers::scenario::after_dialogue))
+        .route("/api/guide", post(handlers::scenario::guide))
+        .route("/api/scene", post(handlers::scenario::scene))
+        .route("/api/scene-info", get(handlers::scenario::get_scene_info))
+        .route("/api/history", get(handlers::scenario::get_history))
+        .route("/api/situation", get(handlers::scenario::get_situation).put(handlers::scenario::put_situation))
+        .route("/api/analyze-utterance", post(handlers::scenario::analyze_utterance))
+        // Persistence
+        .route("/api/save", post(handlers::scenario::save_state))
+        .route("/api/save-dir", get(handlers::scenario::save_dir))
+        .route("/api/load", post(handlers::scenario::load_state))
+        .route("/api/load-result", post(handlers::scenario::load_result));
 
     // chat feature 활성 시 대화 테스트 엔드포인트 추가
     #[cfg(feature = "chat")]
     let router = router
-        .route("/api/chat/start", post(handlers::chat_handlers::chat_start))
-        .route(
-            "/api/chat/message",
-            post(handlers::chat_handlers::chat_message),
-        )
-        .route(
-            "/api/chat/message/stream",
-            post(handlers::chat_handlers::chat_message_stream),
-        )
-        .route("/api/chat/end", post(handlers::chat_handlers::chat_end));
+        .route("/api/chat/start", post(handlers::chat::chat_start))
+        .route("/api/chat/message", post(handlers::chat::chat_message))
+        .route("/api/chat/message/stream", post(handlers::chat::chat_message_stream))
+        .route("/api/chat/end", post(handlers::chat::chat_end));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());
@@ -100,73 +145,14 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
         eprintln!("빌트인 앵커 없음 (lang={anchor_lang}), ko 폴백");
         builtin_anchor_toml("ko").unwrap()
     });
-    let source = TomlAnchorSource::from_content(anchor_toml)
-        .with_cache_path(format!("locales/anchors/{anchor_lang}.embeddings.json"));
 
-    match OrtEmbedder::new(&model_path, &tokenizer_path) {
-        Ok(embedder) => match PadAnalyzer::new(Box::new(embedder), &source) {
-            Ok(analyzer) => {
-                println!("PAD Analyzer: 초기화 완료 (embed 활성, lang={anchor_lang})");
-                Some(analyzer)
-            }
-            Err(e) => {
-                eprintln!("PAD Analyzer 앵커 초기화 실패: {e:?}");
-                None
-            }
-        },
-        Err(e) => {
-            eprintln!("OrtEmbedder 초기화 실패: {e:?}");
-            None
-        }
-    }
+    let embedder = OrtEmbedder::new(&model_path, &tokenizer_path).ok()?;
+    let source = TomlAnchorSource::new(&anchor_toml).ok()?;
+
+    Some(PadAnalyzer::new(Arc::new(embedder), Arc::new(source)))
 }
 
 #[cfg(not(feature = "embed"))]
 fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     None
-}
-
-#[tokio::main]
-async fn main() {
-    // tracing 초기화
-    let collector = trace_collector::AppraisalCollector::new();
-    tracing_subscriber::registry()
-        .with(collector.clone())
-        .init();
-
-    let analyzer = init_analyzer();
-    let mut state = AppState::new(collector, analyzer);
-
-    // MCP 서버 초기화 ( Any/Dyn 제거 및 정적 타입 주입 )
-    let mcp_server = mcp_server::create_mcp_server(state.clone());
-    state = state.with_mcp(mcp_server);
-
-    // chat feature 활성 시 RigChatAdapter 초기화
-    #[cfg(feature = "chat")]
-    {
-        let chat_url = std::env::var("NPC_MIND_CHAT_URL")
-            .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
-        let chat_model = std::env::var("NPC_MIND_CHAT_MODEL")
-            .unwrap_or_else(|_| "local-model".to_string());
-        let adapter = std::sync::Arc::new(npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, &chat_model));
-        state = state.with_chat(adapter.clone()).with_llm_info(adapter);
-        println!("Chat Agent: 초기화 완료 (url={chat_url}, model={chat_model})");
-    }
-
-    // 정적 파일 경로
-    let static_dir =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/bin/mind-studio/static");
-
-    let app = build_api_router(state)
-        .fallback_service(ServeDir::new(static_dir));
-
-    let port = std::env::var("MIND_STUDIO_PORT").unwrap_or_else(|_| "3000".to_string());
-    let addr = format!("127.0.0.1:{port}");
-    println!("NPC Mind Studio: http://{addr}");
-    let listener = tokio::net::TcpListener::bind(&addr)
-        .await
-        .expect("Mind Studio 서버 포트 바인딩 실패 — MIND_STUDIO_PORT 환경변수를 확인하세요");
-    axum::serve(listener, app)
-        .await
-        .expect("Mind Studio 서버 실행 중 오류 발생");
 }

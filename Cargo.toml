@@ -21,7 +21,7 @@ rig-core = { version = "0.33", optional = true, default-features = false, featur
 async-trait = { version = "0.1", optional = true }
 futures = { version = "0.3", optional = true }
 async-stream = { version = "0.3", optional = true }
-tracing-subscriber = { version = "0.3", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"], optional = true }
