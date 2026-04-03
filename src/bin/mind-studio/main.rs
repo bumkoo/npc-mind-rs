@@ -11,6 +11,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 mod handlers;
+mod mcp_server;
 mod state;
 mod trace_collector;
 
