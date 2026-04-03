@@ -1,0 +1,177 @@
+{
+  "current_situation": {
+    "desc": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+    "focusSettings": {
+      "caught": {
+        "acDesc": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+        "agentId": "huck",
+        "evDesc": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+        "evSelf": -0.5,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": -0.6
+      },
+      "guilt": {
+        "acDesc": "헉이 스스로 잘못을 인정하고 짐에게 진심으로 사과하기로 결심함",
+        "agentId": "huck",
+        "evDesc": "짐이 헉에게 쓰레기라고 말함. 노예가 백인 소년에게 이런 말을 한다는 것 자체가 헉에게 충격이다.",
+        "evSelf": -0.7,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": 0.6
+      }
+    },
+    "npcId": "huck",
+    "partnerId": "jim",
+    "significance": 0.8
+  },
+  "format": "mind-studio/scenario",
+  "npcs": {
+    "huck": {
+      "aesthetic_appreciation": 0.20000000298023224,
+      "anxiety": -0.30000001192092896,
+      "creativity": 0.5,
+      "dependence": -0.699999988079071,
+      "description": "13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.",
+      "diligence": -0.30000001192092896,
+      "fairness": 0.20000000298023224,
+      "fearfulness": -0.5,
+      "flexibility": 0.5,
+      "forgiveness": 0.30000001192092896,
+      "gentleness": 0.20000000298023224,
+      "greed_avoidance": 0.4000000059604645,
+      "id": "huck",
+      "inquisitiveness": 0.6000000238418579,
+      "liveliness": 0.30000001192092896,
+      "modesty": 0.30000001192092896,
+      "name": "Huck Finn",
+      "organization": -0.6000000238418579,
+      "patience": 0.30000001192092896,
+      "perfectionism": -0.5,
+      "prudence": -0.4000000059604645,
+      "sentimentality": -0.20000000298023224,
+      "sincerity": -0.30000001192092896,
+      "sociability": 0.10000000149011612,
+      "social_boldness": 0.4000000059604645,
+      "social_self_esteem": -0.20000000298023224,
+      "unconventionality": 0.800000011920929
+    },
+    "jim": {
+      "aesthetic_appreciation": 0.30000001192092896,
+      "anxiety": 0.5,
+      "creativity": 0.10000000149011612,
+      "dependence": 0.4000000059604645,
+      "description": "Miss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.",
+      "diligence": 0.6000000238418579,
+      "fairness": 0.6000000238418579,
+      "fearfulness": 0.6000000238418579,
+      "flexibility": 0.6000000238418579,
+      "forgiveness": 0.800000011920929,
+      "gentleness": 0.699999988079071,
+      "greed_avoidance": 0.5,
+      "id": "jim",
+      "inquisitiveness": 0.20000000298023224,
+      "liveliness": 0.20000000298023224,
+      "modesty": 0.699999988079071,
+      "name": "Jim",
+      "organization": 0.30000001192092896,
+      "patience": 0.699999988079071,
+      "perfectionism": 0.30000001192092896,
+      "prudence": 0.5,
+      "sentimentality": 0.800000011920929,
+      "sincerity": 0.699999988079071,
+      "sociability": 0.30000001192092896,
+      "social_boldness": -0.5,
+      "social_self_esteem": -0.4000000059604645,
+      "unconventionality": -0.30000001192092896
+    }
+  },
+  "objects": {},
+  "relationships": {
+    "huck:jim": {
+      "closeness": 0.3834412693977356,
+      "owner_id": "huck",
+      "power": 0.30000001192092896,
+      "target_id": "jim",
+      "trust": 0.4000000059604645
+    },
+    "jim:huck": {
+      "closeness": 0.550000011920929,
+      "owner_id": "jim",
+      "power": -0.30000001192092896,
+      "target_id": "huck",
+      "trust": 0.6000000238418579
+    }
+  },
+  "scenario": {
+    "description": "헉 시점 — 거짓말이 통하지 않자 양심의 가책을 느끼고 사과를 결심하는 과정. 짐의 Trash 연설이 헉의 자존심과 죄책감을 동시에 건드린다.",
+    "name": "Ch.15 Huck's Guilt (Session 4)",
+    "notes": [
+      "NPC: huck (주체), partner: jim",
+      "Beat 1: 짐의 분노에 당황",
+      "Beat 2: Trash 연설 → 양심의 가책 → 사과 결심"
+    ]
+  },
+  "scene": {
+    "description": "Ch.15 헉의 양심 — 거짓말 실패와 사과",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+          "praiseworthiness": -0.6
+        },
+        "description": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+        "event": {
+          "description": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+          "desirability_for_self": -0.5
+        },
+        "id": "caught",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 스스로 잘못을 인정하고 짐에게 진심으로 사과하기로 결심함",
+          "praiseworthiness": 0.6
+        },
+        "description": "양심의 가책 — 짐의 Trash 연설이 헉의 자존심을 꺾고 죄책감을 일으킴",
+        "event": {
+          "description": "짐이 헉에게 쓰레기라고 말함. 노예가 백인 소년에게 이런 말을 한다는 것 자체가 헉에게 충격이다.",
+          "desirability_for_self": -0.7
+        },
+        "id": "guilt",
+        "trigger": [
+          [
+            {
+              "above": 0.3,
+              "emotion": "Shame"
+            }
+          ],
+          [
+            {
+              "above": 0.2,
+              "emotion": "Remorse"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "huck",
+    "partner_id": "jim"
+  }
+}

@@ -418,25 +418,25 @@ fn closeness_음수_valence면_하락() {
 }
 
 #[test]
-fn trust_경계값_클램핑() {
-    // trust가 이미 높은 상태에서 큰 PW → 1.0 클램핑
-    let rel = RelationshipBuilder::new("a", "b").trust(s(0.95)).build();
-    let updated = rel.with_updated_trust(1.0, 1.0);
+fn closeness_경계값_상한_클램핑() {
+    // closeness가 이미 높은 상태에서 큰 긍정 valence → 1.0 클램핑
+    let rel = RelationshipBuilder::new("a", "b").closeness(s(0.95)).build();
+    let updated = rel.with_updated_closeness(1.0, 1.0);
     assert!(
-        updated.trust().value() <= 1.0,
-        "trust 상한 클램핑: {}",
-        updated.trust().value()
+        updated.closeness().value() <= 1.0,
+        "closeness 상한 클램핑: {}",
+        updated.closeness().value()
     );
 }
 
 #[test]
-fn trust_하한_클램핑() {
-    let rel = RelationshipBuilder::new("a", "b").trust(s(-0.95)).build();
-    let updated = rel.with_updated_trust(-1.0, 1.0);
+fn closeness_경계값_하한_클램핑() {
+    let rel = RelationshipBuilder::new("a", "b").closeness(s(-0.95)).build();
+    let updated = rel.with_updated_closeness(-1.0, 1.0);
     assert!(
-        updated.trust().value() >= -1.0,
-        "trust 하한 클램핑: {}",
-        updated.trust().value()
+        updated.closeness().value() >= -1.0,
+        "closeness 하한 클램핑: {}",
+        updated.closeness().value()
     );
 }
 
@@ -448,7 +448,7 @@ fn after_dialogue_power는_변경_없음() {
     let mut state = EmotionState::new();
     state.add(Emotion::new(EmotionType::Anger, 0.9));
 
-    let updated = rel.after_dialogue(&state, Some(-0.8), 0.5);
+    let updated = rel.after_dialogue(&state, 0.5);
 
     assert!(
         (updated.power().value() - 0.7).abs() < 0.001,

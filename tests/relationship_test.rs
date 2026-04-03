@@ -131,21 +131,21 @@ fn 극불신_배율_하한() {
 // ===========================================================================
 
 #[test]
-fn 대화후_배신하면_trust_하락() {
+fn 대화후_부정_valence이면_closeness_감소() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.5))
+        .closeness(s(0.5))
         .build();
-    let updated = rel.with_updated_trust(-0.7, 0.0);
-    assert!(updated.trust().value() < rel.trust().value());
+    let updated = rel.with_updated_closeness(-0.7, 0.0);
+    assert!(updated.closeness().value() < rel.closeness().value());
 }
 
 #[test]
-fn 대화후_의로운_행동하면_trust_상승() {
+fn 대화후_긍정_valence이면_closeness_증가() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.0))
+        .closeness(s(0.0))
         .build();
-    let updated = rel.with_updated_trust(0.8, 0.0);
-    assert!(updated.trust().value() > rel.trust().value());
+    let updated = rel.with_updated_closeness(0.8, 0.0);
+    assert!(updated.closeness().value() > rel.closeness().value());
 }
 
 #[test]
@@ -177,13 +177,14 @@ fn closeness_갱신은_매우_점진적() {
 }
 
 #[test]
-fn trust_갱신은_중간_속도() {
+fn closeness_갱신은_점진적_속도() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.5))
+        .closeness(s(0.5))
         .build();
-    let updated = rel.with_updated_trust(-0.7, 0.0);
-    let expected = 0.5 - 0.07;
-    assert!((updated.trust().value() - expected).abs() < 0.001);
+    let updated = rel.with_updated_closeness(-0.7, 0.0);
+    // delta = -0.7 * CLOSENESS_UPDATE_RATE(0.05) = -0.035
+    let expected = 0.5 - 0.035;
+    assert!((updated.closeness().value() - expected).abs() < 0.001);
 }
 
 #[test]
@@ -192,7 +193,7 @@ fn 원본_불변_검증() {
         .trust(s(0.5))
         .closeness(s(0.5))
         .build();
-    let _updated = original.with_updated_trust(-0.7, 0.0);
+    let _updated = original.with_updated_closeness(-0.7, 0.0);
 
     assert!((original.trust().value() - 0.5).abs() < 0.001);
     assert!((original.closeness().value() - 0.5).abs() < 0.001);
@@ -201,16 +202,13 @@ fn 원본_불변_검증() {
 #[test]
 fn 갱신_체이닝() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.0))
         .closeness(s(0.0))
         .build();
     let updated = rel
-        .with_updated_trust(0.8, 0.0)
-        .with_updated_closeness(0.5, 0.0);
+        .with_updated_closeness(0.5, 0.0)
+        .with_updated_closeness(0.3, 0.0);
 
-    assert!(updated.trust().value() > 0.0);
     assert!(updated.closeness().value() > 0.0);
-    assert_eq!(rel.trust().value(), 0.0);
     assert_eq!(rel.closeness().value(), 0.0);
 }
 
@@ -305,9 +303,8 @@ fn after_dialogue_종합_갱신() {
         0.8,
     ));
 
-    let updated = rel.after_dialogue(&state, Some(0.7), 0.0);
+    let updated = rel.after_dialogue(&state, 0.5);
     assert!(updated.closeness().value() > 0.0);
-    assert!(updated.trust().value() > 0.0);
 }
 
 // ===========================================================================
@@ -315,23 +312,23 @@ fn after_dialogue_종합_갱신() {
 // ===========================================================================
 
 #[test]
-fn significance_0이면_기존과_동일() {
+fn significance_0이면_기본_변동() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.0))
+        .closeness(s(0.0))
         .build();
-    let updated = rel.with_updated_trust(0.8, 0.0);
-    let expected = 0.8 * 0.1; // pw × TRUST_UPDATE_RATE
-    assert!((updated.trust().value() - expected).abs() < 0.001);
+    let updated = rel.with_updated_closeness(0.8, 0.0);
+    let expected = 0.8 * 0.05; // valence × CLOSENESS_UPDATE_RATE
+    assert!((updated.closeness().value() - expected).abs() < 0.001);
 }
 
 #[test]
 fn significance_1이면_4배_변동() {
     let rel = RelationshipBuilder::new("mu_baek", "target")
-        .trust(s(0.0))
+        .closeness(s(0.0))
         .build();
-    let updated = rel.with_updated_trust(0.8, 1.0);
-    let expected = 0.8 * 0.1 * 4.0; // pw × TRUST_UPDATE_RATE × (1 + 1.0 × 3.0)
-    assert!((updated.trust().value() - expected).abs() < 0.001);
+    let updated = rel.with_updated_closeness(0.8, 1.0);
+    let expected = 0.8 * 0.05 * 4.0; // valence × CLOSENESS_UPDATE_RATE × (1 + 1.0 × 3.0)
+    assert!((updated.closeness().value() - expected).abs() < 0.001);
 }
 
 #[test]

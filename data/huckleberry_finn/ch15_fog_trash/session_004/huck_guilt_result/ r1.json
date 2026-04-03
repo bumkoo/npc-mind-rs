@@ -1,0 +1,283 @@
+{
+  "current_situation": {
+    "desc": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+    "focusSettings": {
+      "caught": {
+        "acDesc": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+        "agentId": "huck",
+        "evDesc": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+        "evSelf": -0.5,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": -0.6
+      },
+      "guilt": {
+        "acDesc": "헉이 스스로 잘못을 인정하고 짐에게 진심으로 사과하기로 결심함",
+        "agentId": "huck",
+        "evDesc": "짐이 헉에게 쓰레기라고 말함. 노예가 백인 소년에게 이런 말을 한다는 것 자체가 헉에게 충격이다.",
+        "evSelf": -0.7,
+        "hasAction": true,
+        "hasEvent": true,
+        "hasObject": false,
+        "hasOther": false,
+        "objAp": 0,
+        "objTarget": "",
+        "otherD": 0,
+        "otherTarget": "",
+        "prospect": "",
+        "pw": 0.6
+      }
+    },
+    "npcId": "huck",
+    "partnerId": "jim",
+    "significance": 0.5
+  },
+  "format": "mind-studio/result",
+  "npcs": {
+    "huck": {
+      "aesthetic_appreciation": 0.20000000298023224,
+      "anxiety": -0.30000001192092896,
+      "creativity": 0.5,
+      "dependence": -0.699999988079071,
+      "description": "13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.",
+      "diligence": -0.30000001192092896,
+      "fairness": 0.20000000298023224,
+      "fearfulness": -0.5,
+      "flexibility": 0.5,
+      "forgiveness": 0.30000001192092896,
+      "gentleness": 0.20000000298023224,
+      "greed_avoidance": 0.4000000059604645,
+      "id": "huck",
+      "inquisitiveness": 0.6000000238418579,
+      "liveliness": 0.30000001192092896,
+      "modesty": 0.30000001192092896,
+      "name": "Huck Finn",
+      "organization": -0.6000000238418579,
+      "patience": 0.30000001192092896,
+      "perfectionism": -0.5,
+      "prudence": -0.4000000059604645,
+      "sentimentality": -0.20000000298023224,
+      "sincerity": -0.30000001192092896,
+      "sociability": 0.10000000149011612,
+      "social_boldness": 0.4000000059604645,
+      "social_self_esteem": -0.20000000298023224,
+      "unconventionality": 0.800000011920929
+    },
+    "jim": {
+      "aesthetic_appreciation": 0.30000001192092896,
+      "anxiety": 0.5,
+      "creativity": 0.10000000149011612,
+      "dependence": 0.4000000059604645,
+      "description": "Miss Watson의 노예. 온순하고 감성적이며 미신을 깊이 믿는다. 가족을 사랑하고 충직하다. 두려움이 많지만 자유를 향한 의지가 강하다. 헉에게 아버지 같은 따뜻함을 보인다.",
+      "diligence": 0.6000000238418579,
+      "fairness": 0.6000000238418579,
+      "fearfulness": 0.6000000238418579,
+      "flexibility": 0.6000000238418579,
+      "forgiveness": 0.800000011920929,
+      "gentleness": 0.699999988079071,
+      "greed_avoidance": 0.5,
+      "id": "jim",
+      "inquisitiveness": 0.20000000298023224,
+      "liveliness": 0.20000000298023224,
+      "modesty": 0.699999988079071,
+      "name": "Jim",
+      "organization": 0.30000001192092896,
+      "patience": 0.699999988079071,
+      "perfectionism": 0.30000001192092896,
+      "prudence": 0.5,
+      "sentimentality": 0.800000011920929,
+      "sincerity": 0.699999988079071,
+      "sociability": 0.30000001192092896,
+      "social_boldness": -0.5,
+      "social_self_esteem": -0.4000000059604645,
+      "unconventionality": -0.30000001192092896
+    }
+  },
+  "objects": {},
+  "relationships": {
+    "huck:jim": {
+      "closeness": 0.31751447916030884,
+      "owner_id": "huck",
+      "power": 0.30000001192092896,
+      "target_id": "jim",
+      "trust": 0.4000000059604645
+    },
+    "jim:huck": {
+      "closeness": 0.550000011920929,
+      "owner_id": "jim",
+      "power": -0.30000001192092896,
+      "target_id": "huck",
+      "trust": 0.6000000238418579
+    }
+  },
+  "scenario": {
+    "description": "헉 시점 — 거짓말이 통하지 않자 양심의 가책을 느끼고 사과를 결심하는 과정. 짐의 Trash 연설이 헉의 자존심과 죄책감을 동시에 건드린다.",
+    "name": "Ch.15 Huck's Guilt (Session 4)",
+    "notes": [
+      "NPC: huck (주체), partner: jim",
+      "Beat 1: 짐의 분노에 당황",
+      "Beat 2: Trash 연설 → 양심의 가책 → 사과 결심"
+    ]
+  },
+  "scene": {
+    "description": "Ch.15 헉의 양심 — 거짓말 실패와 사과",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+          "praiseworthiness": -0.6
+        },
+        "description": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+        "event": {
+          "description": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+          "desirability_for_self": -0.5
+        },
+        "id": "caught",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "huck",
+          "description": "헉이 스스로 잘못을 인정하고 짐에게 진심으로 사과하기로 결심함",
+          "praiseworthiness": 0.6
+        },
+        "description": "양심의 가책 — 짐의 Trash 연설이 헉의 자존심을 꺾고 죄책감을 일으킴",
+        "event": {
+          "description": "짐이 헉에게 쓰레기라고 말함. 노예가 백인 소년에게 이런 말을 한다는 것 자체가 헉에게 충격이다.",
+          "desirability_for_self": -0.7
+        },
+        "id": "guilt",
+        "trigger": [
+          [
+            {
+              "above": 0.3,
+              "emotion": "Shame"
+            }
+          ],
+          [
+            {
+              "above": 0.2,
+              "emotion": "Remorse"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "huck",
+    "partner_id": "jim"
+  },
+  "turn_history": [
+    {
+      "action": "chat_start",
+      "label": "Turn 1: chat/start (chat-1775216112424)",
+      "request": {
+        "appraise": {
+          "npc_id": "huck",
+          "partner_id": "jim",
+          "situation": {
+            "action": {
+              "agent_id": "huck",
+              "description": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+              "praiseworthiness": -0.6000000238418579
+            },
+            "description": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+            "event": {
+              "description": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+              "desirability_for_self": -0.5,
+              "other": null,
+              "prospect": null
+            },
+            "object": null
+          }
+        },
+        "session_id": "chat-1775216112424"
+      },
+      "response": {
+        "dominant": {
+          "context": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+          "emotion_type": "Reproach",
+          "intensity": 0.6446731686592102
+        },
+        "emotions": [
+          {
+            "context": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+            "emotion_type": "Distress",
+            "intensity": 0.44749999046325684
+          },
+          {
+            "context": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+            "emotion_type": "Reproach",
+            "intensity": 0.6446731686592102
+          },
+          {
+            "context": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+            "emotion_type": "Anger",
+            "intensity": 0.5460865497589111
+          }
+        ],
+        "mood": -0.5460865497589111,
+        "prompt": "[NPC: Huck Finn]\n13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.\n\n[성격]\n대담하고 독립적이며 감정을 잘 드러내지 않는다. 관용적이고 온화하며 인내심이 강하다. 자유분방하고 충동적이며 즉흥적이다. 호기심이 많고 창의적이며 관습에 얽매이지 않는다.\n\n[현재 감정]\n감정 구성:\n- 비난(강한, 지배) — 헉이 짐을 속이려고 거짓말을 했지만 들통남\n- 분노(뚜렷한) — 거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함\n- 고통(뚜렷한) — 짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.\n전체 분위기: 매우 부정적\n\n[상황]\n거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 즉각적으로 맞서고 행동으로 옮기려 한다.\n\n[말투]\n차분하고 담담하게 말하며, 동요하지 않는다. 부드럽고 배려 깊은 어조로 말한다. 거침없이 말하고, 생각나는 대로 행동한다. 비유나 독특한 표현을 즐겨 쓴다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 상위자 — 존대하되, 개인적 교류와 의견 제시 가능",
+        "trace": [
+          "  → Distress: base_val=0.500, weight=0.895, modifier=1.000, result=0.447, context=짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+          "  → Reproach: base_val=0.600, weight=0.805, modifier=1.335, result=0.645, context=헉이 짐을 속이려고 거짓말을 했지만 들통남",
+          "  → Anger: comp1_type=Reproach, comp1_val=0.645, comp2_type=Distress, comp2_val=0.447, result=0.546, context=거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함"
+        ]
+      }
+    },
+    {
+      "action": "chat_message",
+      "label": "Turn 2: chat/message [jim→huck]",
+      "request": {
+        "npc_id": "huck",
+        "pad": null,
+        "partner_id": "jim",
+        "session_id": "chat-1775216112424",
+        "situation_description": null,
+        "utterance": "~"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+          "emotion_type": "Reproach",
+          "intensity": 0.6339278817176819
+        },
+        "emotions": [
+          {
+            "context": "짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.",
+            "emotion_type": "Distress",
+            "intensity": 0.42462602257728577
+          },
+          {
+            "context": "헉이 짐을 속이려고 거짓말을 했지만 들통남",
+            "emotion_type": "Reproach",
+            "intensity": 0.6339278817176819
+          },
+          {
+            "context": "거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함",
+            "emotion_type": "Anger",
+            "intensity": 0.5236888527870178
+          }
+        ],
+        "input_pad": {
+          "arousal": 0.0,
+          "dominance": 0.0,
+          "pleasure": 0.18136382102966309
+        },
+        "mood": -0.5274142622947693,
+        "npc_response": "좋습니다. 헉 핀의 역할을 맡아 연기해 보겠습니다. 상황 설정과 지시사항을 잘 이해했습니다. \n\n**[상황: 짐과 대면, 거짓말이 들통난 직후]**\n\n(눈을 내리깔고, 턱을 긁으며, 묘하게 불편한 기색을 숨기려 노력하며)\n\n\"그렇게 말해 주시는군요. 짐. 제가 뭘 잘못했는지, 그걸 말씀해주시는군요. 솔직히 말씀드리자면, 그냥 좀 놀아보고 싶었을 뿐입니다. 그게 전부입니다. 누가 상처를 받거나 잃을 게 있는 건 아니었고요.\"\n\n(잠시 침묵. 짐의 눈을 피하며)\n\n\"모두가 장난을 치는 법을 배우는 법이 있습니다. 그리고 가끔은, 그게 제대로 되지 않습니다.\"\n\n(숨을 깊게 들이쉬고, 짐의 분노를 인정하며)\n\n\"알겠습니다. 제 마음이 짐을 실망시켰다고 말씀하시는 것 같습니다. 제가 제 짐을 짊어지려고 노력했는데, 짐은 제가 얼마나 노력하는지 알아주지 않으시는 것 같습니다. 짐이 저를 어떻게 생각하는지 모르는 것 같습니다. 짐이 헉을 어떻게 생각하는지 모르는 것 같습니다.\"\n\n(목소리를 약간 낮추고, 차분하게)\n\n\"제가 잘못했습니다. 짐이 생각하는 것보다 제가 좀 더 경솔했던 것 같습니다. 그리고 짐이 분노하시는 것도 당연하다고 생각합니다. 짐이 제가 짐을 존중하지 않았다고 생각하시는 것 같습니다. 짐의 분노는 제가 짐을 존중하지 않는다고 생각하는 짐이 저를 이해하지 못하는 결과입니다.\"\n\n(잠시 침묵. 짐의 반응을 살피며)\n\n\"이제 짐이 뭘 원하시는지 말씀해주십시오. 제가 어떻게 하면 짐의 신뢰를 되찾을 수 있을지 말씀해주십시오.\"\n\n(눈을 들어 짐을 바라보며, 솔직하고 담담하게)\n\n\"제가 짐을 실망시키지 않도록 노력하겠습니다. 약속드립니다.\"\n\n---\n\n이것이 헉 핀의 현재 감정과 상황에 맞는 연기라고 생각합니다. 혹시 추가적인 지시나 수정 사항이 있으시면 말씀해주세요.",
+        "prompt": "[NPC: Huck Finn]\n13살 소년. 자유분방하고 관습을 거부한다. 거짓말에 능하지만 중요한 순간에는 정직하다. 모험을 좋아하고 독립적이며, 사회적 편견보다 자신의 경험과 양심을 따른다.\n\n[성격]\n대담하고 독립적이며 감정을 잘 드러내지 않는다. 관용적이고 온화하며 인내심이 강하다. 자유분방하고 충동적이며 즉흥적이다. 호기심이 많고 창의적이며 관습에 얽매이지 않는다.\n\n[현재 감정]\n감정 구성:\n- 비난(강한, 지배) — 헉이 짐을 속이려고 거짓말을 했지만 들통남\n- 분노(뚜렷한) — 거짓말 실패 — 짐이 속지 않고 분노하자 헉이 당황함\n- 고통(뚜렷한) — 짐이 헉의 거짓말을 간파하고 진심으로 분노함. 헉의 장난이 통하지 않는다.\n전체 분위기: 매우 부정적\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 불만을 억누르지만 불편함이 드러나는 태도\n행동 경향: 즉각적으로 맞서고 행동으로 옮기려 한다.\n\n[말투]\n차분하고 담담하게 말하며, 동요하지 않는다. 부드럽고 배려 깊은 어조로 말한다. 거침없이 말하고, 생각나는 대로 행동한다. 비유나 독특한 표현을 즐겨 쓴다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n- 상대에게 호의적으로 대하지 않는다.\n\n[상대와의 관계]\n친밀도: 가까운\n신뢰도: 신뢰하는\n상하 관계: 상위자 — 존대하되, 개인적 교류와 의견 제시 가능",
+        "trace": []
+      }
+    }
+  ]
+}

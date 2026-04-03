@@ -74,9 +74,10 @@ fn test_mind_service_full_flow() {
         .after_dialogue(after_req)
         .expect("After dialogue failed");
 
-    // 관계 점수가 상승했는지 확인 (closeness가 0.0에서 시작했으므로 양수여야 함)
+    // closeness가 상승했는지 확인 (0.0에서 시작, 긍정 대화 후 양수여야 함)
     assert!(after_res.after.closeness > after_res.before.closeness);
-    assert!(after_res.after.trust > after_res.before.trust);
+    // trust는 after_dialogue에서 변경되지 않음 (closeness만 갱신)
+    assert!((after_res.after.trust - after_res.before.trust).abs() < 0.001);
 }
 
 #[test]
@@ -295,6 +296,7 @@ fn test_scene_persistence_and_clear() {
         npc_id: "mu_baek".into(),
         partner_id: "gyo_ryong".into(),
         description: "장면".into(),
+        significance: None,
         focuses,
     };
 
@@ -376,6 +378,7 @@ fn test_beat_transition_and_emotion_merging() {
         npc_id: "gyo_ryong".into(),
         partner_id: "mu_baek".into(),
         description: "테스트 장면".into(),
+        significance: None,
         focuses,
     };
     service.start_scene(start_req, || {}, Vec::new).unwrap();
