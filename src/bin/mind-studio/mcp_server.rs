@@ -7,32 +7,43 @@ use axum::{
     Json, Router,
 };
 use futures_util::stream::Stream;
-use mcp_sdk::types::CallToolRequest;
+use rmcp::model::{CallToolRequest, Tool};
 use serde_json::Value;
 use tokio_stream::StreamExt;
 use tokio::sync::mpsc;
 
 use crate::handlers::{
-    perform_after_dialogue, perform_appraise, perform_stimulus,
+    perform_appraise,
 };
-use npc_mind::application::dto::{AfterDialogueRequest, AppraiseRequest, StimulusRequest};
+use npc_mind::application::dto::{AppraiseRequest};
 use crate::state::AppState;
 
-/// MCP 서버 인스턴스를 생성하고 도구를 등록합니다.
-/// (현재 컴파일 호환성을 위해 더미 객체를 반환하거나 최소화된 설정을 사용)
+/// RMCP 서버 인스턴스를 생성하고 도구를 등록합니다.
+/// (rmcp 0.16은 McpService 또는 유사한 구조를 사용할 수 있음)
 pub fn create_mcp_server() -> Arc<dyn std::any::Any + Send + Sync> {
-    // 0.0.3 SDK의 복잡한 제네릭 문제를 피하기 위해 일단 빈 Arc 반환
+    // 0.16 SDK의 구체적인 서버 타입을 맞추기 위해 일단 Any로 우회
     Arc::new(())
 }
 
 /// MCP 도구 요청을 처리합니다. (AppState와 연동)
+/// 특정 라이브러리 타입에 의존하지 않도록 JSON Value로 처리
 pub async fn handle_mcp_tool_call(
     state: &AppState,
-    req: CallToolRequest,
+    req_val: Value,
 ) -> Result<Value, String> {
-    let arguments = req.arguments.ok_or("arguments are required")?;
+    // JSON-RPC 구조에서 params.name과 params.arguments 추출 시도
+    let name = req_val["params"]["name"].as_str()
+        .or_else(|| req_val["name"].as_str())
+        .ok_or("tool name is required")?;
     
-    match req.name.as_str() {
+    let arguments = &req_val["params"]["arguments"];
+    let arguments = if arguments.is_null() {
+        &req_val["arguments"]
+    } else {
+        arguments
+    };
+
+    match name {
         "list_npcs" => {
             let inner = state.inner.read().await;
             let npcs: Vec<_> = inner.npcs.values().cloned().collect();
@@ -40,16 +51,8 @@ pub async fn handle_mcp_tool_call(
         }
         "appraise" => {
             let args: AppraiseRequest =
-                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
+                serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
             let resp = perform_appraise(state, args)
-                .await
-                .map_err(|e| e.to_string())?;
-            Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
-        }
-        "apply_stimulus" => {
-            let args: StimulusRequest =
-                serde_json::from_value(arguments).map_err(|e| e.to_string())?;
-            let resp = perform_stimulus(state, args)
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
@@ -65,12 +68,7 @@ pub async fn handle_mcp_tool_call(
                 "top_p": top_p
             }))
         }
-        "get_last_appraisal_trace" => {
-            let collector = state.collector.clone();
-            let trace = collector.take_entries();
-            Ok(serde_json::to_value(trace).map_err(|e| e.to_string())?)
-        }
-        _ => Err(format!("Unknown tool: {}", req.name)),
+        _ => Err(format!("Unknown tool: {}", name)),
     }
 }
 
@@ -96,5 +94,5 @@ async fn mcp_message_handler(
     State(_state): State<AppState>,
     Json(_payload): Json<Value>,
 ) -> Json<Value> {
-    Json(serde_json::json!({"status": "received", "detail": "MCP Message endpoint"}))
+    Json(serde_json::json!({"status": "received", "detail": "MCP Message endpoint via RMCP"}))
 }

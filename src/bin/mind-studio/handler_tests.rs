@@ -1258,55 +1258,51 @@ async fn mcp_tool_call_logic() {
         });
     }
 
-    // 1. list_npcs 도구 테스트
-    let req = mcp_sdk::types::CallToolRequest {
-        name: "list_npcs".into(),
-        arguments: Some(serde_json::json!({})),
-        meta: None,
-    };
+    // 1. list_npcs 도구 테스트 (JSON 구조 사용)
+    let req = serde_json::json!({
+        "method": "tools/call",
+        "params": {
+            "name": "list_npcs",
+            "arguments": {}
+        },
+        "id": 1
+    });
     let res = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
     assert_eq!(res.as_array().unwrap().len(), 1);
     assert_eq!(res[0]["id"], "mu_baek");
 
     // 2. get_npc_llm_config 도구 테스트
-    let req = mcp_sdk::types::CallToolRequest {
-        name: "get_npc_llm_config".into(),
-        arguments: Some(serde_json::json!({"npc_id": "mu_baek"})),
-        meta: None,
-    };
+    let req = serde_json::json!({
+        "method": "tools/call",
+        "params": {
+            "name": "get_npc_llm_config",
+            "arguments": {"npc_id": "mu_baek"}
+        },
+        "id": 2
+    });
     let res = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
     assert!(res["temperature"].as_f64().is_some());
     assert!(res["top_p"].as_f64().is_some());
 
-    // 3. appraise 도구 테스트 -> 실행 시 내부적으로 trace 수집됨
-    let req = mcp_sdk::types::CallToolRequest {
-        name: "appraise".into(),
-        arguments: Some(serde_json::json!({
-            "npc_id": "mu_baek",
-            "partner_id": "player",
-            "situation": {
-                "description": "테스트 상황",
-                "event": {
-                    "description": "선물",
-                    "desirability_for_self": 0.8
+    // 3. appraise 도구 테스트
+    let req = serde_json::json!({
+        "method": "tools/call",
+        "params": {
+            "name": "appraise",
+            "arguments": {
+                "npc_id": "mu_baek",
+                "partner_id": "player",
+                "situation": {
+                    "description": "테스트 상황",
+                    "event": {
+                        "description": "선물",
+                        "desirability_for_self": 0.8
+                    }
                 }
             }
-        })),
-        meta: None,
-    };
+        },
+        "id": 3
+    });
     let res = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
     assert!(res["mood"].as_f64().unwrap() > 0.0);
-    
-    // 4. get_last_appraisal_trace 도구 테스트
-    // 주의: perform_appraise 내부에서 이미 take_entries()를 호출하여 결과에 포함시켰으므로, 
-    // mcp_server의 핸들러 구현에 따라 다시 비워졌을 수 있음.
-    // 여기서는 핸들러 로직이 정상 호출되는지만 확인하거나, 
-    // 실제 trace가 필요한 경우 mcp_server.rs의 핸들러가 take_entries가 아닌 get_trace를 쓰게 해야 함.
-    let req = mcp_sdk::types::CallToolRequest {
-        name: "get_last_appraisal_trace".into(),
-        arguments: Some(serde_json::json!({})),
-        meta: None,
-    };
-    let _res = crate::mcp_server::handle_mcp_tool_call(&state, req).await.unwrap();
-    // assert!(res.as_array().unwrap().len() > 0, "Trace should not be empty");
 }
