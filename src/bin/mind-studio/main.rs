@@ -74,6 +74,9 @@ fn build_api_router(state: AppState) -> Router {
         )
         .route("/api/chat/end", post(handlers::chat_handlers::chat_end));
 
+    // MCP 라우터 병합
+    let router = router.merge(mcp_server::mcp_router());
+
     router.with_state(state)
 }
 
@@ -131,6 +134,10 @@ async fn main() {
 
     let analyzer = init_analyzer();
     let mut state = AppState::new(collector, analyzer);
+
+    // MCP 서버 초기화
+    let mcp_server = mcp_server::create_mcp_server();
+    state = state.with_mcp(mcp_server);
 
     // chat feature 활성 시 RigChatAdapter 초기화
     #[cfg(feature = "chat")]
