@@ -64,6 +64,23 @@ pub fn create_mcp_server() -> Arc<Server> {
         })),
     );
 
+    // 4. NPC별 권장 LLM 설정 조회
+    builder = builder.tool(
+        Tool::new("get_npc_llm_config", "NPC의 성격에 최적화된 LLM 생성 파라미터(Temperature, Top P)를 조회합니다.")
+            .input_schema(serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "npc_id": { "type": "string" }
+                },
+                "required": ["npc_id"]
+            }))
+    );
+
+    // 5. 마지막 심리 평가 추적 조회
+    builder = builder.tool(
+        Tool::new("get_last_appraisal_trace", "가장 최근에 실행된 감정 평가의 상세 추론 로그(Trace)를 조회합니다.")
+    );
+
     Arc::new(builder.build())
 }
 
@@ -93,6 +110,22 @@ pub async fn handle_mcp_tool_call(
                 .await
                 .map_err(|e| e.to_string())?;
             Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+        }
+        "get_npc_llm_config" => {
+            let npc_id = req.arguments["npc_id"].as_str().ok_or("npc_id is required")?;
+            let inner = state.inner.read().await;
+            let npc = inner.npcs.get(npc_id).ok_or_else(|| format!("NPC {} not found", npc_id))?;
+            let (temp, top_p) = npc.derive_llm_parameters();
+            Ok(serde_json::json!({
+                "npc_id": npc_id,
+                "temperature": temp,
+                "top_p": top_p
+            }))
+        }
+        "get_last_appraisal_trace" => {
+            let collector = state.collector.clone();
+            let trace = collector.take_entries(); // 수집된 트레이스 가져오기
+            Ok(serde_json::to_value(trace).map_err(|e| e.to_string())?)
         }
         _ => Err(format!("Unknown tool: {}", req.name)),
     }
