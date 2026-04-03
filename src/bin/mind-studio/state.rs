@@ -283,6 +283,11 @@ impl NpcProfile {
             })
             .build()
     }
+
+    /// 성격 기반 LLM 파라미터 유도 (도메인 로직 위임)
+    pub fn derive_llm_parameters(&self) -> (f32, f32) {
+        self.to_npc().personality().derive_llm_parameters()
+    }
 }
 
 impl RelationshipData {

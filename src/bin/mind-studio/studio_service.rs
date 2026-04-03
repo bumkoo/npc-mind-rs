@@ -4,7 +4,11 @@ use npc_mind::application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse,
     StimulusRequest, StimulusResponse, SceneRequest, SceneFocusInput, SceneInfoResult,
 };
-use npc_mind::application::mind_service::MindService;
+#[cfg(feature = "chat")]
+use npc_mind::application::dialogue_test_service::{
+    ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
+};
+use npc_mind::application::mind_service::{MindService};
 use npc_mind::domain::personality::Npc;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::emotion::{EmotionState, Scene};
@@ -288,14 +292,18 @@ impl StudioService {
         
         let mut inner = state.inner.write().await;
         let collector = state.collector.clone();
-        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
         
-        let npc = service.repository().get_npc(&req.appraise.npc_id).ok_or_else(|| AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id)))?;
+        // 1. NPC 정보 조회 및 파라미터 유도 (NpcProfile 메서드 사용)
+        let npc_profile = inner.npcs.get(&req.appraise.npc_id).ok_or_else(|| AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id)))?;
+        let (temp, top_p) = npc_profile.derive_llm_parameters();
+
+        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
         let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
         let response = result.format(&*state.formatter);
         
         let mut llm_model_info = state.llm_info.as_ref().map(|info| info.get_model_info()).unwrap_or_default();
-        llm_model_info.apply_npc_personality(&npc);
+        llm_model_info.temperature = Some(temp);
+        llm_model_info.top_p = Some(top_p);
         
         chat_port.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone())).await.map_err(|e| AppError::Internal(e.to_string()))?;
         

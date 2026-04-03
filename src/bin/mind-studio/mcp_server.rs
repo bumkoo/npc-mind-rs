@@ -121,13 +121,14 @@ impl MindMcpService {
                 let npc_id = arguments["npc_id"].as_str().ok_or("npc_id is required")?;
                 let inner = self.state.inner.read().await;
                 let npc_profile = inner.npcs.get(npc_id).ok_or_else(|| format!("NPC {} not found", npc_id))?;
-                let (temp, top_p) = npc_profile.to_npc().derive_llm_parameters();
+                let (temp, top_p) = npc_profile.derive_llm_parameters();
                 Ok(serde_json::json!({
                     "npc_id": npc_id,
                     "temperature": temp,
                     "top_p": top_p
                 }))
             }
+
             _ => Err(format!("Unknown tool: {}", name)),
         }
     }
