@@ -114,7 +114,7 @@ src/
   bin/mind-studio/                # NPC Mind Studio (Axum 서버)
     main.rs                       # Axum 웹 서버 진입점
     handlers.rs                   # HTTP 엔드포인트 핸들러 (perform_* 공통 로직 포함)
-    mcp_server.rs                 # [NEW] Rust 네이티브 MCP 서버 (SSE)
+    mcp_server.rs                 # Rust 네이티브 MCP 서버 (SSE, initialize/ping/notifications 프로토콜 지원)
     handler_tests.rs              # 핸들러 단위 테스트
     state.rs                      # 공유 애플리케이션 상태 (mcp_server 포함)
     trace_collector.rs            # Appraisal Trace 수집기

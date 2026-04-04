@@ -1,0 +1,126 @@
+{
+  "npcs": {
+    "shu_lien": {
+      "id": "shu_lien",
+      "name": "수련",
+      "description": "절제의 여검객. 의무와 명예를 삶의 기둥으로 삼는다. 죽은 약혼자(무백의 의형제 맹사초)에 대한 의리가 평생의 족쇄가 되어, 무백을 향한 마음을 깊이 감추고 있다. 감정이 풍부하나 이를 절제하는 데 평생을 단련했다.",
+      "sincerity": 0.8,
+      "fairness": 0.9,
+      "greed_avoidance": 0.7,
+      "modesty": 0.6,
+      "fearfulness": -0.3,
+      "anxiety": 0.2,
+      "dependence": -0.5,
+      "sentimentality": 0.7,
+      "social_self_esteem": 0,
+      "social_boldness": 0,
+      "sociability": 0,
+      "liveliness": 0,
+      "forgiveness": 0.5,
+      "gentleness": 0.6,
+      "flexibility": 0.3,
+      "patience": 0.9,
+      "organization": 0.6,
+      "diligence": 0.8,
+      "perfectionism": 0.5,
+      "prudence": 0.9,
+      "aesthetic_appreciation": 0,
+      "inquisitiveness": 0,
+      "creativity": 0,
+      "unconventionality": 0
+    },
+    "mu_baek": {
+      "id": "mu_baek",
+      "name": "무백",
+      "description": "정의로운 검객. 의리와 절제를 중시한다. 평생 수련을 사랑했으나 의형제의 약혼녀라는 이유로 마음을 숨겨왔다. 이번 전투에서 죽을 뻔한 후, 더 이상 감정을 숨길 수 없음을 깨달았다.",
+      "sincerity": 0.8,
+      "fairness": 0.7,
+      "greed_avoidance": 0.6,
+      "modesty": 0.5,
+      "fearfulness": -0.6,
+      "anxiety": -0.4,
+      "dependence": -0.7,
+      "sentimentality": 0.2,
+      "social_self_esteem": 0,
+      "social_boldness": 0,
+      "sociability": 0,
+      "liveliness": 0,
+      "forgiveness": 0.6,
+      "gentleness": 0.7,
+      "flexibility": 0.2,
+      "patience": 0.8,
+      "organization": 0.4,
+      "diligence": 0.8,
+      "perfectionism": 0.6,
+      "prudence": 0.7,
+      "aesthetic_appreciation": 0,
+      "inquisitiveness": 0,
+      "creativity": 0,
+      "unconventionality": 0
+    }
+  },
+  "relationships": {
+    "shu_lien:mu_baek": {
+      "owner_id": "shu_lien",
+      "target_id": "mu_baek",
+      "closeness": 0.7,
+      "trust": 0.8,
+      "power": -0.1
+    },
+    "mu_baek:shu_lien": {
+      "owner_id": "mu_baek",
+      "target_id": "shu_lien",
+      "closeness": 0.7,
+      "trust": 0.8,
+      "power": 0.1
+    }
+  },
+  "objects": {},
+  "scenario": {
+    "name": "와호장룡 — 억눌린 고백",
+    "description": "전투 후 달빛 아래. 무백이 수련에게 평생 숨겨온 마음을 고백한다. 수련은 죽은 약혼자에 대한 의리와 자신의 진심 사이에서 갈등한다. 절제와 진심의 대결.",
+    "notes": []
+  },
+  "turn_history": [],
+  "current_situation": null,
+  "scene": {
+    "description": "억눌린 고백 — 무백의 진심과 수련의 의무 사이의 갈등",
+    "npc_id": "shu_lien",
+    "partner_id": "mu_baek",
+    "focuses": [
+      {
+        "id": "duty_restraint",
+        "description": "의무감으로 감정 억제 — 죽은 약혼자에 대한 도리가 무백의 고백을 받아들일 수 없게 한다",
+        "trigger": null,
+        "event": {
+          "description": "무백이 의형제의 약속을 넘어 감정을 꺼내려 한다. 원하는 마음과 두려움이 공존한다.",
+          "desirability_for_self": -0.4
+        },
+        "action": {
+          "agent_id": "mu_baek",
+          "description": "무백이 의리를 저버리고 금기의 감정을 드러내려 한다",
+          "praiseworthiness": -0.3
+        }
+      },
+      {
+        "id": "heart_opening",
+        "description": "마음이 열림 — 무백의 진심에 수련의 방어가 무너지고 자신의 감정을 인정하기 시작한다",
+        "trigger": [
+          [
+            { "emotion": "Fear", "below": 0.3 },
+            { "emotion": "Distress", "below": 0.4 }
+          ]
+        ],
+        "event": {
+          "description": "무백의 진심을 받아들이며 자신의 마음도 인정하기 시작한다",
+          "desirability_for_self": 0.6
+        },
+        "action": {
+          "agent_id": "mu_baek",
+          "description": "무백이 용기를 내어 진심을 고백하고, 수련의 선택을 존중한다",
+          "praiseworthiness": 0.5
+        }
+      }
+    ]
+  }
+}

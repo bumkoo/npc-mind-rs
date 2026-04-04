@@ -70,21 +70,21 @@ impl MindMcpService {
     pub fn list_tools(&self) -> Vec<Value> {
         vec![
             // 세계 구축 (CRUD)
-            serde_json::json!({ "name": "list_npcs", "description": "등록된 모든 NPC 목록을 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "create_npc", "description": "NPC를 생성하거나 수정합니다 (HEXACO 24 facets).", "input_schema": { "type": "object", "properties": { "npc": { "type": "object" } }, "required": ["npc"] } }),
-            serde_json::json!({ "name": "delete_npc", "description": "NPC를 삭제합니다.", "input_schema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }),
-            serde_json::json!({ "name": "list_relationships", "description": "모든 관계 목록을 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "create_relationship", "description": "관계 정보를 생성하거나 수정합니다.", "input_schema": { "type": "object", "properties": { "rel": { "type": "object" } }, "required": ["rel"] } }),
-            serde_json::json!({ "name": "delete_relationship", "description": "관계를 삭제합니다.", "input_schema": { "type": "object", "properties": { "owner_id": { "type": "string" }, "target_id": { "type": "string" } }, "required": ["owner_id", "target_id"] } }),
-            serde_json::json!({ "name": "list_objects", "description": "모든 오브젝트 목록을 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "create_object", "description": "오브젝트 정보를 생성하거나 수정합니다.", "input_schema": { "type": "object", "properties": { "obj": { "type": "object" } }, "required": ["obj"] } }),
-            serde_json::json!({ "name": "delete_object", "description": "오브젝트를 삭제합니다.", "input_schema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }),
+            serde_json::json!({ "name": "list_npcs", "description": "등록된 모든 NPC 목록을 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "create_npc", "description": "NPC를 생성하거나 수정합니다 (HEXACO 24 facets).", "inputSchema": { "type": "object", "properties": { "npc": { "type": "object" } }, "required": ["npc"] } }),
+            serde_json::json!({ "name": "delete_npc", "description": "NPC를 삭제합니다.", "inputSchema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }),
+            serde_json::json!({ "name": "list_relationships", "description": "모든 관계 목록을 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "create_relationship", "description": "관계 정보를 생성하거나 수정합니다.", "inputSchema": { "type": "object", "properties": { "rel": { "type": "object" } }, "required": ["rel"] } }),
+            serde_json::json!({ "name": "delete_relationship", "description": "관계를 삭제합니다.", "inputSchema": { "type": "object", "properties": { "owner_id": { "type": "string" }, "target_id": { "type": "string" } }, "required": ["owner_id", "target_id"] } }),
+            serde_json::json!({ "name": "list_objects", "description": "모든 오브젝트 목록을 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "create_object", "description": "오브젝트 정보를 생성하거나 수정합니다.", "inputSchema": { "type": "object", "properties": { "obj": { "type": "object" } }, "required": ["obj"] } }),
+            serde_json::json!({ "name": "delete_object", "description": "오브젝트를 삭제합니다.", "inputSchema": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"] } }),
 
             // 감정 파이프라인
             serde_json::json!({
                 "name": "appraise",
                 "description": "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다.",
-                "input_schema": {
+                "inputSchema": {
                     "type": "object",
                     "properties": {
                         "npc_id": { "type": "string" },
@@ -97,41 +97,41 @@ impl MindMcpService {
             serde_json::json!({
                 "name": "apply_stimulus",
                 "description": "대화 중 발생하는 PAD 자극을 적용하여 감정을 갱신하고 Beat 전환을 체크합니다.",
-                "input_schema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
+                "inputSchema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
             }),
             serde_json::json!({
                 "name": "analyze_utterance",
                 "description": "대사 텍스트를 분석하여 PAD 수치를 추출합니다 (embed feature 필요).",
-                "input_schema": { "type": "object", "properties": { "utterance": { "type": "string" } }, "required": ["utterance"] }
+                "inputSchema": { "type": "object", "properties": { "utterance": { "type": "string" } }, "required": ["utterance"] }
             }),
             serde_json::json!({
                 "name": "generate_guide",
                 "description": "현재 감정 상태 기반으로 연기 가이드를 재생성합니다.",
-                "input_schema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
+                "inputSchema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
             }),
             serde_json::json!({
                 "name": "after_dialogue",
                 "description": "대화를 종료하고 감정 상태를 관계 변화에 반영합니다.",
-                "input_schema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
+                "inputSchema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
             }),
 
             // 상태 관리
-            serde_json::json!({ "name": "get_history", "description": "현재 세션의 턴별 히스토리를 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "get_situation", "description": "현재 상황 설정 패널의 상태를 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "get_history", "description": "현재 세션의 턴별 히스토리를 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "get_situation", "description": "현재 상황 설정 패널의 상태를 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
             serde_json::json!({
                 "name": "update_situation",
                 "description": "상황 설정 패널 상태를 업데이트합니다 (WebUI 동기화용).",
-                "input_schema": { "type": "object", "properties": { "body": { "type": "object" } }, "required": ["body"] }
+                "inputSchema": { "type": "object", "properties": { "body": { "type": "object" } }, "required": ["body"] }
             }),
             serde_json::json!({
                 "name": "get_test_report",
                 "description": "현재 테스트 결과 분석 보고서(마크다운)를 조회합니다.",
-                "input_schema": { "type": "object", "properties": {} }
+                "inputSchema": { "type": "object", "properties": {} }
             }),
             serde_json::json!({
                 "name": "update_test_report",
                 "description": "테스트 결과 분석 보고서(마크다운)를 작성하거나 업데이트합니다.",
-                "input_schema": {
+                "inputSchema": {
                     "type": "object",
                     "properties": { "content": { "type": "string", "description": "마크다운 형식의 보고서 내용" } },
                     "required": ["content"]
@@ -139,16 +139,16 @@ impl MindMcpService {
             }),
 
             // 시나리오 관리
-            serde_json::json!({ "name": "list_scenarios", "description": "사용 가능한 시나리오 파일 목록을 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "get_scenario_meta", "description": "현재 로드된 시나리오의 메타데이터를 조회합니다.", "input_schema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "save_scenario", "description": "현재 상태를 지정된 경로에 JSON 파일로 저장합니다.", "input_schema": { "type": "object", "properties": { "path": { "type": "string" }, "save_type": { "type": "string" } }, "required": ["path"] } }),
-            serde_json::json!({ "name": "load_scenario", "description": "지정된 경로의 시나리오 파일을 로드합니다.", "input_schema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
+            serde_json::json!({ "name": "list_scenarios", "description": "사용 가능한 시나리오 파일 목록을 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "get_scenario_meta", "description": "현재 로드된 시나리오의 메타데이터를 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "save_scenario", "description": "현재 상태를 지정된 경로에 JSON 파일로 저장합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "save_type": { "type": "string" } }, "required": ["path"] } }),
+            serde_json::json!({ "name": "load_scenario", "description": "지정된 경로의 시나리오 파일을 로드합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
             
             // 기타
             serde_json::json!({
                 "name": "get_npc_llm_config",
                 "description": "NPC의 성격에 최적화된 LLM 생성 파라미터를 조회합니다.",
-                "input_schema": { "type": "object", "properties": { "npc_id": { "type": "string" } }, "required": ["npc_id"] }
+                "inputSchema": { "type": "object", "properties": { "npc_id": { "type": "string" } }, "required": ["npc_id"] }
             })
         ]
     }
@@ -313,6 +313,7 @@ async fn mcp_sse_handler(
         .as_ref()
         .ok_or_else(|| AppError::Internal("MCP server not initialized".into()))?;
     let (session_id, rx) = mcp.session_manager.create_session().await;
+        tracing::info!("[MCP] SSE 연결: session={}", session_id);
 
     let initial_event = Event::default()
         .event("endpoint")
@@ -337,15 +338,48 @@ async fn mcp_message_handler(
         .ok_or_else(|| AppError::Internal("MCP server not initialized".into()))?;
     let id = payload["id"].clone();
     let method = payload["method"].as_str().unwrap_or("");
+    tracing::info!("[MCP] 요청: method={}, id={}, session={}", method, id, query.session_id);
+
+    // notifications (id 없음) — 응답 불필요, 즉시 리턴
+    if method.starts_with("notifications/") {
+        return Ok(Json(serde_json::json!({"status": "ok"})));
+    }
 
     let result = match method {
+        "initialize" => {
+            Ok(serde_json::json!({
+                "protocolVersion": "2024-11-05",
+                "serverInfo": {
+                    "name": "npc-mind-studio",
+                    "version": "0.1.0"
+                },
+                "capabilities": {
+                    "tools": {}
+                }
+            }))
+        },
+        "ping" => {
+            Ok(serde_json::json!({}))
+        },
         "tools/list" => {
             Ok(serde_json::json!({ "tools": mcp.list_tools() }))
         },
         "tools/call" => {
             let name = payload["params"]["name"].as_str().unwrap_or("");
             let arguments = &payload["params"]["arguments"];
-            mcp.call_tool(name, arguments).await
+            tracing::info!("[MCP] tools/call: name={}", name);
+            let tool_result = mcp.call_tool(name, arguments).await;
+            tracing::info!("[MCP] tools/call 결과: name={}, ok={}", name, tool_result.is_ok());
+            // MCP CallToolResult 표준 형식으로 래핑
+            match tool_result {
+                Ok(val) => Ok(serde_json::json!({
+                    "content": [{ "type": "text", "text": val.to_string() }]
+                })),
+                Err(e) => Ok(serde_json::json!({
+                    "content": [{ "type": "text", "text": e }],
+                    "isError": true
+                }))
+            }
         },
         _ => Err(format!("Method not found: {}", method)),
     };
@@ -357,7 +391,8 @@ async fn mcp_message_handler(
                 "id": id,
                 "result": res_val
             });
-            let _ = mcp.session_manager.send_to_session(&query.session_id, json_res.to_string()).await;
+            let send_ok = mcp.session_manager.send_to_session(&query.session_id, json_res.to_string()).await;
+            tracing::info!("[MCP] SSE 응답 전송: method={}, id={}, send_ok={}", method, id, send_ok.is_ok());
             Ok(Json(serde_json::json!({"status": "sent"})))
         },
         Err(e) => {
@@ -366,7 +401,8 @@ async fn mcp_message_handler(
                 "id": id,
                 "error": { "code": -32603, "message": e }
             });
-            let _ = mcp.session_manager.send_to_session(&query.session_id, json_err.to_string()).await;
+            let send_ok = mcp.session_manager.send_to_session(&query.session_id, json_err.to_string()).await;
+            tracing::warn!("[MCP] SSE 에러 전송: method={}, err={}, send_ok={}", method, e, send_ok.is_ok());
             Ok(Json(serde_json::json!({"status": "error_sent"})))
         }
     }
