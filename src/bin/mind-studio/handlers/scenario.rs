@@ -2,6 +2,10 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use npc_mind::application::dto::*;
+#[cfg(feature = "embed")]
+use npc_mind::ports::UtteranceAnalyzer;
+#[cfg(feature = "embed")]
+use serde::{Deserialize, Serialize};
 use crate::state::*;
 use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
 use crate::repository::{ReadOnlyAppStateRepo};
@@ -101,7 +105,7 @@ pub async fn guide(
             req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
         }
     }
-    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+    let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
     let result = service.generate_guide(req)?;
     Ok(Json(result.format(&*state.formatter)))
 }
@@ -152,9 +156,6 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     *inner = loaded;
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }
-
-#[cfg(feature = "embed")]
-use serde_json::Value;
 
 #[cfg(feature = "embed")]
 #[derive(Deserialize)]

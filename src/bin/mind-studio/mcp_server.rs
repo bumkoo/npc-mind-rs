@@ -38,6 +38,7 @@ impl McpSessionManager {
         (session_id, rx)
     }
 
+    #[allow(dead_code)]
     pub async fn remove_session(&self, id: &str) {
         self.sessions.write().await.remove(id);
     }
@@ -146,29 +147,34 @@ pub fn mcp_router() -> Router<AppState> {
 
 async fn mcp_sse_handler(
     State(state): State<AppState>,
-) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    let mcp = state.mcp_server.as_ref().expect("MCP server not initialized");
+) -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, AppError> {
+    let mcp = state
+        .mcp_server
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("MCP server not initialized".into()))?;
     let (session_id, rx) = mcp.session_manager.create_session().await;
 
     let initial_event = Event::default()
         .event("endpoint")
         .data(format!("/mcp/message?session_id={}", session_id));
 
-    let stream = tokio_stream::wrappers::ReceiverStream::new(rx)
-        .map(|msg| Ok(Event::default().data(msg)));
+    let stream = tokio_stream::wrappers::ReceiverStream::new(rx).map(|msg| Ok(Event::default().data(msg)));
 
-    let combined_stream = futures_util::stream::once(async move { Ok(initial_event) })
-        .chain(stream);
+    let combined_stream =
+        futures_util::stream::once(async move { Ok(initial_event) }).chain(stream);
 
-    Sse::new(combined_stream)
+    Ok(Sse::new(combined_stream))
 }
 
 async fn mcp_message_handler(
     State(state): State<AppState>,
     Query(query): Query<SessionQuery>,
     Json(payload): Json<Value>,
-) -> Json<Value> {
-    let mcp = state.mcp_server.as_ref().unwrap();
+) -> Result<Json<Value>, AppError> {
+    let mcp = state
+        .mcp_server
+        .as_ref()
+        .ok_or_else(|| AppError::Internal("MCP server not initialized".into()))?;
     let id = payload["id"].clone();
     let method = payload["method"].as_str().unwrap_or("");
     
@@ -192,7 +198,7 @@ async fn mcp_message_handler(
                 "result": res_val
             });
             let _ = mcp.session_manager.send_to_session(&query.session_id, json_res.to_string()).await;
-            Json(serde_json::json!({"status": "sent"}))
+            Ok(Json(serde_json::json!({"status": "sent"})))
         },
         Err(e) => {
             let json_err = serde_json::json!({
@@ -201,7 +207,7 @@ async fn mcp_message_handler(
                 "error": { "code": -32603, "message": e }
             });
             let _ = mcp.session_manager.send_to_session(&query.session_id, json_err.to_string()).await;
-            Json(serde_json::json!({"status": "error_sent"}))
+            Ok(Json(serde_json::json!({"status": "error_sent"})))
         }
     }
 }

@@ -11,6 +11,9 @@ use crate::ports::{Appraiser, StimulusProcessor};
 // 저장소 포트 재노출
 pub use crate::ports::{EmotionStore, MindRepository, NpcWorld, SceneStore};
 
+use super::relationship_service::RelationshipService;
+use super::scene_service::SceneService;
+use super::situation_service::SituationService;
 use super::dto::*;
 
 /// Mind 서비스 계층에서 발생하는 오류
@@ -72,6 +75,9 @@ pub struct MindService<
     repository: R,
     appraiser: A,
     stimulus_processor: S,
+    relationship_service: RelationshipService,
+    scene_service: SceneService,
+    situation_service: SituationService,
 }
 
 impl<R: MindRepository> MindService<R> {
@@ -83,6 +89,9 @@ impl<R: MindRepository> MindService<R> {
             repository,
             appraiser: AppraisalEngine,
             stimulus_processor: StimulusEngine,
+            relationship_service: RelationshipService::new(),
+            scene_service: SceneService::new(),
+            situation_service: SituationService::new(),
         }
     }
 }
@@ -97,6 +106,9 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             repository,
             appraiser,
             stimulus_processor,
+            relationship_service: RelationshipService::new(),
+            scene_service: SceneService::new(),
+            situation_service: SituationService::new(),
         }
     }
 
@@ -111,6 +123,10 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
     pub fn repository(&self) -> &R {
         &self.repository
     }
+
+    // ---------------------------------------------------------------------------
+    // 도메인 변환 헬퍼 (ARCH-2: DTO에서 이동됨)
+    // ---------------------------------------------------------------------------
 
     // ---------------------------------------------------------------------------
     // 공통 내부 헬퍼 (중복 제거)
@@ -188,9 +204,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<AppraiseResult, MindServiceError> {
         let (npc, relationship) = self.prepare_context(&req.npc_id, &req.partner_id)?;
-        let situation = req
-            .situation
-            .to_domain(&self.repository, &req.npc_id, &req.partner_id)?;
+        let situation = self.situation_service.to_situation(&self.repository, &req.situation, &req.npc_id, &req.partner_id)?;
 
         Ok(
             self.execute_appraise_workflow(
@@ -243,7 +257,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         if let Some((mut scene, focus)) = self
             .repository
             .get_scene()
-            .and_then(|s| s.check_trigger(&stimulated_state).cloned().map(|f| (s, f)))
+            .and_then(|s| self.scene_service.check_trigger(&s, &stimulated_state).map(|f| (s, f)))
         {
             return self.transition_beat(
                 &req.npc_id,
@@ -369,7 +383,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         let focuses: Vec<SceneFocus> = req
             .focuses
             .iter()
-            .map(|f| f.to_domain(&self.repository, &req.npc_id, &req.partner_id))
+            .map(|f| self.situation_service.to_scene_focus(&self.repository, f, &req.npc_id, &req.partner_id))
             .collect::<Result<Vec<_>, _>>()?;
 
         let focus_count = focuses.len();
@@ -404,21 +418,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             };
         };
 
-        let active_id = scene.active_focus_id();
-        let focus_infos = scene
-            .focuses()
-            .iter()
-            .map(|f| FocusInfoItem::from_domain(f, active_id == Some(f.id.as_str())))
-            .collect();
-
-        SceneInfoResult {
-            has_scene: true,
-            npc_id: Some(scene.npc_id().to_string()),
-            partner_id: Some(scene.partner_id().to_string()),
-            active_focus_id: scene.active_focus_id().map(|s| s.to_string()),
-            significance: Some(scene.significance()),
-            focuses: focus_infos,
-        }
+        self.scene_service.build_scene_info(&scene)
     }
 
     /// 시나리오 로드 시 Scene Focus를 직접 복원합니다.
@@ -545,23 +545,12 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             .get_emotion_state(&req.npc_id)
             .ok_or(MindServiceError::EmotionStateNotFound)?;
 
-        let before = RelationshipValues {
-            closeness: relationship.closeness().value(),
-            trust: relationship.trust().value(),
-            power: relationship.power().value(),
-        };
-
-        let significance = req.significance.unwrap_or(0.0).clamp(0.0, 1.0);
-        let new_rel = relationship.after_dialogue(&emotion_state, significance);
-
-        let after = RelationshipValues {
-            closeness: new_rel.closeness().value(),
-            trust: new_rel.trust().value(),
-            power: new_rel.power().value(),
-        };
+        let (new_rel, response) = self
+            .relationship_service
+            .update_relationship(&relationship, &emotion_state, req);
 
         self.repository
             .save_relationship(&req.npc_id, &req.partner_id, new_rel);
-        Ok(AfterDialogueResponse { before, after })
+        Ok(response)
     }
 }

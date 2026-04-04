@@ -6,6 +6,75 @@ use npc_mind::application::mind_service::MindServiceError;
 use serde::{Deserialize, Serialize};
 use crate::state::TurnRecord;
 
+/// 공통 CRUD 핸들러 구현 매크로 (단일 ID 기준)
+#[macro_export]
+macro_rules! impl_crud_handlers {
+    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident) => {
+        pub async fn $list_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>
+        ) -> axum::Json<Vec<$item_type>> {
+            let inner = state.inner.read().await;
+            let mut items: Vec<$item_type> = inner.$field.values().cloned().collect();
+            items.sort_by(|a, b| a.id.cmp(&b.id));
+            axum::Json(items)
+        }
+
+        pub async fn $upsert_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::Json(item): axum::Json<$item_type>,
+        ) -> axum::http::StatusCode {
+            let mut inner = state.inner.write().await;
+            inner.$field.insert(item.id.clone(), item);
+            inner.scenario_modified = true;
+            axum::http::StatusCode::OK
+        }
+
+        pub async fn $delete_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::Path(id): axum::extract::Path<String>,
+        ) -> axum::http::StatusCode {
+            let mut inner = state.inner.write().await;
+            inner.$field.remove(&id);
+            inner.scenario_modified = true;
+            axum::http::StatusCode::OK
+        }
+    };
+
+    // 관계(Relationship) 전용 — .key() 메서드 활용
+    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, relationship) => {
+        pub async fn $list_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>
+        ) -> axum::Json<Vec<$item_type>> {
+            let inner = state.inner.read().await;
+            let mut items: Vec<$item_type> = inner.$field.values().cloned().collect();
+            items.sort_by(|a, b| a.key().cmp(&b.key()));
+            axum::Json(items)
+        }
+
+        pub async fn $upsert_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::Json(rel): axum::Json<$item_type>,
+        ) -> axum::http::StatusCode {
+            let mut inner = state.inner.write().await;
+            let key = rel.key();
+            inner.$field.insert(key, rel);
+            inner.scenario_modified = true;
+            axum::http::StatusCode::OK
+        }
+
+        pub async fn $delete_fn(
+            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::Path((owner, target)): axum::extract::Path<(String, String)>,
+        ) -> axum::http::StatusCode {
+            let mut inner = state.inner.write().await;
+            let key = format!("{}:{}", owner, target);
+            inner.$field.remove(&key);
+            inner.scenario_modified = true;
+            axum::http::StatusCode::OK
+        }
+    };
+}
+
 pub mod npc;
 pub mod relationship;
 pub mod object;
@@ -39,6 +108,7 @@ pub enum AppError {
     Service(#[from] MindServiceError),
     #[error("Internal error: {0}")]
     Internal(String),
+    #[allow(dead_code)]
     #[error("Not found: {0}")]
     NotFound(String),
     #[error("Not implemented: {0}")]

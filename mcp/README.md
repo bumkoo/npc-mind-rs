@@ -22,10 +22,28 @@ pip install -r mcp/requirements.txt
 
 AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
 
+### 방법 1: Rust 네이티브 통합 (추천 - 단일 서버)
+
+Mind Studio 서버 자체의 SSE 엔드포인트를 직접 사용합니다. 별도의 Python 서버가 필요 없습니다.
+
 ```json
 {
   "mcpServers": {
     "mind-studio": {
+      "url": "http://localhost:3000/mcp/sse"
+    }
+  }
+}
+```
+
+### 방법 2: Python 브릿지 서버 (기존 방식)
+
+Python 기반의 MCP 서버를 통해 HTTP API를 호출합니다.
+
+```json
+{
+  "mcpServers": {
+    "mind-studio-py": {
       "command": "python",
       "args": ["/absolute/path/to/npc-mind-rs/mcp/mind_studio_server.py"],
       "env": {

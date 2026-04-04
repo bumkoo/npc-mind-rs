@@ -7,7 +7,6 @@
 use axum::Router;
 use axum::routing::{delete, get, post};
 use std::net::SocketAddr;
-use std::sync::Arc;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing_subscriber::layer::SubscriberExt;
@@ -48,6 +47,7 @@ async fn main() {
     // chat feature 활성 시 RigChatAdapter 초기화
     #[cfg(feature = "chat")]
     {
+        use std::sync::Arc;
         let chat_url = std::env::var("NPC_MIND_CHAT_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
         let chat_model = std::env::var("NPC_MIND_CHAT_MODEL").unwrap_or_else(|_| "model".to_string());
@@ -62,11 +62,15 @@ async fn main() {
     let app = build_api_router(state);
 
     // 3. 서버 실행
+    let host = std::env::var("MIND_STUDIO_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = std::env::var("MIND_STUDIO_PORT")
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(3000);
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let addr_str = format!("{}:{}", host, port);
+    let addr: SocketAddr = addr_str
+        .parse()
+        .expect("잘못된 서버 주소 형식입니다. MIND_STUDIO_HOST/PORT를 확인하세요.");
 
     tracing::info!("NPC Mind Studio 서버 시작: http://{}", addr);
     tracing::info!("Static UI: http://{}/", addr);
@@ -130,8 +134,8 @@ fn build_api_router(state: AppState) -> Router {
 /// embed feature 활성 시 PadAnalyzer 초기화
 #[cfg(feature = "embed")]
 fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
+    use npc_mind::adapter::file_anchor_source::{AnchorFormat, FileAnchorSource};
     use npc_mind::adapter::ort_embedder::OrtEmbedder;
-    use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
     use npc_mind::domain::pad::PadAnalyzer;
     use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 
@@ -141,15 +145,15 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
 
     let anchor_lang = std::env::var("NPC_MIND_ANCHOR_LANG").unwrap_or_else(|_| "ko".to_string());
-    let anchor_toml = builtin_anchor_toml(&anchor_lang).unwrap_or_else(|| {
+    let anchor_toml = builtin_anchor_toml(&anchor_lang).or_else(|| {
         eprintln!("빌트인 앵커 없음 (lang={anchor_lang}), ko 폴백");
-        builtin_anchor_toml("ko").unwrap()
-    });
+        builtin_anchor_toml("ko")
+    })?;
 
     let embedder = OrtEmbedder::new(&model_path, &tokenizer_path).ok()?;
-    let source = TomlAnchorSource::new(&anchor_toml).ok()?;
+    let source = FileAnchorSource::from_content(&anchor_toml, AnchorFormat::Toml);
 
-    Some(PadAnalyzer::new(Arc::new(embedder), Arc::new(source)))
+    PadAnalyzer::new(Box::new(embedder), &source).ok()
 }
 
 #[cfg(not(feature = "embed"))]

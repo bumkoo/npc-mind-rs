@@ -21,9 +21,11 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
                 │ AppRequest (DTO)
                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│ Application Layer (MindService, DTO Mappers)                    │
-│ - MindService: 도메인 객체 조립 및 오케스트레이션               │
-│ - DTO Mapping: SituationInput → Situation 도메인 모델 변환      │
+│ Application Layer (MindService & Sub-Services)                  │
+│ - MindService: 퍼사드 및 핵심 오케스트레이션                    │
+│ - SituationService: DTO → 도메인 모델 변환 (Context 조회)       │
+│ - RelationshipService: 관계 수치 계산 및 갱신 전담              │
+│ - SceneService: 장면 상태 관리 및 Beat 전환 제어                │
 └───────────────┬─────────────────────────────────────────────────┘
                 │ Domain Models
                 ▼
@@ -73,9 +75,10 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 ### 2.7. 튜닝 상수 (`tuning.rs`)
 모든 조정 가능한 파라미터를 한 파일에 중앙 관리. 플레이테스트 시 이 파일만 수정.
 
-### 3. DTO & Mapping (Standardized)
+### 3. DTO & Mapping (Centralized)
 외부 입력(JSON 등)과 도메인 모델 간의 변환 책임을 명확히 분리한다.
-- **to_domain 패턴**: DTO가 직접 도메인 모델로 변환되는 메서드를 가지며, 이때 필요한 컨텍스트(관계, 객체 정보 등)를 `MindRepository`로부터 주입받는다.
+- **SituationService**: DTO가 저장소에 직접 의존하지 않도록, `SituationService`가 변환 과정에서 필요한 컨텍스트(관계, 객체 정보 등)를 조회하여 주입한다.
+- **Standardized Mapping**: `SituationInput::to_domain`은 이제 순수하게 도메인 모델 생성에만 집중하며, `CanFormat` 트레이트를 통해 도메인 결과의 프레젠테이션 변환을 표준화한다.
 
 ### 4. Relationship (관계 기반 보정)
 - **rel_mul**: `(1.0 + closeness × 0.5).max(0.0)` — Admiration/Reproach에만 적용.
@@ -142,3 +145,4 @@ v2 아키텍처의 핵심은 **3계층 구조(Domain-Application-Infrastructure)
 | 2.0.0 | 2026-03-30 | Scene Focus 시스템, Beat 전환, stimulus 관성, merge_from_beat, significance, PowerLevel 5단계, tuning.rs 중앙 관리 |
 | 2.1.0 | 2026-03-30 | 플러거블 포맷터, 다국어 로케일, 포트 주입, Scene/Beat MindService 이동, 코드 정리 |
 | 2.2.0 | 2026-03-31 | Scene 도메인 애그리거트 캡슐화, SceneStore 포트 단순화, Scene 독립 단위 테스트 |
+| 2.3.0 | 2026-04-04 | Application 계층 분리 (Mind/Situation/Relationship/Scene), DTO 저장소 의존성 제거, CanFormat 도입, 앵커 어댑터 통합 |

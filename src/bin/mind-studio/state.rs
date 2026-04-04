@@ -30,6 +30,7 @@ pub struct AppState {
     pub mcp_server: Option<Arc<crate::mcp_server::MindMcpService>>,
     /// chat feature 비활성 시 컴파일 호환용
     #[cfg(not(feature = "chat"))]
+    #[allow(dead_code)]
     pub chat: Option<()>,
 }
 

@@ -1,5 +1,8 @@
-use crate::state::{AppState, StateInner, TurnRecord, RelationshipData, FORMAT_SCENARIO, FORMAT_RESULT};
+use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
 use npc_mind::application::dto::*;
+use npc_mind::ports::{NpcWorld};
+#[cfg(any(feature = "chat", feature = "embed"))]
+use npc_mind::ports::UtteranceAnalyzer;
 #[cfg(feature = "chat")]
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
@@ -215,8 +218,30 @@ impl StudioService {
             .focuses
             .iter()
             .filter_map(|f| {
-                f.to_domain(&repo, &scene_req.npc_id, &scene_req.partner_id)
-                    .ok()
+                let event_other_modifiers = f
+                    .event
+                    .as_ref()
+                    .and_then(|e| e.other.as_ref())
+                    .and_then(|o| repo.get_relationship(&scene_req.npc_id, &o.target_id).map(|r| r.modifiers()));
+
+                let action_agent_modifiers = f
+                    .action
+                    .as_ref()
+                    .and_then(|a| a.agent_id.as_ref())
+                    .filter(|&agent| *agent != scene_req.partner_id)
+                    .and_then(|agent| repo.get_relationship(&scene_req.npc_id, agent).map(|r| r.modifiers()));
+
+                let object_description = f
+                    .object
+                    .as_ref()
+                    .and_then(|o| repo.get_object_description(&o.target_id));
+
+                f.to_domain(
+                    event_other_modifiers,
+                    action_agent_modifiers,
+                    object_description,
+                )
+                .ok()
             })
             .collect();
         drop(repo);
@@ -301,7 +326,9 @@ impl StudioService {
         llm_model_info.temperature = Some(temp);
         llm_model_info.top_p = Some(top_p);
         
-        chat_port.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone())).await.map_err(|e| AppError::Internal(e.to_string()))?;
+        chat_port.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone()))
+            .await
+            .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
         
         // 턴 기록 통합 저장
         Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
@@ -349,7 +376,9 @@ impl StudioService {
             
             let changed = stim_resp.beat_changed;
             if changed {
-                chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt).await.map_err(|e| AppError::Internal(e.to_string()))?;
+                chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt)
+                    .await
+                    .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
             }
 
             let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
@@ -390,7 +419,9 @@ impl StudioService {
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let npc_response = chat_port.send_message(&req.session_id, &req.utterance).await?;
+        let npc_response: String = chat_port.send_message(&req.session_id, &req.utterance)
+            .await
+            .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
         let (stimulus, beat_changed) = Self::process_chat_turn_result(state, &req, npc_response.clone()).await?;
         Ok(ChatTurnResponse { npc_response, stimulus, beat_changed })
     }
@@ -401,7 +432,9 @@ impl StudioService {
         req: ChatEndRequest,
     ) -> Result<ChatEndResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let dialogue_history = chat_port.end_session(&req.session_id).await.map_err(|e| AppError::Internal(e.to_string()))?;
+        let dialogue_history = chat_port.end_session(&req.session_id)
+            .await
+            .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
         let after_dialogue = if let Some(after_req) = req.after_dialogue {
             Self::perform_after_dialogue(state, after_req).await.ok()
         } else {

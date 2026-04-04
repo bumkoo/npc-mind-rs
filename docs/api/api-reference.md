@@ -6,21 +6,29 @@
 
 ## Service Layer (진입점)
 
-### MindService — 도메인 결과 반환
+### MindService — 핵심 퍼사드 및 오케스트레이션
 
-포맷팅 없이 도메인 객체(`ActingGuide`)를 직접 반환합니다.
+도메인 로직을 조율하고 저장소와 연동하는 주 진입점입니다. 포맷팅 없이 도메인 결과(`*Result`)를 반환합니다.
 
 ```rust
-use npc_mind::MindService;
+use npc_mind::application::mind_service::MindService;
 
 // 기본 엔진 사용
 let mut service = MindService::new(repo);
-
-// 커스텀 엔진 주입
-let mut service = MindService::with_engines(repo, my_appraiser, my_stimulus);
 ```
 
-### FormattedMindService — 포맷팅된 프롬프트 반환
+### 서브 서비스 (Internal/Advanced)
+
+`MindService`의 비대한 책임을 분리하여 전문화된 기능을 제공합니다.
+
+| 서비스 | 용도 | 핵심 역할 |
+|--------|------|----------|
+| `SituationService` | DTO 변환 | `SituationInput` → `Situation` 도메인 모델 변환 (컨텍스트 조회 포함) |
+| `RelationshipService` | 관계 관리 | 대화/비트 종료 후 관계 수치 계산 및 갱신 |
+| `SceneService` | 장면 제어 | Scene 상태 관리, Beat 전환 트리거 체크 및 전환 로직 수행 |
+
+### FormattedMindService — 포맷팅 포함 서비스
+...
 
 `MindService` + `GuideFormatter` 조합. 모든 응답에 `prompt: String`이 포함됩니다.
 
@@ -109,6 +117,7 @@ pub fn load_scene_focuses(
     focuses: Vec<SceneFocus>,
     npc_id: String,
     partner_id: String,
+    significance: f32,
 ) -> Result<Option<AppraiseResult>, MindServiceError>
 ```
 
@@ -278,6 +287,17 @@ pub struct ConditionInput {
     pub absent: Option<bool>,   // 감정 부재
 }
 ```
+
+### CanFormat 트레이트 (Standard Formatting)
+
+도메인 결과 타입(`*Result`)은 `CanFormat` 트레이트를 구현하여 일관된 포맷팅 인터페이스를 제공합니다. `FormattedMindService`는 내부적으로 이 트레이트를 사용하여 결과를 자동으로 변환합니다.
+
+| 도메인 결과 | 응답 타입 (`Response`) | 변환 메서드 |
+|------------|-----------------------|-----------|
+| `AppraiseResult` | `AppraiseResponse` | `.format(&formatter)` |
+| `StimulusResult` | `StimulusResponse` | `.format(&formatter)` |
+| `GuideResult` | `GuideResponse` | `.format(&formatter)` |
+| `SceneResult` | `SceneResponse` | `.format(&formatter)` |
 
 ### Response Types
 
@@ -579,6 +599,6 @@ pub enum MindServiceError {
 | `Appraiser` | 감정 평가 엔진 | `AppraisalEngine` |
 | `StimulusProcessor` | 자극 처리 엔진 | `StimulusEngine` |
 | `GuideFormatter` | 가이드 포맷팅 | `LocaleFormatter` |
-| `PadAnchorSource` | PAD 앵커 텍스트 로드 | `TomlAnchorSource`, `JsonAnchorSource` |
+| `PadAnchorSource` | PAD 앵커 텍스트 로드 | `FileAnchorSource` (JSON/TOML 통합) |
 | `TextEmbedder` | 텍스트 임베딩 | `OrtEmbedder` (embed feature) |
 | `UtteranceAnalyzer` | 대사 → PAD 변환 | `PadAnalyzer` |

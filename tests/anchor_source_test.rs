@@ -6,14 +6,13 @@
 //! - 빌트인 레지스트리
 
 use npc_mind::PadAnchorSource;
-use npc_mind::adapter::json_anchor_source::JsonAnchorSource;
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 
 #[test]
 fn toml_빌트인_앵커_파싱() {
     let toml = builtin_anchor_toml("ko").expect("ko 빌트인 앵커 없음");
-    let source = TomlAnchorSource::from_content(toml);
+    let source = FileAnchorSource::from_content(toml, AnchorFormat::Toml);
     let anchors = source.load_anchors().expect("TOML 파싱 실패");
 
     assert_eq!(anchors.pleasure.positive.len(), 10);
@@ -27,7 +26,7 @@ fn toml_빌트인_앵커_파싱() {
 #[test]
 fn toml_앵커_텍스트_내용_확인() {
     let toml = builtin_anchor_toml("ko").unwrap();
-    let source = TomlAnchorSource::from_content(toml);
+    let source = FileAnchorSource::from_content(toml, AnchorFormat::Toml);
     let anchors = source.load_anchors().unwrap();
 
     assert!(anchors.pleasure.positive[0].contains("기쁘"));
@@ -36,7 +35,7 @@ fn toml_앵커_텍스트_내용_확인() {
 
 #[test]
 fn toml_캐시_없으면_none() {
-    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+    let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml);
     let cached = source.load_cached_embeddings().expect("캐시 로드 실패");
     assert!(cached.is_none(), "캐시 경로 미설정 시 None");
 }
@@ -49,7 +48,7 @@ fn toml_캐시_라운드트립() {
     // 정리
     let _ = std::fs::remove_file(&cache_path);
 
-    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap())
+    let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml)
         .with_cache_path(&cache_path);
 
     let dummy = CachedPadEmbeddings {
@@ -104,7 +103,7 @@ fn json_앵커_파싱() {
         }
     }"#;
 
-    let source = JsonAnchorSource::from_content(json);
+    let source = FileAnchorSource::from_content(json, AnchorFormat::Json);
     let anchors = source.load_anchors().expect("JSON 파싱 실패");
 
     assert_eq!(anchors.pleasure.positive.len(), 2);

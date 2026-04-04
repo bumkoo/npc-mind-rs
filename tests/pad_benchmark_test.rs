@@ -5,7 +5,7 @@
 #![cfg(feature = "embed")]
 
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::UtteranceAnalyzer;
@@ -18,7 +18,7 @@ fn shared_analyzer() -> &'static Mutex<PadAnalyzer> {
     static ANALYZER: OnceLock<Mutex<PadAnalyzer>> = OnceLock::new();
     ANALYZER.get_or_init(|| {
         let embedder = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap();
-        let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+        let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml);
         Mutex::new(PadAnalyzer::new(Box::new(embedder), &source).unwrap())
     })
 }

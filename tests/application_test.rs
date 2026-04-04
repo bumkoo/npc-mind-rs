@@ -5,7 +5,7 @@ mod common;
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::{EmotionStore, SceneStore};
+use npc_mind::{EmotionStore, SceneStore, NpcWorld};
 
 use common::*;
 
@@ -121,8 +121,9 @@ fn test_dto_transformation_to_domain() {
         object: None,
     };
 
+    let rel = repo.get_relationship("me", "target");
     let domain = input
-        .to_domain(&repo, "me", "partner")
+        .to_domain(rel.as_ref().map(|r| r.modifiers()), None, None)
         .expect("Transformation failed");
 
     assert_eq!(domain.description, "test");
@@ -159,10 +160,10 @@ fn test_dto_transformation_to_domain() {
         object: None,
     };
 
-    let res = bad_input.to_domain(&repo, "me", "partner");
+    let res = bad_input.to_domain(None, None, None);
     assert!(matches!(
         res,
-        Err(npc_mind::application::mind_service::MindServiceError::RelationshipNotFound(_, _))
+        Err(npc_mind::application::mind_service::MindServiceError::InvalidSituation(_))
     ));
 }
 

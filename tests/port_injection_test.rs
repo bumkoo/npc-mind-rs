@@ -327,7 +327,7 @@ fn scene_info_scene_등록_후_상태_조회() {
         .find(|f| f.id == "initial_focus")
         .unwrap();
     assert!(initial.is_active);
-    assert_eq!(initial.trigger_display, "initial");
+    assert_eq!(initial.trigger_display, "초기 활성 (Initial)");
 
     let anger = info.focuses.iter().find(|f| f.id == "anger_focus").unwrap();
     assert!(!anger.is_active);
@@ -742,7 +742,7 @@ fn test_focus_info_item_formatting() {
         object: None,
     };
     let info1 = FocusInfoItem::from_domain(&f1, true);
-    assert_eq!(info1.trigger_display, "initial");
+    assert_eq!(info1.trigger_display, "초기 활성 (Initial)");
     assert!(info1.is_active);
 
     // 2. Complex condition trigger

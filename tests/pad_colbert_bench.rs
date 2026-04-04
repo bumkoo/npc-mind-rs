@@ -10,7 +10,7 @@
 use bge_m3_onnx_rust::{BgeM3Embedder, max_sim};
 use npc_mind::PadAnchorSource;
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use std::sync::{Mutex, OnceLock};
@@ -205,7 +205,7 @@ fn dense_vs_colbert_비교() {
     let mut embedder = shared_embedder().lock().unwrap();
 
     // 0) 앵커 로드
-    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+    let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml);
     let anchors = source.load_anchors().unwrap();
 
     // 1) ColBERT 앵커 풀 구축

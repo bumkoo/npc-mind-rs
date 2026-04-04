@@ -314,7 +314,31 @@ impl InMemoryRepository {
         let focuses: Vec<SceneFocus> = scene_json
             .focuses
             .iter()
-            .map(|f| f.to_domain(self, npc_id, partner_id))
+            .map(|f| {
+                let event_other_modifiers = f
+                    .event
+                    .as_ref()
+                    .and_then(|e| e.other.as_ref())
+                    .and_then(|o| self.get_relationship(npc_id, &o.target_id).map(|r| r.modifiers()));
+
+                let action_agent_modifiers = f
+                    .action
+                    .as_ref()
+                    .and_then(|a| a.agent_id.as_ref())
+                    .filter(|&agent| agent != partner_id)
+                    .and_then(|agent| self.get_relationship(npc_id, agent).map(|r| r.modifiers()));
+
+                let object_description = f
+                    .object
+                    .as_ref()
+                    .and_then(|o| self.get_object_description(&o.target_id));
+
+                f.to_domain(
+                    event_other_modifiers,
+                    action_agent_modifiers,
+                    object_description,
+                )
+            })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| RepositoryLoadError::ConversionError(e.to_string()))?;
 

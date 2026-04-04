@@ -59,57 +59,67 @@ impl ActingDirective {
 }
 
 // ---------------------------------------------------------------------------
-// 각 요소별 의사결정 로직 (Enums에 로직 위임)
+// 각 요소별 의사결정 로직
 // ---------------------------------------------------------------------------
 
 impl Tone {
     pub fn decide(dominant: Option<EmotionType>, mood: f32, avg: &DimensionAverages) -> Self {
+        if let Some(etype) = dominant {
+            Self::decide_from_dominant(etype, avg)
+        } else {
+            Self::decide_from_mood(mood)
+        }
+    }
+
+    fn decide_from_dominant(etype: EmotionType, avg: &DimensionAverages) -> Self {
         let t = TRAIT_THRESHOLD;
-        match dominant {
-            Some(EmotionType::Anger) => {
+        match etype {
+            EmotionType::Anger => {
                 if avg.c.value() > t {
                     Self::SuppressedCold
                 } else {
                     Self::RoughAggressive
                 }
             }
-            Some(EmotionType::Distress) => {
+            EmotionType::Distress => {
                 if avg.e.value() > t {
                     Self::AnxiousTrembling
                 } else {
                     Self::SomberRestrained
                 }
             }
-            Some(EmotionType::Joy) => Self::BrightLively,
-            Some(EmotionType::Fear) => {
+            EmotionType::Joy => Self::BrightLively,
+            EmotionType::Fear => {
                 if avg.e.value() < -t {
                     Self::VigilantCalm
                 } else {
                     Self::TenseAnxious
                 }
             }
-            Some(EmotionType::Shame) => Self::ShrinkingSmall,
-            Some(EmotionType::Pride) => {
+            EmotionType::Shame => Self::ShrinkingSmall,
+            EmotionType::Pride => {
                 if avg.h.value() > t {
                     Self::QuietConfidence
                 } else {
                     Self::ProudArrogant
                 }
             }
-            Some(EmotionType::Reproach) => Self::CynicalCritical,
-            Some(EmotionType::Disappointment) => Self::DeepSighing,
-            Some(EmotionType::Gratitude) => Self::SincerelyWarm,
-            Some(EmotionType::Resentment) => Self::JealousBitter,
-            Some(EmotionType::Pity) => Self::CompassionateSoft,
-            _ => {
-                if mood > EMOTION_THRESHOLD {
-                    Self::RelaxedGentle
-                } else if mood < -EMOTION_THRESHOLD {
-                    Self::Heavy
-                } else {
-                    Self::Calm
-                }
-            }
+            EmotionType::Reproach => Self::CynicalCritical,
+            EmotionType::Disappointment => Self::DeepSighing,
+            EmotionType::Gratitude => Self::SincerelyWarm,
+            EmotionType::Resentment => Self::JealousBitter,
+            EmotionType::Pity => Self::CompassionateSoft,
+            _ => Self::Calm,
+        }
+    }
+
+    fn decide_from_mood(mood: f32) -> Self {
+        if mood > EMOTION_THRESHOLD {
+            Self::RelaxedGentle
+        } else if mood < -EMOTION_THRESHOLD {
+            Self::Heavy
+        } else {
+            Self::Calm
         }
     }
 }
@@ -122,18 +132,27 @@ impl Attitude {
         mood: f32,
         avg: &DimensionAverages,
     ) -> Self {
-        let t = TRAIT_THRESHOLD;
         if has_anger {
-            if avg.a.value() < -t {
-                Self::HostileAggressive
-            } else {
-                Self::SuppressedDiscomfort
-            }
+            Self::decide_for_anger(avg)
         } else if has_reproach {
             Self::Judgmental
         } else if has_fear {
             Self::GuardedDefensive
-        } else if mood > MOOD_THRESHOLD {
+        } else {
+            Self::decide_from_mood(mood)
+        }
+    }
+
+    fn decide_for_anger(avg: &DimensionAverages) -> Self {
+        if avg.a.value() < -TRAIT_THRESHOLD {
+            Self::HostileAggressive
+        } else {
+            Self::SuppressedDiscomfort
+        }
+    }
+
+    fn decide_from_mood(mood: f32) -> Self {
+        if mood > MOOD_THRESHOLD {
             Self::FriendlyOpen
         } else if mood < -MOOD_THRESHOLD {
             Self::DefensiveClosed
@@ -151,27 +170,35 @@ impl BehavioralTendency {
         mood: f32,
         avg: &DimensionAverages,
     ) -> Self {
-        let t = TRAIT_THRESHOLD;
         if has_anger {
-            if avg.c.value() < -t {
-                Self::ImmediateConfrontation
-            } else if avg.c.value() > t {
-                Self::StrategicResponse
-            } else {
-                Self::ExpressAndObserve
-            }
+            Self::decide_for_anger(avg)
         } else if has_fear {
-            if avg.e.value() < -t {
-                Self::BraveConfrontation
-            } else {
-                Self::SeekSafety
-            }
+            Self::decide_for_fear(avg)
         } else if has_shame {
             Self::AvoidOrDeflect
         } else if mood > MOOD_THRESHOLD {
             Self::ActiveCooperation
         } else {
             Self::ObserveAndRespond
+        }
+    }
+
+    fn decide_for_anger(avg: &DimensionAverages) -> Self {
+        let t = TRAIT_THRESHOLD;
+        if avg.c.value() < -t {
+            Self::ImmediateConfrontation
+        } else if avg.c.value() > t {
+            Self::StrategicResponse
+        } else {
+            Self::ExpressAndObserve
+        }
+    }
+
+    fn decide_for_fear(avg: &DimensionAverages) -> Self {
+        if avg.e.value() < -TRAIT_THRESHOLD {
+            Self::BraveConfrontation
+        } else {
+            Self::SeekSafety
         }
     }
 }

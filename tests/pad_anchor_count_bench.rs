@@ -8,7 +8,7 @@
 
 use npc_mind::PadAnchorSource;
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::TextEmbedder;
@@ -304,7 +304,7 @@ fn 앵커_6개_vs_10개_비교() {
     // 2) 프로덕션 앵커 (PadAnalyzer, 외부 TOML 로드)
     println!("[2] 프로덕션 앵커(PadAnalyzer) 초기화...");
     drop(embedder);
-    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+    let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml);
     let analyzer = PadAnalyzer::new(
         Box::new(OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()),
         &source,

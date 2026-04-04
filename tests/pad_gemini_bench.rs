@@ -6,7 +6,7 @@
 #![cfg(feature = "embed")]
 
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
-use npc_mind::adapter::toml_anchor_source::TomlAnchorSource;
+use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad::PadAnalyzer;
 use npc_mind::domain::pad_anchors::builtin_anchor_toml;
 use npc_mind::ports::TextEmbedder;
@@ -332,7 +332,7 @@ fn gemini_vs_current_앵커_비교() {
     println!("[2] 현재 앵커(PadAnalyzer)로 분석기 초기화...");
     drop(embedder);
     let mut embedder2 = OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap();
-    let source = TomlAnchorSource::from_content(builtin_anchor_toml("ko").unwrap());
+    let source = FileAnchorSource::from_content(builtin_anchor_toml("ko").unwrap(), AnchorFormat::Toml);
     let analyzer = PadAnalyzer::new(
         Box::new(OrtEmbedder::new(MODEL_PATH, TOKENIZER_PATH).unwrap()),
         &source,
