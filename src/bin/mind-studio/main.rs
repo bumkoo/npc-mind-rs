@@ -27,17 +27,19 @@ use crate::trace_collector::AppraisalCollector;
 
 #[tokio::main]
 async fn main() {
-    // 1. 로깅 초기화
+    // 1. 로깅 초기화 및 Trace 수집기 등록
+    let collector = AppraisalCollector::new();
+    
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "npc_mind_studio=debug,tower_http=debug".into()),
+                .unwrap_or_else(|_| "npc_mind_studio=debug,npc_mind=trace,tower_http=debug".into()),
         )
         .with(tracing_subscriber::fmt::layer())
+        .with(collector.clone())
         .init();
 
     let analyzer = init_analyzer();
-    let collector = AppraisalCollector::new();
     let mut state = AppState::new(collector, analyzer);
 
     // MCP 서버 초기화 ( Any/Dyn 제거 및 정적 타입 주입 )

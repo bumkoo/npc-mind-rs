@@ -2,6 +2,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use npc_mind::application::dto::*;
+use serde::{Deserialize, Serialize};
 use crate::state::*;
 use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
 use crate::repository::{ReadOnlyAppStateRepo};
@@ -190,6 +191,9 @@ pub async fn analyze_utterance(
 }
 
 #[cfg(not(feature = "embed"))]
-pub async fn analyze_utterance() -> Result<Json<serde_json::Value>, AppError> {
+pub async fn analyze_utterance(
+    State(_state): State<AppState>,
+    Json(_req): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, AppError> {
     Err(AppError::NotImplemented("embed feature가 비활성 상태입니다".into()))
 }

@@ -60,6 +60,7 @@ impl<S: Subscriber> Layer<S> for AppraisalCollector {
         let mut visitor = FieldVisitor { fields: Vec::new() };
         event.record(&mut visitor);
 
+        // 감정 유형 추출
         let emotion = visitor
             .fields
             .iter()
@@ -67,14 +68,28 @@ impl<S: Subscriber> Layer<S> for AppraisalCollector {
             .map(|(_, v)| v.clone())
             .unwrap_or_else(|| "?".into());
 
+        // 상황 맥락 추출
+        let context = visitor
+            .fields
+            .iter()
+            .find(|(k, _)| k == "context")
+            .map(|(_, v)| v.clone())
+            .unwrap_or_else(|| "-".into());
+
+        // 수치 데이터 추출 (emotion, context, message 제외)
         let parts: Vec<String> = visitor
             .fields
             .iter()
-            .filter(|(k, _)| k != "emotion" && k != "message")
+            .filter(|(k, _)| k != "emotion" && k != "context" && k != "message")
             .map(|(k, v)| format!("{}={}", k, v))
             .collect();
 
-        let line = format!("  → {}: {}", emotion, parts.join(", "));
+        let line = if parts.is_empty() {
+            format!("→ {} [{}]", emotion, context)
+        } else {
+            format!("→ {}: {} [{}]", emotion, parts.join(", "), context)
+        };
+
         // Mutex poisoned 시 trace 항목 유실 허용 (서비스 안정성 우선)
         if let Ok(mut guard) = self.entries.lock() {
             guard.push(line);

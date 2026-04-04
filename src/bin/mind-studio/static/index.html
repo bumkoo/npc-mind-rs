@@ -2612,8 +2612,15 @@
                 );
             }
             function TraceView({ traceHistory }) {
-                if (!traceHistory?.length)
+                if (!traceHistory || !Array.isArray(traceHistory) || traceHistory.length === 0)
                     return <div className="trace-box">(trace 없음)</div>;
+                
+                // 문자열 배열인 경우 (단일 턴 표시)
+                if (typeof traceHistory[0] === "string") {
+                    return <div className="trace-box">{traceHistory.join("\n")}</div>;
+                }
+
+                // 객체 배열인 경우 (히스토리 전체 표시 - 하위 호환용)
                 return (
                     <div
                         style={{
@@ -2631,10 +2638,10 @@
                                         marginBottom: 2,
                                     }}
                                 >
-                                    #{traceHistory.length - i} {entry.label}
+                                    #{traceHistory.length - i} {entry.label || "Appraisal"}
                                 </div>
                                 <div className="trace-box">
-                                    {entry.trace.join("\n")}
+                                    {(entry.trace || []).join("\n") || "(내용 없음)"}
                                 </div>
                             </div>
                         ))}
@@ -3438,6 +3445,9 @@
                         setSelectedMsgIdx(idx);
                         const msg = chatMessages[idx];
                         console.log("[Debug] Selected Message:", msg);
+                        if (msg) {
+                            setTraceHistory(msg.trace || []);
+                        }
                         if (msg && msg.snapshot) {
                             setResult(msg.snapshot);
                         } else if (msg && msg.role === "user") {
@@ -3470,6 +3480,9 @@
                         setResultSelectedIdx(idx);
                         const msg = resultMessages[idx];
                         console.log("[Debug] Selected Result Message:", msg);
+                        if (msg) {
+                            setTraceHistory(msg.trace || []);
+                        }
                         if (msg && msg.snapshot) {
                             setResult(msg.snapshot);
                         } else if (msg && msg.role === "user") {
@@ -3663,7 +3676,7 @@
                         } else {
                             setLlmModelInfo(null);
                         }
-                        history.forEach((turn) => {
+                        history.forEach((turn, i) => {
                             const resp = turn.response || {};
                             const req = turn.request || {};
                             if (turn.action === "stimulus") {
@@ -3686,6 +3699,7 @@
                                     snapshot: { ...resp, llm_model: turn.llm_model },
                                     beat_changed: resp.beat_changed,
                                     new_focus: resp.active_focus_id,
+                                    trace: resp.trace || [],
                                 });
                             } else if (turn.action === "scene" || turn.action === "appraise" || turn.action === "chat_start") {
                                 // 초기 평가
@@ -3697,6 +3711,7 @@
                                     emotions,
                                     mood: resp.mood,
                                     snapshot: { ...resp, llm_model: turn.llm_model },
+                                    trace: resp.trace || [],
                                 });
                             } else if (turn.action === "chat_message") {
                                 // LLM 대화 턴 — response에 npc_response + stimulus 결과가 병합됨
@@ -3706,6 +3721,7 @@
                                     role: "user",
                                     content: req.utterance || "",
                                     pad: req.pad || resp.input_pad || null,
+                                    trace: [],
                                 });
                                 console.log(`[Debug] Loaded turn ${i+1} (${turn.action}):`, {
                                     utterance: req.utterance,
@@ -3719,12 +3735,14 @@
                                     snapshot: { ...resp, llm_model: turn.llm_model },
                                     beat_changed: resp.beat_changed,
                                     new_focus: resp.active_focus_id,
+                                    trace: resp.trace || [],
                                 });
                             } else if (turn.action === "after_dialogue") {
                                 msgs.push({
                                     role: "system",
                                     content: `대화 종료 — ${turn.label}`,
                                     snapshot: resp,
+                                    trace: [],
                                 });
                             }
                         });
