@@ -66,7 +66,17 @@ impl MindMcpService {
         }
     }
 
-    /// 도구 목록 조회 (25개)
+    /// list_scenarios 반환 경로(data/ 하위 상대경로)를 실제 파일 경로로 변환
+    fn resolve_data_path(path: &str) -> String {
+        let p = std::path::Path::new(path);
+        // 절대 경로이거나 이미 data/ 접두사가 있으면 그대로
+        if p.is_absolute() || path.starts_with("data/") || path.starts_with("data\\") {
+            return path.to_string();
+        }
+        format!("data/{}", path)
+    }
+
+    /// 도구 목록 조회 (31개)
     pub fn list_tools(&self) -> Vec<Value> {
         vec![
             // 세계 구축 (CRUD)
@@ -144,6 +154,45 @@ impl MindMcpService {
             serde_json::json!({ "name": "save_scenario", "description": "현재 상태를 지정된 경로에 JSON 파일로 저장합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "save_type": { "type": "string" } }, "required": ["path"] } }),
             serde_json::json!({ "name": "load_scenario", "description": "지정된 경로의 시나리오 파일을 로드합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
             
+            // 소스 텍스트 & 시나리오 생성
+            serde_json::json!({ "name": "list_source_texts", "description": "data/ 폴더의 소스 텍스트(.txt) 파일 목록과 크기를 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({
+                "name": "read_source_text",
+                "description": "소스 텍스트 파일을 읽습니다. chapter를 지정하면 해당 챕터만, 생략하면 챕터 목록을 반환합니다.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string", "description": "txt 파일 경로 (data/ 하위 상대경로 또는 파일명)" },
+                        "chapter": { "type": "integer", "description": "읽을 챕터 번호 (1-based). 생략 시 챕터 목록 반환" }
+                    },
+                    "required": ["path"]
+                }
+            }),
+            serde_json::json!({
+                "name": "create_full_scenario",
+                "description": "NPC, 관계, Scene을 한 번에 생성하고 시나리오 파일로 저장합니다. scenario 객체에 npcs/relationships/objects/scene/scenario(meta)를 포함합니다.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "save_path": { "type": "string", "description": "저장 경로 (data/ 하위, 예: treasure_island/ch01/session_001/scenario.json)" },
+                        "scenario": { "type": "object", "description": "{ scenario: {name,description,notes}, npcs: {id: NpcProfile}, relationships: {key: RelData}, objects: {id: ObjEntry}, scene: SceneRequest }" }
+                    },
+                    "required": ["save_path", "scenario"]
+                }
+            }),
+
+            // Scene 관리
+            serde_json::json!({
+                "name": "start_scene",
+                "description": "Scene을 시작합니다. Focus 옵션 목록을 등록하고 초기 Focus를 자동 appraise합니다.",
+                "inputSchema": { "type": "object", "properties": { "req": { "type": "object" } }, "required": ["req"] }
+            }),
+            serde_json::json!({ "name": "get_scene_info", "description": "현재 Scene의 Focus 상태를 조회합니다 (활성 Focus, 대기 Focus, trigger 조건).", "inputSchema": { "type": "object", "properties": {} } }),
+
+            // 결과 관리
+            serde_json::json!({ "name": "get_save_dir", "description": "현재 로드된 시나리오의 결과 저장 디렉토리 경로를 계산합니다.", "inputSchema": { "type": "object", "properties": {} } }),
+            serde_json::json!({ "name": "load_result", "description": "테스트 결과 파일을 로드합니다 (턴 히스토리 포함).", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
+
             // 기타
             serde_json::json!({
                 "name": "get_npc_llm_config",
@@ -236,6 +285,20 @@ impl MindMcpService {
                 let resp = StudioService::perform_after_dialogue(&self.state, req).await.map_err(|e: AppError| e.to_string())?;
                 Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
             }
+            "generate_guide" => {
+                let mut req: npc_mind::application::dto::GuideRequest = serde_json::from_value(arguments["req"].clone()).map_err(|e| e.to_string())?;
+                let mut inner = self.state.inner.write().await;
+                // situation_description이 없으면 현재 상황에서 자동 추출
+                if req.situation_description.is_none() {
+                    if let Some(ref sit) = inner.current_situation {
+                        req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    }
+                }
+                let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+                let result = service.generate_guide(req).map_err(|e| e.to_string())?;
+                let response = result.format(&*self.state.formatter);
+                Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
+            }
             "get_history" => {
                 let inner = self.state.inner.read().await;
                 Ok(serde_json::to_value(&inner.turn_history).map_err(|e| e.to_string())?)
@@ -277,11 +340,12 @@ impl MindMcpService {
             }
             "load_scenario" => {
                 let path = arguments["path"].as_str().ok_or("path is required")?;
-                let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(path)).map_err(|e| e.to_string())?;
-                loaded.loaded_path = Some(path.to_string());
+                let resolved = Self::resolve_data_path(path);
+                let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| e.to_string())?;
+                loaded.loaded_path = Some(resolved.clone());
                 let mut inner = self.state.inner.write().await;
                 *inner = loaded;
-                Ok(serde_json::json!({ "status": "ok" }))
+                Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved }))
             }
             "get_npc_llm_config" => {
                 let npc_id = arguments["npc_id"].as_str().ok_or("npc_id is required")?;
@@ -289,6 +353,191 @@ impl MindMcpService {
                 let npc_profile = inner.npcs.get(npc_id).ok_or_else(|| format!("NPC {} not found", npc_id))?;
                 let (temp, top_p) = npc_profile.derive_llm_parameters();
                 Ok(serde_json::json!({ "npc_id": npc_id, "temperature": temp, "top_p": top_p }))
+            }
+            "start_scene" => {
+                let req: npc_mind::application::dto::SceneRequest = serde_json::from_value(arguments["req"].clone()).map_err(|e| e.to_string())?;
+                let mut inner = self.state.inner.write().await;
+                let collector = self.state.collector.clone();
+                let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+                let result = service.start_scene(req, || { collector.take_entries(); }, || collector.take_entries()).map_err(|e| e.to_string())?;
+                let response = result.format(&*self.state.formatter);
+                Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
+            }
+            "get_scene_info" => {
+                let inner = self.state.inner.read().await;
+                let repo = crate::repository::ReadOnlyAppStateRepo { inner: &*inner };
+                let service = npc_mind::application::mind_service::MindService::new(repo);
+                Ok(serde_json::to_value(service.scene_info()).map_err(|e| e.to_string())?)
+            }
+            "get_save_dir" => {
+                let info = StudioService::get_save_dir(&self.state).await.map_err(|e: AppError| e.to_string())?;
+                Ok(serde_json::to_value(info).map_err(|e| e.to_string())?)
+            }
+            "load_result" => {
+                let path = arguments["path"].as_str().ok_or("path is required")?;
+                let resolved = Self::resolve_data_path(path);
+                let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| e.to_string())?;
+                loaded.loaded_path = Some(resolved.clone());
+                // Scene 복원
+                if let Some(ref scene_val) = loaded.scene {
+                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
+                        StudioService::load_scene_into_state(&mut loaded, &scene_req);
+                    }
+                }
+                let history_count = loaded.turn_history.len();
+                let mut inner = self.state.inner.write().await;
+                *inner = loaded;
+                Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "turn_count": history_count }))
+            }
+            "list_source_texts" => {
+                let data_dir = std::path::Path::new("data");
+                let mut files = Vec::new();
+                if let Ok(entries) = std::fs::read_dir(data_dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "txt").unwrap_or(false) {
+                            if let Ok(meta) = std::fs::metadata(&path) {
+                                files.push(serde_json::json!({
+                                    "name": path.file_name().unwrap_or_default().to_string_lossy(),
+                                    "path": path.to_string_lossy().replace('\\', "/"),
+                                    "size_kb": meta.len() / 1024
+                                }));
+                            }
+                        }
+                    }
+                }
+                files.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+                Ok(serde_json::json!({ "files": files }))
+            }
+            "read_source_text" => {
+                let path = arguments["path"].as_str().ok_or("path is required")?;
+                let resolved = Self::resolve_data_path(path);
+                // .txt 확장자가 없으면 data/ 직접 탐색
+                let file_path = if std::path::Path::new(&resolved).exists() {
+                    resolved.clone()
+                } else {
+                    // 파일명만 주어진 경우 data/ 에서 찾기
+                    let candidate = format!("data/{}", path);
+                    if std::path::Path::new(&candidate).exists() {
+                        candidate
+                    } else {
+                        return Err(format!("File not found: {}", path));
+                    }
+                };
+                let content = std::fs::read_to_string(&file_path).map_err(|e| format!("{}: {}", file_path, e))?;
+                let lines: Vec<&str> = content.lines().collect();
+                
+                // 챕터 경계 감지 (regex 없이 문자열 매칭)
+                fn is_chapter_heading(line: &str) -> bool {
+                    let t = line.trim().to_uppercase();
+                    (t.starts_with("CHAPTER ") || t.starts_with("BOOK ") || t.starts_with("PART "))
+                        && t.len() > 5 && t.len() < 200
+                }
+                let mut chapters: Vec<(usize, String)> = Vec::new();
+                for (i, line) in lines.iter().enumerate() {
+                    if is_chapter_heading(line) {
+                        chapters.push((i, line.trim().to_string()));
+                    }
+                }
+                
+                let chapter_num = arguments.get("chapter").and_then(|v| v.as_u64()).map(|v| v as usize);
+                
+                if let Some(ch) = chapter_num {
+                    if ch == 0 || ch > chapters.len() {
+                        return Err(format!("Chapter {} not found. Total chapters: {}", ch, chapters.len()));
+                    }
+                    let start = chapters[ch - 1].0;
+                    let end = if ch < chapters.len() { chapters[ch].0 } else { lines.len() };
+                    let chapter_lines: Vec<&str> = lines[start..end].to_vec();
+                    let text = chapter_lines.join("\n");
+                    Ok(serde_json::json!({
+                        "chapter": ch,
+                        "title": chapters[ch - 1].1,
+                        "line_start": start + 1,
+                        "line_end": end,
+                        "line_count": end - start,
+                        "text": text
+                    }))
+                } else {
+                    // 챕터 목록 반환
+                    let chapter_list: Vec<Value> = chapters.iter().enumerate().map(|(i, (line, title))| {
+                        let next_line = if i + 1 < chapters.len() { chapters[i + 1].0 } else { lines.len() };
+                        serde_json::json!({
+                            "number": i + 1,
+                            "title": title,
+                            "line_start": line + 1,
+                            "line_count": next_line - line
+                        })
+                    }).collect();
+                    Ok(serde_json::json!({
+                        "file": file_path,
+                        "total_lines": lines.len(),
+                        "chapter_count": chapters.len(),
+                        "chapters": chapter_list
+                    }))
+                }
+            }
+            "create_full_scenario" => {
+                let save_path = arguments["save_path"].as_str().ok_or("save_path is required")?;
+                let resolved_path = Self::resolve_data_path(save_path);
+                let scenario_val = &arguments["scenario"];
+                
+                // StateInner 생성
+                let mut state_inner = crate::state::StateInner::default();
+                state_inner.format = crate::state::FORMAT_SCENARIO.to_string();
+                
+                // scenario meta
+                if let Some(meta) = scenario_val.get("scenario") {
+                    state_inner.scenario = serde_json::from_value(meta.clone()).unwrap_or_default();
+                }
+                
+                // npcs
+                if let Some(npcs) = scenario_val.get("npcs") {
+                    if let Ok(npcs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::NpcProfile>>(npcs.clone()) {
+                        state_inner.npcs = npcs_map;
+                    }
+                }
+                
+                // relationships
+                if let Some(rels) = scenario_val.get("relationships") {
+                    if let Ok(rels_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::RelationshipData>>(rels.clone()) {
+                        state_inner.relationships = rels_map;
+                    }
+                }
+                
+                // objects
+                if let Some(objs) = scenario_val.get("objects") {
+                    if let Ok(objs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::ObjectEntry>>(objs.clone()) {
+                        state_inner.objects = objs_map;
+                    }
+                }
+                
+                // scene
+                if let Some(scene) = scenario_val.get("scene") {
+                    state_inner.scene = Some(scene.clone());
+                }
+                
+                // 파일 저장
+                state_inner.save_to_file(std::path::Path::new(&resolved_path), true).map_err(|e| e.to_string())?;
+                
+                // 서버 상태에도 로드
+                state_inner.loaded_path = Some(resolved_path.clone());
+                if let Some(ref scene_val) = state_inner.scene {
+                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
+                        StudioService::load_scene_into_state(&mut state_inner, &scene_req);
+                    }
+                }
+                let npc_count = state_inner.npcs.len();
+                let rel_count = state_inner.relationships.len();
+                let mut inner = self.state.inner.write().await;
+                *inner = state_inner;
+                
+                Ok(serde_json::json!({
+                    "status": "ok",
+                    "path": resolved_path,
+                    "npcs": npc_count,
+                    "relationships": rel_count
+                }))
             }
             _ => Err(format!("Unknown tool: {}", name)),
         }

@@ -8,6 +8,15 @@ use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
 use crate::repository::{ReadOnlyAppStateRepo};
 use super::AppError;
 
+/// list_scenarios 반환 경로(data/ 하위 상대경로)를 실제 파일 경로로 변환
+fn resolve_data_path(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    if p.is_absolute() || path.starts_with("data/") || path.starts_with("data\\") {
+        return path.to_string();
+    }
+    format!("data/{}", path)
+}
+
 /// POST /api/appraise — 감정 평가 실행
 pub async fn appraise(
     State(state): State<AppState>,
@@ -126,9 +135,10 @@ pub async fn save_dir(State(state): State<AppState>) -> Result<Json<SaveDirInfo>
 
 /// POST /api/load
 pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<StatusCode, AppError> {
-    let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path)).map_err(|e| AppError::Internal(e))?;
+    let resolved = resolve_data_path(&req.path);
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
     loaded.turn_history.clear();
-    loaded.loaded_path = Some(req.path.clone());
+    loaded.loaded_path = Some(resolved);
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
             StudioService::load_scene_into_state(&mut loaded, &scene_req);
@@ -141,8 +151,9 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
 
 /// POST /api/load-result
 pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<Json<super::LoadResultResponse>, AppError> {
-    let mut loaded = StateInner::load_from_file(std::path::Path::new(&req.path)).map_err(|e| AppError::Internal(e))?;
-    loaded.loaded_path = Some(req.path.clone());
+    let resolved = resolve_data_path(&req.path);
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
+    loaded.loaded_path = Some(resolved);
     if let Some(ref scene_val) = loaded.scene {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
             StudioService::load_scene_into_state(&mut loaded, &scene_req);

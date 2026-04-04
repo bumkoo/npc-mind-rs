@@ -46,7 +46,7 @@ Claude Desktop은 stdio 트랜스포트만 네이티브 지원하므로 `mcp-rem
 }
 ```
 
-## 제공되는 도구 (25개)
+## 제공되는 도구 (28개)
 
 ### 세계 구축 (CRUD)
 | 도구 | 설명 |
@@ -70,6 +70,12 @@ Claude Desktop은 stdio 트랜스포트만 네이티브 지원하므로 `mcp-rem
 | `generate_guide` | 현재 감정으로 프롬프트 재생성 |
 | `after_dialogue` | 대화 종료 → 관계 갱신 + 감정 초기화 |
 
+### Scene 관리
+| 도구 | 설명 |
+|------|------|
+| `start_scene` | Scene 시작: Focus 옵션 등록 + 초기 appraise |
+| `get_scene_info` | 현재 Scene Focus 상태 조회 |
+
 ### 상태 및 시나리오 관리
 | 도구 | 설명 |
 |------|------|
@@ -81,7 +87,9 @@ Claude Desktop은 stdio 트랜스포트만 네이티브 지원하므로 `mcp-rem
 | `list_scenarios` | 사용 가능한 시나리오 목록 |
 | `get_scenario_meta` | 현재 로드된 시나리오 메타 정보 |
 | `save_scenario` | 현재 상태를 JSON 파일로 저장 |
-| `load_scenario` | 시나리오 JSON 로드 |
+| `load_scenario` | 시나리오 JSON 로드 (data/ 자동 보정) |
+| `get_save_dir` | 결과 저장 디렉토리 경로 조회 |
+| `load_result` | 테스트 결과 로드 (턴 히스토리 포함) |
 
 ### 기타
 | 도구 | 설명 |
