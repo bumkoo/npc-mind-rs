@@ -1,8 +1,6 @@
 use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
 use npc_mind::application::dto::*;
 use npc_mind::ports::{NpcWorld};
-#[cfg(any(feature = "chat", feature = "embed"))]
-use npc_mind::ports::UtteranceAnalyzer;
 #[cfg(feature = "chat")]
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
@@ -346,14 +344,23 @@ impl StudioService {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
         
         let pad = if let Some(ref pad_input) = req.pad {
+            tracing::debug!("대화 턴: 수동 PAD 입력 사용 (P: {:.2}, A: {:.2}, D: {:.2})", pad_input.pleasure, pad_input.arousal, pad_input.dominance);
             Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
         } else if let Some(ref analyzer) = state.analyzer {
             let mut analyzer = analyzer.lock().await;
-            match analyzer.analyze(&npc_response) {
-                Ok(p) => Some((p.pleasure, p.arousal, p.dominance)),
-                Err(_) => None
+            tracing::debug!("대화 턴: 임베딩 분석 시작 (텍스트: \"{}\")", req.utterance);
+            match analyzer.analyze(&req.utterance) {
+                Ok(p) => {
+                    tracing::debug!("대화 턴: 임베딩 분석 성공 (P: {:.3}, A: {:.2}, D: {:.2})", p.pleasure, p.arousal, p.dominance);
+                    Some((p.pleasure, p.arousal, p.dominance))
+                },
+                Err(e) => {
+                    tracing::error!("대화 턴: 임베딩 분석 실패: {:?}", e);
+                    None
+                }
             }
         } else {
+            tracing::debug!("대화 턴: PAD 입력 없음 (분석기 미작동)");
             None
         };
 

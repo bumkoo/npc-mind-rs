@@ -266,6 +266,7 @@ impl CanFormat for StimulusResult {
     }
 }
 
+
 impl CanFormat for GuideResult {
     type Response = GuideResponse;
     fn format(self, formatter: &dyn GuideFormatter) -> Self::Response {

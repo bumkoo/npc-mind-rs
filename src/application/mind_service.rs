@@ -265,6 +265,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 &relationship,
                 &mut scene,
                 focus,
+                pad,
                 before_eval,
                 after_eval,
             );
@@ -303,6 +304,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         relationship: &Relationship,
         scene: &mut Scene,
         focus: SceneFocus,
+        input_pad: Pad,
         before_eval: impl FnMut(),
         after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<StimulusResult, MindServiceError> {
@@ -350,7 +352,11 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             trace: app_result.trace,
             beat_changed: true,
             active_focus_id: Some(focus_id),
-            input_pad: None,
+            input_pad: Some(PadOutput {
+                pleasure: input_pad.pleasure,
+                arousal: input_pad.arousal,
+                dominance: input_pad.dominance,
+            }),
         })
     }
 

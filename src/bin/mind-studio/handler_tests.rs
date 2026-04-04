@@ -10,10 +10,36 @@ use tower::ServiceExt;
 
 use crate::state::*;
 use crate::trace_collector::AppraisalCollector;
+use npc_mind::ports::UtteranceAnalyzer;
+use npc_mind::domain::pad::Pad;
+use std::sync::{Arc, Mutex};
+
+/// 분석 호출을 감시하는 테스트용 스파이 분석기
+struct SpyAnalyzer {
+    calls: Arc<Mutex<Vec<String>>>,
+}
+
+impl UtteranceAnalyzer for SpyAnalyzer {
+    fn analyze(&mut self, utterance: &str) -> Result<Pad, npc_mind::ports::EmbedError> {
+        let mut calls = self.calls.lock().unwrap();
+        calls.push(utterance.to_string());
+        Ok(Pad::new(0.1, 0.2, 0.3))
+    }
+}
+
+/// 테스트용 AppState 생성 (Spy 분석기 포함)
+fn test_state_with_spy() -> (AppState, Arc<Mutex<Vec<String>>>) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let spy = SpyAnalyzer { calls: calls.clone() };
+    let state = AppState::new(AppraisalCollector::new(), Some(spy));
+    let mcp = crate::mcp_server::create_mcp_server(state.clone());
+    (state.with_mcp(mcp), calls)
+}
 
 /// 테스트용 AppState 생성 (embed 없음)
 fn test_state() -> AppState {
-    let state = AppState::new(AppraisalCollector::new(), None);
+    // None의 구체적 타입을 명시하여 타입 추론 오류 방지 (UtteranceAnalyzer 구현체 중 하나 선택)
+    let state = AppState::new(AppraisalCollector::new(), None::<SpyAnalyzer>);
     let mcp = crate::mcp_server::create_mcp_server(state.clone());
     state.with_mcp(mcp)
 }
@@ -1284,4 +1310,60 @@ async fn mcp_tool_call_logic() {
         }
     })).await.unwrap();
     assert!(res["mood"].as_f64().unwrap() > 0.0);
+}
+
+#[tokio::test]
+async fn test_studio_analysis_pipeline_integrity() {
+    let (state, calls) = test_state_with_spy();
+
+    // 1. 사전 데이터 등록
+    {
+        let mut inner = state.inner.write().await;
+        let mu_baek: NpcProfile = serde_json::from_value(mu_baek_profile()).unwrap();
+        let gyo_ryong: NpcProfile = serde_json::from_value(gyo_ryong_profile()).unwrap();
+        inner.npcs.insert(mu_baek.id.clone(), mu_baek);
+        inner.npcs.insert(gyo_ryong.id.clone(), gyo_ryong);
+        inner.relationships.insert("mu_baek:gyo_ryong".into(), RelationshipData {
+            owner_id: "mu_baek".into(),
+            target_id: "gyo_ryong".into(),
+            closeness: 0.0, trust: 0.0, power: 0.0,
+        });
+        // appraise 상태 생성
+        inner.emotions.insert("mu_baek".into(), npc_mind::domain::emotion::EmotionState::default());
+    }
+
+    #[cfg(feature = "chat")]
+    {
+        use npc_mind::application::dialogue_test_service::ChatTurnRequest;
+        let chat_req = ChatTurnRequest {
+            session_id: "test-session".into(),
+            npc_id: "mu_baek".into(),
+            partner_id: "gyo_ryong".into(),
+            utterance: "사용자의 아주 화나는 대사".into(),
+            pad: None, // 자동 분석 유도
+            situation_description: None,
+        };
+
+        // 직접 호출 검증
+        let (stim, _) = crate::studio_service::StudioService::process_chat_turn_result(
+            &state, &chat_req, "NPC의 정중한 대답".into()
+        ).await.unwrap();
+
+        // 검증 A: 분석 대상이 NPC 대답이 아닌 '사용자 대사'여야 함
+        let calls_lock = calls.lock().await;
+        assert_eq!(calls_lock.len(), 1, "분석기가 한 번 호출되어야 함");
+        assert_eq!(calls_lock[0], "사용자의 아주 화나는 대사", "분석 대상은 반드시 사용자 대사여야 함");
+
+        // 검증 B: 반환된 결과에 input_pad가 포함되어야 함 (UI 슬라이더 반영용)
+        let stimulus = stim.expect("자극 결과가 반환되어야 함");
+        assert!(stimulus.input_pad.is_some(), "결과에 input_pad가 포함되어야 함");
+        assert_eq!(stimulus.input_pad.unwrap().pleasure, 0.1);
+
+        // 검증 C: 히스토리에 기록된 response에 input_pad가 저장되어야 함 (결과 로드용)
+        let inner = state.inner.read().await;
+        let last_turn = inner.turn_history.last().expect("히스토리가 기록되어야 함");
+        assert_eq!(last_turn.action, "chat_message");
+        assert!(last_turn.response["input_pad"].is_object(), "히스토리 응답 데이터에 input_pad 객체가 있어야 함");
+        assert_eq!(last_turn.response["input_pad"]["pleasure"], 0.1);
+    }
 }

@@ -2,10 +2,6 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use npc_mind::application::dto::*;
-#[cfg(feature = "embed")]
-use npc_mind::ports::UtteranceAnalyzer;
-#[cfg(feature = "embed")]
-use serde::{Deserialize, Serialize};
 use crate::state::*;
 use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
 use crate::repository::{ReadOnlyAppStateRepo};

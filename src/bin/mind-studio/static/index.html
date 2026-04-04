@@ -1947,13 +1947,21 @@
                                         <StimulusView
                                             utterance={stimulusUtterance}
                                             onUtteranceChange={onStimulusUtteranceChange}
-                                            initialPad={
-                                                selectedMsgIdx != null && chatMessages
-                                                && chatMessages[selectedMsgIdx]?.role === "user"
-                                                && chatMessages[selectedMsgIdx]?.pad
-                                                    ? chatMessages[selectedMsgIdx].pad
-                                                    : null
-                                            }
+                                            initialPad={(() => {
+                                                if (selectedMsgIdx == null || !chatMessages || !chatMessages[selectedMsgIdx]) return null;
+                                                const msg = chatMessages[selectedMsgIdx];
+                                                // 1. 유저 메시지면 본인의 pad 사용
+                                                if (msg.role === "user" && msg.pad) return msg.pad;
+                                                // 2. 어시스턴트 메시지면 직전 유저 메시지의 pad 사용
+                                                if (msg.role === "assistant") {
+                                                    for (let j = selectedMsgIdx - 1; j >= 0; j--) {
+                                                        if (chatMessages[j]?.role === "user" && chatMessages[j]?.pad) {
+                                                            return chatMessages[j].pad;
+                                                        }
+                                                    }
+                                                }
+                                                return null;
+                                            })()}
                                             onApply={(pad) => {
                                                 onStimulus({
                                                     ...pad,
@@ -2644,10 +2652,15 @@
                 // initialPad가 바뀌면 슬라이더에 반영 (메시지 선택 시)
                 const prevPadRef = React.useRef(null);
                 React.useEffect(() => {
-                    if (initialPad && initialPad !== prevPadRef.current) {
+                    if (initialPad) {
                         setPadP(Math.round(initialPad.pleasure * 100) / 100);
                         setPadA(Math.round(initialPad.arousal * 100) / 100);
                         setPadD(Math.round(initialPad.dominance * 100) / 100);
+                    } else {
+                        // 기록된 자극 정보가 없으면 0으로 초기화
+                        setPadP(0);
+                        setPadA(0);
+                        setPadD(0);
                     }
                     prevPadRef.current = initialPad;
                 }, [initialPad]);
@@ -3268,31 +3281,44 @@
                                         setChatMessages((prev) => {
                                             const updated = [...prev];
                                             // assistant 메시지 업데이트
-                                            updated[assistantIdx.current] = {
-                                                ...updated[assistantIdx.current],
-                                                content: result.npc_response,
-                                                emotions: result.stimulus ? emotions : null,
-                                                mood: result.stimulus?.mood || null,
-                                                beat_changed: result.beat_changed,
-                                                new_focus: result.stimulus?.active_focus_id || null,
-                                                snapshot: result.stimulus || null,
-                                                activePrompt: result.stimulus?.prompt || currentPrompt,
-                                                streaming: false,
-                                            };
-                                            // user 메시지에 input_pad 저장
-                                            const userIdx = assistantIdx.current - 1;
-                                            if (userIdx >= 0 && updated[userIdx]?.role === "user" && result.stimulus?.input_pad) {
-                                                updated[userIdx] = {
-                                                    ...updated[userIdx],
-                                                    pad: result.stimulus.input_pad,
+                                            const aIdx = assistantIdx.current;
+                                            if (updated[aIdx]) {
+                                                updated[aIdx] = {
+                                                    ...updated[aIdx],
+                                                    content: result.npc_response,
+                                                    emotions: result.stimulus ? emotions : null,
+                                                    mood: result.stimulus?.mood || null,
+                                                    beat_changed: result.beat_changed,
+                                                    new_focus: result.stimulus?.active_focus_id || null,
+                                                    snapshot: result.stimulus || null,
+                                                    activePrompt: result.stimulus?.prompt || currentPrompt,
+                                                    streaming: false,
                                                 };
+                                            }
+                                            // 역방향으로 가장 최근의 pad 없는 유저 메시지 찾아 저장
+                                            if (result.stimulus?.input_pad) {
+                                                for (let j = updated.length - 1; j >= 0; j--) {
+                                                    if (updated[j]?.role === "user" && !updated[j]?.pad) {
+                                                        updated[j] = {
+                                                            ...updated[j],
+                                                            pad: result.stimulus.input_pad,
+                                                        };
+                                                        console.log("[Debug] User message PAD updated:", updated[j]);
+                                                        break;
+                                                    }
+                                                }
                                             }
                                             return updated;
                                         });
 
                                         // ResultPanel 업데이트
                                         if (result.stimulus) {
+                                            console.log("[Debug] Stimulus response received. Input PAD:", result.stimulus.input_pad);
                                             setResult(result.stimulus);
+                                            // 분석된 PAD가 있으면 우측 자극 탭 텍스트 동기화
+                                            if (result.stimulus.input_pad) {
+                                                setStimulusUtterance(utterance);
+                                            }
                                             setTraceHistory((prev) => [
                                                 ...prev,
                                                 { label: "chat/message", trace: result.stimulus.trace || [] },
@@ -3406,31 +3432,24 @@
                 const handleSelectMsg = (idx) => {
                     if (selectedMsgIdx === idx) {
                         setSelectedMsgIdx(null);
-                        // 최신 상태로 복원
-                        const lastSnap = [...chatMessages]
-                            .reverse()
-                            .find((m) => m.snapshot);
+                        const lastSnap = [...chatMessages].reverse().find((m) => m.snapshot);
                         if (lastSnap) setResult(lastSnap.snapshot);
                     } else {
                         setSelectedMsgIdx(idx);
                         const msg = chatMessages[idx];
+                        console.log("[Debug] Selected Message:", msg);
                         if (msg && msg.snapshot) {
-                            // assistant 메시지: 직접 snapshot 사용
                             setResult(msg.snapshot);
                         } else if (msg && msg.role === "user") {
-                            // user 메시지: 바로 다음 assistant의 snapshot 사용 (해당 대사 처리 후 상태)
                             const nextAssistant = chatMessages[idx + 1];
                             if (nextAssistant && nextAssistant.snapshot) {
                                 setResult(nextAssistant.snapshot);
                             }
                         }
-                        // 자극 탭에 상대(user) 대사 자동 입력
                         if (msg) {
                             if (msg.role === "user" && msg.content) {
-                                // user 대사 직접 클릭
                                 setStimulusUtterance(msg.content);
                             } else if (msg.role === "assistant") {
-                                // NPC 대사 클릭 → 직전 상대(user) 대사 찾기
                                 for (let j = idx - 1; j >= 0; j--) {
                                     if (chatMessages[j]?.role === "user" && chatMessages[j]?.content) {
                                         setStimulusUtterance(chatMessages[j].content);
@@ -3442,18 +3461,15 @@
                     }
                 };
 
-                // --- 결과 뷰 메시지 선택 핸들러 ---
                 const handleResultSelectMsg = (idx) => {
                     if (resultSelectedIdx === idx) {
                         setResultSelectedIdx(null);
-                        // 최신 상태로 복원
-                        const lastSnap = [...resultMessages]
-                            .reverse()
-                            .find((m) => m.snapshot);
+                        const lastSnap = [...resultMessages].reverse().find((m) => m.snapshot);
                         if (lastSnap) setResult(lastSnap.snapshot);
                     } else {
                         setResultSelectedIdx(idx);
                         const msg = resultMessages[idx];
+                        console.log("[Debug] Selected Result Message:", msg);
                         if (msg && msg.snapshot) {
                             setResult(msg.snapshot);
                         } else if (msg && msg.role === "user") {
@@ -3462,7 +3478,6 @@
                                 setResult(nextAssistant.snapshot);
                             }
                         }
-                        // 자극 탭에 상대(user) 대사 자동 입력
                         if (msg) {
                             if (msg.role === "user" && msg.content) {
                                 setStimulusUtterance(msg.content);
@@ -3690,7 +3705,11 @@
                                 msgs.push({
                                     role: "user",
                                     content: req.utterance || "",
-                                    pad: resp.input_pad || null,
+                                    pad: req.pad || resp.input_pad || null,
+                                });
+                                console.log(`[Debug] Loaded turn ${i+1} (${turn.action}):`, {
+                                    utterance: req.utterance,
+                                    pad: req.pad || resp.input_pad || null
                                 });
                                 msgs.push({
                                     role: "assistant",

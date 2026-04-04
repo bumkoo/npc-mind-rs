@@ -8,8 +8,7 @@ use tokio::sync::{Mutex, RwLock};
 use crate::trace_collector::AppraisalCollector;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
-use npc_mind::domain::pad::PadAnalyzer;
-use npc_mind::ports::LlmModelInfo;
+use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -17,7 +16,7 @@ pub struct AppState {
     pub inner: Arc<RwLock<StateInner>>,
     pub collector: AppraisalCollector,
     /// 대사 → PAD 분석기 (embed feature 활성 시에만 Some)
-    pub analyzer: Option<Arc<Mutex<PadAnalyzer>>>,
+    pub analyzer: Option<Arc<Mutex<dyn UtteranceAnalyzer + Send>>>,
     /// 연기 가이드 포맷터 (서버 시작 시 한 번 생성, 모든 핸들러에서 공유)
     pub formatter: Arc<dyn npc_mind::ports::GuideFormatter>,
     /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
@@ -35,11 +34,14 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(collector: AppraisalCollector, analyzer: Option<PadAnalyzer>) -> Self {
+    pub fn new(
+        collector: AppraisalCollector,
+        analyzer: Option<impl UtteranceAnalyzer + Send + 'static>,
+    ) -> Self {
         Self {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
-            analyzer: analyzer.map(|a| Arc::new(Mutex::new(a))),
+            analyzer: analyzer.map(|a| Arc::new(Mutex::new(a)) as Arc<Mutex<dyn UtteranceAnalyzer + Send>>),
             formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
             chat: None,
             #[cfg(feature = "chat")]
