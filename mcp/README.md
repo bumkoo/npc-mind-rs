@@ -1,60 +1,33 @@
 # NPC Mind Studio MCP Server
 
-AI Agent(Claude Code)가 Mind Studio HTTP API를 통해 NPC 시나리오를 설계/테스트할 수 있는 MCP 서버입니다.
+AI Agent(Claude Code, Cline, Roo Code 등)가 Mind Studio HTTP API를 통해 NPC 시나리오를 설계/테스트할 수 있는 MCP 서버입니다.
 
-## 사전 준비
+## 네이티브 SSE 통합 (추천)
+
+`mind-studio` 바이너리에는 MCP SSE(Server-Sent Events) 서버가 내장되어 있습니다. 별도의 파이썬 브릿지 없이 서버 자체 엔드포인트에 직접 연결하여 사용합니다.
 
 ### 1. Mind Studio 서버 실행
 
 ```bash
-# npc-mind-rs 프로젝트에서
+# npc-mind-rs 프로젝트 루트에서
 cargo run --features mind-studio --bin npc-mind-studio
-# http://127.0.0.1:3000 에서 실행됨
+# 기본 주소: http://127.0.0.1:3000
+# MCP 엔드포인트: http://127.0.0.1:3000/mcp/sse
 ```
 
-### 2. Python 의존성 설치
+### 2. 에이전트 도구 설정 (.mcp.json)
 
-```bash
-pip install -r mcp/requirements.txt
-```
-
-## 다른 프로젝트에서 사용하기
-
-AI Agent가 작동할 프로젝트의 `.mcp.json`에 추가:
-
-### 방법 1: Rust 네이티브 통합 (추천 - 단일 서버)
-
-Mind Studio 서버 자체의 SSE 엔드포인트를 직접 사용합니다. 별도의 Python 서버가 필요 없습니다.
+AI Agent가 작동할 프로젝트의 루트에 `.mcp.json` 파일을 생성하거나 업데이트합니다:
 
 ```json
 {
   "mcpServers": {
-    "mind-studio": {
-      "url": "http://localhost:3000/mcp/sse"
+    "npc-mind-studio": {
+      "url": "http://127.0.0.1:3000/mcp/sse"
     }
   }
 }
 ```
-
-### 방법 2: Python 브릿지 서버 (기존 방식)
-
-Python 기반의 MCP 서버를 통해 HTTP API를 호출합니다.
-
-```json
-{
-  "mcpServers": {
-    "mind-studio-py": {
-      "command": "python",
-      "args": ["/absolute/path/to/npc-mind-rs/mcp/mind_studio_server.py"],
-      "env": {
-        "MIND_STUDIO_URL": "http://localhost:3000"
-      }
-    }
-  }
-}
-```
-
-> `MIND_STUDIO_URL` 환경변수를 생략하면 기본값 `http://localhost:3000`을 사용합니다.
 
 ## 제공되는 도구 (23개)
 
@@ -113,51 +86,14 @@ Python 기반의 MCP 서버를 통해 HTTP API를 호출합니다.
 
 ## AI Agent 워크플로우 예시
 
-```
-1. create_npc(id="jim", name="짐", description="온순하고 감성적인 인물",
-              sincerity=0.7, fearfulness=0.6, sentimentality=0.8, patience=0.7)
+에이전트에게 다음과 같은 흐름으로 작업을 지시할 수 있습니다:
 
-2. create_npc(id="huck", name="헉", description="자유분방한 소년",
-              sincerity=-0.3, fearfulness=-0.5, unconventionality=0.8)
+1.  **NPC 생성**: `create_npc`로 실험할 캐릭터들의 성격을 정의합니다.
+2.  **관계 설정**: `create_relationship`으로 캐릭터 간의 초기 호감도와 신뢰도를 설정합니다.
+3.  **상황 시작**: `start_scene`으로 구체적인 갈등 상황과 Beat 전환 조건(Focus)을 입력합니다.
+4.  **반응 검토**: 생성된 `prompt`를 보고 NPC의 심리 상태가 의도한 성격대로 형성되었는지 확인합니다.
+5.  **대화 진행**: `apply_stimulus`로 상대의 대사에 따른 감정 변화를 시뮬레이션하고, Beat 전환이 발생하는지 관찰합니다.
+6.  **결과 저장**: `save_scenario`를 통해 시뮬레이션 결과를 파일로 기록합니다.
 
-3. create_relationship(owner_id="jim", target_id="huck",
-                       closeness=0.55, trust=0.6, power=-0.3)
-
-4. start_scene(npc_id="jim", partner_id="huck",
-               description="안개 속 재회",
-               focuses_json='[
-                 {"id":"betrayal", "description":"거짓말 발각", "trigger":null,
-                  "event":{"description":"헉이 거짓말로 속였다", "desirability_for_self":-0.8},
-                  "action":{"description":"기만 행위", "agent_id":"huck", "praiseworthiness":-0.8}},
-                 {"id":"apology", "description":"사과 수용", 
-                  "trigger":[[{"emotion":"Anger","below":0.4},{"emotion":"Distress","below":0.3}]],
-                  "event":{"description":"헉이 진심으로 사과", "desirability_for_self":0.7},
-                  "action":{"description":"자존심을 꺾고 사과", "agent_id":"huck", "praiseworthiness":0.7}}
-               ]')
-
-5. # 프롬프트 확인 → 감정이 적절한지 검토
-
-6. apply_stimulus(npc_id="jim", partner_id="huck",
-                  pleasure=0.3, arousal=-0.2, dominance=0.1)
-   # → beat_changed=true이면 사과 Beat로 전환됨
-
-7. after_dialogue(npc_id="jim", partner_id="huck",
-                  praiseworthiness=0.3, significance=0.7)
-
-8. save_scenario(path="data/my_scenario/scenario.json")
-```
-
-## Tool Annotations
-
-모든 도구에 MCP 표준 annotations가 적용되어 있습니다:
-
-| 분류 | 도구 | readOnly | destructive | idempotent |
-|------|------|----------|-------------|------------|
-| 조회 | `list_npcs`, `list_relationships`, `list_objects`, `list_scenarios` | ✅ | ❌ | - |
-| 조회 | `get_scene_info`, `get_history`, `get_situation`, `get_scenario_meta` | ✅ | ❌ | - |
-| 분석 | `analyze_utterance` | ✅ | ❌ | - |
-| 생성/수정 | `create_npc`, `create_relationship`, `create_object`, `update_situation` | ❌ | ❌ | ✅ |
-| 파이프라인 | `appraise`, `apply_stimulus`, `generate_guide`, `after_dialogue` | ❌ | ❌ | - |
-| Scene | `start_scene` | ❌ | ❌ | - |
-| 저장/로드 | `save_scenario`, `load_scenario` | ❌ | ❌ | - |
-| 삭제 | `delete_npc`, `delete_relationship`, `delete_object` | ❌ | ✅ | - |
+---
+*레거시 Python 브릿지 서버 코드는 `mcp/archive/` 폴더로 이동되었습니다.*

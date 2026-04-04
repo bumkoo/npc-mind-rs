@@ -1,11 +1,7 @@
 {
   "mcpServers": {
-    "mind-studio": {
-      "command": "python",
-      "args": ["mcp/mind_studio_server.py"],
-      "env": {
-        "MIND_STUDIO_URL": "http://localhost:3000"
-      }
+    "npc-mind-studio": {
+      "url": "http://127.0.0.1:3000/mcp/sse"
     }
   }
 }
