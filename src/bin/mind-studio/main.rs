@@ -112,6 +112,7 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/scene-info", get(handlers::scenario::get_scene_info))
         .route("/api/history", get(handlers::scenario::get_history))
         .route("/api/situation", get(handlers::scenario::get_situation).put(handlers::scenario::put_situation))
+        .route("/api/test-report", get(handlers::scenario::get_test_report).put(handlers::scenario::put_test_report))
         .route("/api/analyze-utterance", post(handlers::scenario::analyze_utterance))
         // Persistence
         .route("/api/save", post(handlers::scenario::save_state))

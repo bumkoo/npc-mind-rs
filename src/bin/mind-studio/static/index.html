@@ -7,6 +7,7 @@
         <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
         <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
         <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
             * {
                 margin: 0;
@@ -1828,6 +1829,8 @@
                 result,
                 history,
                 traceHistory,
+                testReport,
+                onUpdateReport,
                 onGuide,
                 onStimulus,
                 toast,
@@ -1871,6 +1874,12 @@
                                 onClick={() => setTab("trace")}
                             >
                                 Trace
+                            </div>
+                            <div
+                                className={`result-tab ${tab === "report" ? "active" : ""}`}
+                                onClick={() => setTab("report")}
+                            >
+                                보고서
                             </div>
                             <div
                                 className={`result-tab ${tab === "history" ? "active" : ""}`}
@@ -1979,6 +1988,12 @@
                                                 traceHistory={traceHistory}
                                             />
                                         )}
+                                    {tab === "report" && (
+                                        <ReportView
+                                            content={testReport}
+                                            onUpdate={onUpdateReport}
+                                        />
+                                    )}
                                     {tab === "history" && (
                                         <HistoryView history={history} />
                                     )}
@@ -2649,6 +2664,79 @@
                 );
             }
 
+            function ReportView({ content, onUpdate, isReadOnly }) {
+                const [editMode, setEditMode] = React.useState(false);
+                const [text, setText] = React.useState(content || "");
+
+                React.useEffect(() => {
+                    setText(content || "");
+                }, [content]);
+
+                const html = marked.parse(text || "*보고서 내용이 없습니다.*");
+
+                if (!editMode || isReadOnly) {
+                    return (
+                        <div className="report-container">
+                            {!isReadOnly && (
+                                <button
+                                    className="btn small"
+                                    style={{ float: "right" }}
+                                    onClick={() => setEditMode(true)}
+                                >
+                                    편집
+                                </button>
+                            )}
+                            <div dangerouslySetInnerHTML={{ __html: html }} />
+                        </div>
+                    );
+                }
+
+                return (
+                    <div
+                        style={{ display: "flex", flexDirection: "column", gap: 8 }}
+                    >
+                        <textarea
+                            value={text}
+                            onChange={(e) => setText(e.target.value)}
+                            rows={15}
+                            style={{
+                                width: "100%",
+                                fontFamily: "monospace",
+                                fontSize: 12,
+                                padding: 8,
+                                background: "#1a1a1a",
+                                color: "#ccc",
+                                border: "1px solid var(--border)",
+                            }}
+                            placeholder="마크다운 형식으로 보고서를 작성하세요..."
+                        />
+                        <div
+                            style={{
+                                display: "flex",
+                                gap: 8,
+                                justifyContent: "flex-end",
+                            }}
+                        >
+                            <button
+                                className="btn small"
+                                onClick={() => setEditMode(false)}
+                            >
+                                취소
+                            </button>
+                            <button
+                                className="btn primary small"
+                                onClick={() => {
+                                    onUpdate(text);
+                                    setEditMode(false);
+                                }}
+                            >
+                                저장
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
             function StimulusView({ utterance, onUtteranceChange, initialPad, onApply, toast }) {
                 const [padP, setPadP] = useState(0);
                 const [padA, setPadA] = useState(0);
@@ -2909,10 +2997,11 @@
                 const [resultTurnHistory, setResultTurnHistory] = useState([]);
                 const [resultMessages, setResultMessages] = useState([]);
                 const [resultSelectedIdx, setResultSelectedIdx] = useState(null);
+                const [testReport, setTestReport] = useState("");
 
                 const refresh = useCallback(async () => {
                     try {
-                        const [n, r, o, s, h, sm, si] = await Promise.all([
+                        const [n, r, o, s, h, sm, si, tr] = await Promise.all([
                             api.get("/api/npcs"),
                             api.get("/api/relationships"),
                             api.get("/api/objects"),
@@ -2920,6 +3009,7 @@
                             api.get("/api/history"),
                             api.get("/api/scenario-meta"),
                             api.get("/api/scene-info"),
+                            api.get("/api/test-report"),
                         ]);
                         setNpcs(n);
                         setRels(r);
@@ -2928,6 +3018,7 @@
                         setHistory(h);
                         setScenarioMeta(sm && sm.name ? sm : null);
                         setSceneInfo(si && si.has_scene ? si : null);
+                        setTestReport(tr?.content || "");
                         setConnected(true);
                     } catch (e) {
                         setConnected(false);
@@ -3557,6 +3648,15 @@
                     return true;
                 };
 
+                const updateTestReport = async (content) => {
+                    await fetch("/api/test-report", {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ content }),
+                    });
+                    setTestReport(content);
+                };
+
                 const saveState = async () => {
                     // 0) 대화 진행 중이면 차단
                     if (chatMode) {
@@ -3930,7 +4030,10 @@
                                 result={result}
                                 history={history}
                                 traceHistory={traceHistory}
+                                testReport={testReport}
+                                onUpdateReport={updateTestReport}
                                 onGuide={handleGuide}
+
                                 onStimulus={handleStimulus}
                                 toast={toast}
                                 sceneInfo={sceneInfo}

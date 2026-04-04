@@ -1314,7 +1314,7 @@ async fn mcp_tool_call_logic() {
 
 #[tokio::test]
 async fn test_studio_analysis_pipeline_integrity() {
-    let (state, calls) = test_state_with_spy();
+    let (state, _calls) = test_state_with_spy();
 
     // 1. 사전 데이터 등록
     {
@@ -1350,7 +1350,7 @@ async fn test_studio_analysis_pipeline_integrity() {
         ).await.unwrap();
 
         // 검증 A: 분석 대상이 NPC 대답이 아닌 '사용자 대사'여야 함
-        let calls_lock = calls.lock().await;
+        let calls_lock = _calls.lock().unwrap();
         assert_eq!(calls_lock.len(), 1, "분석기가 한 번 호출되어야 함");
         assert_eq!(calls_lock[0], "사용자의 아주 화나는 대사", "분석 대상은 반드시 사용자 대사여야 함");
 
@@ -1366,4 +1366,61 @@ async fn test_studio_analysis_pipeline_integrity() {
         assert!(last_turn.response["input_pad"].is_object(), "히스토리 응답 데이터에 input_pad 객체가 있어야 함");
         assert_eq!(last_turn.response["input_pad"]["pleasure"], 0.1);
     }
+}
+
+// =========================================================================
+// 테스트 결과 보고서 (Test Report) 검증
+// =========================================================================
+
+#[tokio::test]
+async fn test_report_round_trip() {
+    let app = test_app();
+
+    let content = "# 테스트 결과 보고서\n\n- 감정 분석 완료\n- 프롬프트 적절함";
+    let body = serde_json::json!({ "content": content });
+
+    // 1. 보고서 저장 (PUT)
+    let resp = app
+        .clone()
+        .oneshot(json_put("/api/test-report", body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 2. 보고서 조회 (GET)
+    let resp = app.clone().oneshot(get("/api/test-report")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["content"], content);
+}
+
+#[tokio::test]
+async fn test_report_persistence_across_save_load() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+    let path = test_path("report_persistence.json");
+
+    // 1. 보고서 데이터 설정
+    let content = "영구 보존되어야 할 보고서 내용";
+    app.clone()
+        .oneshot(json_put("/api/test-report", serde_json::json!({ "content": content })))
+        .await
+        .unwrap();
+
+    // 2. 시나리오 저장 (보고서 필드 포함됨)
+    let save_req = serde_json::json!({
+        "path": path,
+        "save_type": "scenario"
+    });
+    app.clone().oneshot(json_post("/api/save", save_req)).await.unwrap();
+
+    // 3. 상태 초기화 및 로드
+    app.clone().oneshot(json_post("/api/load", serde_json::json!({ "path": path }))).await.unwrap();
+
+    // 4. 보고서 복원 확인
+    let resp = app.clone().oneshot(get("/api/test-report")).await.unwrap();
+    let json = body_json(resp).await;
+    assert_eq!(json["content"], content, "시나리오 로드 후 보고서 내용이 복원되어야 함");
+
+    cleanup_test_path(&path);
 }

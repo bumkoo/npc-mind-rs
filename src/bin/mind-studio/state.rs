@@ -98,6 +98,9 @@ pub struct StateInner {
     /// 현재 상황 설정 패널 상태 (프론트엔드 폼 값 보존용)
     #[serde(default)]
     pub current_situation: Option<serde_json::Value>,
+    /// 테스트 결과 분석 보고서 (마크다운 포맷)
+    #[serde(default)]
+    pub test_report: String,
     /// Scene 정보 (시나리오 JSON에 저장됨)
     #[serde(default)]
     pub scene: Option<serde_json::Value>,

@@ -41,7 +41,7 @@
 │       │                                                     │
 │       ▼                                                     │
 │  ④ 결과 검증            감정 타당성, 프롬프트 품질, Trace 확인│
-│       │                                                     │
+│       │                 + 테스트 보고서 작성 (마크다운)       │
 │       ▼                                                     │
 │  ⑤ 개선점 식별          무엇을 고쳐야 하는가?                │
 │       │                                                     │
@@ -77,11 +77,11 @@
 - **자동 분석 (`--features embed`)**: 사용자의 대사가 BGE-M3 모델로 임베딩 분석되어 PAD 수치가 자동 산출됩니다.
 - **데이터 흐름**: 분석된 PAD 값은 `input_pad` 필드에 담겨 히스토리에 영구 보존되며, UI 슬라이더에 즉시 반영됩니다.
 
-### ④ 결과 검증
-**Trace 탭 활용**: 
-- `Trace` 탭을 통해 엔진의 상세 계산 과정을 검토합니다. 
-- 예: `→ Joy: base_val=0.5, weight=0.3, result=0.15 [맥락]`
-- 특정 성격 특성이 감정을 얼마나 증폭/억제했는지 수학적 근거를 확인합니다.
+### ④ 결과 검증 및 보고서 작성
+**Trace 및 Report 탭 활용**: 
+- `Trace` 탭을 통해 엔진의 상세 계산 과정을 검토합니다. (예: `→ Joy: base_val=0.5, result=0.15 [맥락]`)
+- **테스트 보고서 (NEW)**: AI가 테스트 결과를 마크다운으로 정리하여 `Report` 탭에 기록합니다. 
+- 이 보고서는 시나리오와 함께 저장되어 추후 분석 근거로 활용됩니다.
 
 ### ⑤ 개선점 식별 및 리팩토링
 **안심 리팩토링 원칙**:
@@ -116,6 +116,8 @@ Claude Code 등 AI Agent가 Mind Studio를 자율적으로 사용할 때는 **SS
 | `appraise` | `SituationService` | 상황 DTO → 도메인 변환 후 평가 |
 | `apply_stimulus` | `SceneService` | 자극 적용 및 Beat 전환 트리거 체크 |
 | `after_dialogue` | `RelationshipService` | 대화 종료 후 관계 수치 최종 갱신 |
+| `get_test_report` | `State` | 현재 테스트 분석 보고서 조회 |
+| `update_test_report` | `State` | AI 분석 결과를 마크다운 보고서로 작성 |
 | `get_history` | `TurnRecord` (State) | `trace` 및 `input_pad`를 포함한 전체 히스토리 로드 |
 
 ### MCP Agent 워크플로우 예시
@@ -130,8 +132,11 @@ Claude Code 등 AI Agent가 Mind Studio를 자율적으로 사용할 때는 **SS
 3. apply_stimulus(utterance="정말 실망이야!", ...)
    # → 감정 갱신 및 히스토리에 input_pad 기록 확인
 
-4. get_history()
-   # → 각 턴의 trace 로그를 분석하여 엔진 로직 검증
+4. update_test_report(content="# 테스트 결과 분석\n\n- 헉의 죄책감이 의도대로 상승함...")
+   # → 테스트 분석 내용 기록
+
+5. save_scenario(path="huckleberry_finn/session_001_result")
+   # → 보고서를 포함한 전체 결과 저장
 ```
 
 ---

@@ -297,7 +297,9 @@ Mind Studio handlers는 `MindService` API만 호출하는 얇은 래퍼입니다
 - **대사 기반 PAD 자극 분석**: 상대 대사 입력 → PadAnalyzer(BGE-M3)로 PAD 자동 추출 → 슬라이더 반영 (embed feature 필요, 없으면 수동 입력)
 - 시나리오 로드/세이브 및 현재 시나리오명 헤더 표시
 - 턴별 히스토리, Appraisal Trace 로그
-- **Scene Focus 패널**: 시나리오 JSON에 정의된 Focus 옵션 목록을 읽기 전용으로 표시 (활성/대기 상태, trigger 조건)
+- **테스트 결과 보고서**: AI가 분석한 테스트 결과(마크다운)를 저장하고 실시간으로 조회하는 기능
+- **Scene Focus 패널**:
+ 시나리오 JSON에 정의된 Focus 옵션 목록을 읽기 전용으로 표시 (활성/대기 상태, trigger 조건)
 - **Beat 전환 표시**: stimulus 결과에서 Beat 전환 발생 시 시각적 배너
 - **상황 중요도 슬라이더**: after_dialogue 시 significance (0.0~1.0) 설정
 - **LLM 대화 테스트** (chat feature): Mind Engine 프롬프트를 system prompt로 사용하여 로컬 LLM과 다턴 대화 수행. Beat 전환 시 system_prompt 동적 갱신.
@@ -344,6 +346,8 @@ Mind Studio handlers는 `MindService` API만 호출하는 얇은 래퍼입니다
 - `GET /api/situation` — 상황 패널 상태 조회
 - `PUT /api/situation` — 상황 패널 상태 저장
 - `GET /api/history` — 턴별 히스토리 조회
+- `GET /api/test-report` — 테스트 결과 보고서 조회
+- `PUT /api/test-report` — 테스트 결과 보고서 업데이트
 
 ## LLM 대화 테스트 (chat feature)
 

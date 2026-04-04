@@ -154,6 +154,27 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }
 
+/// GET /api/test-report
+pub async fn get_test_report(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let inner = state.inner.read().await;
+    Json(serde_json::json!({ "content": inner.test_report }))
+}
+
+/// PUT /api/test-report
+pub async fn put_test_report(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> StatusCode {
+    let mut inner = state.inner.write().await;
+    if let Some(content) = body.get("content").and_then(|v| v.as_str()) {
+        inner.test_report = content.to_string();
+        inner.scenario_modified = true;
+        StatusCode::OK
+    } else {
+        StatusCode::BAD_REQUEST
+    }
+}
+
 #[cfg(feature = "embed")]
 #[derive(Deserialize)]
 pub struct AnalyzeUtteranceRequest {
