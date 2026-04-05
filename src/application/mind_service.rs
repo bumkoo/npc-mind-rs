@@ -271,7 +271,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             );
         }
 
-        // 3. Beat 전환 없음
+        // 3. Beat 전환 없음 (하지만 현재 Scene이 있으면 active_focus_id는 유지)
         let (emotions, dominant, mood) = build_emotion_fields(&stimulated_state);
         let guide = ActingGuide::build(
             &npc,
@@ -280,6 +280,12 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             Some(&relationship),
         );
 
+        // Scene이 활성 상태면 현재 active_focus_id를 반환 (Beat 전환이 없어도 UI가 상태를 알 수 있도록)
+        let active_focus_id = self
+            .repository
+            .get_scene()
+            .and_then(|s| s.active_focus_id().map(|id| id.to_string()));
+
         Ok(StimulusResult {
             emotions,
             dominant,
@@ -287,7 +293,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             guide,
             trace: vec![],
             beat_changed: false,
-            active_focus_id: None,
+            active_focus_id,
             input_pad: Some(PadOutput {
                 pleasure: req.pleasure,
                 arousal: req.arousal,

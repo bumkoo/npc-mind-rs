@@ -109,7 +109,7 @@ fn programmatic_repository_with_mind_service() {
 #[test]
 fn from_file_loads_scenario_json() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch8_jackson_island_meeting/session_001/scenario.json",
+        "tests/data/scenario_basic.json",
     )
     .unwrap();
 
@@ -130,7 +130,7 @@ fn from_file_loads_scenario_json() {
 #[test]
 fn from_file_loads_scene_with_focuses() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+        "tests/data/scenario_with_scene.json",
     )
     .unwrap();
 
@@ -152,7 +152,7 @@ fn from_file_loads_scene_with_focuses() {
 #[test]
 fn from_file_with_scene_can_run_service() {
     let mut repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+        "tests/data/scenario_with_scene.json",
     )
     .unwrap();
 
@@ -221,7 +221,7 @@ fn from_file_nonexistent_returns_error() {
 #[test]
 fn formatted_service_with_loaded_repository() {
     let repo = InMemoryRepository::from_file(
-        "data/huckleberry_finn/ch15_fog_trash/session_001/scenario.json",
+        "tests/data/scenario_with_scene.json",
     )
     .unwrap();
 

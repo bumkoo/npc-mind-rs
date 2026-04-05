@@ -69,11 +69,79 @@ impl MindMcpService {
     /// list_scenarios 반환 경로(data/ 하위 상대경로)를 실제 파일 경로로 변환
     fn resolve_data_path(path: &str) -> String {
         let p = std::path::Path::new(path);
-        // 절대 경로이거나 이미 data/ 접두사가 있으면 그대로
         if p.is_absolute() || path.starts_with("data/") || path.starts_with("data\\") {
             return path.to_string();
         }
         format!("data/{}", path)
+    }
+
+    /// Scene JSON을 SceneRequest DTO 형식으로 정규화 (create_full_scenario용)
+    fn normalize_scene_json(mut scene: Value) -> Value {
+        let Some(obj) = scene.as_object_mut() else { return scene; };
+        if let Some(focuses) = obj.get_mut("focuses") {
+            if focuses.is_object() {
+                let map = focuses.as_object().cloned().unwrap_or_default();
+                let mut arr: Vec<Value> = map.into_iter().map(|(key, mut focus_val)| {
+                    if let Some(focus_obj) = focus_val.as_object_mut() {
+                        if !focus_obj.contains_key("id") {
+                            focus_obj.insert("id".to_string(), Value::String(key));
+                        }
+                    }
+                    focus_val
+                }).collect();
+                for focus in arr.iter_mut() {
+                    Self::flatten_focus_situation(focus);
+                    Self::normalize_trigger_field(focus);
+                }
+                *focuses = Value::Array(arr);
+            } else if focuses.is_array() {
+                if let Some(arr) = focuses.as_array_mut() {
+                    for focus in arr.iter_mut() {
+                        Self::flatten_focus_situation(focus);
+                        Self::normalize_trigger_field(focus);
+                    }
+                }
+            }
+        }
+        scene
+    }
+
+    fn flatten_focus_situation(focus: &mut Value) {
+        let Some(focus_obj) = focus.as_object_mut() else { return; };
+        if let Some(situation) = focus_obj.remove("situation") {
+            if let Value::Object(sit_map) = situation {
+                for (k, v) in sit_map {
+                    if !focus_obj.contains_key(&k) {
+                        focus_obj.insert(k, v);
+                    }
+                }
+            }
+        }
+    }
+
+    fn normalize_trigger_field(focus: &mut Value) {
+        let Some(focus_obj) = focus.as_object_mut() else { return; };
+        if focus_obj.contains_key("trigger") { return; }
+        let Some(old_trigger) = focus_obj.remove("trigger_to_next") else { return; };
+        let Some(old_obj) = old_trigger.as_object() else { return; };
+        let Some(conditions) = old_obj.get("conditions").and_then(|c| c.as_array()) else { return; };
+        let converted: Vec<Value> = conditions.iter().filter_map(|c| {
+            let co = c.as_object()?;
+            let emotion = co.get("emotion")?.clone();
+            let threshold = co.get("threshold")?.clone();
+            let cond_type = co.get("type").and_then(|t| t.as_str()).unwrap_or("above");
+            let mut new_cond = serde_json::Map::new();
+            new_cond.insert("emotion".to_string(), emotion);
+            new_cond.insert(cond_type.to_string(), threshold);
+            Some(Value::Object(new_cond))
+        }).collect();
+        let logic_type = old_obj.get("type").and_then(|t| t.as_str()).unwrap_or("or");
+        let trigger = if logic_type == "and" {
+            Value::Array(vec![Value::Array(converted)])
+        } else {
+            Value::Array(converted.into_iter().map(|c| Value::Array(vec![c])).collect())
+        };
+        focus_obj.insert("trigger".to_string(), trigger);
     }
 
     /// 도구 목록 조회 (34개)
@@ -540,10 +608,14 @@ impl MindMcpService {
                     }
                 }
                 
-                // relationships
+                // relationships — 키를 owner_id:target_id 형식으로 자동 정규화
                 if let Some(rels) = scenario_val.get("relationships") {
                     if let Ok(rels_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::RelationshipData>>(rels.clone()) {
-                        state_inner.relationships = rels_map;
+                        // 입력 키가 owner_id:target_id 형식이 아닐 수 있으므로,
+                        // RelationshipData의 owner_id/target_id로부터 정규 키를 재생성
+                        state_inner.relationships = rels_map.into_values()
+                            .map(|rel| (rel.key(), rel))
+                            .collect();
                     }
                 }
                 
@@ -554,9 +626,10 @@ impl MindMcpService {
                     }
                 }
                 
-                // scene
+                // scene — focuses 객체→배열 변환 및 situation→event/action/object 평탄화
                 if let Some(scene) = scenario_val.get("scene") {
-                    state_inner.scene = Some(scene.clone());
+                    let normalized = Self::normalize_scene_json(scene.clone());
+                    state_inner.scene = Some(normalized);
                 }
                 
                 // 파일 저장
