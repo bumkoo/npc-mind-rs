@@ -44,6 +44,7 @@ impl SituationInput {
         event_other_modifiers: Option<RelationshipModifiers>,
         action_agent_modifiers: Option<RelationshipModifiers>,
         object_description: Option<String>,
+        npc_id: &str,
     ) -> Result<Situation, MindServiceError> {
         let event = self
             .event
@@ -54,7 +55,7 @@ impl SituationInput {
         let action = self
             .action
             .as_ref()
-            .map(|a| a.to_domain(action_agent_modifiers))
+            .map(|a| a.to_domain(action_agent_modifiers, npc_id))
             .transpose()?;
 
         let object = self
@@ -145,10 +146,17 @@ impl ActionInput {
     fn to_domain(
         &self,
         agent_modifiers: Option<RelationshipModifiers>,
+        npc_id: &str,
     ) -> Result<ActionFocus, MindServiceError> {
+        // agent_id가 NPC 자신의 ID와 같으면 None으로 정규화 — 엔진이 "자기 행위"로
+        // 판별하여 Pride/Shame/Gratification 경로로 감정을 생성하도록 한다.
+        let normalized_agent_id = match &self.agent_id {
+            Some(id) if id == npc_id => None,
+            other => other.clone(),
+        };
         Ok(ActionFocus {
             description: self.description.clone(),
-            agent_id: self.agent_id.clone(),
+            agent_id: normalized_agent_id,
             praiseworthiness: self.praiseworthiness,
             modifiers: agent_modifiers,
         })
@@ -423,6 +431,7 @@ impl SceneFocusInput {
         event_other_modifiers: Option<RelationshipModifiers>,
         action_agent_modifiers: Option<RelationshipModifiers>,
         object_description: Option<String>,
+        npc_id: &str,
     ) -> Result<SceneFocus, MindServiceError> {
         let trigger = match &self.trigger {
             None => FocusTrigger::Initial,
@@ -448,7 +457,7 @@ impl SceneFocusInput {
         let action = self
             .action
             .as_ref()
-            .map(|a| a.to_domain(action_agent_modifiers))
+            .map(|a| a.to_domain(action_agent_modifiers, npc_id))
             .transpose()?;
         let object = self
             .object

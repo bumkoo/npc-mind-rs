@@ -226,7 +226,7 @@ impl StudioService {
                     .action
                     .as_ref()
                     .and_then(|a| a.agent_id.as_ref())
-                    .filter(|&agent| *agent != scene_req.partner_id)
+                    .filter(|&agent| *agent != scene_req.partner_id && *agent != scene_req.npc_id)
                     .and_then(|agent| repo.get_relationship(&scene_req.npc_id, agent).map(|r| r.modifiers()));
 
                 let object_description = f
@@ -238,6 +238,7 @@ impl StudioService {
                     event_other_modifiers,
                     action_agent_modifiers,
                     object_description,
+                    &scene_req.npc_id,
                 )
                 .ok()
             })

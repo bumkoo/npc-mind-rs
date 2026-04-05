@@ -121,13 +121,21 @@
         "trigger": [
           [
             {
-              "above": 0.7,
+              "below": 0.4,
               "emotion": "Fear"
+            },
+            {
+              "above": 0.5,
+              "emotion": "Anger"
             }
           ],
           [
             {
-              "above": 0.7,
+              "below": 0.3,
+              "emotion": "Fear"
+            },
+            {
+              "below": 0.4,
               "emotion": "Distress"
             }
           ]

@@ -243,6 +243,80 @@ dialogue_turn(..., utterance="대사")  // pad 생략
 
 ## 5. Beat 전환 관찰
 
+### Beat와 Trigger의 본질
+
+**Beat 전환의 역할**:
+- Beat 전환 = **새로운 appraise 실행** = **새 OCC 감정이 태어나는 순간**
+- 하나의 Beat는 하나의 심리적 "국면". 국면이 바뀌면 새 감정이 태어남
+
+**Trigger 설계 원칙**:
+- Trigger는 "이미 그 감정이 있을 때"가 아니라, **"기존 감정이 어떤 상태로 변하면 새 감정이 피어날 심리적 토양이 되는가"** 를 표현한다
+- `apply_stimulus`는 PAD 자극으로 **기존 감정의 강도만 조절**할 뿐, 새 OCC 감정을 생성하지 않는다
+- 따라서 **appraise가 만들지 않은 감정은 trigger에 써도 영원히 충족되지 않는다**
+
+**잘못된 trigger 예시** (시맨틱 반전):
+```json
+// triumphant (승리 beat) — Fear/Distress 높을 때 전환???
+"trigger": [
+  [{"above": 0.7, "emotion": "Fear"}],
+  [{"above": 0.7, "emotion": "Distress"}]
+]
+```
+"공포가 극심할 때 승리감으로 전환"은 논리적 모순. 게다가 Beat 1에서 이미 Fear/Distress가 높으므로 첫 턴부터 자동 전환됨.
+
+**잘못된 trigger 예시** (생성되지 않는 감정 참조):
+```json
+// cornered beat에서는 Pride가 애초에 생성되지 않음
+"trigger": [
+  [{"above": 0.5, "emotion": "Pride"}]
+]
+```
+Beat 1의 appraise 입력이 `event.ds<0, action.pw<0` (부정 상황)이라면 Pride는 0에서 출발. stimulus로는 0에서 못 올라감 → trigger 영원히 미충족.
+
+**올바른 trigger 예시** (심리 전환점 모델링):
+```json
+// cornered → triumphant: 짐이 반격 태세를 갖추는 순간
+"trigger": [
+  [
+    {"below": 0.4, "emotion": "Fear"},
+    {"above": 0.5, "emotion": "Anger"}
+  ],
+  [
+    {"below": 0.3, "emotion": "Fear"},
+    {"below": 0.4, "emotion": "Distress"}
+  ]
+]
+```
+- 경로 1 (AND): 공포 가라앉음 + 분노/결의 치솟음 → 능동적 대응 태세
+- 경로 2 (AND): 공포 거의 사라짐 + 고통 완화 → 안전 확보 후 여유
+- 이 상태가 되면 Beat 2의 새 appraise가 짐의 praiseworthy action을 평가해 **Pride**를 새로 생성
+
+### Trigger 설계 체크리스트
+1. **이 Beat에서 태어나야 할 감정은 무엇인가?** (OCC 이론 기반: Pride, Joy, Relief, Satisfaction 등)
+2. **그 감정이 피어나려면 이전 Beat의 어떤 감정이 어떻게 변해야 하는가?** (완화/강화/결합)
+3. **그 변화가 stimulus(PAD 자극)만으로 도달 가능한가?** (기존 감정의 강도 조절만 가능)
+4. **이전 Beat의 appraise에서 참조 대상 감정이 실제로 생성되는가?** (0에서 출발 방지)
+
+### agent_id 사용 규칙 (Pride/Shame 생성)
+
+시나리오 JSON의 `action.agent_id`는 **자기 행위**와 **타인 행위**를 구분한다:
+- `agent_id` 생략 또는 `agent_id: "<npc_id>"` → **자기 행위** (Pride/Shame/Gratification 생성)
+- `agent_id: "<다른_id>"` → **타인 행위** (Admiration/Reproach/Gratitude 생성)
+
+DTO 변환 레이어가 `agent_id == npc_id`를 자동으로 `None`으로 정규화하므로, 시나리오 작성 시 가독성을 위해 `agent_id: "jim"` 처럼 명시해도 된다.
+
+**자기 행위 예시** (짐의 재장전 → Pride 생성):
+```json
+{
+  "id": "triumphant",
+  "action": {
+    "agent_id": "jim",           // == npc_id → 자기 행위로 처리
+    "praiseworthiness": 0.6,     // 칭찬받을 만함 → Pride
+    "description": "짐이 기지를 발휘해 재장전에 성공"
+  }
+}
+```
+
 ### 정상 Beat 전환
 ```json
 {

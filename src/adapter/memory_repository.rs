@@ -325,7 +325,7 @@ impl InMemoryRepository {
                     .action
                     .as_ref()
                     .and_then(|a| a.agent_id.as_ref())
-                    .filter(|&agent| agent != partner_id)
+                    .filter(|&agent| agent != partner_id && agent != npc_id)
                     .and_then(|agent| self.get_relationship(npc_id, agent).map(|r| r.modifiers()));
 
                 let object_description = f
@@ -337,6 +337,7 @@ impl InMemoryRepository {
                     event_other_modifiers,
                     action_agent_modifiers,
                     object_description,
+                    npc_id,
                 )
             })
             .collect::<Result<Vec<_>, _>>()
