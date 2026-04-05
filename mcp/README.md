@@ -131,6 +131,7 @@ NPC, 관계, 오브젝트의 생성·조회·삭제. 시나리오 파일 로드 
 - **[`docs/agent-playbook.md`](docs/agent-playbook.md)** — ⭐ **AI 에이전트 필독**.
   도구를 어떤 순서·조합으로 호출해야 하는지, 도메인 개념(Beat/Trigger/Focus/PAD)을
   어떻게 이해해야 하는지를 담은 워크플로우 가이드. 이 MCP를 쓰는 AI는 이 문서부터 읽는다.
+- **[`docs/quality-metrics.md`](docs/quality-metrics.md)** — 디렉티브 품질 채점 기준서 (3개 필수 지표, 5점 척도). 세션 후 정량 평가에 사용.
 - **[`docs/rest-parity.md`](docs/rest-parity.md)** — REST API와 MCP tool의 대응 매핑표. 개발자용 내부 레퍼런스.
 - **[`docs/tools-reference.md`](docs/tools-reference.md)** — 34개 도구의 입력/반환 스펙. 카테고리별 레퍼런스.
 - **[`docs/architecture.md`](docs/architecture.md)** — SSE 이원 엔드포인트 구조, DDD adapter 위치, JSON-RPC 처리 흐름.

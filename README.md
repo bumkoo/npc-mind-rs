@@ -228,6 +228,7 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 - Apply PAD stimuli turn-by-turn and watch emotional state shift
 - Auto-analyze dialogue text to PAD values (with `embed` feature)
 - Save/load scenario files for iterative testing
+- Write structured test reports with per-turn directive quality scores (Character Fidelity, Scene Appropriateness, Directive Clarity)
 
 ![Mind Studio showing NPC emotion bars and generated prompt](docs/assets/mind-studio-preview.png)
 
@@ -260,13 +261,20 @@ state management (5), scenario management (4), source text & scenario generation
 scene management (2), result management (2), LLM dialogue session (3, `chat` feature),
 LLM config lookup (1).
 
+**Directive quality scoring**: Each session ends with the AI agent self-scoring its own
+directive quality on 3 metrics (Character Fidelity, Scene Appropriateness, Directive
+Clarity) using a 5-point scale. Scores go into the test report, enabling session-to-session
+comparison and regression detection across engine/scenario changes. See
+[`mcp/docs/quality-metrics.md`](mcp/docs/quality-metrics.md) for the scoring rubric.
+
 **Documentation**: The full documentation set lives in the [`mcp/`](mcp/) directory.
 Start here:
 1. [`mcp/README.md`](mcp/README.md) — connection guide and tool category overview
 2. [`mcp/docs/agent-playbook.md`](mcp/docs/agent-playbook.md) — **required reading for AI agents**: workflow guide
-3. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — API spec for all 34 tools
-4. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE structure and DDD adapter position
-5. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — connection failures, build traps, etc.
+3. [`mcp/docs/quality-metrics.md`](mcp/docs/quality-metrics.md) — directive quality scoring rubric (3 metrics, 5-point scale)
+4. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — API spec for all 34 tools
+5. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE structure and DDD adapter position
+6. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — connection failures, build traps, etc.
 
 ---
 
@@ -303,8 +311,17 @@ Domain-Driven Design + Hexagonal Architecture. The core emotion logic has zero e
 | Emotion Model | OCC (22 types across Event / Action / Object) |
 | Emotional Space | PAD (Pleasure–Arousal–Dominance) |
 | Embedding Model | BGE-M3 INT8 ONNX (for dialogue → PAD analysis) |
+| LLM Integration | [rig-core](https://github.com/0xPlaygrounds/rig) (Rust Agent framework, `chat` feature) |
 | Web Server | Axum |
 | Locale Format | TOML |
+
+> **Direction**: Evolving toward an agent-based architecture where each NPC is a
+> `rig` agent that acts through **tools** (world observation, actions) and **memory**
+> (past events, relationship history) — not only through a static system prompt.
+> The system prompt remains a live acting directive regenerated at every Beat
+> transition, but what the NPC actually does depends on which tools it invokes and
+> what it recalls. The current `dialogue_*` MCP tools are the first step; tool
+> calling and memory retrieval come next.
 
 ---
 
