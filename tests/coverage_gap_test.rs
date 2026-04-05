@@ -387,7 +387,7 @@ fn format_prompt_관계_포함_빈_감정() {
     assert!(prompt.contains("[상황]"), "상황 있으면 상황 섹션 존재");
     assert!(prompt.contains("테스트 상황"), "상황 설명 포함");
     assert!(
-        prompt.contains("[상대와의 관계]"),
+        prompt.contains("[상대와의 관계:") || prompt.contains("[상대와의 관계]"),
         "관계 있으면 관계 섹션 존재"
     );
 }

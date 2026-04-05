@@ -240,7 +240,7 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
     let prompt = formatter.format_prompt(&guide);
 
     assert!(
-        prompt.contains("[상대와의 관계]"),
+        prompt.contains("[상대와의 관계:") || prompt.contains("[상대와의 관계]"),
         "관계 섹션 헤더: {}",
         prompt
     );

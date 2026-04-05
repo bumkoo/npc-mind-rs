@@ -156,6 +156,8 @@ no_speech_style = "평범한 어조로 말한다."                         # 말
 # {name}, {emotion}, {intensity} 등은 런타임에 치환되는 플레이스홀더
 # ---------------------------------------------------------------------------
 [template]
+section_role = "[역할]"                                # 역할 섹션 헤더
+role_instruction = "당신은 {name}입니다. {name}의 시점에서 1인칭 대사로만 응답하세요. 해설이나 지문은 쓰지 않습니다."  # 역할 지시
 section_npc = "[NPC: {name}]"                          # NPC 이름 섹션 헤더
 section_personality = "[성격]"                          # 성격 섹션 헤더
 section_emotion = "[현재 감정]"                         # 감정 섹션 헤더
@@ -170,10 +172,15 @@ directive_tone = "어조: {tone}"                        # 어조 포맷
 directive_attitude = "태도: {attitude}"                 # 태도 포맷
 directive_behavior = "행동 경향: {behavior}"            # 행동 경향 포맷
 restriction_item = "- {restriction}"                   # 금지 사항 항목 포맷
-section_relationship = "[상대와의 관계]"                # 관계 섹션 헤더
+section_relationship = "[상대와의 관계]"                # 관계 섹션 헤더 (파트너 없을 때)
+section_relationship_with_partner = "[상대와의 관계: {partner_name} — 사용자가 이 역할로 대화합니다]"  # 관계 섹션 헤더 (파트너 있을 때)
 relationship_closeness = "친밀도: {level}"              # 친밀도 포맷
 relationship_trust = "신뢰도: {level}"                  # 신뢰도 포맷
 relationship_power = "상하 관계: {level}"               # 상하 관계 포맷
+section_response_rules = "[응답 규칙]"                  # 응답 규칙 섹션 헤더
+response_rule_length = "- 2~3문장으로 간결하게 답한다. 길게 늘어놓지 않는다."
+response_rule_no_repetition = "- 같은 의미의 문장을 반복하지 않는다."
+response_rule_dialogue_only = "- 지문(*행동 묘사*)은 쓰지 않고, 대사만 출력한다. 감정은 말투와 단어 선택으로 표현한다."
 
 
 # ---------------------------------------------------------------------------

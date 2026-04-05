@@ -156,6 +156,8 @@ no_speech_style = "Speaks in an ordinary manner."                              #
 # {name}, {emotion}, {intensity}, etc. are placeholders replaced at runtime
 # ---------------------------------------------------------------------------
 [template]
+section_role = "[Role]"                                      # 역할 섹션 헤더
+role_instruction = "You are {name}. Respond only with {name}'s first-person dialogue. Do not write narration or stage directions."
 section_npc = "[NPC: {name}]"                                # NPC 이름 섹션 헤더
 section_personality = "[Personality]"                         # 성격 섹션 헤더
 section_emotion = "[Current Emotion]"                        # 감정 섹션 헤더
@@ -170,10 +172,15 @@ directive_tone = "Tone: {tone}"                              # 어조 포맷
 directive_attitude = "Attitude: {attitude}"                   # 태도 포맷
 directive_behavior = "Behavioral tendency: {behavior}"        # 행동 경향 포맷
 restriction_item = "- {restriction}"                         # 금지 사항 항목 포맷
-section_relationship = "[Relationship]"                       # 관계 섹션 헤더
+section_relationship = "[Relationship]"                       # 관계 섹션 헤더 (파트너 없을 때)
+section_relationship_with_partner = "[Relationship with {partner_name} — user plays this role]"  # 관계 섹션 헤더 (파트너 있을 때)
 relationship_closeness = "Closeness: {level}"                 # 친밀도 포맷
 relationship_trust = "Trust: {level}"                         # 신뢰도 포맷
 relationship_power = "Power dynamic: {level}"                 # 상하 관계 포맷
+section_response_rules = "[Response Rules]"                   # 응답 규칙 섹션 헤더
+response_rule_length = "- Keep it to 2-3 concise sentences. Do not ramble."
+response_rule_no_repetition = "- Do not repeat the same idea with different wording."
+response_rule_dialogue_only = "- Output dialogue only. No stage directions or action descriptions. Express emotion through tone and word choice."
 
 # ---------------------------------------------------------------------------
 # Closeness level labels

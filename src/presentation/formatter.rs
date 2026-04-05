@@ -39,6 +39,11 @@ impl GuideFormatter for LocaleFormatter {
         let t = &l.template;
         let mut lines = Vec::new();
 
+        // --- 역할 (최상단) ---
+        lines.push(t.section_role.clone());
+        lines.push(l.render_template(&t.role_instruction, &[("name", &guide.npc_name)]));
+        lines.push(String::new());
+
         // --- NPC 기본 정보 ---
         lines.push(l.render_template(&t.section_npc, &[("name", &guide.npc_name)]));
         if !guide.npc_description.is_empty() {
@@ -81,10 +86,17 @@ impl GuideFormatter for LocaleFormatter {
             lines.push(String::new());
         }
 
-        // --- 관계 ---
+        // --- 관계 (파트너명이 포함된 헤더 사용) ---
         if let Some(ref rel) = guide.relationship {
             self.format_relationship_section(rel, &mut lines);
         }
+
+        // --- 응답 규칙 (최하단) ---
+        lines.push(String::new());
+        lines.push(t.section_response_rules.clone());
+        lines.push(t.response_rule_length.clone());
+        lines.push(t.response_rule_no_repetition.clone());
+        lines.push(t.response_rule_dialogue_only.clone());
 
         lines.join("\n")
     }
@@ -217,7 +229,15 @@ impl LocaleFormatter {
         let l = &self.locale;
         let t = &l.template;
 
-        lines.push(l.render_template(&t.section_relationship, &[]));
+        // 파트너명이 있으면 이름 포함 헤더, 없으면 기본 헤더
+        if !rel.target_name.is_empty() {
+            lines.push(l.render_template(
+                &t.section_relationship_with_partner,
+                &[("partner_name", &rel.target_name)],
+            ));
+        } else {
+            lines.push(l.render_template(&t.section_relationship, &[]));
+        }
         lines.push(l.render_template(
             &t.relationship_closeness,
             &[("level", l.closeness_level_label(&rel.closeness_level))],

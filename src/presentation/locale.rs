@@ -177,6 +177,10 @@ pub struct FallbackLabels {
 /// `{name}`, `{emotion}`, `{intensity}` 등은 런타임에 치환되는 플레이스홀더.
 #[derive(Debug, Deserialize)]
 pub struct TemplateStrings {
+    /// 역할 섹션: "[역할]"
+    pub section_role: String,
+    /// 역할 지시: "당신은 {name}입니다..."
+    pub role_instruction: String,
     /// NPC 이름 섹션: "[NPC: {name}]"
     pub section_npc: String,
     /// 성격 섹션: "[성격]"
@@ -205,14 +209,24 @@ pub struct TemplateStrings {
     pub directive_behavior: String,
     /// 금지 사항 항목: "- {restriction}"
     pub restriction_item: String,
-    /// 관계 섹션: "[상대와의 관계]"
+    /// 관계 섹션 (파트너 없을 때): "[상대와의 관계]"
     pub section_relationship: String,
+    /// 관계 섹션 (파트너 있을 때): "[상대와의 관계: {partner_name} — ...]"
+    pub section_relationship_with_partner: String,
     /// 친밀도: "친밀도: {level}"
     pub relationship_closeness: String,
     /// 신뢰도: "신뢰도: {level}"
     pub relationship_trust: String,
     /// 상하 관계: "상하 관계: {level}"
     pub relationship_power: String,
+    /// 응답 규칙 섹션: "[응답 규칙]"
+    pub section_response_rules: String,
+    /// 응답 규칙 — 길이
+    pub response_rule_length: String,
+    /// 응답 규칙 — 반복 금지
+    pub response_rule_no_repetition: String,
+    /// 응답 규칙 — 대사만
+    pub response_rule_dialogue_only: String,
 }
 
 // ---------------------------------------------------------------------------
