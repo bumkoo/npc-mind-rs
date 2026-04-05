@@ -311,10 +311,11 @@ pub(crate) fn build_appraise_result(
     state: &EmotionState,
     situation_desc: Option<String>,
     relationship: Option<&Relationship>,
+    partner_name: &str,
     trace: Vec<String>,
 ) -> AppraiseResult {
     let (emotions, dominant, mood) = build_emotion_fields(state);
-    let guide = ActingGuide::build(npc, state, situation_desc, relationship);
+    let guide = ActingGuide::build(npc, state, situation_desc, relationship, partner_name);
     AppraiseResult {
         emotions,
         dominant,

@@ -317,6 +317,9 @@ impl StudioService {
         let (temp, top_p) = npc_profile.derive_llm_parameters();
 
         let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+        // 이전 세션의 Beat 전환으로 인한 stale active_focus_id 초기화
+        // (같은 시나리오로 여러 번 dialogue_start를 호출할 때 Beat 버그 방지)
+        service.reset_scene_to_initial_focus();
         let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
         let response = result.format(&*state.formatter);
         

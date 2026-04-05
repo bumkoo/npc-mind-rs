@@ -153,6 +153,15 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         Ok((npc, relationship))
     }
 
+    /// 파트너 NPC의 표시명을 조회합니다. 파트너가 저장소에 없으면
+    /// `partner_id`를 그대로 반환합니다 (프롬프트 표기용 fallback).
+    fn lookup_partner_name(&self, partner_id: &str) -> String {
+        self.repository
+            .get_npc(partner_id)
+            .map(|n| n.name().to_string())
+            .unwrap_or_else(|| partner_id.to_string())
+    }
+
     /// 평가 엔진을 실행하고 결과를 저장한 뒤 AppraiseResult를 반환합니다.
     fn execute_appraise_workflow(
         &mut self,
@@ -168,11 +177,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 .appraise(npc.personality(), situation, &relationship.modifiers());
         let trace = after_eval();
 
+        let partner_name = self.lookup_partner_name(relationship.target_id());
         let result = build_appraise_result(
             npc,
             &emotion_state,
             Some(situation.description.clone()),
             Some(relationship),
+            &partner_name,
             trace,
         );
 
@@ -273,11 +284,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
 
         // 3. Beat 전환 없음 (하지만 현재 Scene이 있으면 active_focus_id는 유지)
         let (emotions, dominant, mood) = build_emotion_fields(&stimulated_state);
+        let partner_name = self.lookup_partner_name(&req.partner_id);
         let guide = ActingGuide::build(
             &npc,
             &stimulated_state,
             req.situation_description.clone(),
             Some(&relationship),
+            &partner_name,
         );
 
         // Scene이 활성 상태면 현재 active_focus_id를 반환 (Beat 전환이 없어도 UI가 상태를 알 수 있도록)
@@ -339,11 +352,13 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
 
         // 병합된 상태로 필드 재구성
         let (emotions, dominant, mood) = build_emotion_fields(&merged);
+        let partner_name = self.lookup_partner_name(relationship.target_id());
         let guide = ActingGuide::build(
             npc,
             &merged,
             Some(focus.description.clone()),
             Some(relationship),
+            &partner_name,
         );
 
         let focus_id = focus.id.clone();
@@ -433,6 +448,23 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         self.scene_service.build_scene_info(&scene)
     }
 
+    /// 현재 Scene의 `active_focus_id`를 Initial Focus로 초기화합니다.
+    ///
+    /// 새 대화 세션 시작(`dialogue_start`) 시 호출해야 합니다.
+    /// 이전 세션에서 `apply_stimulus`가 Beat 전환을 일으켜
+    /// `active_focus_id`가 다른 Focus로 바뀐 채 남아 있으면,
+    /// 다음 세션 첫 턴에 동일 조건을 다시 만족해 불필요한 Beat 전환이
+    /// 재발생합니다. 이 메서드가 그 stale 상태를 끊어줍니다.
+    ///
+    /// Scene이 없거나 Initial Focus가 없으면 아무 동작도 하지 않고
+    /// `None`을 반환합니다.
+    pub fn reset_scene_to_initial_focus(&mut self) -> Option<String> {
+        let mut scene = self.repository.get_scene()?;
+        let initial_id = scene.reset_to_initial_focus();
+        self.repository.save_scene(scene);
+        initial_id
+    }
+
     /// 시나리오 로드 시 Scene Focus를 직접 복원합니다.
     ///
     /// `start_scene`과 동일하게 Scene을 생성하고 Initial Focus를 평가하지만,
@@ -502,6 +534,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             &emotion_state,
             req.situation_description.clone(),
             Some(&relationship),
+            &self.lookup_partner_name(&req.partner_id),
         );
         Ok(GuideResult { guide })
     }

@@ -89,6 +89,19 @@ impl Scene {
             .iter()
             .find(|f| matches!(f.trigger, FocusTrigger::Initial))
     }
+
+    /// 활성 Focus를 Initial Focus로 초기화합니다.
+    ///
+    /// 새 대화 세션 시작 시 호출하여, 이전 세션의 Beat 전환 결과가
+    /// 남긴 stale `active_focus_id`로 인한 불필요한 Beat 재전환을 방지합니다.
+    /// Initial Focus가 없으면 `active_focus_id`가 `None`으로 설정됩니다.
+    ///
+    /// 반환값은 초기화 후의 `active_focus_id`입니다.
+    pub fn reset_to_initial_focus(&mut self) -> Option<String> {
+        let initial_id = self.initial_focus().map(|f| f.id.clone());
+        self.active_focus_id = initial_id.clone();
+        initial_id
+    }
 }
 
 // ---------------------------------------------------------------------------

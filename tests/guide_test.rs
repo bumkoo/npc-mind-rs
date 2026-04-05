@@ -81,7 +81,7 @@ fn 배신_무백_가이드_절제된_분노() {
     let li = make_무백();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
-    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None, "");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -104,7 +104,7 @@ fn 배신_교룡_가이드_폭발적_분노() {
     let yu = make_교룡();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
-    let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()), None);
+    let guide = ActingGuide::build(&yu, &state, Some(situation.description.clone()), None, "");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -142,7 +142,7 @@ fn 가이드_프롬프트_구조_검증() {
     )
     .unwrap();
     let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
-    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None);
+    let guide = ActingGuide::build(&li, &state, Some(situation.description.clone()), None, "");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -159,7 +159,7 @@ fn 가이드_json_출력() {
     let yu = make_교룡();
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
-    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), None);
+    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), None, "");
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
 
@@ -182,8 +182,8 @@ fn 같은_상황_무백과_교룡_어조가_다름() {
     let yu_state =
         AppraisalEngine.appraise(yu.personality(), &situation, &neutral_rel().modifiers());
 
-    let li_guide = ActingGuide::build(&li, &li_state, None, None);
-    let yu_guide = ActingGuide::build(&yu, &yu_state, None, None);
+    let li_guide = ActingGuide::build(&li, &li_state, None, None, "");
+    let yu_guide = ActingGuide::build(&yu, &yu_state, None, None, "");
 
     // 엔진 보장: 성격 차이로 인해 감정 강도가 달라야 함
     let li_anger = li_state
@@ -235,7 +235,7 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
         .build();
 
     let state = AppraisalEngine.appraise(li.personality(), &situation, &brother.modifiers());
-    let guide = ActingGuide::build(&li, &state, Some("동료의 배신".into()), Some(&brother));
+    let guide = ActingGuide::build(&li, &state, Some("동료의 배신".into()), Some(&brother), "의형제");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -263,7 +263,7 @@ fn 관계_포함_json에_관계_데이터() {
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
     let state = AppraisalEngine.appraise(yu.personality(), &situation, &enemy.modifiers());
 
-    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), Some(&enemy));
+    let guide = ActingGuide::build(&yu, &state, Some("배신".into()), Some(&enemy), "원수");
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -272,7 +272,7 @@ fn 관계_포함_json에_관계_데이터() {
         parsed["relationship"].is_object(),
         "JSON에 관계 데이터 포함"
     );
-    assert!(parsed["relationship"]["target_name"].as_str() == Some("enemy"));
+    assert!(parsed["relationship"]["target_name"].as_str() == Some("원수"));
     assert!(parsed["relationship"]["closeness"].is_string());
     assert!(parsed["relationship"]["trust"].is_string());
     assert!(parsed["relationship"]["power"].is_string());
@@ -297,7 +297,7 @@ fn 관계_없으면_json에_관계_없음() {
     .unwrap();
     let state = AppraisalEngine.appraise(li.personality(), &situation, &neutral_rel().modifiers());
 
-    let guide = ActingGuide::build(&li, &state, None, None);
+    let guide = ActingGuide::build(&li, &state, None, None, "");
     let formatter = KoreanFormatter::new();
     let json = formatter.format_json(&guide).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

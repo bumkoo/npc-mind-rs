@@ -50,11 +50,15 @@ pub struct ActingGuide {
 
 impl ActingGuide {
     /// NPC + EmotionState + Relationship → ActingGuide 생성
+    ///
+    /// `partner_name`은 표시용 파트너 NPC 이름. 빈 문자열이면
+    /// `Relationship::target_id()`로 fallback된다.
     pub fn build(
         npc: &Npc,
         state: &EmotionState,
         situation_desc: Option<String>,
         relationship: Option<&Relationship>,
+        partner_name: &str,
     ) -> Self {
         Self {
             npc_name: npc.name().to_string(),
@@ -63,7 +67,7 @@ impl ActingGuide {
             emotion: EmotionSnapshot::from_state(state),
             directive: ActingDirective::from_emotion_and_personality(state, npc.personality()),
             situation_description: situation_desc,
-            relationship: relationship.map(RelationshipSnapshot::from_relationship),
+            relationship: relationship.map(|r| RelationshipSnapshot::from_relationship(r, partner_name)),
         }
     }
 }

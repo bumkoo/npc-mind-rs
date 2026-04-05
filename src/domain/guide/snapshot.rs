@@ -293,9 +293,17 @@ impl PowerLevel {
 
 impl RelationshipSnapshot {
     /// Relationship에서 스냅샷 생성
-    pub fn from_relationship(rel: &Relationship) -> Self {
+    ///
+    /// `partner_name`은 표시용 파트너 NPC 이름(Npc::name()). 비어 있으면
+    /// `Relationship::target_id()`로 fallback한다.
+    pub fn from_relationship(rel: &Relationship, partner_name: &str) -> Self {
+        let name = if partner_name.is_empty() {
+            rel.target_id().to_string()
+        } else {
+            partner_name.to_string()
+        };
         Self {
-            target_name: rel.target_id().to_string(),
+            target_name: name,
             closeness_level: RelationshipLevel::from_score(rel.closeness().value()),
             trust_level: RelationshipLevel::from_score(rel.trust().value()),
             power_level: PowerLevel::from_score(rel.power().value()),

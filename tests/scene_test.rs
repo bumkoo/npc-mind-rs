@@ -163,3 +163,76 @@ fn test_scene_check_trigger_excludes_active_focus() {
         .expect("다른 focus로 전환되어야 함");
     assert_eq!(next.id, "calm");
 }
+
+
+#[test]
+fn test_reset_to_initial_focus_clears_stale_state() {
+    // Bug regression: dialogue_start 시 stale active_focus_id 초기화 검증
+    //
+    // 이전 세션에서 apply_stimulus가 Beat 전환을 일으켜 active_focus_id가
+    // "escalated"로 바뀐 상태에서 새 대화 세션을 시작하면,
+    // 첫 턴에 다시 Beat 전환이 재발생하는 버그를 방지한다.
+    let focuses = vec![
+        SceneFocus {
+            id: "initial_calm".into(),
+            description: "초기 상황".into(),
+            trigger: FocusTrigger::Initial,
+            event: None,
+            action: None,
+            object: None,
+        },
+        SceneFocus {
+            id: "escalated".into(),
+            description: "고조된 상황".into(),
+            trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+                emotion: EmotionType::Anger,
+                threshold: ConditionThreshold::Above(0.7),
+            }]]),
+            event: None,
+            action: None,
+            object: None,
+        },
+    ];
+
+    let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
+
+    // 1. 이전 세션에서 Beat 전환이 발생했다고 가정 → active = "escalated"
+    scene.set_active_focus("escalated".into());
+    assert_eq!(scene.active_focus_id(), Some("escalated"));
+
+    // 2. 새 대화 세션 시작 → reset_to_initial_focus 호출
+    let reset_id = scene.reset_to_initial_focus();
+    assert_eq!(reset_id.as_deref(), Some("initial_calm"));
+    assert_eq!(scene.active_focus_id(), Some("initial_calm"));
+
+    // 3. 첫 턴에 Anger가 여전히 높아도 "initial_calm"은 latching되어 재전환 안 함
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Anger, 0.8));
+    let next = scene.check_trigger(&state).expect("escalated로 전환되어야 함");
+    assert_eq!(next.id, "escalated");
+    // active는 initial_calm이므로 escalated는 여전히 전환 대상이 맞음
+    // (stale state였다면 escalated가 active라서 전환 안 됐을 것)
+}
+
+#[test]
+fn test_reset_to_initial_focus_no_initial() {
+    // Initial Focus가 없으면 active_focus_id가 None으로 초기화됨
+    let focuses = vec![SceneFocus {
+        id: "only_conditional".into(),
+        description: "조건부 focus".into(),
+        trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+            emotion: EmotionType::Joy,
+            threshold: ConditionThreshold::Above(0.5),
+        }]]),
+        event: None,
+        action: None,
+        object: None,
+    }];
+
+    let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
+    scene.set_active_focus("only_conditional".into());
+
+    let reset_id = scene.reset_to_initial_focus();
+    assert!(reset_id.is_none());
+    assert!(scene.active_focus_id().is_none());
+}
