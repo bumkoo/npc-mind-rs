@@ -121,9 +121,22 @@ pub async fn save_state(State(state): State<AppState>, Json(req): Json<super::Sa
     let mut inner = state.inner.write().await;
     let save_path = req.path.clone();
     if save_path.is_empty() { return Err(AppError::Internal("저장 경로가 비어있습니다".into())); }
-    let as_scenario = match req.save_type.as_deref() { Some("scenario") => true, Some("result") => false, _ => inner.turn_history.is_empty() };
-    inner.save_to_file(std::path::Path::new(&save_path), as_scenario).map_err(|e| AppError::Internal(e))?;
-    if as_scenario { inner.scenario_modified = false; inner.loaded_path = Some(save_path.clone()); }
+    let path_obj = std::path::Path::new(&save_path);
+    match req.save_type.as_deref() {
+        Some("report") => {
+            inner.save_report_to_file(path_obj).map_err(AppError::Internal)?;
+        }
+        Some("all") => {
+            inner.save_to_file(path_obj, false).map_err(AppError::Internal)?;
+            let report_path = path_obj.with_extension("md");
+            let _ = inner.save_report_to_file(&report_path);
+        }
+        _ => {
+            let as_scenario = match req.save_type.as_deref() { Some("scenario") => true, Some("result") => false, _ => inner.turn_history.is_empty() };
+            inner.save_to_file(path_obj, as_scenario).map_err(AppError::Internal)?;
+            if as_scenario { inner.scenario_modified = false; inner.loaded_path = Some(save_path.clone()); }
+        }
+    }
     Ok(Json(super::SaveResponse { path: save_path }))
 }
 

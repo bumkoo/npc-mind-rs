@@ -64,8 +64,18 @@ impl Scene {
     }
 
     /// 현재 감정 상태를 기반으로 전환할 Focus를 찾습니다.
+    ///
+    /// 이미 활성화된 Focus는 재전환 대상에서 제외됩니다 (state latching).
+    /// 이는 지배 감정이 임계값을 계속 상회할 때 매 턴 Beat 전환 이벤트가
+    /// 중복 발생하는 것을 방지합니다.
     pub fn check_trigger(&self, state: &EmotionState) -> Option<&SceneFocus> {
-        self.focuses.iter().find(|f| f.trigger.is_met(state))
+        self.focuses.iter().find(|f| {
+            // 현재 활성 Focus는 제외
+            if self.active_focus_id.as_deref() == Some(f.id.as_str()) {
+                return false;
+            }
+            f.trigger.is_met(state)
+        })
     }
 
     /// 활성 Focus를 설정합니다.

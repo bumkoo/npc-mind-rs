@@ -107,3 +107,59 @@ fn test_scene_trigger_complex_conditions() {
     state2.add(Emotion::new(EmotionType::Anger, 0.9));
     assert!(scene.check_trigger(&state2).is_some());
 }
+
+#[test]
+fn test_scene_check_trigger_excludes_active_focus() {
+    // State latching 검증:
+    // 활성 Focus는 재전환 대상에서 제외되어야 한다.
+    // 지배 감정이 임계값을 계속 상회해도 beat_changed 중복 발생 방지.
+    let focuses = vec![
+        SceneFocus {
+            id: "distressed".into(),
+            description: "고통 focus".into(),
+            trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+                emotion: EmotionType::Distress,
+                threshold: ConditionThreshold::Above(0.7),
+            }]]),
+            event: None,
+            action: None,
+            object: None,
+        },
+        SceneFocus {
+            id: "calm".into(),
+            description: "평온 focus".into(),
+            trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+                emotion: EmotionType::Joy,
+                threshold: ConditionThreshold::Above(0.8),
+            }]]),
+            event: None,
+            action: None,
+            object: None,
+        },
+    ];
+
+    let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
+    let mut state = EmotionState::new();
+    state.add(Emotion::new(EmotionType::Distress, 0.95));
+
+    // 1. 초기 상태: Distress 0.95 → distressed focus 트리거
+    let triggered = scene.check_trigger(&state).expect("트리거되어야 함");
+    assert_eq!(triggered.id, "distressed");
+
+    // 2. distressed를 활성화
+    scene.set_active_focus("distressed".into());
+
+    // 3. Distress가 여전히 높아도 (0.97) distressed는 재전환 대상에서 제외됨
+    state.add(Emotion::new(EmotionType::Distress, 0.97));
+    assert!(
+        scene.check_trigger(&state).is_none(),
+        "활성 focus는 재전환되지 않아야 함"
+    );
+
+    // 4. 다른 focus의 trigger가 충족되면 전환 가능
+    state.add(Emotion::new(EmotionType::Joy, 0.9));
+    let next = scene
+        .check_trigger(&state)
+        .expect("다른 focus로 전환되어야 함");
+    assert_eq!(next.id, "calm");
+}

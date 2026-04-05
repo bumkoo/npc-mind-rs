@@ -1,0 +1,143 @@
+{
+  "current_situation": null,
+  "format": "mind-studio/scenario",
+  "npcs": {
+    "israel_hands": {
+      "aesthetic_appreciation": -0.4000000059604645,
+      "anxiety": -0.20000000298023224,
+      "creativity": 0.0,
+      "dependence": -0.30000001192092896,
+      "description": "늙은 해적. 히스파니올라호의 조타수(coxswain)였다. Flint 선장 시절부터 활동한 베테랑. 교활하고 기회주의적이며 술과 폭력을 즐긴다. 부상당한 상태에서도 살의를 품고 있다.",
+      "diligence": 0.20000000298023224,
+      "fairness": -0.699999988079071,
+      "fearfulness": -0.5,
+      "flexibility": -0.5,
+      "forgiveness": -0.699999988079071,
+      "gentleness": -0.800000011920929,
+      "greed_avoidance": -0.6000000238418579,
+      "id": "israel_hands",
+      "inquisitiveness": 0.20000000298023224,
+      "liveliness": -0.20000000298023224,
+      "modesty": -0.30000001192092896,
+      "name": "Israel Hands",
+      "organization": 0.0,
+      "patience": -0.5,
+      "perfectionism": 0.0,
+      "prudence": 0.30000001192092896,
+      "sentimentality": -0.5,
+      "sincerity": -0.6000000238418579,
+      "sociability": 0.0,
+      "social_boldness": 0.6000000238418579,
+      "social_self_esteem": 0.30000001192092896,
+      "unconventionality": 0.4000000059604645
+    },
+    "jim": {
+      "aesthetic_appreciation": 0.30000001192092896,
+      "anxiety": 0.4000000059604645,
+      "creativity": 0.5,
+      "dependence": 0.30000001192092896,
+      "description": "13세 소년. 여관집 아들. 호기심 많고 모험심이 강하다. 도덕적이고 정직하지만, 위기 순간에 기지를 발휘한다. 겁이 많지만 생존 본능이 강하고, 결정적 순간에는 대담해진다.",
+      "diligence": 0.30000001192092896,
+      "fairness": 0.6000000238418579,
+      "fearfulness": 0.5,
+      "flexibility": 0.30000001192092896,
+      "forgiveness": 0.30000001192092896,
+      "gentleness": 0.30000001192092896,
+      "greed_avoidance": 0.4000000059604645,
+      "id": "jim",
+      "inquisitiveness": 0.699999988079071,
+      "liveliness": 0.5,
+      "modesty": 0.4000000059604645,
+      "name": "Jim Hawkins",
+      "organization": 0.20000000298023224,
+      "patience": -0.30000001192092896,
+      "perfectionism": 0.0,
+      "prudence": -0.4000000059604645,
+      "sentimentality": 0.30000001192092896,
+      "sincerity": 0.5,
+      "sociability": 0.30000001192092896,
+      "social_boldness": 0.20000000298023224,
+      "social_self_esteem": 0.0,
+      "unconventionality": 0.4000000059604645
+    }
+  },
+  "objects": {},
+  "relationships": {
+    "israel_hands:jim": {
+      "closeness": -0.5,
+      "owner_id": "israel_hands",
+      "power": 0.30000001192092896,
+      "target_id": "jim",
+      "trust": -0.4000000059604645
+    },
+    "jim:israel_hands": {
+      "closeness": -0.6000000238418579,
+      "owner_id": "jim",
+      "power": -0.30000001192092896,
+      "target_id": "israel_hands",
+      "trust": -0.8999999761581421
+    }
+  },
+  "scenario": {
+    "description": "Treasure Island Part Five, Ch.26 — 짐이 히스파니올라호 갑판에서 부상당한 해적 이즈라엘 핸즈에게 쫓긴다. 권총은 바닷물에 젖어 불발. 마스트 주위를 돌며 대치하다가 배가 기울어지는 순간 짐이 마스트 위로 도망쳐 권총을 재장전한다. 공포 → 기지 → 우월감의 감정 아크.",
+    "name": "짐 vs 이즈라엘 핸즈 — 마스트 결투",
+    "notes": [
+      "원작: Treasure Island, Part Five, Chapter XXVI (Israel Hands)",
+      "Beat 1 (cornered): 핸즈의 기습과 추격, 권총 불발",
+      "Beat 2 (triumphant): 마스트 위로 피신, 재장전 완료, 경고 선언",
+      "핵심 감정 아크: Fear/Distress → Pride/Joy",
+      "시점: Jim Hawkins (13세 소년)"
+    ]
+  },
+  "scene": {
+    "description": "히스파니올라호 갑판. 배가 기울어지며 짐과 핸즈가 대치한다.",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "israel_hands",
+          "description": "핸즈가 짐을 속여 술심부름을 시킨 뒤 단검을 숨기고 기습한다. 배신이자 살의.",
+          "praiseworthiness": -0.8
+        },
+        "description": "갑판에서 부상당한 핸즈가 단검을 들고 짐을 쫓는다. 권총이 바닷물에 젖어 불발되어 짐에게 남은 무기가 없다.",
+        "event": {
+          "description": "부상당한 핸즈가 단검을 들고 짐을 쫓는다. 권총이 불발되어 짐에게 남은 무기가 없다.",
+          "desirability_for_self": -0.8
+        },
+        "id": "cornered",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "jim",
+          "description": "짐이 기지를 발휘해 마스트로 피신하고 권총을 재장전한다. 어린 소년이 해적을 제압하는 순간.",
+          "praiseworthiness": 0.6
+        },
+        "description": "마스트 위에서 재장전 완료. 아래쪽의 핸즈는 부상당한 다리로 천천히 올라오고 있어 완전히 통제 가능하다.",
+        "event": {
+          "description": "마스트 위에서 재장전 완료. 아래쪽의 핸즈는 부상당한 다리로 천천히 올라오고 있어 완전히 통제 가능하다.",
+          "desirability_for_self": 0.7
+        },
+        "id": "triumphant",
+        "trigger": [
+          [
+            {
+              "above": 0.7,
+              "emotion": "Fear"
+            }
+          ],
+          [
+            {
+              "above": 0.7,
+              "emotion": "Distress"
+            }
+          ]
+        ]
+      }
+    ],
+    "initial_focus_id": "cornered",
+    "npc_id": "jim",
+    "partner_id": "israel_hands",
+    "significance": 0.8
+  },
+  "test_report": ""
+}

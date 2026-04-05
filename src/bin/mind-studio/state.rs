@@ -340,6 +340,18 @@ impl StateInner {
         std::fs::write(path, json).map_err(|e| e.to_string())
     }
 
+    /// 테스트 보고서(마크다운)를 파일로 저장합니다.
+    /// `test_report` 필드의 내용을 그대로 .md 파일로 기록합니다.
+    pub fn save_report_to_file(&self, path: &std::path::Path) -> Result<(), String> {
+        if self.test_report.is_empty() {
+            return Err("test_report가 비어있습니다. update_test_report를 먼저 호출하세요.".into());
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        std::fs::write(path, &self.test_report).map_err(|e| e.to_string())
+    }
+
     /// JSON 파일에서 로드
     pub fn load_from_file(path: &std::path::Path) -> Result<Self, String> {
         let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;

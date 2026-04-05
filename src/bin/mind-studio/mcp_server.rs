@@ -219,7 +219,7 @@ impl MindMcpService {
             // 시나리오 관리
             serde_json::json!({ "name": "list_scenarios", "description": "사용 가능한 시나리오 파일 목록을 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
             serde_json::json!({ "name": "get_scenario_meta", "description": "현재 로드된 시나리오의 메타데이터를 조회합니다.", "inputSchema": { "type": "object", "properties": {} } }),
-            serde_json::json!({ "name": "save_scenario", "description": "현재 상태를 지정된 경로에 JSON 파일로 저장합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "save_type": { "type": "string" } }, "required": ["path"] } }),
+            serde_json::json!({ "name": "save_scenario", "description": "현재 상태를 지정된 경로에 저장합니다. save_type: 'scenario'(시나리오 JSON, turn_history 제외), 'result'(결과 JSON, turn_history 포함, 기본값), 'report'(test_report 마크다운), 'all'(result JSON + report MD 동시 저장, 경로의 확장자만 .md로 변경).", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" }, "save_type": { "type": "string", "enum": ["scenario", "result", "report", "all"] } }, "required": ["path"] } }),
             serde_json::json!({ "name": "load_scenario", "description": "지정된 경로의 시나리오 파일을 로드합니다.", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
             
             // 소스 텍스트 & 시나리오 생성
@@ -445,8 +445,37 @@ impl MindMcpService {
                 let path = arguments["path"].as_str().ok_or("path is required")?;
                 let save_type = arguments["save_type"].as_str();
                 let inner = self.state.inner.read().await;
-                inner.save_to_file(std::path::Path::new(path), save_type == Some("scenario")).map_err(|e| e.to_string())?;
-                Ok(serde_json::json!({ "status": "ok", "path": path }))
+                let path_obj = std::path::Path::new(path);
+                match save_type {
+                    Some("report") => {
+                        inner.save_report_to_file(path_obj).map_err(|e| e.to_string())?;
+                        Ok(serde_json::json!({ "status": "ok", "path": path, "saved": ["report"] }))
+                    }
+                    Some("all") => {
+                        // JSON 결과 + 마크다운 레포트 동시 저장
+                        // path가 .json이면 그대로 result로, 같은 경로에서 확장자만 .md로 바꿔 report 저장
+                        inner.save_to_file(path_obj, false).map_err(|e| e.to_string())?;
+                        let report_path = path_obj.with_extension("md");
+                        // test_report가 비어있어도 result 저장은 성공했으므로 에러 무시
+                        let report_saved = inner.save_report_to_file(&report_path).is_ok();
+                        let saved: Vec<&str> = if report_saved {
+                            vec!["result", "report"]
+                        } else {
+                            vec!["result"]
+                        };
+                        Ok(serde_json::json!({
+                            "status": "ok",
+                            "path": path,
+                            "report_path": report_path.to_string_lossy(),
+                            "saved": saved,
+                        }))
+                    }
+                    _ => {
+                        // "scenario" | "result" | None: 기존 동작 유지
+                        inner.save_to_file(path_obj, save_type == Some("scenario")).map_err(|e| e.to_string())?;
+                        Ok(serde_json::json!({ "status": "ok", "path": path }))
+                    }
+                }
             }
             "load_scenario" => {
                 let path = arguments["path"].as_str().ok_or("path is required")?;

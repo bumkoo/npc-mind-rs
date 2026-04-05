@@ -1,0 +1,157 @@
+{
+  "current_situation": null,
+  "format": "mind-studio/scenario",
+  "npcs": {
+    "jim": {
+      "aesthetic_appreciation": 0.30000001192092896,
+      "anxiety": 0.30000001192092896,
+      "creativity": 0.5,
+      "dependence": -0.30000001192092896,
+      "description": "선술집집 아들, 14세 소년. 어머니와 함께 Admiral Benbow 여관을 운영하다가 보물지도를 손에 넣고 항해에 참여했다. 호기심 많고 용감하며 충동적이다. 결정적인 순간에 대담한 행동으로 동료들을 여러 번 구했다.",
+      "diligence": 0.30000001192092896,
+      "fairness": 0.6000000238418579,
+      "fearfulness": 0.20000000298023224,
+      "flexibility": 0.5,
+      "forgiveness": 0.30000001192092896,
+      "gentleness": 0.4000000059604645,
+      "greed_avoidance": 0.699999988079071,
+      "id": "jim",
+      "inquisitiveness": 0.800000011920929,
+      "liveliness": 0.6000000238418579,
+      "modesty": 0.4000000059604645,
+      "name": "Jim Hawkins",
+      "organization": -0.20000000298023224,
+      "patience": -0.20000000298023224,
+      "perfectionism": -0.30000001192092896,
+      "prudence": -0.4000000059604645,
+      "sentimentality": 0.5,
+      "sincerity": 0.5,
+      "sociability": 0.5,
+      "social_boldness": 0.6000000238418579,
+      "social_self_esteem": 0.4000000059604645,
+      "unconventionality": 0.6000000238418579
+    },
+    "silver": {
+      "aesthetic_appreciation": -0.20000000298023224,
+      "anxiety": -0.30000001192092896,
+      "creativity": 0.699999988079071,
+      "dependence": -0.5,
+      "description": "외다리 해적, 선상 요리사. Walrus 선장 Flint의 옛 부하였다. 겉으로는 다정하고 유쾌하지만 속은 냉혹하고 계산적이다. 목적을 위해 여러 편에 발을 걸치며 순식간에 표정을 바꾼다. 리더십과 언변이 뛰어나고 상황을 읽는 감각이 탁월하다.",
+      "diligence": 0.20000000298023224,
+      "fairness": -0.6000000238418579,
+      "fearfulness": -0.5,
+      "flexibility": 0.8999999761581421,
+      "forgiveness": -0.30000001192092896,
+      "gentleness": -0.4000000059604645,
+      "greed_avoidance": -0.800000011920929,
+      "id": "silver",
+      "inquisitiveness": 0.5,
+      "liveliness": 0.5,
+      "modesty": -0.5,
+      "name": "Long John Silver",
+      "organization": 0.30000001192092896,
+      "patience": 0.699999988079071,
+      "perfectionism": -0.20000000298023224,
+      "prudence": 0.6000000238418579,
+      "sentimentality": -0.20000000298023224,
+      "sincerity": -0.8999999761581421,
+      "sociability": 0.800000011920929,
+      "social_boldness": 0.800000011920929,
+      "social_self_esteem": 0.800000011920929,
+      "unconventionality": 0.4000000059604645
+    }
+  },
+  "objects": {},
+  "relationships": {
+    "jim:silver": {
+      "closeness": -0.20000000298023224,
+      "owner_id": "jim",
+      "power": -0.699999988079071,
+      "target_id": "silver",
+      "trust": -0.6000000238418579
+    },
+    "silver:jim": {
+      "closeness": 0.30000001192092896,
+      "owner_id": "silver",
+      "power": 0.699999988079071,
+      "target_id": "jim",
+      "trust": 0.10000000149011612
+    }
+  },
+  "scenario": {
+    "description": "Treasure Island Ch.XXVIII — 짐 호킨스가 홀로 블록하우스에 들어갔다가 해적들에게 포위된다. 모든 동료가 죽은 줄 알고 절망하지만, 실버가 예상 밖으로 그를 보호하기로 제안한다. 공포→안도→용기→희망의 감정 아크.",
+    "name": "실버의 협상 — 적의 진영에서",
+    "notes": [
+      "원작: Treasure Island, Chapter XXVIII 'In the Enemy's Camp'",
+      "Beat 1 (captured): 해적 6명에게 포위, 동료들이 죽었다고 생각 → 공포와 절망",
+      "Beat 2 (defiant): 친구들이 살아있다는 사실을 알고 용기내어 자신의 공적을 밝힘",
+      "Beat 3 (protected): 실버가 예상 밖으로 짐을 보호하기로 함 → 희망",
+      "핵심 감정: Fear → Distress → Courage → Hope"
+    ]
+  },
+  "scene": {
+    "description": "블록하우스 내부. 횃불 불빛 아래 6명의 해적이 있고, 짐 호킨스는 벽에 등을 기댄 채 실버와 대치한다.",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버가 조롱하듯 '잘 왔다'며 짐을 붙잡아 벽에 세운다",
+          "praiseworthiness": -0.5
+        },
+        "description": "Beat 1 — 포위됨. 동료들이 죽은 줄 알고 절망",
+        "event": {
+          "description": "짐이 홀로 블록하우스에 들어왔는데 해적 6명이 차지하고 있다. 동료들의 흔적이 없어 모두 죽었다고 추측한다.",
+          "desirability_for_self": -0.8
+        },
+        "id": "captured",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "jim",
+          "description": "짐이 당당하게 자신의 공적을 선언하고 '죽이든 살리든 마음대로 하라'고 말한다",
+          "praiseworthiness": 0.8
+        },
+        "description": "Beat 2 — 친구들이 살아있음을 알고 용기내어 자신의 공적을 밝힘",
+        "event": {
+          "description": "실버가 친구들이 살아있다고 말한다. 짐은 안도하며 자신이 사과통에서 음모를 엿들었고 스쿠너선을 훔쳤다고 당당히 밝힌다.",
+          "desirability_for_self": 0.4
+        },
+        "id": "defiant",
+        "trigger": [
+          [
+            {
+              "above": 0.5,
+              "emotion": "Distress"
+            }
+          ]
+        ]
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버가 해적들을 제압하며 '누구든 이 소년에게 손대면 가만두지 않겠다'고 선언한다",
+          "praiseworthiness": 0.7
+        },
+        "description": "Beat 3 — 실버가 예상 밖으로 짐을 보호하기로 약속",
+        "event": {
+          "description": "모건이 칼을 뽑지만 실버가 막아선다. 실버는 '나는 이 소년을 지키겠다'고 선언하고 해적들과 맞선다.",
+          "desirability_for_self": 0.7
+        },
+        "id": "protected",
+        "trigger": [
+          [
+            {
+              "above": 0.3,
+              "emotion": "Joy"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "jim",
+    "partner_id": "silver",
+    "significance": 0.9
+  },
+  "test_report": ""
+}
