@@ -233,16 +233,17 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 
 ### MCP Integration (AI Agent)
 
-AI Agent (Claude Desktop, Claude Code 등)가 Mind Studio의 NPC 심리 엔진을 MCP 도구로 활용할 수 있습니다.
-**네이티브 Rust SSE 구현**으로 별도 Python 의존성이 필요 없으며, Mind Studio 서버에 자동 포함되어 있습니다.
+AI Agents (Claude Desktop, Claude Code, etc.) can use the Mind Studio NPC psychology engine
+through MCP tools. The MCP server is a **native Rust SSE implementation** with no additional
+Python dependencies — it is built into the Mind Studio binary.
 
 ```bash
-# Mind Studio 서버 실행 (MCP 엔드포인트 자동 활성화)
+# Run the Mind Studio server (MCP endpoint activated automatically)
 cargo run --release --features mind-studio,embed --bin npc-mind-studio
 # → http://127.0.0.1:3000/mcp/sse
 ```
 
-Claude Desktop의 `claude_desktop_config.json`에 추가:
+Add to Claude Desktop's `claude_desktop_config.json`:
 
 ```json
 {
@@ -254,16 +255,18 @@ Claude Desktop의 `claude_desktop_config.json`에 추가:
 }
 ```
 
-**제공 도구 (총 34개)**: NPC/관계/오브젝트 CRUD (9), 감정 파이프라인 (5), 상태 관리 (5),
-시나리오 관리 (4), 소스 텍스트 & 시나리오 생성 (3), Scene 관리 (2), 결과 관리 (2),
-LLM 대화 세션 (3, `chat` feature), LLM 설정 조회 (1).
+**Available tools (34 total)**: NPC/relationship/object CRUD (9), emotion pipeline (5),
+state management (5), scenario management (4), source text & scenario generation (3),
+scene management (2), result management (2), LLM dialogue session (3, `chat` feature),
+LLM config lookup (1).
 
-**문서**: 전체 문서 세트는 [`mcp/`](mcp/) 디렉토리에 있습니다. 처음 사용하면:
-1. [`mcp/README.md`](mcp/README.md) — 연결 가이드, 도구 카테고리 개요
-2. [`mcp/docs/agent-playbook.md`](mcp/docs/agent-playbook.md) — **AI 에이전트 필독** 워크플로우 가이드
-3. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — 34개 도구 API 스펙
-4. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE 구조 및 DDD adapter 위치
-5. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — 연결 실패, 빌드 함정 등
+**Documentation**: The full documentation set lives in the [`mcp/`](mcp/) directory.
+Start here:
+1. [`mcp/README.md`](mcp/README.md) — connection guide and tool category overview
+2. [`mcp/docs/agent-playbook.md`](mcp/docs/agent-playbook.md) — **required reading for AI agents**: workflow guide
+3. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — API spec for all 34 tools
+4. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE structure and DDD adapter position
+5. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — connection failures, build traps, etc.
 
 ---
 
@@ -352,7 +355,7 @@ See [locale guide](docs/locale-guide.md) for the full TOML schema.
 | [Integration Guide](docs/api/integration-guide.md) | Step-by-step: NPC creation → scene setup → directive generation |
 | [Locale Guide](docs/locale-guide.md) | TOML locale schema and customization |
 | [Architecture](docs/architecture/architecture-v2.md) | DDD + Hexagonal architecture design |
-| [MCP Server Guide](mcp/README.md) | 네이티브 Rust SSE MCP 서버 (34개 도구, AI 에이전트 playbook 포함) |
+| [MCP Server Guide](mcp/README.md) | Native Rust SSE MCP server (34 tools, AI agent playbook included) |
 
 ---
 
@@ -371,7 +374,7 @@ The engine is being validated against real literary scenes (currently: *Adventur
 - ✅ Power → tone mapping (PowerLevel in ActingDirective)
 - ✅ Devcontainer / GitHub Codespaces support
 - ✅ InMemoryRepository built-in adapter (Mind Studio JSON load)
-- ✅ MCP server for AI Agent integration (16 tools)
+- ✅ MCP server for AI Agent integration (34 tools)
 - 🔄 Literary validation sessions ongoing
 - 🔜 Multi-NPC dialogue context
 
