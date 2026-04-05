@@ -42,11 +42,7 @@ async fn main() {
     let analyzer = init_analyzer();
     let mut state = AppState::new(collector, analyzer);
 
-    // MCP 서버 초기화 ( Any/Dyn 제거 및 정적 타입 주입 )
-    let mcp_server = mcp_server::create_mcp_server(state.clone());
-    state = state.with_mcp(mcp_server);
-
-    // chat feature 활성 시 RigChatAdapter 초기화
+    // chat feature 활성 시 RigChatAdapter 초기화 (MCP 서버보다 먼저 — clone 시 chat 포함)
     #[cfg(feature = "chat")]
     {
         use std::sync::Arc;
@@ -58,7 +54,12 @@ async fn main() {
         let arc_adapter = Arc::new(adapter);
         state = state.with_chat(arc_adapter.clone());
         state = state.with_llm_info(arc_adapter);
+        tracing::info!("Chat 어댑터 초기화: url={}, model={}", chat_url, chat_model);
     }
+
+    // MCP 서버 초기화 (chat이 설정된 state를 clone)
+    let mcp_server = mcp_server::create_mcp_server(state.clone());
+    state = state.with_mcp(mcp_server);
 
     // 2. 라우터 빌드
     let app = build_api_router(state);

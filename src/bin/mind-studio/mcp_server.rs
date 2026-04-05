@@ -76,7 +76,7 @@ impl MindMcpService {
         format!("data/{}", path)
     }
 
-    /// 도구 목록 조회 (31개)
+    /// 도구 목록 조회 (34개)
     pub fn list_tools(&self) -> Vec<Value> {
         vec![
             // 세계 구축 (CRUD)
@@ -192,6 +192,48 @@ impl MindMcpService {
             // 결과 관리
             serde_json::json!({ "name": "get_save_dir", "description": "현재 로드된 시나리오의 결과 저장 디렉토리 경로를 계산합니다.", "inputSchema": { "type": "object", "properties": {} } }),
             serde_json::json!({ "name": "load_result", "description": "테스트 결과 파일을 로드합니다 (턴 히스토리 포함).", "inputSchema": { "type": "object", "properties": { "path": { "type": "string" } }, "required": ["path"] } }),
+
+            // LLM 대화 테스트 (chat feature)
+            serde_json::json!({
+                "name": "dialogue_start",
+                "description": "대화 세션을 시작합니다. appraise 후 생성된 프롬프트를 system prompt로 로컬 LLM 세션을 생성합니다. (chat feature 필요)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": { "type": "string", "description": "세션 고유 ID" },
+                        "appraise": { "type": "object", "description": "AppraiseRequest (npc_id, partner_id, situation)" }
+                    },
+                    "required": ["session_id", "appraise"]
+                }
+            }),
+            serde_json::json!({
+                "name": "dialogue_turn",
+                "description": "대사를 LLM에 전송하고 NPC 역할로 응답을 받습니다. PAD stimulus가 자동 적용되고 Beat 전환 시 system prompt가 갱신됩니다. (chat feature 필요)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "npc_id": { "type": "string" },
+                        "partner_id": { "type": "string" },
+                        "utterance": { "type": "string", "description": "상대 대사 (Player 또는 대화 상대)" },
+                        "pad": { "type": "object", "description": "수동 PAD 입력 {pleasure, arousal, dominance}. 생략 시 자동 분석" },
+                        "situation_description": { "type": "string", "description": "상황 설명 (선택)" }
+                    },
+                    "required": ["session_id", "npc_id", "partner_id", "utterance"]
+                }
+            }),
+            serde_json::json!({
+                "name": "dialogue_end",
+                "description": "대화 세션을 종료합니다. 대화 이력을 반환하고, after_dialogue를 포함하면 관계를 갱신합니다. (chat feature 필요)",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": { "type": "string" },
+                        "after_dialogue": { "type": "object", "description": "AfterDialogueRequest {npc_id, partner_id, significance}. 생략 시 관계 갱신 없이 종료" }
+                    },
+                    "required": ["session_id"]
+                }
+            }),
 
             // 기타
             serde_json::json!({
@@ -538,6 +580,51 @@ impl MindMcpService {
                     "npcs": npc_count,
                     "relationships": rel_count
                 }))
+            }
+            "dialogue_start" => {
+                #[cfg(feature = "chat")]
+                {
+                    let req: npc_mind::application::dialogue_test_service::ChatStartRequest =
+                        serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
+                    let resp = StudioService::perform_chat_start(&self.state, req)
+                        .await
+                        .map_err(|e: AppError| e.to_string())?;
+                    Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "chat"))]
+                {
+                    Err("chat feature가 비활성입니다. --features chat으로 빌드하세요.".into())
+                }
+            }
+            "dialogue_turn" => {
+                #[cfg(feature = "chat")]
+                {
+                    let req: npc_mind::application::dialogue_test_service::ChatTurnRequest =
+                        serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
+                    let resp = StudioService::perform_chat_message(&self.state, req)
+                        .await
+                        .map_err(|e: AppError| e.to_string())?;
+                    Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "chat"))]
+                {
+                    Err("chat feature가 비활성입니다. --features chat으로 빌드하세요.".into())
+                }
+            }
+            "dialogue_end" => {
+                #[cfg(feature = "chat")]
+                {
+                    let req: npc_mind::application::dialogue_test_service::ChatEndRequest =
+                        serde_json::from_value(arguments.clone()).map_err(|e| e.to_string())?;
+                    let resp = StudioService::perform_chat_end(&self.state, req)
+                        .await
+                        .map_err(|e: AppError| e.to_string())?;
+                    Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "chat"))]
+                {
+                    Err("chat feature가 비활성입니다. --features chat으로 빌드하세요.".into())
+                }
             }
             _ => Err(format!("Unknown tool: {}", name)),
         }

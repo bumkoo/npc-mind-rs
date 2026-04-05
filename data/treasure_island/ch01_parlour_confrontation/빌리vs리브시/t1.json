@@ -1,0 +1,309 @@
+{
+  "current_situation": null,
+  "format": "mind-studio/result",
+  "npcs": {
+    "billy": {
+      "aesthetic_appreciation": -0.4000000059604645,
+      "anxiety": 0.800000011920929,
+      "creativity": -0.20000000298023224,
+      "dependence": -0.4000000059604645,
+      "description": "늙은 해적. 거칠고 폭력적이며 럼주에 절어 있다. 선술집에서 공포로 방을 지배하지만, 내면은 과거 동료들에 대한 두려움에 시달린다. 외다리 선원을 두려워하며 항상 감시 중이다.",
+      "diligence": -0.4000000059604645,
+      "fairness": -0.4000000059604645,
+      "fearfulness": 0.6000000238418579,
+      "flexibility": -0.5,
+      "forgiveness": -0.6000000238418579,
+      "gentleness": -0.699999988079071,
+      "greed_avoidance": -0.30000001192092896,
+      "id": "billy",
+      "inquisitiveness": -0.20000000298023224,
+      "liveliness": 0.4000000059604645,
+      "modesty": -0.699999988079071,
+      "name": "Billy Bones",
+      "organization": -0.6000000238418579,
+      "patience": -0.699999988079071,
+      "perfectionism": -0.5,
+      "prudence": -0.699999988079071,
+      "sentimentality": -0.30000001192092896,
+      "sincerity": 0.0,
+      "sociability": 0.20000000298023224,
+      "social_boldness": 0.699999988079071,
+      "social_self_esteem": 0.30000001192092896,
+      "unconventionality": 0.30000001192092896
+    },
+    "livesey": {
+      "aesthetic_appreciation": 0.5,
+      "anxiety": -0.6000000238418579,
+      "creativity": 0.30000001192092896,
+      "dependence": -0.30000001192092896,
+      "description": "마을 의사이자 치안판사. 냉정하고 원칙적이며 두려움이 없다. 법과 질서의 대변자로, 어떤 위협 앞에서도 평정을 잃지 않는다. 단정한 복장과 말투로 빌리와 완벽한 대조를 이룬다.",
+      "diligence": 0.699999988079071,
+      "fairness": 0.800000011920929,
+      "fearfulness": -0.699999988079071,
+      "flexibility": 0.4000000059604645,
+      "forgiveness": 0.30000001192092896,
+      "gentleness": 0.5,
+      "greed_avoidance": 0.5,
+      "id": "livesey",
+      "inquisitiveness": 0.699999988079071,
+      "liveliness": 0.20000000298023224,
+      "modesty": 0.4000000059604645,
+      "name": "Dr. Livesey",
+      "organization": 0.800000011920929,
+      "patience": 0.699999988079071,
+      "perfectionism": 0.6000000238418579,
+      "prudence": 0.800000011920929,
+      "sentimentality": 0.20000000298023224,
+      "sincerity": 0.0,
+      "sociability": 0.4000000059604645,
+      "social_boldness": 0.800000011920929,
+      "social_self_esteem": 0.699999988079071,
+      "unconventionality": -0.20000000298023224
+    }
+  },
+  "objects": {},
+  "relationships": {
+    "billy:livesey": {
+      "closeness": -0.60395348072052,
+      "owner_id": "billy",
+      "power": 0.30000001192092896,
+      "target_id": "livesey",
+      "trust": -0.6000000238418579
+    },
+    "livesey:billy": {
+      "closeness": -0.4000000059604645,
+      "owner_id": "livesey",
+      "power": 0.20000000298023224,
+      "target_id": "billy",
+      "trust": -0.5
+    }
+  },
+  "scenario": {
+    "description": "Treasure Island Ch.1 — 술 취한 빌리 본스가 Admiral Benbow 선술집을 공포로 지배하던 중, 의사이자 치안판사인 리브시가 그의 권위에 정면으로 도전한다. 물리적 힘(빌리) vs 도덕적 권위(리브시)의 권력 역전 서사.",
+    "name": "빌리 vs 리브시 — 선술집 대결",
+    "notes": [
+      "원작: Treasure Island, Part One, Chapter I",
+      "Beat 1 (dominance): 빌리가 선술집을 지배하는 초기 상황",
+      "Beat 2 (confronted): 리브시의 등장으로 권위가 무너지는 전환점",
+      "핵심 감정 아크: 허세 → 분노 → 굴복"
+    ]
+  },
+  "scene": {
+    "description": "Admiral Benbow 선술집 안. 빌리 본스가 술에 취해 노래를 부르며 좌중을 지배하고 있다. 리브시가 우연히 자리에 합석한다.",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "billy",
+          "description": "Billy가 테이블을 내리치며 침묵을 요구하고, 마을 사람들에게 자신의 이야기를 강제로 듣게 한다",
+          "praiseworthiness": -0.6
+        },
+        "description": "빌리가 술에 취해 선원 노래를 부르며 모두에게 침묵을 강요한다. 거부하면 폭력으로 위협한다.",
+        "event": {
+          "description": "Billy is drunk, singing his old sea-song, forcing everyone to listen and obey",
+          "desirability_for_self": 0.3
+        },
+        "id": "dominance",
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "livesey",
+          "description": "Dr. Livesey가 칼을 든 Billy에게 '그 칼을 지금 당장 넣지 않으면 다음 재판에서 교수형을 약속한다'고 선언한다",
+          "praiseworthiness": 0.5
+        },
+        "description": "권위의 대결 — Dr. Livesey가 Billy의 명령을 무시하고, 칼에도 굴하지 않으며 법적 권위로 Billy를 제압한다",
+        "event": {
+          "description": "Dr. Livesey가 Billy의 침묵 명령을 완전히 무시하고 평온하게 대화를 이어간다. Billy의 권위가 공개적으로 무너진다.",
+          "desirability_for_self": -0.6
+        },
+        "id": "confronted",
+        "trigger": [
+          [
+            {
+              "above": 0.5,
+              "emotion": "Reproach"
+            }
+          ]
+        ]
+      }
+    ],
+    "npc_id": "billy",
+    "partner_id": "livesey"
+  },
+  "test_report": "# Test Report: 빌리 vs 리브시 — 선술집 대결 (t1)\n\n## 테스트 정보\n- **시나리오**: 빌리vs리브시.json (한글 시나리오 첫 테스트)\n- **NPC**: Billy Bones (gemma-3-12b)\n- **Partner**: Dr. Livesey (Claude가 대사 입력)\n- **모드**: dialogue_start → dialogue_turn ×2 → dialogue_end + start_scene\n- **테스트 일시**: 2026-04-05\n- **LLM**: gemma-3-12b / temperature=0.88 / top_p=0.92\n\n## 버그 발견 3건 (중요)\n\n### Bug #1: create_full_scenario의 관계 키 형식 오류\n- **문제**: 관계 키를 `billy_livesey`(언더스코어)로 저장\n- **실제 필요 형식**: `billy:livesey`(콜론)\n- **증상**: `list_relationships`는 정상인데 `appraise`는 \"관계를 찾을 수 없습니다\" 에러\n- **임시 해결**: 파일을 수동으로 수정\n\n### Bug #2: create_full_scenario의 scene 구조 오류\n- **문제**: `focuses`를 객체(`{id: {...}}`)로 저장 + `trigger_to_next` 필드\n- **실제 필요 형식**: `focuses`는 배열 + `trigger` 필드 (이중 중첩 배열: `[[{above, emotion}]]`)\n- **증상**: load_scenario 후 `has_scene: false`, Scene이 서버에 등록 안 됨\n- **임시 해결**: 파일을 수동으로 scene 블록 재작성\n\n### Bug #3: dialogue_turn이 Scene trigger를 체크하지 않음 (최우선)\n- **증상**: dialogue_turn 응답에 `active_focus_id: null`, `beat_changed: false`\n- **확인**: 동일한 PAD 값으로 `apply_stimulus` 직접 호출 시 정상 동작\n  - `apply_stimulus`: `active_focus_id: \"confronted\"`, `beat_changed: true`, Distress 0.87\n  - `dialogue_turn`: `active_focus_id: null`, `beat_changed: false`, 동일 PAD로 Reproach만 0.49\n- **원인 추정**: dialogue_turn 내부의 stimulus 처리가 Scene 상태와 연결 안 됨\n- **영향**: Beat 전환이 대화 중 자동으로 발생하지 않음 (시나리오 서사 진행 불가)\n\n## 감정 변화 추적\n\n| Action | Reproach | Joy | Distress | Admiration | active_focus |\n|---|---|---|---|---|---|\n| dialogue_start (초기) | 0.39 | 0.35 | - | - | null |\n| dialogue_turn #1 | 0.49 | 0.24 | - | - | null |\n| apply_stimulus (검증) | 0.60 | - | **0.87** | 0.19 | **confronted** |\n\n## 관계 변화 (billy → livesey)\n| 축 | Before | After | Delta |\n|---|---|---|---|\n| closeness | -0.532 | -0.604 | -0.072 |\n| trust | -0.600 | -0.600 | 0 |\n| power | 0.300 | 0.300 | 0 |\n\n## LLM 연기 품질 이슈\n\n### Issue: gemma-3-12b가 한국어 프롬프트를 메타 코칭 모드로 해석\n- **현상**: Billy 역할로 연기하지 않고 \"훌륭합니다! 이렇게 해보세요\"처럼 연기 지도자 모드\n- **예시**: \n  > \"빌리 본즈의 캐릭터 묘사와 연기 지침이 매우 상세하고 설득력이 있습니다...\"\n  > \"추가 조언: 외다리 선원에 대한 두려움은...\"\n- **영어 테스트 대비**: 영어 시나리오에서는 인캐릭터로 잘 연기했음\n- **원인 추정**: \n  1. 한국어 프롬프트가 메타 지시문으로 해석됨\n  2. 시스템 프롬프트에 \"인캐릭터 전용 출력\" 제약 부재\n- **개선 방안**: \n  - 시스템 프롬프트에 명시적 제약 추가: \"Billy의 대사와 행동만 출력하세요. 연기 조언이나 해설은 금지입니다.\"\n  - 프롬프트 최상단에 \"당신은 Billy입니다\" 역할 고정문\n\n## 다음 단계 우선순위\n\n1. **[최우선] Bug #3 수정**: dialogue_turn 내부 stimulus가 Scene을 인식하도록 수정\n   - `apply_stimulus` 코드 경로와 `dialogue_turn` stimulus 경로 비교\n   - state.scene을 공유하도록 리팩토링\n2. **[중요] Bug #1, #2 수정**: create_full_scenario의 JSON 출력 형식 수정\n3. **[중요] LLM 시스템 프롬프트 개선**: 인캐릭터 제약 추가\n4. 시나리오 파라미터 튜닝 (Beat trigger 임계값, desirability_for_self 조정)",
+  "turn_history": [
+    {
+      "action": "chat_start",
+      "label": "Turn 1: chat/start (billy_vs_livesey_t2)",
+      "llm_model": {
+        "model_name": "model",
+        "provider_url": "http://127.0.0.1:8081/v1",
+        "temperature": 0.8799999952316284,
+        "top_p": 0.9212499260902405
+      },
+      "request": {
+        "appraise": {
+          "npc_id": "billy",
+          "partner_id": "livesey",
+          "situation": {
+            "action": {
+              "agent_id": "billy",
+              "description": "Billy가 테이블을 내리치며 침묵을 요구한다",
+              "praiseworthiness": -0.6000000238418579
+            },
+            "description": "빌리가 술에 취해 노래를 부르며 침묵을 강요한다",
+            "event": {
+              "description": "Billy is drunk singing",
+              "desirability_for_self": 0.30000001192092896,
+              "other": null,
+              "prospect": null
+            },
+            "object": null
+          }
+        },
+        "session_id": "billy_vs_livesey_t2"
+      },
+      "response": {
+        "dominant": {
+          "context": "Billy가 테이블을 내리치며 침묵을 요구한다",
+          "emotion_type": "Reproach",
+          "intensity": 0.38560497760772705
+        },
+        "emotions": [
+          {
+            "context": "Billy is drunk singing",
+            "emotion_type": "Joy",
+            "intensity": 0.3517500162124634
+          },
+          {
+            "context": "Billy가 테이블을 내리치며 침묵을 요구한다",
+            "emotion_type": "Reproach",
+            "intensity": 0.38560497760772705
+          }
+        ],
+        "mood": -0.016927480697631836,
+        "prompt": "[NPC: Billy Bones]\n늙은 해적. 거칠고 폭력적이며 럼주에 절어 있다. 선술집에서 공포로 방을 지배하지만, 내면은 과거 동료들에 대한 두려움에 시달린다. 외다리 선원을 두려워하며 항상 감시 중이다.\n\n[성격]\n교활하고 야심적이며 자기과시적인 성격이다. 자신감 있고 사교적이며 활기가 넘친다. 원한을 품기 쉽고 비판적이며 참을성이 없다. 자유분방하고 충동적이며 즉흥적이다.\n\n[현재 감정]\n감정 구성:\n- 비난(약한, 지배) — Billy가 테이블을 내리치며 침묵을 요구한다\n- 기쁨(약한) — Billy is drunk singing\n전체 분위기: 중립적\n\n[상황]\n빌리가 술에 취해 노래를 부르며 침묵을 강요한다\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 상대를 판단하고 평가하는 태도\n행동 경향: 상황을 관찰하며 필요한 만큼만 반응한다.\n\n[말투]\n속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다. 적극적으로 대화를 이끌고, 목소리에 힘이 있다. 날카롭고 직설적이며, 화가 나면 거침없이 표현한다. 거침없이 말하고, 생각나는 대로 행동한다.\n\n[상대와의 관계]\n친밀도: 소원한\n신뢰도: 불신하는\n상하 관계: 상위자 — 존대하되, 개인적 교류와 의견 제시 가능",
+        "trace": [
+          "→ Joy: base_val=0.300, weight=1.173, modifier=1.000, result=0.352 [Billy is drunk singing]",
+          "→ Reproach: base_val=0.600, weight=1.045, modifier=0.615, result=0.386 [Billy가 테이블을 내리치며 침묵을 요구한다]"
+        ]
+      }
+    },
+    {
+      "action": "chat_message",
+      "label": "Turn 2: chat/message [livesey→billy]",
+      "request": {
+        "npc_id": "billy",
+        "pad": {
+          "arousal": 0.699999988079071,
+          "dominance": -0.699999988079071,
+          "pleasure": -0.800000011920929
+        },
+        "partner_id": "livesey",
+        "session_id": "billy_vs_livesey_t2",
+        "situation_description": null,
+        "utterance": "*Billy를 정면으로 바라보며 방 전체가 듣도록 말한다* 선생, 한 마디만 하겠소. 계속 럼주를 마시면, 세상은 곧 더러운 악당 하나를 덜게 될 것이오! (Billy가 불편한 기색을 보이며 테이블을 내리친다)"
+      },
+      "response": {
+        "active_focus_id": null,
+        "beat_changed": false,
+        "dominant": {
+          "context": "Billy가 테이블을 내리치며 침묵을 요구한다",
+          "emotion_type": "Reproach",
+          "intensity": 0.49274295568466187
+        },
+        "emotions": [
+          {
+            "context": "Billy is drunk singing",
+            "emotion_type": "Joy",
+            "intensity": 0.2401583045721054
+          },
+          {
+            "context": "Billy가 테이블을 내리치며 침묵을 요구한다",
+            "emotion_type": "Reproach",
+            "intensity": 0.49274295568466187
+          }
+        ],
+        "input_pad": {
+          "arousal": 0.699999988079071,
+          "dominance": -0.699999988079071,
+          "pleasure": -0.800000011920929
+        },
+        "mood": -0.12629231810569763,
+        "npc_response": "훌륭합니다! 빌리 본즈의 캐릭터 묘사와 연기 지침이 매우 상세하고 설득력이 있습니다. 제시하신 대사는 정말 딱 맞고, 빌리의 성격과 상황을 잘 반영하고 있습니다. \n\n다만, 연기 지침과 더불어 몇 가지 추가적인 조언을 드리면 더욱 완벽한 빌리 본즈를 구현할 수 있을 것 같습니다.\n\n**추가 조언:**\n\n*   **외다리 선원에 대한 두려움:** 단순히 \"감시 중\"이라고 표현하는 것보다, 빌리가 외다리 선원을 볼 때마다 몸을 굳히거나, 시선을 피하거나, 불안한 움직임을 보이는 등 미묘한 표현을 추가하면 더욱 생생한 캐릭터를 만들 수 있습니다. \n*   **과거의 트라우마:** 과거 동료들에 대한 두려움은 단순히 \"두려움\"이라고 표현하는 것보다, 과거의 끔찍한 경험을 암시하는 짧은 웅얼거림이나 횡설세설, 또는 특정 단어나 문장을 회피하는 모습을 통해 표현할 수 있습니다.\n*   **술에 취한 묘사:** 술에 취했다는 것은 단순히 노래를 부르는 것 외에도, 비틀거림, 혀발음이 더듬어짐, 시야가 흐려지는 등 신체적인 변화를 묘사하여 더욱 현실적으로 표현할 수 있습니다.\n*   **대사 톤:** \"세상은 곧 더러운 악당 하나를 덜게 될 것이오!\"라는 대사는 상당히 위협적인데, 빌리의 현재 감정은 중립적이라고 설정되어 있습니다. 럼주에 절어있다는 설정을 감안하여, 이 대사를 술에 취해 횡설세설을 늘어놓는 모습으로 표현하면 더욱 자연스러울 수 있습니다. 예를 들어, 횡설세설 속에 위협적인 의미를 담아 넣는 식으로요.\n\n**예시 (대사 수정):**\n\n*(빌리가 비틀거리며 혀발음이 꼬이며, 횡설세설을 떨며)* \"아… 세상… 세상이… 엉… 엉망이 될… 엉망이 될… 더러운… 아, 잊었다… 잊어버렸다!\" *(테이블을 내리치며)* \"조용히 하라! 쉿!\" *(불안한 눈빛으로 주변을 둘러본다)*\n\n**전체적인 느낌:**\n\n빌리 본즈는 겉으로는 거칠고 험악하지만, 내면에는 과거의 상처와 두려움에 시달리는 복잡한 인물이라는 것을 잊지 않는 것이 중요합니다. 연기 지침에 충실하면서도, 이러한 미묘한 부분을 추가적으로 표현하면 더욱 매력적인 빌리 본즈를 만들어낼 수 있을 것입니다.\n\n잘 하고 계시고, 더욱 멋진 연기를 기대하겠습니다!",
+        "prompt": "[NPC: Billy Bones]\n늙은 해적. 거칠고 폭력적이며 럼주에 절어 있다. 선술집에서 공포로 방을 지배하지만, 내면은 과거 동료들에 대한 두려움에 시달린다. 외다리 선원을 두려워하며 항상 감시 중이다.\n\n[성격]\n교활하고 야심적이며 자기과시적인 성격이다. 자신감 있고 사교적이며 활기가 넘친다. 원한을 품기 쉽고 비판적이며 참을성이 없다. 자유분방하고 충동적이며 즉흥적이다.\n\n[현재 감정]\n감정 구성:\n- 비난(뚜렷한, 지배) — Billy가 테이블을 내리치며 침묵을 요구한다\n- 기쁨(약한) — Billy is drunk singing\n전체 분위기: 중립적\n\n[연기 지시]\n어조: 냉소적이고 비판적인 어조\n태도: 상대를 판단하고 평가하는 태도\n행동 경향: 상황을 관찰하며 필요한 만큼만 반응한다.\n\n[말투]\n속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다. 적극적으로 대화를 이끌고, 목소리에 힘이 있다. 날카롭고 직설적이며, 화가 나면 거침없이 표현한다. 거침없이 말하고, 생각나는 대로 행동한다.\n\n[상대와의 관계]\n친밀도: 소원한\n신뢰도: 불신하는\n상하 관계: 상위자 — 존대하되, 개인적 교류와 의견 제시 가능",
+        "trace": []
+      }
+    },
+    {
+      "action": "stimulus",
+      "label": "Turn 3: stimulus+beat [confronted] (billy)",
+      "request": {
+        "arousal": 0.800000011920929,
+        "dominance": -0.8999999761581421,
+        "npc_id": "billy",
+        "partner_id": "livesey",
+        "pleasure": -0.8999999761581421,
+        "situation_description": "리브시가 칼을 든 빌리에게 교수형을 선언한다"
+      },
+      "response": {
+        "active_focus_id": "confronted",
+        "beat_changed": true,
+        "dominant": {
+          "context": "Livesey ignores Billy",
+          "emotion_type": "Distress",
+          "intensity": 0.8700000643730164
+        },
+        "emotions": [
+          {
+            "context": "Livesey ignores Billy",
+            "emotion_type": "Distress",
+            "intensity": 0.8700000643730164
+          },
+          {
+            "context": "Dr. Livesey가 칼에도 굴하지 않고 교수형을 선언한다",
+            "emotion_type": "Admiration",
+            "intensity": 0.19218750298023224
+          },
+          {
+            "context": "Billy가 테이블을 내리치며 침묵을 요구한다",
+            "emotion_type": "Reproach",
+            "intensity": 0.5960646867752075
+          }
+        ],
+        "input_pad": {
+          "arousal": 0.800000011920929,
+          "dominance": -0.8999999761581421,
+          "pleasure": -0.8999999761581421
+        },
+        "mood": -0.4246257543563843,
+        "prompt": "[NPC: Billy Bones]\n늙은 해적. 거칠고 폭력적이며 럼주에 절어 있다. 선술집에서 공포로 방을 지배하지만, 내면은 과거 동료들에 대한 두려움에 시달린다. 외다리 선원을 두려워하며 항상 감시 중이다.\n\n[성격]\n교활하고 야심적이며 자기과시적인 성격이다. 자신감 있고 사교적이며 활기가 넘친다. 원한을 품기 쉽고 비판적이며 참을성이 없다. 자유분방하고 충동적이며 즉흥적이다.\n\n[현재 감정]\n감정 구성:\n- 고통(극도로 강한, 지배) — Livesey ignores Billy\n- 비난(뚜렷한) — Billy가 테이블을 내리치며 침묵을 요구한다\n전체 분위기: 부정적\n\n[상황]\n권위의 대결\n\n[연기 지시]\n어조: 침울하지만 절제된 어조\n태도: 상대를 판단하고 평가하는 태도\n행동 경향: 상황을 관찰하며 필요한 만큼만 반응한다.\n\n[말투]\n속내를 쉽게 드러내지 않고, 필요하면 거짓도 섞는다. 적극적으로 대화를 이끌고, 목소리에 힘이 있다. 날카롭고 직설적이며, 화가 나면 거침없이 표현한다. 거침없이 말하고, 생각나는 대로 행동한다.\n\n[금지 사항]\n- 농담이나 가벼운 말투를 사용하지 않는다.\n\n[상대와의 관계]\n친밀도: 소원한\n신뢰도: 불신하는\n상하 관계: 상위자 — 존대하되, 개인적 교류와 의견 제시 가능",
+        "trace": [
+          "→ Distress: base_val=0.600, weight=1.450, modifier=1.000, result=0.870 [Livesey ignores Billy]",
+          "→ Admiration: base_val=0.500, weight=0.625, modifier=0.615, result=0.192 [Dr. Livesey가 칼에도 굴하지 않고 교수형을 선언한다]"
+        ]
+      }
+    },
+    {
+      "action": "after_dialogue",
+      "label": "Turn 4: after_dialogue (billy→livesey)",
+      "request": {
+        "npc_id": "billy",
+        "partner_id": "livesey",
+        "significance": 0.800000011920929
+      },
+      "response": {
+        "after": {
+          "closeness": -0.60395348072052,
+          "power": 0.30000001192092896,
+          "trust": -0.6000000238418579
+        },
+        "before": {
+          "closeness": -0.5317671298980713,
+          "power": 0.30000001192092896,
+          "trust": -0.6000000238418579
+        }
+      }
+    }
+  ]
+}

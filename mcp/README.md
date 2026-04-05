@@ -46,7 +46,7 @@ Claude Desktop은 stdio 트랜스포트만 네이티브 지원하므로 `mcp-rem
 }
 ```
 
-## 제공되는 도구 (28개)
+## 제공되는 도구 (34개)
 
 ### 세계 구축 (CRUD)
 | 도구 | 설명 |
@@ -90,6 +90,20 @@ Claude Desktop은 stdio 트랜스포트만 네이티브 지원하므로 `mcp-rem
 | `load_scenario` | 시나리오 JSON 로드 (data/ 자동 보정) |
 | `get_save_dir` | 결과 저장 디렉토리 경로 조회 |
 | `load_result` | 테스트 결과 로드 (턴 히스토리 포함) |
+
+### 소스 텍스트 & 시나리오 생성
+| 도구 | 설명 |
+|------|------|
+| `list_source_texts` | data/ 폴더의 소스 텍스트(.txt) 파일 목록과 크기 |
+| `read_source_text` | txt 파일 챕터 목록 또는 특정 챕터 텍스트 읽기 |
+| `create_full_scenario` | NPC/관계/Scene 일괄 생성 + JSON 저장 + 서버 로드 |
+
+### LLM 대화 테스트 (chat feature)
+| 도구 | 설명 |
+|------|------|
+| `chat_start` | 대화 세션 시작: appraise + 프롬프트를 system prompt로 LLM 세션 생성 |
+| `chat_message` | 대사 전송 → LLM NPC 응답 + PAD stimulus + Beat 전환 |
+| `chat_end` | 세션 종료 + 대화 이력 반환 + 관계 갱신 (선택) |
 
 ### 기타
 | 도구 | 설명 |

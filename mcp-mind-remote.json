@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "npc-mind-studio": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://127.0.0.1:3000/mcp/sse"]
+    }
+  }
+}
