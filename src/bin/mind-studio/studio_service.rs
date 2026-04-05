@@ -187,7 +187,7 @@ impl StudioService {
         let p = std::path::Path::new(loaded);
         let parent = p.parent().unwrap_or(std::path::Path::new("data"));
         let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("scenario");
-        let result_dir = parent.join(format!("{}_result", stem));
+        let result_dir = parent.join(stem);
 
         std::fs::create_dir_all(&result_dir)
             .map_err(|e| AppError::Internal(format!("폴더 생성 실패: {}", e)))?;

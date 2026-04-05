@@ -181,6 +181,7 @@ mcp/
   requirements.txt                  # Python 의존성 (mcp, httpx)
   README.md                         # AI Agent용 MCP 설정 가이드
 .mcp.json                           # 프로젝트 MCP 서버 설정 (mind-studio)
+mcp-testing-guide.md                # AI가 MCP 도구로 시나리오 테스트할 때 참조 (실행 가이드)
 ```
 
 ## 아키텍처 (DDD + 헥사고날 + 계층화)
