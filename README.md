@@ -233,30 +233,37 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 
 ### MCP Integration (AI Agent)
 
-AI Agent(Claude Code)가 Mind Studio API를 통해 시나리오를 자율적으로 설계/테스트할 수 있습니다.
+AI Agent (Claude Desktop, Claude Code 등)가 Mind Studio의 NPC 심리 엔진을 MCP 도구로 활용할 수 있습니다.
+**네이티브 Rust SSE 구현**으로 별도 Python 의존성이 필요 없으며, Mind Studio 서버에 자동 포함되어 있습니다.
 
 ```bash
-# 1. Mind Studio 서버 실행
-cargo run --features mind-studio --bin npc-mind-studio
-
-# 2. Python MCP 의존성 설치
-pip install -r mcp/requirements.txt
+# Mind Studio 서버 실행 (MCP 엔드포인트 자동 활성화)
+cargo run --release --features mind-studio,embed --bin npc-mind-studio
+# → http://127.0.0.1:3000/mcp/sse
 ```
 
-다른 프로젝트의 `.mcp.json`에 추가:
+Claude Desktop의 `claude_desktop_config.json`에 추가:
 
 ```json
 {
   "mcpServers": {
-    "mind-studio": {
-      "command": "python",
-      "args": ["/path/to/npc-mind-rs/mcp/mind_studio_server.py"]
+    "npc-mind-studio": {
+      "url": "http://127.0.0.1:3000/mcp/sse"
     }
   }
 }
 ```
 
-AI Agent가 사용할 수 있는 16개 MCP 도구: NPC/관계 CRUD, 감정 평가(`appraise`), PAD 자극(`apply_stimulus`), Scene/Beat 관리, 시나리오 저장/로드. 자세한 내용은 [MCP 가이드](mcp/README.md)를 참고하세요.
+**제공 도구 (총 34개)**: NPC/관계/오브젝트 CRUD (9), 감정 파이프라인 (5), 상태 관리 (5),
+시나리오 관리 (4), 소스 텍스트 & 시나리오 생성 (3), Scene 관리 (2), 결과 관리 (2),
+LLM 대화 세션 (3, `chat` feature), LLM 설정 조회 (1).
+
+**문서**: 전체 문서 세트는 [`mcp/`](mcp/) 디렉토리에 있습니다. 처음 사용하면:
+1. [`mcp/README.md`](mcp/README.md) — 연결 가이드, 도구 카테고리 개요
+2. [`mcp/docs/agent-playbook.md`](mcp/docs/agent-playbook.md) — **AI 에이전트 필독** 워크플로우 가이드
+3. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — 34개 도구 API 스펙
+4. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE 구조 및 DDD adapter 위치
+5. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — 연결 실패, 빌드 함정 등
 
 ---
 
@@ -345,7 +352,7 @@ See [locale guide](docs/locale-guide.md) for the full TOML schema.
 | [Integration Guide](docs/api/integration-guide.md) | Step-by-step: NPC creation → scene setup → directive generation |
 | [Locale Guide](docs/locale-guide.md) | TOML locale schema and customization |
 | [Architecture](docs/architecture/architecture-v2.md) | DDD + Hexagonal architecture design |
-| [MCP Server Guide](mcp/README.md) | AI Agent용 Mind Studio MCP 도구 설정 |
+| [MCP Server Guide](mcp/README.md) | 네이티브 Rust SSE MCP 서버 (34개 도구, AI 에이전트 playbook 포함) |
 
 ---
 
