@@ -239,5 +239,4 @@ appraise → start_session(prompt)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
 - **가이드 매핑**: [`docs/guide/guide-mapping-table.md`](docs/guide/guide-mapping-table.md)
 - **언어 설정**: [`docs/locale-guide.md`](docs/locale-guide.md)
-- **기술 부채**: [`docs/tech-debt-audit-2026-04.md`](docs/tech-debt-audit-2026-04.md)
 - **MCP 서버 설정**: `.mcp.json` (프로젝트 루트)
