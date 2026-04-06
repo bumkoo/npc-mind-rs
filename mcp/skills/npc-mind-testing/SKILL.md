@@ -32,14 +32,12 @@ description: "NPC Mind Engine MCP를 사용한 시나리오 테스트 및 대화
 0. NPC Asset 확인         data/{book}/assets/npcs/ 조회 (원칙 2)
 1. load_scenario           시나리오 파일 로드
 2. get_scene_info          Scene 활성화 확인 (has_scene: true)
-3. dialogue_start          세션 시작 + 초기 appraise
+3. dialogue_start          세션 시작 + 초기 appraise (save_dir 자동 반환)
 4. dialogue_turn × N       상대 대사 입력 → NPC 연기 응답 + 감정 갱신
-5. dialogue_end            세션 종료
-6. after_dialogue          관계 갱신 (closeness/trust 변동)
-7. save_scenario("result") 결과 JSON 저장 (턴 히스토리 포함)
-8. 정량 평가 수행           get_history → 3개 지표 채점
-9. update_test_report      레포트 작성 (한국어, 정량 섹션 포함)
-10. save_scenario("all")   result JSON + report MD 동시 저장
+5. dialogue_end            세션 종료 + 관계 갱신 (after_dialogue 포함)
+6. 정량 평가 수행           get_history → 3개 지표 채점
+7. update_test_report      레포트 작성 (한국어, 정량 섹션 포함)
+8. save_scenario("all")    result JSON + report MD 동시 저장
 ```
 
 **정량 평가는 원칙이다** — 특별한 요청이 없어도 세션마다 수행한다.
@@ -73,9 +71,10 @@ get_scene_info()
 
 ### 대화 세션 시작
 ```
-dialogue_start(session_id="unique_id", npc_id="jim", partner_id="israel_hands")
+dialogue_start(session_id="unique_id", appraise={npc_id: "jim", partner_id: "israel_hands"})
 ```
-서버가 자동으로 initial focus에 대한 appraise를 수행한다.
+서버가 자동으로 initial focus에 대한 appraise를 수행한다. Scene이 활성이면 situation 생략 가능.
+반환값에 `save_dir`이 포함되므로 별도 `get_save_dir` 호출 불필요.
 
 ### 대화 턴 실행
 ```
@@ -119,17 +118,22 @@ dialogue_turn(
 - `get_history()`로 감정 강도 변화 추적
 - Trigger 설계가 문제면 시나리오 수정 (→ `npc-scenario-creator` 스킬 참조)
 
-### 관계 갱신
+### 세션 종료 + 관계 갱신
 ```
-after_dialogue(req={npc_id: "jim", partner_id: "israel_hands", significance: 1.0})
+dialogue_end(
+  session_id="unique_id",
+  after_dialogue={npc_id: "jim", partner_id: "israel_hands", significance: 1.0}
+)
 ```
+`after_dialogue`를 포함하면 세션 종료와 관계 갱신을 한 번에 처리한다.
 `significance`: 0.0~1.0. 중요한 장면일수록 1.0. before/after 관계 수치를 반환한다.
+`after_dialogue`를 생략하면 관계 갱신 없이 세션만 종료.
 
 ### 결과 저장
 ```
-get_save_dir()  → 결과 저장 디렉토리 자동 계산
-save_scenario(path="...", save_type="all")  → .json + .md 동시 저장
+save_scenario(path="<dialogue_start에서 받은 save_dir>", save_type="all")  → .json + .md 동시 저장
 ```
+`save_dir`은 `dialogue_start` 반환값에 포함되므로 별도 `get_save_dir` 호출 불필요.
 
 ## 정량 평가 — 3개 필수 지표
 

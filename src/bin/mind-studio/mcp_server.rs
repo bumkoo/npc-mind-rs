@@ -264,7 +264,7 @@ impl MindMcpService {
             // LLM 대화 테스트 (chat feature)
             serde_json::json!({
                 "name": "dialogue_start",
-                "description": "대화 세션을 시작합니다. appraise 후 생성된 프롬프트를 system prompt로 로컬 LLM 세션을 생성합니다. Scene이 활성이면 situation 생략 가능 — 활성 Focus의 데이터를 자동 사용합니다. (chat feature 필요)",
+                "description": "대화 세션을 시작합니다. appraise 후 생성된 프롬프트를 system prompt로 로컬 LLM 세션을 생성합니다. Scene이 활성이면 situation 생략 가능. 반환값에 save_dir(결과 저장 경로)이 포함됩니다. (chat feature 필요)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -292,7 +292,7 @@ impl MindMcpService {
             }),
             serde_json::json!({
                 "name": "dialogue_end",
-                "description": "대화 세션을 종료합니다. 대화 이력을 반환하고, after_dialogue를 포함하면 관계를 갱신합니다. (chat feature 필요)",
+                "description": "대화 세션을 종료하고 관계를 갱신합니다. after_dialogue에 {npc_id, partner_id, significance}를 포함하면 세션 종료와 관계 갱신을 한 번에 처리합니다. (chat feature 필요)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

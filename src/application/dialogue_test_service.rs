@@ -74,6 +74,10 @@ pub struct ChatStartResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(default)]
     pub llm_model_info: Option<crate::ports::LlmModelInfo>,
+    /// 결과 저장 디렉토리 경로 (시나리오 로드 시 자동 계산)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub save_dir: Option<String>,
 }
 
 /// 대화 턴 요청
@@ -230,6 +234,7 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
             session_id: req.session_id,
             appraise: appraise_resp,
             llm_model_info: Some(generation_config),
+            save_dir: None,
         })
     }
 

@@ -312,10 +312,20 @@ impl StudioService {
             .await
             .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
         
+        // save_dir 계산 (loaded_path가 있으면)
+        let save_dir = inner.loaded_path.as_deref().map(|loaded| {
+            let p = std::path::Path::new(loaded);
+            let parent = p.parent().unwrap_or(std::path::Path::new("data"));
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("scenario");
+            let result_dir = parent.join(stem);
+            let _ = std::fs::create_dir_all(&result_dir);
+            result_dir.to_string_lossy().replace('\\', "/")
+        });
+
         // 턴 기록 통합 저장
         Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
-        
-        Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info) })
+
+        Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info), save_dir })
     }
 
     /// 수동 PAD 입력 또는 임베딩 분석기를 통해 PAD 값을 해석합니다.
