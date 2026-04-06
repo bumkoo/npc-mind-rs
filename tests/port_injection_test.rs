@@ -817,3 +817,185 @@ fn test_speech_style_evaluate() {
         None
     );
 }
+
+// ===========================================================================
+// FocusEventInfo / FocusActionInfo 필드 매핑 테스트
+// ===========================================================================
+
+#[test]
+fn test_focus_event_info_desirability_for_self() {
+    let focus = SceneFocus {
+        id: "beat1".into(),
+        description: "테스트 Beat".into(),
+        trigger: FocusTrigger::Initial,
+        event: Some(EventFocus {
+            description: "좋은 일이 발생".into(),
+            desirability_for_self: 0.75,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    };
+    let info = FocusInfoItem::from_domain(&focus, true);
+    let ev = info.event.expect("event가 있어야 함");
+
+    assert!((ev.desirability_for_self - 0.75).abs() < f32::EPSILON,
+        "desirability_for_self가 0.75여야 하지만 {} 반환", ev.desirability_for_self);
+    assert!(!ev.has_other, "타인 영향 없으면 has_other=false");
+    assert!(ev.other_target_id.is_none());
+    assert!(ev.desirability_for_other.is_none());
+    assert!(ev.prospect.is_none(), "전망 없으면 prospect=None");
+}
+
+#[test]
+fn test_focus_event_info_with_other() {
+    let focus = SceneFocus {
+        id: "beat2".into(),
+        description: "타인 영향 포함 Beat".into(),
+        trigger: FocusTrigger::Initial,
+        event: Some(EventFocus {
+            description: "동료에게 좋은 일".into(),
+            desirability_for_self: 0.3,
+            desirability_for_other: Some(DesirabilityForOther {
+                target_id: "ally_npc".into(),
+                desirability: 0.8,
+                modifiers: RelationshipModifiers {
+                    intensity_multiplier: 1.0,
+                    trust_modifier: 1.0,
+                    empathy_modifier: 1.0,
+                    hostility_modifier: 0.0,
+                },
+            }),
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    };
+    let info = FocusInfoItem::from_domain(&focus, false);
+    let ev = info.event.expect("event가 있어야 함");
+
+    assert!(ev.has_other, "타인 영향 있으면 has_other=true");
+    assert_eq!(ev.other_target_id.as_deref(), Some("ally_npc"));
+    assert!((ev.desirability_for_other.unwrap() - 0.8).abs() < f32::EPSILON);
+}
+
+#[test]
+fn test_focus_event_info_prospect_variants() {
+    let make_focus = |prospect: Prospect| -> SceneFocus {
+        SceneFocus {
+            id: "p".into(),
+            description: "전망 테스트".into(),
+            trigger: FocusTrigger::Initial,
+            event: Some(EventFocus {
+                description: "전망 사건".into(),
+                desirability_for_self: 0.5,
+                desirability_for_other: None,
+                prospect: Some(prospect),
+            }),
+            action: None,
+            object: None,
+        }
+    };
+
+    // Anticipation
+    let info = FocusInfoItem::from_domain(&make_focus(Prospect::Anticipation), false);
+    assert_eq!(info.event.unwrap().prospect.as_deref(), Some("anticipation"));
+
+    // HopeFulfilled
+    let info = FocusInfoItem::from_domain(
+        &make_focus(Prospect::Confirmation(ProspectResult::HopeFulfilled)), false);
+    assert_eq!(info.event.unwrap().prospect.as_deref(), Some("hope_fulfilled"));
+
+    // HopeUnfulfilled
+    let info = FocusInfoItem::from_domain(
+        &make_focus(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)), false);
+    assert_eq!(info.event.unwrap().prospect.as_deref(), Some("hope_unfulfilled"));
+
+    // FearUnrealized
+    let info = FocusInfoItem::from_domain(
+        &make_focus(Prospect::Confirmation(ProspectResult::FearUnrealized)), false);
+    assert_eq!(info.event.unwrap().prospect.as_deref(), Some("fear_unrealized"));
+
+    // FearConfirmed
+    let info = FocusInfoItem::from_domain(
+        &make_focus(Prospect::Confirmation(ProspectResult::FearConfirmed)), false);
+    assert_eq!(info.event.unwrap().prospect.as_deref(), Some("fear_confirmed"));
+}
+
+#[test]
+fn test_focus_action_info_agent_id() {
+    // agent_id가 있는 경우 (타인 행동)
+    let focus_other = SceneFocus {
+        id: "a1".into(),
+        description: "타인 행동".into(),
+        trigger: FocusTrigger::Initial,
+        event: None,
+        action: Some(ActionFocus {
+            description: "적이 공격한다".into(),
+            agent_id: Some("enemy".into()),
+            praiseworthiness: -0.9,
+            modifiers: None,
+        }),
+        object: None,
+    };
+    let info = FocusInfoItem::from_domain(&focus_other, false);
+    let ac = info.action.expect("action이 있어야 함");
+    assert_eq!(ac.agent_id.as_deref(), Some("enemy"));
+    assert!((ac.praiseworthiness - (-0.9)).abs() < f32::EPSILON);
+
+    // agent_id가 없는 경우 (NPC 자신의 행동)
+    let focus_self = SceneFocus {
+        id: "a2".into(),
+        description: "자기 행동".into(),
+        trigger: FocusTrigger::Initial,
+        event: None,
+        action: Some(ActionFocus {
+            description: "용감하게 선언한다".into(),
+            agent_id: None,
+            praiseworthiness: 0.7,
+            modifiers: None,
+        }),
+        object: None,
+    };
+    let info = FocusInfoItem::from_domain(&focus_self, false);
+    let ac = info.action.expect("action이 있어야 함");
+    assert!(ac.agent_id.is_none(), "자기 행동이면 agent_id=None");
+}
+
+#[test]
+fn test_focus_event_info_negative_desirability() {
+    // 실버의도박 Beat 3 케이스: desirability_for_self = -0.9
+    let focus = SceneFocus {
+        id: "crisis".into(),
+        description: "위기 상황".into(),
+        trigger: FocusTrigger::Conditions(vec![vec![
+            EmotionCondition {
+                emotion: EmotionType::Admiration,
+                threshold: ConditionThreshold::Above(0.6),
+            },
+        ]]),
+        event: Some(EventFocus {
+            description: "반란이 시작된다".into(),
+            desirability_for_self: -0.9,
+            desirability_for_other: None,
+            prospect: None,
+        }),
+        action: Some(ActionFocus {
+            description: "칼을 뽑는다".into(),
+            agent_id: Some("morgan".into()),
+            praiseworthiness: -0.95,
+            modifiers: None,
+        }),
+        object: None,
+    };
+    let info = FocusInfoItem::from_domain(&focus, false);
+
+    let ev = info.event.unwrap();
+    assert!((ev.desirability_for_self - (-0.9)).abs() < f32::EPSILON,
+        "음수 desirability_for_self 정확히 전달: {}", ev.desirability_for_self);
+
+    let ac = info.action.unwrap();
+    assert_eq!(ac.agent_id.as_deref(), Some("morgan"));
+    assert!((ac.praiseworthiness - (-0.95)).abs() < f32::EPSILON);
+}

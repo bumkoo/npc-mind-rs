@@ -662,13 +662,40 @@ impl FocusInfoItem {
             }
         };
 
-        let event = f.event.as_ref().map(|e| FocusEventInfo {
-            description: e.description.clone(),
-            desirability: e.desirability_for_self,
+        let event = f.event.as_ref().map(|e| {
+            let (has_other, other_target_id, desirability_for_other) =
+                match &e.desirability_for_other {
+                    Some(other) => (true, Some(other.target_id.clone()), Some(other.desirability)),
+                    None => (false, None, None),
+                };
+            let prospect = e.prospect.as_ref().map(|p| match p {
+                Prospect::Anticipation => "anticipation".to_string(),
+                Prospect::Confirmation(ProspectResult::HopeFulfilled) => {
+                    "hope_fulfilled".to_string()
+                }
+                Prospect::Confirmation(ProspectResult::HopeUnfulfilled) => {
+                    "hope_unfulfilled".to_string()
+                }
+                Prospect::Confirmation(ProspectResult::FearUnrealized) => {
+                    "fear_unrealized".to_string()
+                }
+                Prospect::Confirmation(ProspectResult::FearConfirmed) => {
+                    "fear_confirmed".to_string()
+                }
+            });
+            FocusEventInfo {
+                description: e.description.clone(),
+                desirability_for_self: e.desirability_for_self,
+                has_other,
+                other_target_id,
+                desirability_for_other,
+                prospect,
+            }
         });
 
         let action = f.action.as_ref().map(|a| FocusActionInfo {
             description: a.description.clone(),
+            agent_id: a.agent_id.clone(),
             praiseworthiness: a.praiseworthiness,
         });
 
@@ -693,13 +720,26 @@ impl FocusInfoItem {
 #[derive(Serialize, Clone)]
 pub struct FocusEventInfo {
     pub description: String,
-    pub desirability: f32,
+    pub desirability_for_self: f32,
+    /// 타인 영향 존재 여부
+    pub has_other: bool,
+    /// 타인 영향 대상 NPC ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub other_target_id: Option<String>,
+    /// 타인에게 바람직한 정도
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desirability_for_other: Option<f32>,
+    /// 전망 문자열 (anticipation, hope_fulfilled, etc.)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prospect: Option<String>,
 }
 
 /// Focus 내 Action 정보 (scene-info 조회용)
 #[derive(Serialize, Clone)]
 pub struct FocusActionInfo {
     pub description: String,
+    /// 행위자 ID (None = NPC 자신)
+    pub agent_id: Option<String>,
     pub praiseworthiness: f32,
 }
 

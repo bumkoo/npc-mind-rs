@@ -358,7 +358,7 @@ fn pad_dot_최대_d_격차_스케일링() {
 fn format_prompt_빈_감정_상태() {
     let li = make_무백();
     let state = EmotionState::new();
-    let guide = ActingGuide::build(&li, &state, None, None);
+    let guide = ActingGuide::build(&li, &state, None, None, "");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
@@ -380,7 +380,7 @@ fn format_prompt_관계_포함_빈_감정() {
         .closeness(s(0.8))
         .trust(s(0.7))
         .build();
-    let guide = ActingGuide::build(&li, &state, Some("테스트 상황".into()), Some(&brother));
+    let guide = ActingGuide::build(&li, &state, Some("테스트 상황".into()), Some(&brother), "교룡");
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
