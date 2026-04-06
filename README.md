@@ -230,7 +230,7 @@ cargo run --features mind-studio,embed --bin npc-mind-studio
 - Save/load scenario files for iterative testing
 - Write structured test reports with per-turn directive quality scores (Character Fidelity, Scene Appropriateness, Directive Clarity)
 
-![Mind Studio showing NPC emotion bars and generated prompt](docs\images\01-overview.png)
+![Mind Studio showing NPC emotion bars and generated prompt](docs/images/01-overview.png)
 
 ### MCP Integration (AI Agent)
 
