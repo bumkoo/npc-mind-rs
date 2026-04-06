@@ -693,6 +693,8 @@ impl FocusInfoItem {
             }
         });
 
+        // agent_id: ActionInput::to_domain()에서 npc_id와 같으면 None으로 정규화됨
+        // → None = 자기 행동(Pride/Shame), Some = 타인 행동(Admiration/Reproach)
         let action = f.action.as_ref().map(|a| FocusActionInfo {
             description: a.description.clone(),
             agent_id: a.agent_id.clone(),
