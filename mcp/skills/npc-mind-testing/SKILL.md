@@ -180,6 +180,7 @@ Beat/Focus 전환(또는 유지) 결정이 서사적으로 타당한가.
 | `has_scene: false` | 시나리오에 `scene` 필드 누락 | JSON 확인 |
 | PAD D축 항상 0.00 | D축 앵커 구조적 한계 | 수동 PAD 입력 |
 | `update_test_report` 후 파일 없음 | 메모리에만 저장된 상태 | `save_scenario("all")` 필요 |
+| `save_scenario` 성공인데 파일 없음 | 경로에 `data/` prefix 누락 | `dialogue_start`가 반환한 `save_dir`을 그대로 사용 |
 
 ## 참고 문서
 
