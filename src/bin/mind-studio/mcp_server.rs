@@ -482,9 +482,17 @@ impl MindMcpService {
                 let resolved = Self::resolve_data_path(path);
                 let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| e.to_string())?;
                 loaded.loaded_path = Some(resolved.clone());
+                // Scene 자동 복원: scene 필드가 있으면 런타임 상태에 반영
+                let mut scene_restored = false;
+                if let Some(ref scene_val) = loaded.scene {
+                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
+                        StudioService::load_scene_into_state(&mut loaded, &scene_req);
+                        scene_restored = true;
+                    }
+                }
                 let mut inner = self.state.inner.write().await;
                 *inner = loaded;
-                Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved }))
+                Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "scene_restored": scene_restored }))
             }
             "get_npc_llm_config" => {
                 let npc_id = arguments["npc_id"].as_str().ok_or("npc_id is required")?;
