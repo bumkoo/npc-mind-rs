@@ -46,27 +46,65 @@ impl SituationInput {
         object_description: Option<String>,
         npc_id: &str,
     ) -> Result<Situation, MindServiceError> {
-        let event = self
-            .event
-            .as_ref()
-            .map(|e| e.to_domain(event_other_modifiers))
-            .transpose()?;
-
-        let action = self
-            .action
-            .as_ref()
-            .map(|a| a.to_domain(action_agent_modifiers, npc_id))
-            .transpose()?;
-
-        let object = self
-            .object
-            .as_ref()
-            .map(|o| o.to_domain(object_description))
-            .transpose()?;
+        let (event, action, object) =
+            convert_focuses(self, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
 
         Situation::new(self.description.clone(), event, action, object)
             .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))
     }
+}
+
+// ---------------------------------------------------------------------------
+// Focus 필드 공통 변환 — SituationInput / SceneFocusInput 중복 제거
+// ---------------------------------------------------------------------------
+
+/// event/action/object 필드를 가진 입력 DTO의 공통 인터페이스
+pub trait HasFocusFields {
+    fn event(&self) -> Option<&EventInput>;
+    fn action(&self) -> Option<&ActionInput>;
+    fn object(&self) -> Option<&ObjectInput>;
+}
+
+impl HasFocusFields for SituationInput {
+    fn event(&self) -> Option<&EventInput> { self.event.as_ref() }
+    fn action(&self) -> Option<&ActionInput> { self.action.as_ref() }
+    fn object(&self) -> Option<&ObjectInput> { self.object.as_ref() }
+}
+
+impl HasFocusFields for SceneFocusInput {
+    fn event(&self) -> Option<&EventInput> { self.event.as_ref() }
+    fn action(&self) -> Option<&ActionInput> { self.action.as_ref() }
+    fn object(&self) -> Option<&ObjectInput> { self.object.as_ref() }
+}
+
+/// event/action/object DTO를 도메인 Focus로 일괄 변환
+pub(crate) fn convert_focuses(
+    input: &impl HasFocusFields,
+    event_other_modifiers: Option<RelationshipModifiers>,
+    action_agent_modifiers: Option<RelationshipModifiers>,
+    object_description: Option<String>,
+    npc_id: &str,
+) -> Result<(Option<EventFocus>, Option<ActionFocus>, Option<ObjectFocus>), MindServiceError> {
+    let event = input.event().map(|e| e.to_domain(event_other_modifiers)).transpose()?;
+    let action = input.action().map(|a| a.to_domain(action_agent_modifiers, npc_id)).transpose()?;
+    let object = input.object().map(|o| o.to_domain(object_description)).transpose()?;
+    Ok((event, action, object))
+}
+
+/// trigger 조건 입력을 FocusTrigger 도메인 모델로 변환
+pub(crate) fn parse_trigger(
+    trigger: &Option<Vec<Vec<ConditionInput>>>,
+) -> Result<FocusTrigger, MindServiceError> {
+    let Some(or_groups) = trigger else {
+        return Ok(FocusTrigger::Initial);
+    };
+    let conditions = or_groups
+        .iter()
+        .map(|and_group| {
+            and_group.iter().map(|c| c.to_domain()).collect::<Result<Vec<_>, _>>()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(FocusTrigger::Conditions(conditions))
 }
 
 /// 사건(Event) 입력 — NPC가 사건을 얼마나 바람직하게 느끼는지
@@ -433,37 +471,9 @@ impl SceneFocusInput {
         object_description: Option<String>,
         npc_id: &str,
     ) -> Result<SceneFocus, MindServiceError> {
-        let trigger = match &self.trigger {
-            None => FocusTrigger::Initial,
-            Some(or_groups) => {
-                let conditions = or_groups
-                    .iter()
-                    .map(|and_group| {
-                        and_group
-                            .iter()
-                            .map(|c| c.to_domain())
-                            .collect::<Result<Vec<_>, _>>()
-                    })
-                    .collect::<Result<Vec<_>, _>>()?;
-                FocusTrigger::Conditions(conditions)
-            }
-        };
-
-        let event = self
-            .event
-            .as_ref()
-            .map(|e| e.to_domain(event_other_modifiers))
-            .transpose()?;
-        let action = self
-            .action
-            .as_ref()
-            .map(|a| a.to_domain(action_agent_modifiers, npc_id))
-            .transpose()?;
-        let object = self
-            .object
-            .as_ref()
-            .map(|o| o.to_domain(object_description))
-            .transpose()?;
+        let trigger = parse_trigger(&self.trigger)?;
+        let (event, action, object) =
+            convert_focuses(self, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
 
         Ok(SceneFocus {
             id: self.id.clone(),

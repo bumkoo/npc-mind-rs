@@ -4,6 +4,7 @@ mod common;
 
 use npc_mind::application::dto::*;
 use npc_mind::application::mind_service::MindService;
+use npc_mind::application::situation_service::SituationService;
 use npc_mind::domain::relationship::Relationship;
 use npc_mind::{EmotionStore, SceneStore, NpcWorld};
 
@@ -123,7 +124,7 @@ fn test_dto_transformation_to_domain() {
 
     let rel = repo.get_relationship("me", "target");
     let domain = input
-        .to_domain(rel.as_ref().map(|r| r.modifiers()), None, None)
+        .to_domain(rel.as_ref().map(|r| r.modifiers()), None, None, "me")
         .expect("Transformation failed");
 
     assert_eq!(domain.description, "test");
@@ -160,7 +161,7 @@ fn test_dto_transformation_to_domain() {
         object: None,
     };
 
-    let res = bad_input.to_domain(None, None, None);
+    let res = bad_input.to_domain(None, None, None, "me");
     assert!(matches!(
         res,
         Err(npc_mind::application::mind_service::MindServiceError::InvalidSituation(_))
@@ -418,4 +419,276 @@ fn test_beat_transition_and_emotion_merging() {
         final_state.overall_valence() < 0.0,
         "병합 후 기분은 나빠져야 함"
     );
+}
+
+// ===========================================================================
+// 리팩토링 검증: parse_trigger / convert_focuses / resolve_focus_context
+// ===========================================================================
+
+#[test]
+fn test_scene_focus_input_trigger_none은_initial() {
+    let input = SceneFocusInput {
+        id: "f1".into(),
+        description: "초기 포커스".into(),
+        trigger: None,
+        event: Some(EventInput {
+            description: "이벤트".into(),
+            desirability_for_self: 0.3,
+            other: None,
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    };
+
+    let focus = input.to_domain(None, None, None, "npc").unwrap();
+    assert_eq!(focus.id, "f1");
+    assert!(focus.event.is_some());
+    // trigger: None → FocusTrigger::Initial
+    assert!(matches!(
+        focus.trigger,
+        npc_mind::domain::emotion::FocusTrigger::Initial
+    ));
+}
+
+#[test]
+fn test_scene_focus_input_trigger_conditions_변환() {
+    let input = SceneFocusInput {
+        id: "angry_beat".into(),
+        description: "분노 전환".into(),
+        trigger: Some(vec![
+            // OR 그룹 1: Distress > 0.5 AND Joy < 0.2
+            vec![
+                ConditionInput { emotion: "Distress".into(), below: None, above: Some(0.5), absent: None },
+                ConditionInput { emotion: "Joy".into(), below: Some(0.2), above: None, absent: None },
+            ],
+            // OR 그룹 2: Anger absent
+            vec![
+                ConditionInput { emotion: "Anger".into(), below: None, above: None, absent: Some(true) },
+            ],
+        ]),
+        event: None,
+        action: None,
+        object: None,
+    };
+
+    let focus = input.to_domain(None, None, None, "npc").unwrap();
+    match &focus.trigger {
+        npc_mind::domain::emotion::FocusTrigger::Conditions(or_groups) => {
+            assert_eq!(or_groups.len(), 2, "OR 그룹 2개");
+            assert_eq!(or_groups[0].len(), 2, "첫 번째 OR 그룹에 AND 조건 2개");
+            assert_eq!(or_groups[1].len(), 1, "두 번째 OR 그룹에 AND 조건 1개");
+        }
+        _ => panic!("Conditions 트리거여야 함"),
+    }
+}
+
+#[test]
+fn test_condition_input_잘못된_감정_문자열() {
+    let input = SceneFocusInput {
+        id: "bad".into(),
+        description: "에러".into(),
+        trigger: Some(vec![vec![
+            ConditionInput { emotion: "InvalidEmotion".into(), below: Some(0.5), above: None, absent: None },
+        ]]),
+        event: None,
+        action: None,
+        object: None,
+    };
+
+    let result = input.to_domain(None, None, None, "npc");
+    assert!(result.is_err(), "존재하지 않는 감정 유형은 에러");
+}
+
+#[test]
+fn test_condition_input_조건_누락() {
+    let input = SceneFocusInput {
+        id: "bad".into(),
+        description: "에러".into(),
+        trigger: Some(vec![vec![
+            ConditionInput { emotion: "Joy".into(), below: None, above: None, absent: None },
+        ]]),
+        event: None,
+        action: None,
+        object: None,
+    };
+
+    let result = input.to_domain(None, None, None, "npc");
+    assert!(result.is_err(), "below/above/absent 중 하나 필요");
+}
+
+#[test]
+fn test_scene_focus_input_3축_동시_변환() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+    repo.add_object("sword", "명검 청룡");
+
+    let input = SceneFocusInput {
+        id: "complex".into(),
+        description: "복합 포커스".into(),
+        trigger: None,
+        event: Some(EventInput {
+            description: "사건 발생".into(),
+            desirability_for_self: 0.6,
+            other: Some(EventOtherInput {
+                target_id: "gyo_ryong".into(),
+                desirability: -0.4,
+            }),
+            prospect: None,
+        }),
+        action: Some(ActionInput {
+            description: "행위".into(),
+            agent_id: Some("gyo_ryong".into()),
+            praiseworthiness: -0.5,
+        }),
+        object: Some(ObjectInput {
+            target_id: "sword".into(),
+            appealingness: 0.8,
+        }),
+    };
+
+    let rel = repo.get_relationship("mu_baek", "gyo_ryong");
+    let focus = input
+        .to_domain(
+            rel.as_ref().map(|r| r.modifiers()),
+            rel.as_ref().map(|r| r.modifiers()),
+            Some("명검 청룡".into()),
+            "mu_baek",
+        )
+        .unwrap();
+
+    assert!(focus.event.is_some(), "event 변환됨");
+    assert!(focus.action.is_some(), "action 변환됨");
+    assert!(focus.object.is_some(), "object 변환됨");
+    assert_eq!(focus.object.unwrap().target_description, "명검 청룡");
+}
+
+#[test]
+fn test_resolve_focus_context_관계_있음() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+    repo.add_object("sword", "명검 청룡");
+
+    let input = SituationInput {
+        description: "테스트".into(),
+        event: Some(EventInput {
+            description: "ev".into(),
+            desirability_for_self: 0.5,
+            other: Some(EventOtherInput {
+                target_id: "gyo_ryong".into(),
+                desirability: 0.3,
+            }),
+            prospect: None,
+        }),
+        action: None,
+        object: Some(ObjectInput {
+            target_id: "sword".into(),
+            appealingness: 0.5,
+        }),
+    };
+
+    let ctx = SituationService::resolve_focus_context(&repo, &input, "mu_baek", "gyo_ryong");
+    assert!(ctx.event_other_modifiers.is_some(), "관계 존재 → modifier 조회 성공");
+    assert!(ctx.object_description.is_some(), "오브젝트 설명 조회 성공");
+    assert_eq!(ctx.object_description.unwrap(), "명검 청룡");
+}
+
+#[test]
+fn test_resolve_focus_context_관계_없음() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+
+    let input = SituationInput {
+        description: "테스트".into(),
+        event: Some(EventInput {
+            description: "ev".into(),
+            desirability_for_self: 0.5,
+            other: Some(EventOtherInput {
+                target_id: "unknown".into(),
+                desirability: 0.3,
+            }),
+            prospect: None,
+        }),
+        action: None,
+        object: None,
+    };
+
+    let ctx = SituationService::resolve_focus_context(&repo, &input, "mu_baek", "partner");
+    assert!(ctx.event_other_modifiers.is_none(), "관계 없음 → None");
+}
+
+#[test]
+fn test_resolve_focus_context_action_agent가_npc_자신이면_무시() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+
+    // agent_id가 npc_id와 같으면 modifier 조회하지 않음
+    let input = SituationInput {
+        description: "테스트".into(),
+        event: None,
+        action: Some(ActionInput {
+            description: "행위".into(),
+            agent_id: Some("mu_baek".into()),  // NPC 자신
+            praiseworthiness: 0.5,
+        }),
+        object: None,
+    };
+
+    let ctx = SituationService::resolve_focus_context(&repo, &input, "mu_baek", "gyo_ryong");
+    assert!(ctx.action_agent_modifiers.is_none(), "자기 자신이면 modifier 조회 안 함");
+}
+
+#[test]
+fn test_resolve_focus_context_action_agent가_partner이면_무시() {
+    let mut repo = MockRepository::new();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+
+    // agent_id가 partner_id와 같으면 modifier 조회하지 않음
+    let input = SituationInput {
+        description: "테스트".into(),
+        event: None,
+        action: Some(ActionInput {
+            description: "행위".into(),
+            agent_id: Some("gyo_ryong".into()),  // partner
+            praiseworthiness: 0.5,
+        }),
+        object: None,
+    };
+
+    let ctx = SituationService::resolve_focus_context(&repo, &input, "mu_baek", "gyo_ryong");
+    assert!(ctx.action_agent_modifiers.is_none(), "partner이면 modifier 조회 안 함");
+}
+
+#[test]
+fn test_resolve_focus_context_action_제3자_agent() {
+    let mut repo = MockRepository::new();
+    let 수련 = make_수련();
+    repo.add_npc(make_무백());
+    repo.add_npc(make_교룡());
+    repo.add_npc(수련);
+    repo.add_relationship(Relationship::neutral("mu_baek", "gyo_ryong"));
+    repo.add_relationship(Relationship::neutral("mu_baek", "shu_lien"));
+
+    // agent_id가 제3자이면 modifier 조회
+    let input = SituationInput {
+        description: "테스트".into(),
+        event: None,
+        action: Some(ActionInput {
+            description: "수련의 행위".into(),
+            agent_id: Some("shu_lien".into()),  // 제3자
+            praiseworthiness: 0.7,
+        }),
+        object: None,
+    };
+
+    let ctx = SituationService::resolve_focus_context(&repo, &input, "mu_baek", "gyo_ryong");
+    assert!(ctx.action_agent_modifiers.is_some(), "제3자 agent → modifier 조회 성공");
 }

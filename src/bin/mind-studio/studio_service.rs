@@ -5,7 +5,8 @@ use npc_mind::ports::{NpcWorld};
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
 };
-use npc_mind::application::mind_service::{MindService};
+use npc_mind::application::mind_service::MindService;
+use npc_mind::application::situation_service::SituationService;
 use crate::handlers::AppError;
 use crate::repository::AppStateRepository;
 use serde::Serialize;
@@ -216,31 +217,10 @@ impl StudioService {
             .focuses
             .iter()
             .filter_map(|f| {
-                let event_other_modifiers = f
-                    .event
-                    .as_ref()
-                    .and_then(|e| e.other.as_ref())
-                    .and_then(|o| repo.get_relationship(&scene_req.npc_id, &o.target_id).map(|r| r.modifiers()));
-
-                let action_agent_modifiers = f
-                    .action
-                    .as_ref()
-                    .and_then(|a| a.agent_id.as_ref())
-                    .filter(|&agent| *agent != scene_req.partner_id && *agent != scene_req.npc_id)
-                    .and_then(|agent| repo.get_relationship(&scene_req.npc_id, agent).map(|r| r.modifiers()));
-
-                let object_description = f
-                    .object
-                    .as_ref()
-                    .and_then(|o| repo.get_object_description(&o.target_id));
-
-                f.to_domain(
-                    event_other_modifiers,
-                    action_agent_modifiers,
-                    object_description,
-                    &scene_req.npc_id,
-                )
-                .ok()
+                let ctx = SituationService::resolve_focus_context(
+                    &repo, f, &scene_req.npc_id, &scene_req.partner_id,
+                );
+                f.to_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, &scene_req.npc_id).ok()
             })
             .collect();
         drop(repo);
@@ -338,6 +318,55 @@ impl StudioService {
         Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info) })
     }
 
+    /// 수동 PAD 입력 또는 임베딩 분석기를 통해 PAD 값을 해석합니다.
+    #[cfg(feature = "chat")]
+    async fn resolve_pad(
+        state: &AppState,
+        req: &ChatTurnRequest,
+    ) -> Option<(f32, f32, f32)> {
+        if let Some(ref pad_input) = req.pad {
+            tracing::debug!("대화 턴: 수동 PAD 입력 사용 (P: {:.2}, A: {:.2}, D: {:.2})", pad_input.pleasure, pad_input.arousal, pad_input.dominance);
+            return Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance));
+        }
+        if let Some(ref analyzer) = state.analyzer {
+            let mut analyzer = analyzer.lock().await;
+            tracing::debug!("대화 턴: 임베딩 분석 시작 (텍스트: \"{}\")", req.utterance);
+            match analyzer.analyze(&req.utterance) {
+                Ok(p) => {
+                    tracing::debug!("대화 턴: 임베딩 분석 성공 (P: {:.3}, A: {:.2}, D: {:.2})", p.pleasure, p.arousal, p.dominance);
+                    return Some((p.pleasure, p.arousal, p.dominance));
+                }
+                Err(e) => {
+                    tracing::error!("대화 턴: 임베딩 분석 실패: {:?}", e);
+                }
+            }
+        }
+        tracing::debug!("대화 턴: PAD 입력 없음 (분석기 미작동)");
+        None
+    }
+
+    /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다.
+    #[cfg(feature = "chat")]
+    fn apply_stimulus_with_pad(
+        inner: &mut StateInner,
+        collector: &crate::trace_collector::AppraisalCollector,
+        formatter: &dyn npc_mind::ports::GuideFormatter,
+        req: &ChatTurnRequest,
+        pad: (f32, f32, f32),
+    ) -> Result<StimulusResponse, AppError> {
+        let stim_req = StimulusRequest {
+            npc_id: req.npc_id.clone(),
+            partner_id: req.partner_id.clone(),
+            pleasure: pad.0,
+            arousal: pad.1,
+            dominance: pad.2,
+            situation_description: req.situation_description.clone(),
+        };
+        let mut service = MindService::new(AppStateRepository { inner });
+        let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
+        Ok(result.format(formatter))
+    }
+
     /// 대화 응답 수신 후 후속 처리 (PAD 분석, 심리 자극, 기록 저장)
     #[cfg(feature = "chat")]
     pub async fn process_chat_turn_result(
@@ -346,82 +375,47 @@ impl StudioService {
         npc_response: String,
     ) -> Result<(Option<StimulusResponse>, bool), AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        
-        let pad = if let Some(ref pad_input) = req.pad {
-            tracing::debug!("대화 턴: 수동 PAD 입력 사용 (P: {:.2}, A: {:.2}, D: {:.2})", pad_input.pleasure, pad_input.arousal, pad_input.dominance);
-            Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance))
-        } else if let Some(ref analyzer) = state.analyzer {
-            let mut analyzer = analyzer.lock().await;
-            tracing::debug!("대화 턴: 임베딩 분석 시작 (텍스트: \"{}\")", req.utterance);
-            match analyzer.analyze(&req.utterance) {
-                Ok(p) => {
-                    tracing::debug!("대화 턴: 임베딩 분석 성공 (P: {:.3}, A: {:.2}, D: {:.2})", p.pleasure, p.arousal, p.dominance);
-                    Some((p.pleasure, p.arousal, p.dominance))
-                },
-                Err(e) => {
-                    tracing::error!("대화 턴: 임베딩 분석 실패: {:?}", e);
-                    None
-                }
-            }
-        } else {
-            tracing::debug!("대화 턴: PAD 입력 없음 (분석기 미작동)");
-            None
-        };
 
-        if let Some((p, a, d)) = pad {
-            let stim_req = StimulusRequest {
-                npc_id: req.npc_id.clone(),
-                partner_id: req.partner_id.clone(),
-                pleasure: p,
-                arousal: a,
-                dominance: d,
-                situation_description: req.situation_description.clone(),
-            };
-            
-            let mut inner = state.inner.write().await;
-            let collector = state.collector.clone();
-            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-            
-            let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
-            let stim_resp = result.format(&*state.formatter);
-            
-            let changed = stim_resp.beat_changed;
+        let pad = Self::resolve_pad(state, req).await;
+
+        let mut inner = state.inner.write().await;
+        let (stim_resp, changed) = if let Some(pad) = pad {
+            let resp = Self::apply_stimulus_with_pad(
+                &mut *inner, &state.collector, &*state.formatter, req, pad,
+            )?;
+            let changed = resp.beat_changed;
             if changed {
-                chat_port.update_system_prompt(&req.session_id, &stim_resp.prompt)
+                chat_port.update_system_prompt(&req.session_id, &resp.prompt)
                     .await
                     .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
             }
-
-            let mut resp_val = serde_json::to_value(&stim_resp).unwrap_or_default();
-            if let serde_json::Value::Object(ref mut map) = resp_val {
-                map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
-            }
-            
-            // 턴 기록 통합 저장
-            Self::record_turn(
-                &mut *inner, 
-                &format!("chat/message [{}→{}]", req.partner_id, req.npc_id), 
-                "chat_message", 
-                req, 
-                &resp_val, 
-                None
-            );
-
-            Ok((Some(stim_resp), changed))
+            (Some(resp), changed)
         } else {
-            let mut inner = state.inner.write().await;
-            
-            // 턴 기록 통합 저장 (no PAD)
-            Self::record_turn(
-                &mut *inner, 
-                &format!("chat/message [{}→{}] (no PAD)", req.partner_id, req.npc_id), 
-                "chat_message", 
-                req, 
-                &serde_json::json!({ "npc_response": &npc_response }), 
-                None
-            );
-            Ok((None, false))
-        }
+            (None, false)
+        };
+
+        // 턴 기록 통합 저장
+        let label_suffix = if stim_resp.is_none() { " (no PAD)" } else { "" };
+        let resp_val = match &stim_resp {
+            Some(resp) => {
+                let mut val = serde_json::to_value(resp).unwrap_or_default();
+                if let serde_json::Value::Object(ref mut map) = val {
+                    map.insert("npc_response".into(), serde_json::Value::String(npc_response.clone()));
+                }
+                val
+            }
+            None => serde_json::json!({ "npc_response": &npc_response }),
+        };
+        Self::record_turn(
+            &mut *inner,
+            &format!("chat/message [{}→{}]{}", req.partner_id, req.npc_id, label_suffix),
+            "chat_message",
+            req,
+            &resp_val,
+            None,
+        );
+
+        Ok((stim_resp, changed))
     }
 
     #[cfg(feature = "chat")]
