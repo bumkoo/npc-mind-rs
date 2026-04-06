@@ -162,6 +162,29 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
             .unwrap_or_else(|| partner_id.to_string())
     }
 
+    /// Scene의 활성(또는 초기) Focus에서 Situation을 자동 추출합니다.
+    /// Scene이 없거나 활성 Focus가 없으면 에러를 반환합니다.
+    fn resolve_situation_from_scene(&self) -> Result<Situation, MindServiceError> {
+        let scene = self.repository.get_scene()
+            .ok_or_else(|| MindServiceError::InvalidSituation(
+                "situation이 생략되었으나 활성 Scene이 없습니다. situation을 명시하거나 start_scene을 먼저 호출하세요.".into()
+            ))?;
+
+        // 활성 Focus가 있으면 사용, 없으면 initial focus 사용
+        let focus = if let Some(ref active_id) = scene.active_focus_id() {
+            scene.focuses().iter().find(|f| &f.id == active_id)
+        } else {
+            scene.initial_focus()
+        };
+
+        let focus = focus.ok_or_else(|| MindServiceError::InvalidSituation(
+            "Scene에 활성 Focus가 없습니다.".into()
+        ))?;
+
+        focus.to_situation()
+            .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))
+    }
+
     /// 평가 엔진을 실행하고 결과를 저장한 뒤 AppraiseResult를 반환합니다.
     fn execute_appraise_workflow(
         &mut self,
@@ -215,7 +238,14 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
         after_eval: impl FnMut() -> Vec<String>,
     ) -> Result<AppraiseResult, MindServiceError> {
         let (npc, relationship) = self.prepare_context(&req.npc_id, &req.partner_id)?;
-        let situation = self.situation_service.to_situation(&self.repository, &req.situation, &req.npc_id, &req.partner_id)?;
+
+        // situation이 명시되면 그대로 사용, 없으면 Scene의 활성 Focus에서 자동 추출
+        let situation = match req.situation {
+            Some(ref sit) => self.situation_service.to_situation(
+                &self.repository, sit, &req.npc_id, &req.partner_id,
+            )?,
+            None => self.resolve_situation_from_scene()?,
+        };
 
         Ok(
             self.execute_appraise_workflow(

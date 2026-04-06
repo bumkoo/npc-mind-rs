@@ -164,7 +164,7 @@ fn 역방향_관계_조회로_after_dialogue_성공() {
     let appraise_req = AppraiseRequest {
         npc_id: npc_id.into(),
         partner_id: partner_id.into(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "좋은 일이 있었다".into(),
             event: Some(EventInput {
                 description: "".into(),
@@ -174,7 +174,7 @@ fn 역방향_관계_조회로_after_dialogue_성공() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
 
     let mut service = ctx.service();

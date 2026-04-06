@@ -161,15 +161,15 @@ impl MindMcpService {
             // 감정 파이프라인
             serde_json::json!({
                 "name": "appraise",
-                "description": "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다.",
+                "description": "상황을 평가하여 OCC 감정을 생성하고 LLM 연기 프롬프트를 반환합니다. Scene이 활성이면 situation 생략 가능 — 활성 Focus의 데이터를 자동 사용합니다.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "npc_id": { "type": "string" },
                         "partner_id": { "type": "string" },
-                        "situation": { "type": "object" }
+                        "situation": { "type": "object", "description": "Scene 활성 시 생략 가능" }
                     },
-                    "required": ["npc_id", "partner_id", "situation"]
+                    "required": ["npc_id", "partner_id"]
                 }
             }),
             serde_json::json!({
@@ -264,12 +264,12 @@ impl MindMcpService {
             // LLM 대화 테스트 (chat feature)
             serde_json::json!({
                 "name": "dialogue_start",
-                "description": "대화 세션을 시작합니다. appraise 후 생성된 프롬프트를 system prompt로 로컬 LLM 세션을 생성합니다. (chat feature 필요)",
+                "description": "대화 세션을 시작합니다. appraise 후 생성된 프롬프트를 system prompt로 로컬 LLM 세션을 생성합니다. Scene이 활성이면 situation 생략 가능 — 활성 Focus의 데이터를 자동 사용합니다. (chat feature 필요)",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "session_id": { "type": "string", "description": "세션 고유 ID" },
-                        "appraise": { "type": "object", "description": "AppraiseRequest (npc_id, partner_id, situation)" }
+                        "appraise": { "type": "object", "description": "AppraiseRequest (npc_id, partner_id, situation). Scene이 활성이면 situation 생략 가능" }
                     },
                     "required": ["session_id", "appraise"]
                 }

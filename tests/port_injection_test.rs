@@ -64,7 +64,7 @@ fn 커스텀_appraiser_주입() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "아무 상황".to_string(),
             event: Some(EventInput {
                 description: "나쁜 일".to_string(),
@@ -74,7 +74,7 @@ fn 커스텀_appraiser_주입() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
 
     let result = service.appraise(req, || {}, Vec::new).unwrap();
@@ -98,7 +98,7 @@ fn 커스텀_stimulus_processor_주입() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "좋은 일".to_string(),
             event: Some(EventInput {
                 description: "좋은 일".to_string(),
@@ -108,7 +108,7 @@ fn 커스텀_stimulus_processor_주입() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
 
     let appraise_result = service.appraise(req, || {}, Vec::new).unwrap();
@@ -148,7 +148,7 @@ fn 기본_엔진_사용시_기존과_동일() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "배신".to_string(),
             event: Some(EventInput {
                 description: "배신 사건".to_string(),
@@ -162,7 +162,7 @@ fn 기본_엔진_사용시_기존과_동일() {
                 praiseworthiness: -0.7,
             }),
             object: None,
-        },
+        }),
     };
 
     let result = service.appraise(req, || {}, Vec::new).unwrap();
@@ -351,7 +351,7 @@ fn stimulus_scene_없으면_beat_전환_안됨() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "좋은 일".to_string(),
             event: Some(EventInput {
                 description: "좋은 일".to_string(),
@@ -361,7 +361,7 @@ fn stimulus_scene_없으면_beat_전환_안됨() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
     service.appraise(req, || {}, Vec::new).unwrap();
 

@@ -132,7 +132,7 @@ fn appraise_req() -> AppraiseRequest {
     AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "교룡이 백성을 도와줌".to_string(),
             event: None,
             action: Some(ActionInput {
@@ -141,7 +141,7 @@ fn appraise_req() -> AppraiseRequest {
                 praiseworthiness: 0.7,
             }),
             object: None,
-        },
+        }),
     }
 }
 

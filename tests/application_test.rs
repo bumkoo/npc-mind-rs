@@ -27,7 +27,7 @@ fn test_mind_service_full_flow() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "교룡이 불의를 보고 참지 못하고 도와주는 장면".to_string(),
             event: None,
             action: Some(ActionInput {
@@ -36,7 +36,7 @@ fn test_mind_service_full_flow() {
                 praiseworthiness: 0.7,
             }),
             object: None,
-        },
+        }),
     };
 
     let res = service
@@ -89,12 +89,12 @@ fn test_mind_service_errors() {
     let req = AppraiseRequest {
         npc_id: "non_existent".to_string(),
         partner_id: "any".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "test".to_string(),
             event: None,
             action: None,
             object: None,
-        },
+        }),
     };
 
     let res = service.appraise(req, || {}, Vec::new);
@@ -185,7 +185,7 @@ fn after_beat_감정_유지() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "좋은 소식".to_string(),
             event: Some(EventInput {
                 description: "좋은 일".to_string(),
@@ -195,7 +195,7 @@ fn after_beat_감정_유지() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
 
     service
@@ -236,7 +236,7 @@ fn after_dialogue_감정_초기화() {
     let req = AppraiseRequest {
         npc_id: "mu_baek".to_string(),
         partner_id: "gyo_ryong".to_string(),
-        situation: SituationInput {
+        situation: Some(SituationInput {
             description: "좋은 소식".to_string(),
             event: Some(EventInput {
                 description: "좋은 일".to_string(),
@@ -246,7 +246,7 @@ fn after_dialogue_감정_초기화() {
             }),
             action: None,
             object: None,
-        },
+        }),
     };
     service
         .appraise(req, || {}, Vec::new)

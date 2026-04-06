@@ -81,7 +81,7 @@ fn programmatic_repository_with_mind_service() {
         AppraiseRequest {
             npc_id: "mu_baek".into(),
             partner_id: "player".into(),
-            situation: SituationInput {
+            situation: Some(SituationInput {
                 description: "좋은 일이 일어났다".into(),
                 event: Some(EventInput {
                     description: "기쁜 소식".into(),
@@ -91,7 +91,7 @@ fn programmatic_repository_with_mind_service() {
                 }),
                 action: None,
                 object: None,
-            },
+            }),
         },
         || {},
         || vec![],
@@ -230,7 +230,7 @@ fn formatted_service_with_loaded_repository() {
         AppraiseRequest {
             npc_id: "jim".into(),
             partner_id: "huck".into(),
-            situation: SituationInput {
+            situation: Some(SituationInput {
                 description: "헉이 거짓말로 짐을 속였다".into(),
                 event: Some(EventInput {
                     description: "거짓말 발각".into(),
@@ -244,7 +244,7 @@ fn formatted_service_with_loaded_repository() {
                     praiseworthiness: -0.8,
                 }),
                 object: None,
-            },
+            }),
         },
         || {},
         || vec![],

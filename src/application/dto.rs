@@ -19,7 +19,9 @@ pub struct AppraiseRequest {
     /// 대화 상대의 ID
     pub partner_id: String,
     /// 현재 상황 데이터 (DTO)
-    pub situation: SituationInput,
+    /// Scene이 활성이면 생략 가능 — 활성 Focus의 situation을 자동 사용
+    #[serde(default)]
+    pub situation: Option<SituationInput>,
 }
 
 /// OCC 감정 평가를 위한 상황 입력
