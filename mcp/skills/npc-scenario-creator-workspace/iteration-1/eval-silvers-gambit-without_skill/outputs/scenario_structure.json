@@ -1,0 +1,150 @@
+{
+  "scenario_metadata": {
+    "title": "보물섬 Ch.XXVIII - 실버의 도박",
+    "source": "treasure_island/TREASURE ISLAND.txt (Part Six, Chapter 13)",
+    "created_date": "2026-04-06",
+    "status": "production-ready"
+  },
+  "scenario_file": {
+    "path": "data/treasure_island/ch28_silvers_gambit/실버의도박_baseline.json",
+    "size_kb": 4.7,
+    "format": "mind-studio/scenario"
+  },
+  "components": {
+    "npcs": {
+      "count": 1,
+      "silver": {
+        "id": "silver",
+        "name": "Long John Silver",
+        "description": "외다리 해적, 선상 요리사. 냉혹하고 계산적이며 뛰어난 리더십을 갖춘 캐릭터.",
+        "hexaco_profile": {
+          "honesty_humility": -0.55,
+          "emotionality": -0.35,
+          "extraversion": 0.75,
+          "agreeableness": 0.05,
+          "conscientiousness": 0.25,
+          "openness_to_experience": 0.40
+        }
+      }
+    },
+    "relationships": {
+      "count": 1,
+      "silver_jim": {
+        "owner_id": "silver",
+        "target_id": "jim",
+        "closeness": 0.3,
+        "trust": 0.2,
+        "power": 0.7
+      }
+    },
+    "objects": {
+      "count": 3,
+      "list": [
+        "blockhouse",
+        "cognac_cask",
+        "parrot"
+      ]
+    },
+    "scene_focuses": {
+      "count": 3,
+      "beats": [
+        {
+          "id": "calculating",
+          "order": 1,
+          "trigger_type": "Initial",
+          "emotions": ["Hope", "Pride"],
+          "description": "짐의 홀로 나타남을 이용하려 하는 실버의 냉정한 계산 국면"
+        },
+        {
+          "id": "impressed",
+          "order": 2,
+          "trigger_type": "Conditions",
+          "trigger_condition": "Hope < 0.5 AND Admiration > 0.4",
+          "emotions": ["Joy", "Admiration", "Love"],
+          "description": "짐의 담대함과 용감함에 진정으로 감탄하는 실버"
+        },
+        {
+          "id": "crisis_leader",
+          "order": 3,
+          "trigger_type": "Conditions",
+          "trigger_condition": "Anger > 0.6 OR Fear > 0.5",
+          "emotions": ["Distress", "Anger", "Pride"],
+          "description": "Morgan이 칼을 뽑으면서 크루가 폭동 상태로 변한다. 실버는 즉시 지도자로서의 권위를 행사"
+        }
+      ]
+    }
+  },
+  "emotional_arc": {
+    "beat_1": {
+      "dominance": "calculation",
+      "primary_emotion": "Hope",
+      "secondary_emotion": "Pride",
+      "character_state": "Cold, calculating - Jim is an opportunity",
+      "hexaco_drivers": ["low_sincerity", "high_flexibility", "high_social_boldness"]
+    },
+    "beat_2": {
+      "dominance": "admiration",
+      "primary_emotion": "Joy",
+      "secondary_emotions": ["Admiration", "Love"],
+      "character_state": "Genuinely impressed - Jim's courage breaks through",
+      "hexaco_drivers": ["high_creativity", "high_inquisitiveness", "high_flexibility"]
+    },
+    "beat_3": {
+      "dominance": "leadership",
+      "primary_emotion": "Anger",
+      "secondary_emotions": ["Distress", "Pride"],
+      "character_state": "Crisis leader - must control crew and protect Jim",
+      "hexaco_drivers": ["high_social_boldness", "high_social_self_esteem", "low_gentleness"]
+    }
+  },
+  "validation": {
+    "json_schema": "mind-studio/scenario v1.0",
+    "hexaco_facets": 24,
+    "relationship_attributes": ["closeness", "trust", "power"],
+    "trigger_logic": "OR[AND[], AND[]]",
+    "initial_npc_count": 1,
+    "partner_npc_count": 1,
+    "object_count": 3,
+    "focus_count": 3
+  },
+  "output_files": [
+    {
+      "name": "summary.md",
+      "size_kb": 14,
+      "lines": 311,
+      "description": "Comprehensive analysis report with source text analysis, scenario structure, Beat transition logic, HEXACO-emotion mapping"
+    },
+    {
+      "name": "DELIVERABLES.md",
+      "size_kb": 4.6,
+      "lines": 161,
+      "description": "Final deliverables checklist, file usage guide, next steps recommendations"
+    },
+    {
+      "name": "scenario_structure.json",
+      "size_kb": "this file",
+      "description": "Machine-readable scenario structure documentation"
+    }
+  ],
+  "mcp_tools_used": [
+    "list_scenarios",
+    "read_source_text",
+    "load_scenario",
+    "create_full_scenario",
+    "create_npc",
+    "create_relationship",
+    "update_situation",
+    "save_scenario",
+    "list_npcs",
+    "list_relationships"
+  ],
+  "next_steps": [
+    "appraise() - Verify initial Beat emotion",
+    "dialogue_turn() - Simulate actual conversation",
+    "start_scene() - Initialize Scene with Focus options",
+    "PAD coordinate validation - Enable embed feature",
+    "LLM conversation test - Enable chat feature"
+  ],
+  "production_status": "ready",
+  "completion_date": "2026-04-06"
+}

@@ -1,0 +1,58 @@
+{
+  "eval_id": 1,
+  "eval_name": "silvers-gambit",
+  "variant": "with_skill",
+  "expectations": [
+    {
+      "text": "Silver HEXACO facets are properly defined (not all zero)",
+      "passed": true,
+      "evidence": "24/24 facets are non-zero"
+    },
+    {
+      "text": "Jim NPC is included in scenario",
+      "passed": true,
+      "evidence": "jim id: jim"
+    },
+    {
+      "text": "Bidirectional relationships defined (silver:jim AND jim:silver)",
+      "passed": true,
+      "evidence": "silver:jim=True, jim:silver=True"
+    },
+    {
+      "text": "Scenario metadata (name, description) is populated",
+      "passed": true,
+      "evidence": "name='실버의 도박 — 블록하우스 사령관', desc length=161"
+    },
+    {
+      "text": "Scene has 3 Beat focuses",
+      "passed": true,
+      "evidence": "focus count: 3"
+    },
+    {
+      "text": "First Beat has null/Initial trigger",
+      "passed": true,
+      "evidence": "trigger value: None"
+    },
+    {
+      "text": "Non-initial focuses have valid condition triggers (OR[AND[]] structure)",
+      "passed": true,
+      "evidence": "impressed: OK (1 paths); crisis_leader: OK (2 paths)"
+    },
+    {
+      "text": "Descriptions are in Korean (>20% Korean characters)",
+      "passed": true,
+      "evidence": "Korean ratio: 60.9% (234/384)"
+    },
+    {
+      "text": "Scene npc_id is 'silver' (Silver's perspective)",
+      "passed": true,
+      "evidence": "npc_id: silver"
+    },
+    {
+      "text": "agent_id is set on all focus actions",
+      "passed": true,
+      "evidence": "calculating: agent=silver, impressed: agent=jim, crisis_leader: agent=morgan"
+    }
+  ],
+  "pass_rate": 1.0
+}

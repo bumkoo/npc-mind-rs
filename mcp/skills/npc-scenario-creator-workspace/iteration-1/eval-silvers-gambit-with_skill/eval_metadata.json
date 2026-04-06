@@ -1,0 +1,6 @@
+{
+  "eval_id": 1,
+  "eval_name": "silvers-gambit",
+  "prompt": "보물섬(Treasure Island) Part Six, Ch.XXVIII 'In the Enemy's Camp' 장면을 실버(Long John Silver) 시점으로 테스트 시나리오를 만들어줘.\n\n워크플로우:\n1. 원작 읽기: Part Six 챕터만 한정해서 읽어줘 (토큰 절약)\n2. 테스트 시나리오 후보 추출: Ch.XXVIII에서 실버 시점의 감정 아크 파악\n3. 기존재 여부 확인:\n   - 시나리오가 이미 존재하는지 확인\n   - 기존 NPC asset 확인 (Silver asset이 있으면 재활용, 성격이 달라졌으면 신규 생성)\n   - 짐(jim) asset도 확인하고 ch28 상황에 맞는지 검토\n4. 시나리오 개발: create_full_scenario로 생성\n5. Beat 전환 조건(trigger)의 타당성 검토\n6. 전체 시나리오 흐름 리뷰 (appraise로 초기 감정 확인)",
+  "assertions": []
+}

@@ -1,0 +1,56 @@
+{
+  "skill_name": "npc-scenario-creator",
+  "iteration": 1,
+  "configurations": [
+    {
+      "name": "with_skill",
+      "label": "With Skill",
+      "evals": [
+        {
+          "eval_name": "silvers-gambit",
+          "pass_rate": 1.0,
+          "passed": 10,
+          "total": 10,
+          "tokens": 126816,
+          "duration_seconds": 446.0
+        }
+      ],
+      "aggregate": {
+        "mean_pass_rate": 1.0,
+        "mean_tokens": 126816,
+        "mean_duration_seconds": 446.0
+      }
+    },
+    {
+      "name": "without_skill",
+      "label": "Without Skill (Baseline)",
+      "evals": [
+        {
+          "eval_name": "silvers-gambit",
+          "pass_rate": 0.3,
+          "passed": 3,
+          "total": 10,
+          "tokens": 94495,
+          "duration_seconds": 348.3
+        }
+      ],
+      "aggregate": {
+        "mean_pass_rate": 0.3,
+        "mean_tokens": 94495,
+        "mean_duration_seconds": 348.3
+      }
+    }
+  ],
+  "delta": {
+    "pass_rate": "+70%",
+    "tokens": "+32321 (34% more)",
+    "duration": "+97.7s (28% more)"
+  },
+  "analyst_observations": [
+    "Skill 사용 시 pass rate 100% vs baseline 30% — 70%p 차이",
+    "Baseline의 핵심 실패: Silver HEXACO 전부 0.0, Jim NPC 누락, 관계 누락, 메타데이터 빈 값, agent_id 미설정, trigger 구조 불일치",
+    "Skill이 토큰 34%, 시간 28% 더 소모하지만 결과물 품질이 압도적으로 높음",
+    "Baseline도 한국어 설명(68.6%)과 3 Beat 구조는 맞춤 — MCP 도구 스키마만으로도 기본 구조는 잡힘",
+    "Skill의 가장 큰 기여: HEXACO 24 facets 가이드, 비대칭 관계 설계, trigger OR[AND[]] 구조, agent_id 규칙"
+  ]
+}
