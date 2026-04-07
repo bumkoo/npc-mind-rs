@@ -681,20 +681,24 @@ impl MindMcpService {
                 }
                 
                 // scene — focuses 객체→배열 변환 및 situation→event/action/object 평탄화
-                if let Some(scene) = scenario_val.get("scene") {
+                // 저장 전에 SceneRequest 역직렬화로 필수 필드 검증
+                let validated_scene_req = if let Some(scene) = scenario_val.get("scene") {
                     let normalized = Self::normalize_scene_json(scene.clone());
+                    let scene_req = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(normalized.clone())
+                        .map_err(|e| format!("scene 검증 실패: {e}. 필수 필드: npc_id, partner_id, description, focuses"))?;
                     state_inner.scene = Some(normalized);
-                }
-                
+                    Some(scene_req)
+                } else {
+                    None
+                };
+
                 // 파일 저장
                 state_inner.save_to_file(std::path::Path::new(&resolved_path), true).map_err(|e| e.to_string())?;
-                
+
                 // 서버 상태에도 로드
                 state_inner.loaded_path = Some(resolved_path.clone());
-                if let Some(ref scene_val) = state_inner.scene {
-                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
-                        StudioService::load_scene_into_state(&mut state_inner, &scene_req);
-                    }
+                if let Some(scene_req) = validated_scene_req {
+                    StudioService::load_scene_into_state(&mut state_inner, &scene_req);
                 }
                 let npc_count = state_inner.npcs.len();
                 let rel_count = state_inner.relationships.len();

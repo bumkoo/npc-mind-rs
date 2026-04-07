@@ -1,0 +1,215 @@
+{
+  "current_situation": null,
+  "format": "mind-studio/scenario",
+  "npcs": {
+    "george_merry": {
+      "aesthetic_appreciation": -0.4000000059604645,
+      "anxiety": 0.4000000059604645,
+      "creativity": -0.30000001192092896,
+      "dependence": 0.20000000298023224,
+      "description": "노란 눈의 키 큰 해적. 성급하고 도전적이며 규칙을 내세워 실버에 맞서지만, 실버의 언변에 결국 눌린다. 선동에는 능하나 진정한 리더십은 부족하고, 탐욕에 쉽게 흔들린다.",
+      "diligence": -0.20000000298023224,
+      "fairness": -0.30000001192092896,
+      "fearfulness": 0.30000001192092896,
+      "flexibility": -0.4000000059604645,
+      "forgiveness": -0.5,
+      "gentleness": -0.6000000238418579,
+      "greed_avoidance": -0.8999999761581421,
+      "id": "george_merry",
+      "inquisitiveness": -0.20000000298023224,
+      "liveliness": 0.20000000298023224,
+      "modesty": -0.6000000238418579,
+      "name": "George Merry",
+      "organization": -0.30000001192092896,
+      "patience": -0.6000000238418579,
+      "perfectionism": -0.10000000149011612,
+      "prudence": -0.5,
+      "sentimentality": -0.30000001192092896,
+      "sincerity": -0.699999988079071,
+      "sociability": 0.30000001192092896,
+      "social_boldness": 0.6000000238418579,
+      "social_self_esteem": 0.5,
+      "unconventionality": -0.20000000298023224
+    },
+    "silver": {
+      "aesthetic_appreciation": -0.20000000298023224,
+      "anxiety": -0.30000001192092896,
+      "creativity": 0.699999988079071,
+      "dependence": -0.5,
+      "description": "외다리 해적, 선상 요리사. Walrus 선장 Flint의 옛 부하였다. 겉으로는 다정하고 유쾌하지만 속은 냉혹하고 계산적이다. 목적을 위해 여러 편에 발을 걸치며 순식간에 표정을 바꾼다. 리더십과 언변이 뛰어나고 상황을 읽는 감각이 탁월하다.",
+      "diligence": 0.20000000298023224,
+      "fairness": -0.6000000238418579,
+      "fearfulness": -0.5,
+      "flexibility": 0.8999999761581421,
+      "forgiveness": -0.30000001192092896,
+      "gentleness": -0.4000000059604645,
+      "greed_avoidance": -0.800000011920929,
+      "id": "silver",
+      "inquisitiveness": 0.5,
+      "liveliness": 0.5,
+      "modesty": -0.5,
+      "name": "Long John Silver",
+      "organization": 0.30000001192092896,
+      "patience": 0.699999988079071,
+      "perfectionism": -0.20000000298023224,
+      "prudence": 0.6000000238418579,
+      "sentimentality": -0.20000000298023224,
+      "sincerity": -0.8999999761581421,
+      "sociability": 0.800000011920929,
+      "social_boldness": 0.800000011920929,
+      "social_self_esteem": 0.800000011920929,
+      "unconventionality": 0.4000000059604645
+    }
+  },
+  "objects": {
+    "black_spot": {
+      "category": null,
+      "description": "성경의 마지막 장을 찢어 만든 종이. 한쪽에는 요한계시록 구절이, 다른 쪽에는 'Depposed'라고 적혀 있다. 해적의 공식 해임 통보.",
+      "id": "black_spot"
+    },
+    "treasure_map": {
+      "category": null,
+      "description": "플린트 선장이 남긴 보물섬 지도. 세 개의 붉은 십자가와 J.F. 서명이 있다. 리브시 의사가 실버에게 건네준 것으로, 실버의 최후의 패.",
+      "id": "treasure_map"
+    }
+  },
+  "relationships": {
+    "george_merry:silver": {
+      "closeness": -0.30000001192092896,
+      "owner_id": "george_merry",
+      "power": -0.30000001192092896,
+      "target_id": "silver",
+      "trust": -0.6000000238418579
+    },
+    "silver:george_merry": {
+      "closeness": -0.4000000059604645,
+      "owner_id": "silver",
+      "power": 0.5,
+      "target_id": "george_merry",
+      "trust": -0.699999988079071
+    }
+  },
+  "scenario": {
+    "description": "해적단이 실버에게 흑점을 찍어 선장직 해임을 선언한다. 조지 메리가 주도하는 반란에 맞서 실버는 냉철한 언변으로 하나하나 논파하고, 마지막에 보물 지도를 꺼내 상황을 완전히 뒤집는다.",
+    "name": "흑점 반란 — 실버의 역전",
+    "notes": [
+      "원작: Treasure Island, PART SIX, Ch.XXIX 'The Black Spot Again'",
+      "NPC: Silver (해적단 선장, 정치적 수완 발휘)",
+      "Partner: George Merry (반란 주도자, 노란 눈의 키 큰 해적)",
+      "짐은 인질로 곁에 있지만 직접 참여하지 않음",
+      "핵심 소품: 흑점(성경 찢어 만듦), 보물 지도(리브시 의사가 건네준 것)"
+    ]
+  },
+  "scene": {
+    "description": "해적단의 흑점 반란에 맞서 실버가 언변과 보물 지도로 역전하는 장면",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "george_merry",
+          "description": "조지 메리가 반란을 주도하여 실버의 네 가지 실책을 낱낱이 열거하며 해임을 요구한다.",
+          "praiseworthiness": -0.7
+        },
+        "description": "해적 다섯 명이 통나무집으로 들어와 흑점을 내민다. 조지 메리가 선두에 서서 '해임'을 선언한다. 실버는 겉으로는 침착하지만, 목숨과 권위가 걸린 위기 상황이다.",
+        "event": {
+          "description": "부하들이 정식 회의를 거쳐 흑점을 들이밀며 선장직 해임을 선언했다. 실버의 목숨과 지위가 위태롭다.",
+          "desirability_for_self": -0.6
+        },
+        "id": "black_spot_received",
+        "object": {
+          "appealingness": -0.8,
+          "target_id": "black_spot"
+        },
+        "test_script": [
+          "실버, 이건 정식 회의에서 결정된 거다. 흑점이야. 뒤집어 봐라, 뭐라고 적혀 있는지.",
+          "네가 이 항해를 망쳤어. 적들을 놓아주고, 행군 중에도 공격을 못 하게 막았지. 그리고 그 애를 살려뒀어.",
+          "우린 네 속셈을 다 안다, 존 실버. 보물을 독차지하려는 거잖아. 우리 모두 네 때문에 교수대에 매달릴 판이야."
+        ],
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버 자신이 뛰어난 언변으로 반란자들의 실책을 역공하며 주도권을 되찾는다.",
+          "praiseworthiness": 0.6
+        },
+        "description": "실버가 반론을 시작한다. 반란을 먼저 일으킨 것이 누구인지, 항해를 실제로 망친 것이 누구인지 하나하나 논파하며, 인질과 의사의 가치를 역설한다.",
+        "event": {
+          "description": "실버가 반격에 나선다. 조지 메리와 앤더슨, 핸즈가 먼저 반란을 일으켜 상황을 망친 장본인임을 밝히고, 짐을 인질로 확보한 전략적 가치와 의사의 치료를 내세운다.",
+          "desirability_for_self": 0.4
+        },
+        "id": "rhetorical_counterattack",
+        "test_script": [
+          "허튼소리 작작해! 넌 끝났어, 실버. 고작 말재주로 넘어갈 줄 알아?",
+          "그래봤자 우린 다 교수대에 매달릴 판이라고! 네가 뭘 해줬는데!",
+          "원하면 선장 해먹어 봐라, 조지 메리. 네가 뭘 할 수 있는지 보자고."
+        ],
+        "trigger": [
+          [
+            {
+              "above": 0.55,
+              "emotion": "Anger"
+            },
+            {
+              "above": 0.35,
+              "emotion": "Distress"
+            }
+          ],
+          [
+            {
+              "above": 0.58,
+              "emotion": "Reproach"
+            }
+          ]
+        ]
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버가 최후의 패인 보물 지도를 꺼내 상황을 완전히 역전시키고, 조지 메리를 보초로 세워 응징한다.",
+          "praiseworthiness": 0.7
+        },
+        "description": "실버가 보물 지도를 바닥에 내던진다. 해적들이 고양이처럼 달려들어 지도를 서로 빼앗으며 환호한다. 반란은 완전히 무산되고 실버는 선장직을 탈환한다.",
+        "event": {
+          "description": "보물 지도를 꺼내 보여주자 해적들이 광분하며 실버에게 충성을 맹세한다. 반란은 완전히 진압되었다.",
+          "desirability_for_self": 0.8
+        },
+        "id": "map_triumph",
+        "object": {
+          "appealingness": 0.9,
+          "target_id": "treasure_map"
+        },
+        "test_script": [
+          "그게... 플린트의 지도야? 진짜야? 대체 어떻게 손에 넣은 거야?",
+          "하지만 배가 없잖아, 실버. 지도가 있으면 뭘 해?"
+        ],
+        "trigger": [
+          [
+            {
+              "above": 0.45,
+              "emotion": "Pride"
+            },
+            {
+              "below": 0.3,
+              "emotion": "Distress"
+            }
+          ],
+          [
+            {
+              "above": 0.5,
+              "emotion": "Joy"
+            },
+            {
+              "above": 0.3,
+              "emotion": "Pride"
+            }
+          ]
+        ]
+      }
+    ],
+    "initial_focus_id": "black_spot_received",
+    "npc_id": "silver",
+    "partner_id": "george_merry",
+    "significance": 0.9
+  },
+  "test_report": ""
+}
