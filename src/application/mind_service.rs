@@ -472,6 +472,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor> MindService<R, A, S>
                 active_focus_id: None,
                 significance: None,
                 focuses: vec![],
+                script_cursor: None,
             };
         };
 

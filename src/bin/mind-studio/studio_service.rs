@@ -90,6 +90,8 @@ impl StudioService {
 
         // 레이블 결정
         let label = if response.beat_changed {
+            // Beat 전환 시 스크립트 커서 리셋
+            inner.script_cursor = 0;
             format!("stimulus+beat [{}] ({})", response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
         } else {
             format!("stimulus ({})", req.npc_id)
@@ -334,6 +336,9 @@ impl StudioService {
             result_dir.to_string_lossy().replace('\\', "/")
         });
 
+        // 대화 시작 시 스크립트 커서 초기화
+        inner.script_cursor = 0;
+
         // 턴 기록 통합 저장
         Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
 
@@ -410,11 +415,26 @@ impl StudioService {
                 chat_port.update_system_prompt(&req.session_id, &resp.prompt)
                     .await
                     .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
+                // Beat 전환 시 스크립트 커서 리셋
+                inner.script_cursor = 0;
             }
             (Some(resp), changed)
         } else {
             (None, false)
         };
+
+        // 스크립트 커서 자동 전진: 발화가 현재 test_script의 커서 대사와 일치하면 전진
+        {
+            let cursor = inner.script_cursor;
+            let active_id = inner.active_focus_id.clone();
+            if let Some(focus) = active_id.as_deref().and_then(|id| inner.scene_focuses.iter().find(|f| f.id == id)) {
+                if !focus.test_script.is_empty() && cursor < focus.test_script.len() {
+                    if req.utterance == focus.test_script[cursor] {
+                        inner.script_cursor = cursor + 1;
+                    }
+                }
+            }
+        }
 
         // 턴 기록 통합 저장
         let label_suffix = if stim_resp.is_none() { " (no PAD)" } else { "" };

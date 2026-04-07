@@ -116,6 +116,10 @@ pub struct SceneFocus {
     pub event: Option<super::situation::EventFocus>,
     pub action: Option<super::situation::ActionFocus>,
     pub object: Option<super::situation::ObjectFocus>,
+    /// 테스트 스크립트 — 이 Beat에서 사용할 사전 정의 대사 목록.
+    /// 대화 테스트 시 재현 가능한 결과를 위해 순서대로 사용된다.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub test_script: Vec<String>,
 }
 
 impl SceneFocus {

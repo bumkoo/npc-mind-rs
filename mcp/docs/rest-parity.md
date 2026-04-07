@@ -85,6 +85,7 @@
 | `POST /api/chat/start` | `dialogue_start` | |
 | `POST /api/chat/message` | `dialogue_turn` | |
 | `POST /api/chat/message/stream` | *(없음)* | SSE 스트리밍. MCP는 단일 응답만 |
+| *(없음)* | `get_next_utterance` | test_script 커서 조회/전진. MCP 전용 |
 | `POST /api/chat/end` | `dialogue_end` | |
 
 ---
@@ -99,6 +100,7 @@
 | `read_source_text` | 원작 텍스트 챕터 단위 읽기 | WebUI는 외부 에디터로 파일 열람 |
 | `create_full_scenario` | NPC+관계+오브젝트+Scene 일괄 생성 | WebUI는 단계별 패널로 구성 |
 | `get_npc_llm_config` | NPC 성격 기반 LLM temperature/top_p | WebUI는 LLM 호출을 직접 안 함 |
+| `get_next_utterance` | test_script 커서 조회/전진 | WebUI는 UI에서 직접 스크립트 전송 버튼 제공 |
 
 ### 추가 후보
 
@@ -149,8 +151,8 @@ REST는 HTTP 메서드(GET/POST/PUT/DELETE)로 동사를 표현하고 MCP는 이
 ## 기능 카운트 스냅샷 (2026-04)
 
 - REST endpoints: 27개 (base 23 + chat feature 4)
-- MCP tools: 34개
-- MCP-only: 4개 (`list_source_texts`, `read_source_text`, `create_full_scenario`, `get_npc_llm_config`)
+- MCP tools: 35개
+- MCP-only: 5개 (`list_source_texts`, `read_source_text`, `create_full_scenario`, `get_npc_llm_config`, `get_next_utterance`)
 - REST-only: 1개 (`/api/chat/message/stream`)
 
 **현재 MCP는 REST의 상위 집합이다.** (streaming 제외)

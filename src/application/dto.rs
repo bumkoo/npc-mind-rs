@@ -624,6 +624,9 @@ pub struct SceneInfoResult {
     pub significance: Option<f32>,
     /// 모든 Focus 옵션의 상태 목록
     pub focuses: Vec<FocusInfoItem>,
+    /// 현재 활성 Beat의 테스트 스크립트 커서 위치 (MCP에서 주입)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub script_cursor: Option<usize>,
 }
 
 /// 개별 Focus 정보 (UI 출력용)
@@ -636,6 +639,9 @@ pub struct FocusInfoItem {
     pub event: Option<FocusEventInfo>,
     pub action: Option<FocusActionInfo>,
     pub object: Option<FocusObjectInfo>,
+    /// 테스트 스크립트 — 이 Beat에서 사용할 사전 정의 대사 목록
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub test_script: Vec<String>,
 }
 
 impl FocusInfoItem {
@@ -716,6 +722,7 @@ impl FocusInfoItem {
             event,
             action,
             object,
+            test_script: f.test_script.clone(),
         }
     }
 }

@@ -303,6 +303,18 @@ impl MindMcpService {
                 }
             }),
 
+            // 테스트 스크립트
+            serde_json::json!({
+                "name": "get_next_utterance",
+                "description": "현재 Beat의 test_script에서 다음 대사를 조회하고 커서를 전진합니다. 스크립트가 없거나 소진되면 exhausted=true를 반환합니다. advance=false로 호출하면 커서를 전진하지 않고 peek만 합니다.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "advance": { "type": "boolean", "description": "true(기본값)이면 커서 전진, false이면 peek만" }
+                    }
+                }
+            }),
+
             // 기타
             serde_json::json!({
                 "name": "get_npc_llm_config",
@@ -514,7 +526,12 @@ impl MindMcpService {
                 let inner = self.state.inner.read().await;
                 let repo = crate::repository::ReadOnlyAppStateRepo { inner: &*inner };
                 let service = npc_mind::application::mind_service::MindService::new(repo);
-                Ok(serde_json::to_value(service.scene_info()).map_err(|e| e.to_string())?)
+                let mut info = service.scene_info();
+                // 스크립트 커서 주입
+                if info.has_scene {
+                    info.script_cursor = Some(inner.script_cursor);
+                }
+                Ok(serde_json::to_value(info).map_err(|e| e.to_string())?)
             }
             "get_save_dir" => {
                 let info = StudioService::get_save_dir(&self.state).await.map_err(|e: AppError| e.to_string())?;
@@ -690,6 +707,55 @@ impl MindMcpService {
                     "npcs": npc_count,
                     "relationships": rel_count
                 }))
+            }
+            "get_next_utterance" => {
+                let advance = arguments.get("advance").and_then(|v| v.as_bool()).unwrap_or(true);
+                let mut inner = self.state.inner.write().await;
+                // 현재 활성 Focus의 test_script에서 커서 위치의 대사를 반환
+                let active_id = inner.active_focus_id.clone();
+                let focus = active_id.as_deref().and_then(|id| {
+                    inner.scene_focuses.iter().find(|f| f.id == id)
+                });
+                match focus {
+                    Some(f) if !f.test_script.is_empty() => {
+                        let cursor = inner.script_cursor;
+                        if cursor < f.test_script.len() {
+                            let utterance = f.test_script[cursor].clone();
+                            let remaining = f.test_script.len() - cursor - 1;
+                            let total = f.test_script.len();
+                            let beat_id = f.id.clone();
+                            if advance {
+                                inner.script_cursor = cursor + 1;
+                            }
+                            Ok(serde_json::json!({
+                                "utterance": utterance,
+                                "beat_id": beat_id,
+                                "index": cursor,
+                                "remaining": remaining,
+                                "total": total,
+                                "exhausted": false
+                            }))
+                        } else {
+                            Ok(serde_json::json!({
+                                "beat_id": f.id,
+                                "index": cursor,
+                                "total": f.test_script.len(),
+                                "exhausted": true,
+                                "message": "현재 Beat의 모든 스크립트 대사를 소진했습니다."
+                            }))
+                        }
+                    }
+                    Some(f) => {
+                        Ok(serde_json::json!({
+                            "beat_id": f.id,
+                            "exhausted": true,
+                            "message": "현재 Beat에 test_script가 정의되지 않았습니다."
+                        }))
+                    }
+                    None => {
+                        Err("활성 Scene Focus가 없습니다. start_scene 또는 load_scenario를 먼저 호출하세요.".into())
+                    }
+                }
             }
             "dialogue_start" => {
                 #[cfg(feature = "chat")]

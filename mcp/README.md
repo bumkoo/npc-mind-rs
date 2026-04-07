@@ -10,7 +10,7 @@ AI 에이전트(Claude Desktop, Claude Code 등)는 이 MCP를 통해 NPC를 만
 ## 주요 특징
 
 - **네이티브 Rust SSE 구현** — Axum 기반, 외부 MCP 라이브러리 의존 없음
-- **34개 도구 제공** — NPC/관계/오브젝트 CRUD, 감정 파이프라인, Scene 제어, 대화 세션
+- **35개 도구 제공** — NPC/관계/오브젝트 CRUD, 감정 파이프라인, Scene 제어, 대화 세션
 - **HEXACO 24 facets × OCC 22 emotions × PAD 3축** — 이론 기반 심리 모델링
 - **도메인 주도 설계** — 헥사고날 아키텍처로 MCP는 adapter 계층에 위치
 
@@ -44,7 +44,7 @@ cargo run --release --features mind-studio,embed --bin npc-mind-studio
 
 Claude Desktop을 완전히 종료 후 재시작하면 `npc-mind-studio:*` 도구들이 목록에 나타난다.
 
-## 도구 카테고리 (34개)
+## 도구 카테고리 (35개)
 
 `mcp_server.rs`의 카테고리 구분을 그대로 따른다.
 
@@ -133,6 +133,6 @@ NPC, 관계, 오브젝트의 생성·조회·삭제. 시나리오 파일 로드 
   어떻게 이해해야 하는지를 담은 워크플로우 가이드. 이 MCP를 쓰는 AI는 이 문서부터 읽는다.
 - **[`docs/quality-metrics.md`](docs/quality-metrics.md)** — 디렉티브 품질 채점 기준서 (3개 필수 지표, 5점 척도). 세션 후 정량 평가에 사용.
 - **[`docs/rest-parity.md`](docs/rest-parity.md)** — REST API와 MCP tool의 대응 매핑표. 개발자용 내부 레퍼런스.
-- **[`docs/tools-reference.md`](docs/tools-reference.md)** — 34개 도구의 입력/반환 스펙. 카테고리별 레퍼런스.
+- **[`docs/tools-reference.md`](docs/tools-reference.md)** — 35개 도구의 입력/반환 스펙. 카테고리별 레퍼런스.
 - **[`docs/architecture.md`](docs/architecture.md)** — SSE 이원 엔드포인트 구조, DDD adapter 위치, JSON-RPC 처리 흐름.
 - **[`docs/troubleshooting.md`](docs/troubleshooting.md)** — 연결 실패, 빌드 함정, Windows 환경 특수성, 알려진 엔진 제약.

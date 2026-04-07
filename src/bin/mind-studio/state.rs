@@ -134,6 +134,10 @@ pub struct StateInner {
     /// 시나리오 수정 여부 (런타임 — 저장 분기 판단용)
     #[serde(skip)]
     pub scenario_modified: bool,
+    /// 테스트 스크립트 커서 — 현재 Beat의 test_script에서 다음에 사용할 대사 인덱스.
+    /// Beat 전환 시 0으로 리셋된다.
+    #[serde(skip)]
+    pub script_cursor: usize,
 }
 
 /// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존

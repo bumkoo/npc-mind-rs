@@ -26,14 +26,21 @@ description: "NPC Mind Engine MCP를 사용한 시나리오 테스트 및 대화
 - 상황 지문은 `situation_description` 파라미터나 Scene Beat 전환으로 표현
 - 이유: PAD 자동 분석이 지문에 흔들리지 않고, 순수 대사 톤만 분석해야 정확하다
 
+### 원칙 4: 테스트 스크립트 우선 사용
+- 시나리오에 `test_script`가 정의되어 있으면 **반드시 사용**한다
+- `get_scene_info()`로 확인 — 각 Focus의 `test_script` 배열과 `script_cursor` 확인
+- test_script 사용 시 동일 입력 → 동일 PAD → 일관된 감정 변화가 보장된다
+- 즉흥 대사는 test_script가 없거나, 스크립트 소진 후, 또는 추가 검증이 필요할 때만 사용
+
 ## 테스트 세션 전체 흐름
 
 ```
 0. NPC Asset 확인         data/{book}/assets/npcs/ 조회 (원칙 2)
 1. load_scenario           시나리오 파일 로드
-2. get_scene_info          Scene 활성화 확인 (has_scene: true)
+2. get_scene_info          Scene 활성화 + test_script 존재 확인
 3. dialogue_start          세션 시작 + 초기 appraise (save_dir 자동 반환)
-4. dialogue_turn × N       상대 대사 입력 → NPC 연기 응답 + 감정 갱신
+4. [test_script 있으면] get_next_utterance → dialogue_turn(utterance=대사) × N
+   [test_script 없으면] dialogue_turn(utterance=즉흥 대사) × N
 5. dialogue_end            세션 종료 + 관계 갱신 (after_dialogue 포함)
 6. 정량 평가 수행           get_history → 3개 지표 채점
 7. update_test_report      레포트 작성 (한국어, 정량 섹션 포함)
@@ -76,17 +83,55 @@ dialogue_start(session_id="unique_id", appraise={npc_id: "jim", partner_id: "isr
 서버가 자동으로 initial focus에 대한 appraise를 수행한다. Scene이 활성이면 situation 생략 가능.
 반환값에 `save_dir`이 포함되므로 별도 `get_save_dir` 호출 불필요.
 
-### 대화 턴 실행
+### 대화 턴 실행 — test_script 사용 흐름
+
+test_script가 있는 경우, `get_next_utterance` → `dialogue_turn` 순서로 진행한다.
+
+**1단계: 다음 대사 조회**
+```
+get_next_utterance()
+→ {
+    "utterance": "핸즈, 뒤에서 무슨 소리가 났어...",
+    "beat_id": "cornered",
+    "index": 0,
+    "remaining": 2,
+    "total": 3,
+    "exhausted": false
+  }
+```
+- `advance` 파라미터 생략 시 기본값 `true` → 커서 자동 전진
+- `get_next_utterance(advance=false)` → peek만 (커서 전진 없음)
+- `exhausted: true`이면 해당 Beat의 스크립트가 모두 소진된 것
+
+**2단계: 대사 전송**
 ```
 dialogue_turn(
   session_id="unique_id",
   npc_id="jim",
   partner_id="israel_hands",
-  utterance="순수 대사만 입력"
+  utterance="핸즈, 뒤에서 무슨 소리가 났어..."
 )
 ```
 - `pad` 생략 시 → 대사를 자동 PAD 분석 (embed feature)
 - 반환: LLM 연기 응답 + 감정 갱신 + `beat_changed` + `active_focus_id`
+
+**3단계: 반복 또는 즉흥 대사**
+- `exhausted: false`이면 1-2단계 반복
+- 스크립트 소진 후 추가 턴이 필요하면 즉흥 대사를 직접 `dialogue_turn`에 입력
+- 즉흥 대사는 커서에 영향을 주지 않는다
+
+### 커서 관리
+
+| 이벤트 | 커서 동작 |
+|--------|----------|
+| `dialogue_start` | 0으로 초기화 |
+| `get_next_utterance(advance=true)` | +1 전진 |
+| `get_next_utterance(advance=false)` | 변동 없음 |
+| `dialogue_turn` (스크립트 대사 일치 시) | +1 전진 |
+| `dialogue_turn` (즉흥 대사) | 변동 없음 |
+| Beat 전환 발생 | 0으로 리셋 (새 Beat의 스크립트 처음부터) |
+
+**주의**: `get_next_utterance`와 `dialogue_turn` 둘 다 커서를 전진시킬 수 있다. `get_next_utterance(advance=true)`로 조회한 대사를 `dialogue_turn`에 그대로 전송하면 커서가 **한 번만** 전진한다 (이미 전진된 상태이므로).
 
 ### PAD 입력
 
@@ -157,8 +202,8 @@ Beat/Focus 전환(또는 유지) 결정이 서사적으로 타당한가.
 
 `update_test_report`로 마크다운 레포트를 작성한다. 필수 섹션:
 
-1. **테스트 정보** — 시나리오명, NPC, Partner, 일시, LLM 모델
-2. **Scene 구성** — Beat별 설명, Trigger 조건
+1. **테스트 정보** — 시나리오명, NPC, Partner, 일시, LLM 모델, test_script 사용 여부
+2. **Scene 구성** — Beat별 설명, Trigger 조건, test_script 대사 수
 3. **감정 흐름 요약** — 턴별 지배 감정, 강도, Mood, Beat, PAD, CF/SA/DC 점수
 4. **관계 변화** — Before/After/Delta 표
 5. **정량 평가** — 세션 평균 + 턴별 채점 근거
@@ -171,6 +216,7 @@ Beat/Focus 전환(또는 유지) 결정이 서사적으로 타당한가.
 - [ ] 채점 근거가 구체적인가
 - [ ] 5점 만점을 남발하지 않았는가
 - [ ] 이전 세션 레포트를 읽고 회귀 비교했는가 (있을 경우)
+- [ ] test_script 사용 여부와 즉흥 대사 비율을 기록했는가
 
 ## 트러블슈팅
 
@@ -181,6 +227,9 @@ Beat/Focus 전환(또는 유지) 결정이 서사적으로 타당한가.
 | PAD D축 항상 0.00 | D축 앵커 구조적 한계 | 수동 PAD 입력 |
 | `update_test_report` 후 파일 없음 | 메모리에만 저장된 상태 | `save_scenario("all")` 필요 |
 | `save_scenario` 성공인데 파일 없음 | 경로에 `data/` prefix 누락 | `dialogue_start`가 반환한 `save_dir`을 그대로 사용 |
+| `get_next_utterance` → `exhausted: true` 즉시 | Beat 전환 후 새 Beat에 test_script 없음 | 해당 Beat에 test_script 추가하거나 즉흥 대사 사용 |
+| 커서가 예상보다 빨리 진행 | `get_next_utterance(advance=true)` + `dialogue_turn` 이중 전진 | `get_next_utterance`로 조회한 대사를 그대로 전송하면 이중 전진 없음 (일치 시 전진 건너뜀) |
+| Beat 전환 후 이전 Beat 대사 나옴 | 커서 리셋 미적용 | Beat 전환 후 `get_scene_info`로 active_focus_id 확인 → `get_next_utterance`로 새 Beat 대사 조회 |
 
 ## 참고 문서
 

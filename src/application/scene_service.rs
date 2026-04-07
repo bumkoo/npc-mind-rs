@@ -35,6 +35,7 @@ impl SceneService {
             active_focus_id: scene.active_focus_id().map(|s| s.to_string()),
             significance: Some(scene.significance()),
             focuses: focus_infos,
+            script_cursor: None, // MCP 레벨에서 주입
         }
     }
 }

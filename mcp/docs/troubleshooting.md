@@ -12,6 +12,7 @@
 | MCP 도구가 Claude에 안 보임 | 서버 실행 여부, Claude Desktop 완전 재시작 |
 | `analyze_utterance` 에러 | `embed` feature로 빌드했는지 |
 | `dialogue_*` 도구 없음 | `chat` feature로 빌드했는지 |
+| `get_next_utterance` → 즉시 `exhausted` | 해당 Beat에 test_script 없거나 비어 있음 |
 | `has_scene: false` | 시나리오 JSON에 `scene` 필드 존재 여부 |
 | PAD D축이 항상 0.00 | 알려진 제약 — 수동 입력 필요 |
 | `cargo check` 성공했는데 실제 실행 실패 | feature flag 누락 |
@@ -90,7 +91,7 @@ cargo check --features mind-studio,embed,chat
 |---|---|
 | `mind-studio` | Mind Studio 바이너리 전체 (모든 MCP 도구) |
 | `embed` | `analyze_utterance` |
-| `chat` | `dialogue_start`, `dialogue_turn`, `dialogue_end` |
+| `chat` | `dialogue_start`, `dialogue_turn`, `dialogue_end`, `get_next_utterance` |
 
 ### BGE-M3 모델 로드 실패
 
@@ -251,6 +252,33 @@ save_scenario(path="...", save_type="all")
 
 **해결**: 스트리밍이 필요하면 REST `POST /api/chat/message/stream` 엔드포인트 직접 사용.
 
+
+---
+
+## 테스트 스크립트 (test_script) 문제
+
+### `get_next_utterance`가 즉시 `exhausted: true` 반환
+
+**원인 후보**:
+1. 현재 활성 Beat에 `test_script` 필드가 없거나 빈 배열
+2. Beat 전환 후 새 Beat에 test_script가 정의되지 않음
+
+**해결**: `get_scene_info()`로 활성 Focus 확인 후, 시나리오 JSON의 해당 Focus에 test_script 추가.
+정의 방법은 `npc-scenario-creator` 스킬의 "4-1단계: 테스트 스크립트 설계" 참조.
+
+### 커서가 예상보다 빨리 진행됨
+
+**원인**: `get_next_utterance(advance=true)` 호출 후, 같은 대사를 `dialogue_turn`에 전송하면 커서가 이중 전진하는 것처럼 보일 수 있음.
+
+**실제 동작**: `dialogue_turn`은 전송된 utterance가 현재 커서 위치의 test_script 대사와 **일치하면** 커서를 전진시키지만, `get_next_utterance`에서 이미 전진된 경우는 일치하지 않으므로 이중 전진은 발생하지 않음.
+
+**해결**: 정상 동작. 의심되면 `get_next_utterance(advance=false)`로 peek 후 확인.
+
+### Beat 전환 후 이전 Beat의 대사가 나옴
+
+**원인**: `get_next_utterance` 결과를 캐싱하고 Beat 전환 후에도 그대로 사용.
+
+**해결**: Beat 전환(`beat_changed: true`) 확인 후 `get_next_utterance`를 다시 호출하여 새 Beat의 대사를 받아야 함. 커서는 Beat 전환 시 자동으로 0으로 리셋됨.
 
 ---
 

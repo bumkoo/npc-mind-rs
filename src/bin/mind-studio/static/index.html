@@ -2016,6 +2016,7 @@
                 scenarioIndex,
                 chatLoading,
                 selectedMsgIdx,
+                sceneInfo,
                 onSend,
                 onNextTurn,
                 onSelectMsg,
@@ -2031,6 +2032,13 @@
                     hasScenario && scenarioIndex < scenarioTurns.length
                         ? scenarioTurns[scenarioIndex]
                         : null;
+
+                // 테스트 스크립트: 현재 활성 Beat의 대사 목록
+                const activeFocus = sceneInfo?.focuses?.find(f => f.is_active);
+                const testScript = activeFocus?.test_script || [];
+                const scriptCursor = sceneInfo?.script_cursor || 0;
+                const hasScript = testScript.length > 0;
+                const nextScriptLine = hasScript && scriptCursor < testScript.length ? testScript[scriptCursor] : null;
 
                 useEffect(() => {
                     messagesEndRef.current?.scrollIntoView({
@@ -2198,13 +2206,37 @@
                             </div>
                         ) : (
                             <div className="chat-input-area">
+                                {nextScriptLine && (
+                                    <div style={{
+                                        display: "flex", alignItems: "center", gap: 6,
+                                        padding: "4px 8px", marginBottom: 4,
+                                        background: "var(--bg2)", borderRadius: "var(--radius)",
+                                        border: "1px solid var(--accent2)",
+                                        fontSize: 11,
+                                    }}>
+                                        <span style={{ color: "var(--accent2)", fontWeight: 600, whiteSpace: "nowrap" }}>
+                                            📋 {scriptCursor + 1}/{testScript.length}
+                                        </span>
+                                        <span style={{ flex: 1, color: "var(--fg)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                            {nextScriptLine}
+                                        </span>
+                                        <button
+                                            className="btn primary"
+                                            style={{ fontSize: 10, padding: "2px 8px" }}
+                                            disabled={chatLoading}
+                                            onClick={() => onSend(nextScriptLine)}
+                                        >
+                                            스크립트 전송
+                                        </button>
+                                    </div>
+                                )}
                                 <textarea
                                     value={input}
                                     onChange={(e) =>
                                         setInput(e.target.value)
                                     }
                                     onKeyDown={handleKeyDown}
-                                    placeholder="대사를 입력하세요... (Enter로 전송)"
+                                    placeholder={nextScriptLine ? "즉흥 대사 입력 또는 위 스크립트 전송..." : "대사를 입력하세요... (Enter로 전송)"}
                                     disabled={chatLoading}
                                 />
                                 <button
@@ -2389,6 +2421,31 @@
                                     </span>
                                 </div>
                             ))}
+                            {/* 활성 Beat의 test_script 표시 */}
+                            {(() => {
+                                const activeFocus = sceneInfo.focuses.find(f => f.is_active);
+                                if (!activeFocus || !activeFocus.test_script || activeFocus.test_script.length === 0) return null;
+                                const cursor = sceneInfo.script_cursor || 0;
+                                return (
+                                    <div style={{ marginTop: 8, padding: "6px 8px", background: "var(--bg2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
+                                        <div style={{ fontSize: 10, color: "var(--accent2)", fontWeight: 600, marginBottom: 4 }}>
+                                            📋 테스트 스크립트 ({activeFocus.id}) — {cursor}/{activeFocus.test_script.length}
+                                        </div>
+                                        {activeFocus.test_script.map((line, idx) => (
+                                            <div key={idx} style={{
+                                                fontSize: 10,
+                                                padding: "2px 4px",
+                                                color: idx < cursor ? "var(--fg3)" : idx === cursor ? "var(--fg)" : "var(--fg2)",
+                                                fontWeight: idx === cursor ? 600 : 400,
+                                                textDecoration: idx < cursor ? "line-through" : "none",
+                                                opacity: idx < cursor ? 0.5 : 1,
+                                            }}>
+                                                {idx + 1}. {line}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 );
@@ -3981,6 +4038,7 @@
                                     scenarioIndex={chatScenarioIdx}
                                     chatLoading={chatLoading}
                                     selectedMsgIdx={selectedMsgIdx}
+                                    sceneInfo={sceneInfo}
                                     onSend={handleChatSend}
                                     onNextTurn={handleChatNextTurn}
                                     onSelectMsg={handleSelectMsg}
