@@ -48,13 +48,20 @@ async fn main() {
         use std::sync::Arc;
         let chat_url = std::env::var("NPC_MIND_CHAT_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8081/v1".to_string());
-        let chat_model = std::env::var("NPC_MIND_CHAT_MODEL").unwrap_or_else(|_| "model".to_string());
 
-        let adapter = npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, &chat_model);
+        let adapter = match npc_mind::adapter::rig_chat::RigChatAdapter::connect(&chat_url).await {
+            Ok(a) => {
+                tracing::info!("LLM 모델 자동 감지 완료: url={}", chat_url);
+                a
+            }
+            Err(e) => {
+                tracing::warn!("모델 목록 조회 실패 ({}), 기본값으로 생성: url={}", e, chat_url);
+                npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, "model")
+            }
+        };
         let arc_adapter = Arc::new(adapter);
         state = state.with_chat(arc_adapter.clone());
         state = state.with_llm_info(arc_adapter);
-        tracing::info!("Chat 어댑터 초기화: url={}, model={}", chat_url, chat_model);
     }
 
     // MCP 서버 초기화 (chat이 설정된 state를 clone)

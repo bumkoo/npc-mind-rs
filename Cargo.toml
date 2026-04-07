@@ -7,7 +7,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 default = []
 embed = ["dep:bge-m3-onnx-rust"]
-chat = ["dep:rig-core", "dep:async-trait", "dep:tokio", "dep:futures", "dep:async-stream"]
+chat = ["dep:rig-core", "dep:async-trait", "dep:tokio", "dep:futures", "dep:async-stream", "dep:reqwest"]
 mind-studio = ["dep:axum", "dep:tokio", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:tokio-stream", "dep:futures-util", "dep:uuid"]
 
 [dependencies]
@@ -21,6 +21,7 @@ rig-core = { version = "0.33", optional = true, default-features = false, featur
 async-trait = { version = "0.1", optional = true }
 futures = { version = "0.3", optional = true }
 async-stream = { version = "0.3", optional = true }
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["json"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }

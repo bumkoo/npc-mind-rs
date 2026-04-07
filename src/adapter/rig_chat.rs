@@ -70,6 +70,31 @@ impl RigChatAdapter {
         }
     }
 
+    /// LLM 서버의 `/models` 엔드포인트에서 모델명을 자동 감지하여 어댑터를 생성한다.
+    ///
+    /// 서버가 응답하지 않거나 모델 목록이 비어 있으면 `ConversationError::ConnectionError`를 반환한다.
+    /// 호출부에서 `new()`로 폴백할 수 있다.
+    pub async fn connect(base_url: &str) -> Result<Self, ConversationError> {
+        let url = format!("{}/models", base_url.trim_end_matches('/'));
+
+        let model_list: rig::model::ModelList = reqwest::get(&url)
+            .await
+            .map_err(|e| ConversationError::ConnectionError(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| ConversationError::ConnectionError(e.to_string()))?;
+
+        let model_name = model_list
+            .data
+            .first()
+            .map(|m| m.id.clone())
+            .ok_or_else(|| {
+                ConversationError::ConnectionError("모델 목록이 비어 있습니다".into())
+            })?;
+
+        Ok(Self::new(base_url, &model_name))
+    }
+
     /// rig Agent를 빌드하고 chat()을 호출하는 내부 헬퍼
     async fn chat_with_agent(
         &self,
