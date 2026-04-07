@@ -321,6 +321,16 @@ pub trait LlmInfoProvider: Send + Sync {
     fn get_model_info(&self) -> LlmModelInfo;
 }
 
+/// LLM 서버에서 모델 정보를 런타임에 재감지하는 포트 (chat feature 전용)
+///
+/// `dialogue_start` 시점에 호출하여, 서버 기동 이후 모델이 교체된 경우에도
+/// 정확한 모델명을 반환한다.
+#[cfg(feature = "chat")]
+#[async_trait::async_trait]
+pub trait LlmModelDetector: Send + Sync {
+    async fn refresh_model_info(&self) -> Result<LlmModelInfo, String>;
+}
+
 #[cfg(feature = "chat")]
 #[async_trait::async_trait]
 pub trait ConversationPort: Send + Sync {

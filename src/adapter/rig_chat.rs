@@ -30,7 +30,7 @@ use tokio::sync::RwLock;
 /// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
 pub struct RigChatAdapter {
     client: openai::CompletionsClient,
-    model_name: String,
+    model_name: RwLock<String>,
     base_url: String,
     sessions: RwLock<HashMap<String, ChatSession>>,
 }
@@ -64,7 +64,7 @@ impl RigChatAdapter {
 
         Self {
             client,
-            model_name: model_name.to_string(),
+            model_name: RwLock::new(model_name.to_string()),
             base_url: base_url.to_string(),
             sessions: RwLock::new(HashMap::new()),
         }
@@ -103,7 +103,8 @@ impl RigChatAdapter {
         history: Vec<Message>,
         config: &Option<LlmModelInfo>,
     ) -> Result<String, ConversationError> {
-        let mut builder = self.client.agent(&self.model_name).preamble(system_prompt);
+        let model_name = self.model_name.read().await;
+        let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
 
         // 동적 파라미터 적용
         if let Some(c) = config {
@@ -140,7 +141,8 @@ impl RigChatAdapter {
         token_tx: tokio::sync::mpsc::Sender<String>,
         config: &Option<LlmModelInfo>,
     ) -> Result<String, ConversationError> {
-        let mut builder = self.client.agent(&self.model_name).preamble(system_prompt);
+        let model_name = self.model_name.read().await;
+        let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
 
         // 동적 파라미터 적용
         if let Some(c) = config {
@@ -348,9 +350,12 @@ impl ConversationPort for RigChatAdapter {
 
 impl LlmInfoProvider for RigChatAdapter {
     fn get_model_info(&self) -> LlmModelInfo {
+        let model_name = self.model_name.try_read()
+            .map(|n| n.clone())
+            .unwrap_or_else(|_| "unknown".to_string());
         LlmModelInfo {
             provider_url: self.base_url.clone(),
-            model_name: self.model_name.clone(),
+            model_name,
             temperature: None,
             max_tokens: None,
             top_p: None,
@@ -359,5 +364,33 @@ impl LlmInfoProvider for RigChatAdapter {
             stop_sequences: None,
             seed: None,
         }
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::ports::LlmModelDetector for RigChatAdapter {
+    async fn refresh_model_info(&self) -> Result<LlmModelInfo, String> {
+        let url = format!("{}/models", self.base_url.trim_end_matches('/'));
+
+        let model_list: rig::model::ModelList = reqwest::get(&url)
+            .await
+            .map_err(|e| format!("LLM 서버 연결 실패: {}", e))?
+            .json()
+            .await
+            .map_err(|e| format!("모델 목록 파싱 실패: {}", e))?;
+
+        let new_name = model_list
+            .data
+            .first()
+            .map(|m| m.id.clone())
+            .ok_or_else(|| "모델 목록이 비어 있습니다".to_string())?;
+
+        {
+            let mut name = self.model_name.write().await;
+            *name = new_name;
+        }
+
+        tracing::info!("LLM 모델 재감지 완료: {}", self.model_name.read().await);
+        Ok(self.get_model_info())
     }
 }

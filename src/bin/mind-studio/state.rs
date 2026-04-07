@@ -25,6 +25,9 @@ pub struct AppState {
     /// LLM 메타데이터 제공자
     #[cfg(feature = "chat")]
     pub llm_info: Option<Arc<dyn npc_mind::ports::LlmInfoProvider>>,
+    /// LLM 모델 런타임 재감지 (dialogue_start 시점에 호출)
+    #[cfg(feature = "chat")]
+    pub llm_detector: Option<Arc<dyn npc_mind::ports::LlmModelDetector>>,
     /// MCP 서버 인스턴스 (정적 타입)
     pub mcp_server: Option<Arc<crate::mcp_server::MindMcpService>>,
     /// chat feature 비활성 시 컴파일 호환용
@@ -46,6 +49,8 @@ impl AppState {
             chat: None,
             #[cfg(feature = "chat")]
             llm_info: None,
+            #[cfg(feature = "chat")]
+            llm_detector: None,
             mcp_server: None,
         }
     }
@@ -67,6 +72,13 @@ impl AppState {
     #[cfg(feature = "chat")]
     pub fn with_llm_info(mut self, llm_info: Arc<dyn npc_mind::ports::LlmInfoProvider>) -> Self {
         self.llm_info = Some(llm_info);
+        self
+    }
+
+    /// LLM 모델 런타임 재감지기를 설정한다.
+    #[cfg(feature = "chat")]
+    pub fn with_llm_detector(mut self, detector: Arc<dyn npc_mind::ports::LlmModelDetector>) -> Self {
+        self.llm_detector = Some(detector);
         self
     }
 }

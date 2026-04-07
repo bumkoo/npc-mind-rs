@@ -1,6 +1,6 @@
 use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
 use npc_mind::application::dto::*;
-use npc_mind::ports::{NpcWorld};
+
 #[cfg(feature = "chat")]
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
@@ -304,7 +304,19 @@ impl StudioService {
         let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
         let response = result.format(&*state.formatter);
         
-        let mut llm_model_info = state.llm_info.as_ref().map(|info| info.get_model_info()).unwrap_or_default();
+        // dialogue_start 시점에 LLM 서버에서 모델명을 재감지한다.
+        // 서버 기동 이후 모델이 교체된 경우에도 정확한 모델명을 반영한다.
+        let mut llm_model_info = if let Some(ref detector) = state.llm_detector {
+            match detector.refresh_model_info().await {
+                Ok(refreshed) => refreshed,
+                Err(e) => {
+                    tracing::warn!("LLM 모델 재감지 실패 ({}), 기존 정보 사용", e);
+                    state.llm_info.as_ref().map(|i| i.get_model_info()).unwrap_or_default()
+                }
+            }
+        } else {
+            state.llm_info.as_ref().map(|i| i.get_model_info()).unwrap_or_default()
+        };
         llm_model_info.temperature = Some(temp);
         llm_model_info.top_p = Some(top_p);
         
