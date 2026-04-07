@@ -60,7 +60,12 @@ pub async fn get_scene_info(State(state): State<AppState>) -> Json<SceneInfoResu
     let inner = state.inner.read().await;
     let repo = ReadOnlyAppStateRepo { inner: &*inner };
     let service = npc_mind::application::mind_service::MindService::new(repo);
-    Json(service.scene_info())
+    let mut info = service.scene_info();
+    // 스크립트 커서 주입 (도메인 서비스는 커서를 모르므로 여기서 주입)
+    if info.has_scene {
+        info.script_cursor = Some(inner.script_cursor);
+    }
+    Json(info)
 }
 
 /// POST /api/scene — Scene 시작

@@ -687,14 +687,20 @@
             }
             .chat-input-area {
                 display: flex;
+                flex-direction: column;
                 gap: 6px;
                 padding-top: 8px;
                 border-top: 1px solid var(--border);
                 flex-shrink: 0;
             }
-            .chat-input-area textarea {
+            .chat-input-row {
+                display: flex;
+                gap: 6px;
+            }
+            .chat-input-area textarea,
+            .chat-input-row textarea {
                 flex: 1;
-                min-height: 36px;
+                min-height: 52px;
                 max-height: 80px;
                 resize: none;
             }
@@ -2209,7 +2215,7 @@
                                 {nextScriptLine && (
                                     <div style={{
                                         display: "flex", alignItems: "center", gap: 6,
-                                        padding: "4px 8px", marginBottom: 4,
+                                        padding: "4px 8px",
                                         background: "var(--bg2)", borderRadius: "var(--radius)",
                                         border: "1px solid var(--accent2)",
                                         fontSize: 11,
@@ -2230,23 +2236,26 @@
                                         </button>
                                     </div>
                                 )}
-                                <textarea
-                                    value={input}
-                                    onChange={(e) =>
-                                        setInput(e.target.value)
-                                    }
-                                    onKeyDown={handleKeyDown}
-                                    placeholder={nextScriptLine ? "즉흥 대사 입력 또는 위 스크립트 전송..." : "대사를 입력하세요... (Enter로 전송)"}
-                                    disabled={chatLoading}
-                                />
-                                <button
-                                    className="btn primary"
-                                    onClick={handleSend}
-                                    disabled={chatLoading || !input.trim()}
-                                    style={{ alignSelf: "flex-end" }}
-                                >
-                                    전송
-                                </button>
+                                <div className="chat-input-row">
+                                    <textarea
+                                        rows={2}
+                                        value={input}
+                                        onChange={(e) =>
+                                            setInput(e.target.value)
+                                        }
+                                        onKeyDown={handleKeyDown}
+                                        placeholder={nextScriptLine ? "즉흥 대사 입력 또는 위 스크립트 전송..." : "대사를 입력하세요... (Enter로 전송)"}
+                                        disabled={chatLoading}
+                                    />
+                                    <button
+                                        className="btn primary"
+                                        onClick={handleSend}
+                                        disabled={chatLoading || !input.trim()}
+                                        style={{ alignSelf: "flex-end" }}
+                                    >
+                                        전송
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
@@ -2374,78 +2383,87 @@
                             className="section-body"
                             style={{ padding: "6px 10px" }}
                         >
-                            {sceneInfo.focuses.map((f, i) => (
-                                <div
-                                    key={i}
-                                    style={{
-                                        display: "flex",
-                                        alignItems: "center",
-                                        gap: 6,
-                                        marginBottom: 4,
-                                        fontSize: 11,
-                                    }}
-                                >
-                                    <span
-                                        style={{
-                                            color: f.is_active
-                                                ? "var(--green)"
-                                                : "var(--fg3)",
-                                            fontWeight: f.is_active ? 700 : 400,
-                                        }}
-                                    >
-                                        {f.is_active ? "●" : "○"}
-                                    </span>
-                                    <span
-                                        style={{
-                                            color: f.is_active
-                                                ? "var(--fg)"
-                                                : "var(--fg3)",
-                                            fontWeight: f.is_active ? 600 : 400,
-                                        }}
-                                    >
-                                        {f.id}
-                                    </span>
-                                    <span
-                                        style={{ color: "var(--fg3)", flex: 1 }}
-                                    >
-                                        — {f.description}
-                                    </span>
-                                    <span
-                                        style={{
-                                            color: "var(--fg3)",
-                                            fontSize: 10,
-                                            fontFamily: "monospace",
-                                        }}
-                                    >
-                                        {f.trigger_display}
-                                    </span>
-                                </div>
-                            ))}
-                            {/* 활성 Beat의 test_script 표시 */}
-                            {(() => {
-                                const activeFocus = sceneInfo.focuses.find(f => f.is_active);
-                                if (!activeFocus || !activeFocus.test_script || activeFocus.test_script.length === 0) return null;
-                                const cursor = sceneInfo.script_cursor || 0;
+                            {sceneInfo.focuses.map((f, i) => {
+                                const isActive = f.is_active;
+                                const hasScript = f.test_script && f.test_script.length > 0;
+                                const cursor = isActive ? (sceneInfo.script_cursor || 0) : 0;
                                 return (
-                                    <div style={{ marginTop: 8, padding: "6px 8px", background: "var(--bg2)", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-                                        <div style={{ fontSize: 10, color: "var(--accent2)", fontWeight: 600, marginBottom: 4 }}>
-                                            📋 테스트 스크립트 ({activeFocus.id}) — {cursor}/{activeFocus.test_script.length}
-                                        </div>
-                                        {activeFocus.test_script.map((line, idx) => (
-                                            <div key={idx} style={{
+                                <div key={i} style={{ marginBottom: 8 }}>
+                                    <div
+                                        style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            fontSize: 11,
+                                        }}
+                                    >
+                                        <span
+                                            style={{
+                                                color: isActive
+                                                    ? "var(--green)"
+                                                    : "var(--fg3)",
+                                                fontWeight: isActive ? 700 : 400,
+                                            }}
+                                        >
+                                            {isActive ? "●" : "○"}
+                                        </span>
+                                        <span
+                                            style={{
+                                                color: isActive
+                                                    ? "var(--fg)"
+                                                    : "var(--fg3)",
+                                                fontWeight: isActive ? 600 : 400,
+                                            }}
+                                        >
+                                            {f.id}
+                                        </span>
+                                        <span
+                                            style={{ color: "var(--fg3)", flex: 1 }}
+                                        >
+                                            — {f.description}
+                                        </span>
+                                        <span
+                                            style={{
+                                                color: "var(--fg3)",
                                                 fontSize: 10,
-                                                padding: "2px 4px",
-                                                color: idx < cursor ? "var(--fg3)" : idx === cursor ? "var(--fg)" : "var(--fg2)",
-                                                fontWeight: idx === cursor ? 600 : 400,
-                                                textDecoration: idx < cursor ? "line-through" : "none",
-                                                opacity: idx < cursor ? 0.5 : 1,
-                                            }}>
-                                                {idx + 1}. {line}
-                                            </div>
-                                        ))}
+                                                fontFamily: "monospace",
+                                            }}
+                                        >
+                                            {f.trigger_display}
+                                        </span>
                                     </div>
+                                    {hasScript && (
+                                        <div style={{
+                                            marginTop: 4,
+                                            marginLeft: 18,
+                                            padding: "4px 8px",
+                                            background: isActive ? "var(--bg2)" : "transparent",
+                                            borderRadius: "var(--radius)",
+                                            border: isActive ? "1px solid var(--border)" : "1px solid transparent",
+                                            opacity: isActive ? 1 : 0.6,
+                                        }}>
+                                            <div style={{ fontSize: 10, color: isActive ? "var(--accent2)" : "var(--fg3)", fontWeight: 600, marginBottom: 2 }}>
+                                                {isActive ? "📋" : "📝"} 테스트 스크립트 ({f.id}) — {isActive ? `${cursor}/${f.test_script.length}` : `${f.test_script.length}턴`}
+                                            </div>
+                                            {f.test_script.map((line, idx) => (
+                                                <div key={idx} style={{
+                                                    fontSize: 10,
+                                                    padding: "2px 4px",
+                                                    color: isActive
+                                                        ? (idx < cursor ? "var(--fg3)" : idx === cursor ? "var(--fg)" : "var(--fg2)")
+                                                        : "var(--fg3)",
+                                                    fontWeight: isActive && idx === cursor ? 600 : 400,
+                                                    textDecoration: isActive && idx < cursor ? "line-through" : "none",
+                                                    opacity: isActive && idx < cursor ? 0.5 : 1,
+                                                }}>
+                                                    {idx + 1}. {line}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                                 );
-                            })()}
+                            })}
                         </div>
                     </div>
                 );
@@ -3074,7 +3092,17 @@
                         setScenarios(s);
                         setHistory(h);
                         setScenarioMeta(sm && sm.name ? sm : null);
-                        setSceneInfo(si && si.has_scene ? si : null);
+                        setSceneInfo(prev => {
+                            const next = si && si.has_scene ? si : null;
+                            // Beat 전환(active focus 변경) 시에는 서버 값을 그대로 사용
+                            if (!prev || !next) return next;
+                            if (prev.active_focus_id !== next.active_focus_id) return next;
+                            // 서버 커서가 현재보다 작으면 (아직 반영 전) optimistic 값 유지
+                            if ((prev.script_cursor || 0) > (next.script_cursor || 0)) {
+                                return { ...next, script_cursor: prev.script_cursor };
+                            }
+                            return next;
+                        });
                         setTestReport(tr?.content || "");
                         setConnected(true);
                     } catch (e) {
@@ -3342,6 +3370,15 @@
                 const handleChatSend = async (utterance, pad) => {
                     if (!chatSessionId) return;
                     setChatLoading(true);
+
+                    // 스크립트 커서 즉시 전진 (서버 refresh 전에 UI 업데이트)
+                    if (sceneInfo) {
+                        const af = sceneInfo.focuses?.find(f => f.is_active);
+                        const cur = sceneInfo.script_cursor || 0;
+                        if (af?.test_script && cur < af.test_script.length && utterance === af.test_script[cur]) {
+                            setSceneInfo(prev => prev ? { ...prev, script_cursor: cur + 1 } : prev);
+                        }
+                    }
 
                     // 현재 시점의 프롬프트 캡처 (이 응답 생성에 사용된 컨텍스트)
                     const currentPrompt = result?.prompt || "";

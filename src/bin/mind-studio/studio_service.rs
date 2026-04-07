@@ -427,12 +427,25 @@ impl StudioService {
         {
             let cursor = inner.script_cursor;
             let active_id = inner.active_focus_id.clone();
+            tracing::debug!(
+                "script_cursor check: cursor={}, active_focus_id={:?}, scene_focuses_len={}",
+                cursor, active_id, inner.scene_focuses.len()
+            );
             if let Some(focus) = active_id.as_deref().and_then(|id| inner.scene_focuses.iter().find(|f| f.id == id)) {
                 if !focus.test_script.is_empty() && cursor < focus.test_script.len() {
                     if req.utterance == focus.test_script[cursor] {
                         inner.script_cursor = cursor + 1;
+                        tracing::debug!("script_cursor advanced: {} → {}", cursor, cursor + 1);
+                    } else {
+                        tracing::debug!(
+                            "script_cursor NOT advanced: utterance mismatch. expected={:?}, got={:?}",
+                            &focus.test_script[cursor][..focus.test_script[cursor].len().min(30)],
+                            &req.utterance[..req.utterance.len().min(30)]
+                        );
                     }
                 }
+            } else {
+                tracing::warn!("script_cursor: active focus not found in scene_focuses");
             }
         }
 
