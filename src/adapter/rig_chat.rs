@@ -30,6 +30,8 @@ use tokio::sync::RwLock;
 /// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
 pub struct RigChatAdapter {
     client: openai::CompletionsClient,
+    #[allow(dead_code)]
+    http_client: reqwest::Client,
     model_name: String,
     base_url: String,
     sessions: RwLock<HashMap<String, ChatSession>>,
@@ -52,18 +54,54 @@ impl RigChatAdapter {
     /// - `base_url`: OpenAI-compatible API URL (예: `"http://127.0.0.1:8081/v1"`)
     /// - `model_name`: 추론 서버의 모델 이름 (예: `"local-model"`, `"qwen2.5"`)
     pub fn new(base_url: &str, model_name: &str) -> Self {
+        let http_client = reqwest::Client::new();
+        Self::build_with(http_client, base_url, model_name)
+    }
+
+    /// LLM 서버에 연결하고 `/models` 엔드포인트에서 모델명을 자동 감지하여 어댑터를 생성한다.
+    ///
+    /// 서버가 응답하지 않거나 모델 목록이 비어 있으면 `ConversationError::ConnectionError`를 반환한다.
+    /// 호출부에서 `new()`로 폴백할 수 있다.
+    pub async fn connect(base_url: &str) -> Result<Self, ConversationError> {
+        let http_client = reqwest::Client::new();
+        let url = format!("{}/models", base_url.trim_end_matches('/'));
+
+        let model_list: rig::model::ModelList = http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| ConversationError::ConnectionError(e.to_string()))?
+            .json()
+            .await
+            .map_err(|e| ConversationError::ConnectionError(e.to_string()))?;
+
+        let model_name = model_list
+            .data
+            .first()
+            .map(|m| m.id.clone())
+            .ok_or_else(|| {
+                ConversationError::ConnectionError("모델 목록이 비어 있습니다".into())
+            })?;
+
+        Ok(Self::build_with(http_client, base_url, &model_name))
+    }
+
+    /// 공유 HTTP 클라이언트로 내부 상태를 구성하는 헬퍼
+    fn build_with(http_client: reqwest::Client, base_url: &str, model_name: &str) -> Self {
         // rig 0.33부터 OpenAI provider의 기본 API가 Responses API로 변경됨.
         // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
         // completions_api()로 명시적 전환이 필요함.
         let client = openai::Client::builder()
             .api_key("no-key-needed")
             .base_url(base_url)
+            .http_client(http_client.clone())
             .build()
             .expect("OpenAI 호환 클라이언트 생성 실패")
             .completions_api();
 
         Self {
             client,
+            http_client,
             model_name: model_name.to_string(),
             base_url: base_url.to_string(),
             sessions: RwLock::new(HashMap::new()),
