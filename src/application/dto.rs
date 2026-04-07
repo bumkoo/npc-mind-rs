@@ -463,6 +463,9 @@ pub struct SceneFocusInput {
     pub action: Option<ActionInput>,
     /// 이 Focus 진입 시 발생할 대상 설정
     pub object: Option<ObjectInput>,
+    /// 테스트 스크립트 — Beat별 사전 정의 대사 목록
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub test_script: Vec<String>,
 }
 
 impl SceneFocusInput {
@@ -484,6 +487,7 @@ impl SceneFocusInput {
             event,
             action,
             object,
+            test_script: self.test_script.clone(),
         })
     }
 }

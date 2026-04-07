@@ -292,6 +292,7 @@ fn test_scene_persistence_and_clear() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     }];
 
     let req = SceneRequest {
@@ -354,6 +355,7 @@ fn test_beat_transition_and_emotion_merging() {
             }),
             action: None,
             object: None,
+            test_script: vec![],
         },
         SceneFocusInput {
             id: "angry".into(),
@@ -372,6 +374,7 @@ fn test_beat_transition_and_emotion_merging() {
             }),
             action: None,
             object: None,
+            test_script: vec![],
         },
     ];
 
@@ -439,6 +442,7 @@ fn test_scene_focus_input_trigger_none은_initial() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     };
 
     let focus = input.to_domain(None, None, None, "npc").unwrap();
@@ -470,6 +474,7 @@ fn test_scene_focus_input_trigger_conditions_변환() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
 
     let focus = input.to_domain(None, None, None, "npc").unwrap();
@@ -494,6 +499,7 @@ fn test_condition_input_잘못된_감정_문자열() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
 
     let result = input.to_domain(None, None, None, "npc");
@@ -511,6 +517,7 @@ fn test_condition_input_조건_누락() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
 
     let result = input.to_domain(None, None, None, "npc");
@@ -547,6 +554,7 @@ fn test_scene_focus_input_3축_동시_변환() {
             target_id: "sword".into(),
             appealingness: 0.8,
         }),
+        test_script: vec![],
     };
 
     let rel = repo.get_relationship("mu_baek", "gyo_ryong");

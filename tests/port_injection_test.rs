@@ -200,6 +200,7 @@ fn scene_req_with_initial() -> SceneRequest {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
             SceneFocusInput {
                 id: "anger_focus".to_string(),
@@ -218,6 +219,7 @@ fn scene_req_with_initial() -> SceneRequest {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
         ],
     }
@@ -277,6 +279,7 @@ fn start_scene_focus가_없으면_appraise_없음() {
             }),
             action: None,
             object: None,
+            test_script: vec![],
         }],
     };
 
@@ -407,6 +410,7 @@ fn stimulus_beat_전환_trigger_충족() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
             SceneFocusInput {
                 id: "distress_focus".to_string(),
@@ -425,6 +429,7 @@ fn stimulus_beat_전환_trigger_충족() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
         ],
     };
@@ -487,6 +492,7 @@ fn stimulus_beat_전환_후_active_focus_변경() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
             SceneFocusInput {
                 id: "joy_gone".to_string(),
@@ -505,6 +511,7 @@ fn stimulus_beat_전환_후_active_focus_변경() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
         ],
     };
@@ -568,6 +575,7 @@ fn load_scene_focuses_초기_appraise() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     }];
 
     let result = service
@@ -608,6 +616,7 @@ fn load_scene_focuses_initial_없으면_appraise_없음() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     }];
 
     let result = service
@@ -676,6 +685,7 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
             SceneFocusInput {
                 id: "fear_focus".to_string(),
@@ -694,6 +704,7 @@ fn formatted_service_stimulus_beat_전환_포맷팅() {
                 }),
                 action: None,
                 object: None,
+                test_script: vec![],
             },
         ],
     };
@@ -740,6 +751,7 @@ fn test_focus_info_item_formatting() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
     let info1 = FocusInfoItem::from_domain(&f1, true);
     assert_eq!(info1.trigger_display, "초기 활성 (Initial)");
@@ -768,6 +780,7 @@ fn test_focus_info_item_formatting() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
     let info2 = FocusInfoItem::from_domain(&f2, false);
     // "Joy > 0.5 AND Anger absent OR Distress < 0.2"
@@ -836,6 +849,7 @@ fn test_focus_event_info_desirability_for_self() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     };
     let info = FocusInfoItem::from_domain(&focus, true);
     let ev = info.event.expect("event가 있어야 함");
@@ -871,6 +885,7 @@ fn test_focus_event_info_with_other() {
         }),
         action: None,
         object: None,
+        test_script: vec![],
     };
     let info = FocusInfoItem::from_domain(&focus, false);
     let ev = info.event.expect("event가 있어야 함");
@@ -895,6 +910,7 @@ fn test_focus_event_info_prospect_variants() {
             }),
             action: None,
             object: None,
+            test_script: vec![],
         }
     };
 
@@ -938,6 +954,7 @@ fn test_focus_action_info_agent_id() {
             modifiers: None,
         }),
         object: None,
+        test_script: vec![],
     };
     let info = FocusInfoItem::from_domain(&focus_other, false);
     let ac = info.action.expect("action이 있어야 함");
@@ -957,6 +974,7 @@ fn test_focus_action_info_agent_id() {
             modifiers: None,
         }),
         object: None,
+        test_script: vec![],
     };
     let info = FocusInfoItem::from_domain(&focus_self, false);
     let ac = info.action.expect("action이 있어야 함");
@@ -988,6 +1006,7 @@ fn test_focus_event_info_negative_desirability() {
             modifiers: None,
         }),
         object: None,
+        test_script: vec![],
     };
     let info = FocusInfoItem::from_domain(&focus, false);
 

@@ -10,6 +10,7 @@ fn test_scene_initial_focus() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
         SceneFocus {
             id: "next".into(),
@@ -18,6 +19,7 @@ fn test_scene_initial_focus() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
     ];
 
@@ -41,6 +43,7 @@ fn test_scene_check_trigger() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     }];
 
     let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
@@ -86,6 +89,7 @@ fn test_scene_trigger_complex_conditions() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     };
 
     let scene = Scene::new("npc".into(), "partner".into(), vec![focus]);
@@ -124,6 +128,7 @@ fn test_scene_check_trigger_excludes_active_focus() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
         SceneFocus {
             id: "calm".into(),
@@ -135,6 +140,7 @@ fn test_scene_check_trigger_excludes_active_focus() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
     ];
 
@@ -180,6 +186,7 @@ fn test_reset_to_initial_focus_clears_stale_state() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
         SceneFocus {
             id: "escalated".into(),
@@ -191,6 +198,7 @@ fn test_reset_to_initial_focus_clears_stale_state() {
             event: None,
             action: None,
             object: None,
+            test_script: vec![],
         },
     ];
 
@@ -227,6 +235,7 @@ fn test_reset_to_initial_focus_no_initial() {
         event: None,
         action: None,
         object: None,
+        test_script: vec![],
     }];
 
     let mut scene = Scene::new("npc".into(), "partner".into(), focuses);
