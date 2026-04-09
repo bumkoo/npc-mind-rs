@@ -45,6 +45,20 @@ impl TimingsCapturingClient {
             last_timings: timings_store,
         }
     }
+
+    /// 외부에서 주입한 `reqwest::Client`를 사용하는 캡처 클라이언트를 생성한다.
+    ///
+    /// `RigChatAdapter`가 생성한 단일 클라이언트를 공유하여
+    /// rig 통신과 직접 API 호출(`/models`, `/slots` 등)이 같은 커넥션 풀을 사용하도록 한다.
+    pub fn with_client(
+        client: reqwest::Client,
+        timings_store: Arc<RwLock<Option<LlamaTimings>>>,
+    ) -> Self {
+        Self {
+            inner: client,
+            last_timings: timings_store,
+        }
+    }
 }
 
 impl Default for TimingsCapturingClient {

@@ -602,3 +602,7 @@ pub enum MindServiceError {
 | `PadAnchorSource` | PAD 앵커 텍스트 로드 | `FileAnchorSource` (JSON/TOML 통합) |
 | `TextEmbedder` | 텍스트 임베딩 | `OrtEmbedder` (embed feature) |
 | `UtteranceAnalyzer` | 대사 → PAD 변환 | `PadAnalyzer` |
+| `ConversationPort` | LLM 다턴 대화 세션 (chat feature) | `RigChatAdapter` |
+| `LlmInfoProvider` | LLM 모델 메타데이터 (chat feature) | `RigChatAdapter` |
+| `LlmModelDetector` | 모델 런타임 재감지 (chat feature) | `RigChatAdapter` |
+| `LlamaServerMonitor` | llama-server health/slots/metrics (chat feature) | `RigChatAdapter` |

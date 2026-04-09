@@ -16,8 +16,8 @@
 
 use crate::adapter::llama_timings::TimingsCapturingClient;
 use crate::ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
-    LlmInfoProvider, LlmModelInfo,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaHealth,
+    LlamaMetrics, LlamaServerMonitor, LlamaSlotInfo, LlamaTimings, LlmInfoProvider, LlmModelInfo,
 };
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
@@ -36,7 +36,12 @@ use tokio::sync::RwLock;
 pub struct RigChatAdapter {
     client: openai::CompletionsClient<TimingsCapturingClient>,
     model_name: RwLock<String>,
+    /// OpenAI 호환 API URL (예: `http://127.0.0.1:8081/v1`)
     base_url: String,
+    /// llama-server root URL (예: `http://127.0.0.1:8081`) — `/v1` 제거
+    server_url: String,
+    /// 공유 HTTP 클라이언트 — rig 통신, 모델 감지, 서버 모니터링이 같은 커넥션 풀 사용
+    http_client: reqwest::Client,
     sessions: RwLock<HashMap<String, ChatSession>>,
     /// TimingsCapturingClient와 공유하는 timings 저장소
     last_timings: Arc<RwLock<Option<LlamaTimings>>>,
@@ -62,8 +67,10 @@ impl RigChatAdapter {
         // rig 0.33부터 OpenAI provider의 기본 API가 Responses API로 변경됨.
         // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
         // completions_api()로 명시적 전환이 필요함.
+        let http_client = reqwest::Client::new();
         let timings_store = Arc::new(RwLock::new(None));
-        let capturing_client = TimingsCapturingClient::new(timings_store.clone());
+        let capturing_client =
+            TimingsCapturingClient::with_client(http_client.clone(), timings_store.clone());
 
         let client = openai::Client::builder()
             .api_key("no-key-needed")
@@ -77,6 +84,8 @@ impl RigChatAdapter {
             client,
             model_name: RwLock::new(model_name.to_string()),
             base_url: base_url.to_string(),
+            server_url: derive_server_url(base_url),
+            http_client,
             sessions: RwLock::new(HashMap::new()),
             last_timings: timings_store,
         }
@@ -89,6 +98,7 @@ impl RigChatAdapter {
     pub async fn connect(base_url: &str) -> Result<Self, ConversationError> {
         let url = format!("{}/models", base_url.trim_end_matches('/'));
 
+        // 임시 클라이언트로 모델 감지 (new()에서 공유 클라이언트가 생성됨)
         let model_list: rig::model::ModelList = reqwest::get(&url)
             .await
             .map_err(|e| ConversationError::ConnectionError(e.to_string()))?
@@ -104,7 +114,6 @@ impl RigChatAdapter {
                 ConversationError::ConnectionError("모델 목록이 비어 있습니다".into())
             })?;
 
-        // new()가 TimingsCapturingClient를 내부적으로 생성
         Ok(Self::new(base_url, &model_name))
     }
 
@@ -396,7 +405,10 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
     async fn refresh_model_info(&self) -> Result<LlmModelInfo, String> {
         let url = format!("{}/models", self.base_url.trim_end_matches('/'));
 
-        let model_list: rig::model::ModelList = reqwest::get(&url)
+        let model_list: rig::model::ModelList = self
+            .http_client
+            .get(&url)
+            .send()
             .await
             .map_err(|e| format!("LLM 서버 연결 실패: {}", e))?
             .json()
@@ -417,4 +429,62 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
         tracing::info!("LLM 모델 재감지 완료: {}", self.model_name.read().await);
         Ok(self.get_model_info())
     }
+}
+
+#[async_trait::async_trait]
+impl LlamaServerMonitor for RigChatAdapter {
+    async fn health(&self) -> Result<LlamaHealth, String> {
+        let url = format!("{}/health", self.server_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("헬스 체크 실패: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("헬스 체크 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        resp.json()
+            .await
+            .map_err(|e| format!("헬스 응답 파싱 실패: {e}"))
+    }
+
+    async fn slots(&self) -> Result<Vec<LlamaSlotInfo>, String> {
+        let url = format!("{}/slots", self.server_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("슬롯 조회 실패: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("슬롯 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        resp.json()
+            .await
+            .map_err(|e| format!("슬롯 응답 파싱 실패: {e}"))
+    }
+
+    async fn metrics(&self) -> Result<LlamaMetrics, String> {
+        let url = format!("{}/metrics", self.server_url);
+        let resp = self
+            .http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| format!("메트릭 조회 실패: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("메트릭 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        let raw = resp
+            .text()
+            .await
+            .map_err(|e| format!("메트릭 응답 읽기 실패: {e}"))?;
+        Ok(LlamaMetrics::parse(&raw))
+    }
+}
+
+/// `base_url` (예: `http://host:port/v1`)에서 `/v1`을 제거하여 서버 root URL을 도출한다.
+fn derive_server_url(base_url: &str) -> String {
+    base_url
+        .trim_end_matches('/')
+        .trim_end_matches("/v1")
+        .to_string()
 }

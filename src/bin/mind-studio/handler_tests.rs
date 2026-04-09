@@ -1424,3 +1424,120 @@ async fn test_report_persistence_across_save_load() {
 
     cleanup_test_path(&path);
 }
+
+// =========================================================================
+// LLM 모니터링 엔드포인트 테스트
+// =========================================================================
+
+/// chat feature 활성이지만 llm_monitor가 None일 때 501 반환
+#[cfg(feature = "chat")]
+#[tokio::test]
+async fn llm_status_모니터_없으면_501() {
+    let app = test_app();
+
+    let resp = app.oneshot(get("/api/llm/status")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+}
+
+#[cfg(feature = "chat")]
+#[tokio::test]
+async fn llm_health_모니터_없으면_501() {
+    let app = test_app();
+
+    let resp = app.oneshot(get("/api/llm/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+}
+
+#[cfg(feature = "chat")]
+#[tokio::test]
+async fn llm_slots_모니터_없으면_501() {
+    let app = test_app();
+
+    let resp = app.oneshot(get("/api/llm/slots")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+}
+
+#[cfg(feature = "chat")]
+#[tokio::test]
+async fn llm_metrics_모니터_없으면_501() {
+    let app = test_app();
+
+    let resp = app.oneshot(get("/api/llm/metrics")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+}
+
+/// mock llama-server를 통한 통합 엔드포인트 테스트
+#[cfg(feature = "chat")]
+#[tokio::test]
+async fn llm_status_mock_서버_통합() {
+    use std::sync::Arc;
+
+    // mock llama-server 기동
+    let app_router = {
+        use axum::{Router, routing::get as axum_get, Json};
+
+        Router::new()
+            .route("/health", axum_get(|| async {
+                Json(serde_json::json!({ "status": "ok" }))
+            }))
+            .route("/slots", axum_get(|| async {
+                Json(serde_json::json!([
+                    { "id": 0, "state": 0, "n_past": 0, "n_predicted": 0, "is_processing": false }
+                ]))
+            }))
+            .route("/metrics", axum_get(|| async {
+                "llamacpp:kv_cache_usage_ratio 0.33\nllamacpp:prompt_tokens_total 100\n"
+            }))
+            .route("/v1/models", axum_get(|| async {
+                Json(serde_json::json!({
+                    "object": "list",
+                    "data": [{ "id": "mock-model", "object": "model" }]
+                }))
+            }))
+    };
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app_router).await.unwrap() });
+
+    // RigChatAdapter를 mock 서버에 연결
+    let adapter = npc_mind::adapter::rig_chat::RigChatAdapter::new(
+        &format!("http://{addr}/v1"),
+        "mock-model",
+    );
+    let arc_adapter = Arc::new(adapter);
+
+    // AppState에 모니터 설정
+    let state = AppState::new(AppraisalCollector::new(), None::<SpyAnalyzer>)
+        .with_llm_info(arc_adapter.clone())
+        .with_llm_monitor(arc_adapter);
+    let mcp = crate::mcp_server::create_mcp_server(state.clone());
+    let app = crate::build_api_router(state.with_mcp(mcp));
+
+    // GET /api/llm/status
+    let resp = app.clone().oneshot(get("/api/llm/status")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+
+    assert_eq!(json["health"]["status"], "ok");
+    assert_eq!(json["model"]["model_name"], "mock-model");
+    assert_eq!(json["slots"][0]["id"], 0);
+    assert_eq!(json["metrics"]["kv_cache_usage_ratio"], 0.33);
+    assert_eq!(json["metrics"]["prompt_tokens_total"], 100.0);
+
+    // 개별 엔드포인트도 동작
+    let resp = app.clone().oneshot(get("/api/llm/health")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["status"], "ok");
+
+    let resp = app.clone().oneshot(get("/api/llm/slots")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert!(json.as_array().unwrap().len() == 1);
+
+    let resp = app.clone().oneshot(get("/api/llm/metrics")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let json = body_json(resp).await;
+    assert_eq!(json["kv_cache_usage_ratio"], 0.33);
+}
