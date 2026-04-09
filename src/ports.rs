@@ -371,6 +371,135 @@ pub trait LlmModelDetector: Send + Sync {
     async fn refresh_model_info(&self) -> Result<LlmModelInfo, String>;
 }
 
+// ---------------------------------------------------------------------------
+// llama-server 모니터링 포트
+// ---------------------------------------------------------------------------
+
+/// llama-server 헬스 상태
+///
+/// `/health` 응답. `status`는 `"ok"`, `"no slot available"`, `"loading model"` 등.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LlamaHealth {
+    pub status: String,
+}
+
+/// llama-server 슬롯 정보
+///
+/// `/slots` 응답의 개별 슬롯. llama-server는 동시 요청 처리를 위해
+/// 여러 슬롯을 사용하며, 각 슬롯의 상태(idle/processing)를 보고한다.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LlamaSlotInfo {
+    pub id: u32,
+    /// 0=idle, 1=processing
+    #[serde(default)]
+    pub state: u32,
+    /// 현재 슬롯의 프롬프트 토큰 수
+    #[serde(default)]
+    pub n_past: u32,
+    /// 생성된 토큰 수
+    #[serde(default)]
+    pub n_predicted: u32,
+    /// 처리 중 여부
+    #[serde(default)]
+    pub is_processing: bool,
+    /// 파싱되지 않은 추가 필드 보존
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+/// llama-server Prometheus 메트릭 (파싱 결과)
+///
+/// `/metrics` 응답(Prometheus 텍스트)에서 주요 메트릭을 추출한다.
+/// `raw` 필드에 원본 텍스트를 보존하여 UI에서 전체 메트릭을 표시할 수 있다.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LlamaMetrics {
+    /// 원본 Prometheus 텍스트
+    pub raw: String,
+    /// 프롬프트 토큰 총 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_total: Option<f64>,
+    /// 생성 토큰 총 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_predicted_total: Option<f64>,
+    /// 프롬프트 처리 총 시간 (초)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_seconds_total: Option<f64>,
+    /// 토큰 생성 총 시간 (초)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokens_predicted_seconds_total: Option<f64>,
+    /// 디코드 총 횟수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_decode_total: Option<f64>,
+    /// 디코드당 사용 중인 슬롯 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub n_busy_slots_per_decode: Option<f64>,
+    /// 프롬프트 처리 속도 (tokens/sec)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_seconds: Option<f64>,
+    /// 토큰 생성 속도 (tokens/sec)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub predicted_tokens_seconds: Option<f64>,
+    /// KV 캐시 사용률 (0.0~1.0)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache_usage_ratio: Option<f64>,
+    /// KV 캐시 토큰 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache_tokens: Option<f64>,
+    /// 처리 중인 요청 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requests_processing: Option<f64>,
+    /// 대기 중인 요청 수
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requests_deferred: Option<f64>,
+}
+
+#[cfg(feature = "chat")]
+impl LlamaMetrics {
+    /// Prometheus 텍스트에서 주요 메트릭을 파싱한다.
+    pub fn parse(raw: &str) -> Self {
+        fn extract(text: &str, key: &str) -> Option<f64> {
+            text.lines()
+                .find(|l| l.starts_with(key) && !l.starts_with('#'))
+                .and_then(|l| l.split_whitespace().last()?.parse().ok())
+        }
+        Self {
+            prompt_tokens_total: extract(raw, "llamacpp:prompt_tokens_total"),
+            tokens_predicted_total: extract(raw, "llamacpp:tokens_predicted_total"),
+            prompt_seconds_total: extract(raw, "llamacpp:prompt_seconds_total"),
+            tokens_predicted_seconds_total: extract(raw, "llamacpp:tokens_predicted_seconds_total"),
+            n_decode_total: extract(raw, "llamacpp:n_decode_total"),
+            n_busy_slots_per_decode: extract(raw, "llamacpp:n_busy_slots_per_decode"),
+            prompt_tokens_seconds: extract(raw, "llamacpp:prompt_tokens_seconds"),
+            predicted_tokens_seconds: extract(raw, "llamacpp:predicted_tokens_seconds"),
+            kv_cache_usage_ratio: extract(raw, "llamacpp:kv_cache_usage_ratio"),
+            kv_cache_tokens: extract(raw, "llamacpp:kv_cache_tokens"),
+            requests_processing: extract(raw, "llamacpp:requests_processing"),
+            requests_deferred: extract(raw, "llamacpp:requests_deferred"),
+            raw: raw.to_string(),
+        }
+    }
+}
+
+/// llama-server 고유 모니터링 API 포트
+///
+/// `/slots`, `/metrics`, `/health` 등 llama.cpp 서버 전용 엔드포인트를 추상화한다.
+/// llama-server 이외의 OpenAI 호환 서버에서는 구현하지 않아도 된다.
+#[cfg(feature = "chat")]
+#[async_trait::async_trait]
+pub trait LlamaServerMonitor: Send + Sync {
+    /// 서버 헬스 체크 (`GET /health`)
+    async fn health(&self) -> Result<LlamaHealth, String>;
+
+    /// 슬롯 상태 조회 (`GET /slots`)
+    async fn slots(&self) -> Result<Vec<LlamaSlotInfo>, String>;
+
+    /// Prometheus 메트릭 조회 (`GET /metrics`)
+    async fn metrics(&self) -> Result<LlamaMetrics, String>;
+}
+
 #[cfg(feature = "chat")]
 #[async_trait::async_trait]
 pub trait ConversationPort: Send + Sync {

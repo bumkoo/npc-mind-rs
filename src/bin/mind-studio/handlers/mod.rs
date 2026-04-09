@@ -81,6 +81,8 @@ pub mod object;
 pub mod scenario;
 #[cfg(feature = "chat")]
 pub mod chat;
+#[cfg(feature = "chat")]
+pub mod llm;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

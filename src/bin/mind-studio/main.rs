@@ -55,7 +55,8 @@ async fn main() {
         let arc_adapter = Arc::new(adapter);
         state = state.with_chat(arc_adapter.clone());
         state = state.with_llm_info(arc_adapter.clone());
-        state = state.with_llm_detector(arc_adapter);
+        state = state.with_llm_detector(arc_adapter.clone());
+        state = state.with_llm_monitor(arc_adapter);
     }
 
     // MCP 서버 초기화 (chat이 설정된 state를 clone)
@@ -122,13 +123,17 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/load", post(handlers::scenario::load_state))
         .route("/api/load-result", post(handlers::scenario::load_result));
 
-    // chat feature 활성 시 대화 테스트 엔드포인트 추가
+    // chat feature 활성 시 대화 테스트 + LLM 모니터링 엔드포인트 추가
     #[cfg(feature = "chat")]
     let router = router
         .route("/api/chat/start", post(handlers::chat::chat_start))
         .route("/api/chat/message", post(handlers::chat::chat_message))
         .route("/api/chat/message/stream", post(handlers::chat::chat_message_stream))
-        .route("/api/chat/end", post(handlers::chat::chat_end));
+        .route("/api/chat/end", post(handlers::chat::chat_end))
+        .route("/api/llm/status", get(handlers::llm::llm_status))
+        .route("/api/llm/health", get(handlers::llm::llm_health))
+        .route("/api/llm/slots", get(handlers::llm::llm_slots))
+        .route("/api/llm/metrics", get(handlers::llm::llm_metrics));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());
