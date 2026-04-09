@@ -88,6 +88,15 @@
 | *(없음)* | `get_next_utterance` | test_script 커서 조회/전진. MCP 전용 |
 | `POST /api/chat/end` | `dialogue_end` | |
 
+### LLM 서버 모니터링 (`chat` feature)
+
+| REST | MCP tool | 비고 |
+|---|---|---|
+| `GET /api/llm/status` | *(없음)* | 통합 상태 (health+model+slots+metrics). 부분 실패 허용 |
+| `GET /api/llm/health` | *(없음)* | llama-server 헬스 체크 |
+| `GET /api/llm/slots` | *(없음)* | llama-server 슬롯 상태 |
+| `GET /api/llm/metrics` | *(없음)* | Prometheus 메트릭 (파싱+원문) |
+
 ---
 
 ## MCP 전용 도구 (REST에 없음)
@@ -150,9 +159,9 @@ REST는 HTTP 메서드(GET/POST/PUT/DELETE)로 동사를 표현하고 MCP는 이
 
 ## 기능 카운트 스냅샷 (2026-04)
 
-- REST endpoints: 27개 (base 23 + chat feature 4)
+- REST endpoints: 31개 (base 23 + chat feature 4 + llm monitor 4)
 - MCP tools: 35개
 - MCP-only: 5개 (`list_source_texts`, `read_source_text`, `create_full_scenario`, `get_npc_llm_config`, `get_next_utterance`)
-- REST-only: 1개 (`/api/chat/message/stream`)
+- REST-only: 5개 (`/api/chat/message/stream`, `/api/llm/status`, `/api/llm/health`, `/api/llm/slots`, `/api/llm/metrics`)
 
 **현재 MCP는 REST의 상위 집합이다.** (streaming 제외)
