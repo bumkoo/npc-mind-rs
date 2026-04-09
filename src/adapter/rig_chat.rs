@@ -14,7 +14,11 @@
 //! let reply = adapter.send_message("s1", "안녕하시오.").await?;
 //! ```
 
-use crate::ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlmInfoProvider, LlmModelInfo};
+use crate::adapter::llama_timings::TimingsCapturingClient;
+use crate::ports::{
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
+    LlmInfoProvider, LlmModelInfo,
+};
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
@@ -22,6 +26,7 @@ use rig::completion::{Chat, Message};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::RwLock;
 
 /// rig-core OpenAI provider를 사용하는 대화 어댑터
@@ -29,10 +34,12 @@ use tokio::sync::RwLock;
 /// 세션별로 system_prompt + 대화 이력을 관리하며,
 /// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
 pub struct RigChatAdapter {
-    client: openai::CompletionsClient,
+    client: openai::CompletionsClient<TimingsCapturingClient>,
     model_name: RwLock<String>,
     base_url: String,
     sessions: RwLock<HashMap<String, ChatSession>>,
+    /// TimingsCapturingClient와 공유하는 timings 저장소
+    last_timings: Arc<RwLock<Option<LlamaTimings>>>,
 }
 
 /// 개별 대화 세션 상태
@@ -55,9 +62,13 @@ impl RigChatAdapter {
         // rig 0.33부터 OpenAI provider의 기본 API가 Responses API로 변경됨.
         // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
         // completions_api()로 명시적 전환이 필요함.
+        let timings_store = Arc::new(RwLock::new(None));
+        let capturing_client = TimingsCapturingClient::new(timings_store.clone());
+
         let client = openai::Client::builder()
             .api_key("no-key-needed")
             .base_url(base_url)
+            .http_client(capturing_client)
             .build()
             .expect("OpenAI 호환 클라이언트 생성 실패")
             .completions_api();
@@ -67,6 +78,7 @@ impl RigChatAdapter {
             model_name: RwLock::new(model_name.to_string()),
             base_url: base_url.to_string(),
             sessions: RwLock::new(HashMap::new()),
+            last_timings: timings_store,
         }
     }
 
@@ -92,6 +104,7 @@ impl RigChatAdapter {
                 ConversationError::ConnectionError("모델 목록이 비어 있습니다".into())
             })?;
 
+        // new()가 TimingsCapturingClient를 내부적으로 생성
         Ok(Self::new(base_url, &model_name))
     }
 
@@ -102,7 +115,10 @@ impl RigChatAdapter {
         user_message: &str,
         history: Vec<Message>,
         config: &Option<LlmModelInfo>,
-    ) -> Result<String, ConversationError> {
+    ) -> Result<ChatResponse, ConversationError> {
+        // 이전 timings 초기화
+        *self.last_timings.write().await = None;
+
         let model_name = self.model_name.read().await;
         let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
 
@@ -121,18 +137,20 @@ impl RigChatAdapter {
 
         let agent = builder.build();
 
-        let response: String = Chat::chat(&agent, user_message, history)
+        let text: String = Chat::chat(&agent, user_message, history)
             .await
             .map_err(|e: rig::completion::PromptError| {
                 ConversationError::InferenceError(e.to_string())
             })?;
 
-        Ok(response)
+        let timings = self.last_timings.read().await.clone();
+
+        Ok(ChatResponse { text, timings })
     }
 
     /// rig Agent를 빌드하고 stream_chat()으로 토큰 스트리밍하는 내부 헬퍼
     ///
-    /// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답을 반환한다.
+    /// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답 + timings를 반환한다.
     async fn stream_chat_with_agent(
         &self,
         system_prompt: &str,
@@ -140,7 +158,10 @@ impl RigChatAdapter {
         history: Vec<Message>,
         token_tx: tokio::sync::mpsc::Sender<String>,
         config: &Option<LlmModelInfo>,
-    ) -> Result<String, ConversationError> {
+    ) -> Result<ChatResponse, ConversationError> {
+        // 이전 timings 초기화
+        *self.last_timings.write().await = None;
+
         let model_name = self.model_name.read().await;
         let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
 
@@ -183,7 +204,12 @@ impl RigChatAdapter {
             }
         }
 
-        Ok(full_response)
+        let timings = self.last_timings.read().await.clone();
+
+        Ok(ChatResponse {
+            text: full_response,
+            timings,
+        })
     }
 }
 
@@ -217,7 +243,7 @@ impl ConversationPort for RigChatAdapter {
         &self,
         session_id: &str,
         user_message: &str,
-    ) -> Result<String, ConversationError> {
+    ) -> Result<ChatResponse, ConversationError> {
         // 1. 세션에서 현재 상태를 읽어옴
         let (system_prompt, history, config) = {
             let sessions = self.sessions.read().await;
@@ -232,7 +258,7 @@ impl ConversationPort for RigChatAdapter {
         };
 
         // 2. rig agent로 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
-        let response = self
+        let chat_response = self
             .chat_with_agent(&system_prompt, user_message, history, &config)
             .await?;
 
@@ -247,7 +273,7 @@ impl ConversationPort for RigChatAdapter {
             session.rig_history.push(Message::user(user_message));
             session
                 .rig_history
-                .push(Message::assistant(&response));
+                .push(Message::assistant(&chat_response.text));
 
             // 도메인 이력 (반환용)
             session.dialogue_history.push(DialogueTurn {
@@ -256,11 +282,11 @@ impl ConversationPort for RigChatAdapter {
             });
             session.dialogue_history.push(DialogueTurn {
                 role: DialogueRole::Assistant,
-                content: response.clone(),
+                content: chat_response.text.clone(),
             });
         }
 
-        Ok(response)
+        Ok(chat_response)
     }
 
     async fn send_message_stream(
@@ -268,7 +294,7 @@ impl ConversationPort for RigChatAdapter {
         session_id: &str,
         user_message: &str,
         token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<String, ConversationError> {
+    ) -> Result<ChatResponse, ConversationError> {
         // 1. 세션에서 현재 상태를 읽어옴
         let (system_prompt, history, config) = {
             let sessions = self.sessions.read().await;
@@ -283,11 +309,9 @@ impl ConversationPort for RigChatAdapter {
         };
 
         // 2. 스트리밍 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
-        let response = self
+        let chat_response = self
             .stream_chat_with_agent(&system_prompt, user_message, history, token_tx, &config)
             .await?;
-
-
 
         // 3. 이력 업데이트
         {
@@ -299,7 +323,7 @@ impl ConversationPort for RigChatAdapter {
             session.rig_history.push(Message::user(user_message));
             session
                 .rig_history
-                .push(Message::assistant(&response));
+                .push(Message::assistant(&chat_response.text));
 
             session.dialogue_history.push(DialogueTurn {
                 role: DialogueRole::User,
@@ -307,11 +331,11 @@ impl ConversationPort for RigChatAdapter {
             });
             session.dialogue_history.push(DialogueTurn {
                 role: DialogueRole::Assistant,
-                content: response.clone(),
+                content: chat_response.text.clone(),
             });
         }
 
-        Ok(response)
+        Ok(chat_response)
     }
 
     async fn update_system_prompt(

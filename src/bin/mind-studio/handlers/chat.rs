@@ -36,14 +36,16 @@ pub async fn chat_message_stream(
         let chat_state_clone = chat_state.clone();
         let llm_task = tokio::spawn(async move { chat_state_clone.send_message_stream(&session_id, &utterance, token_tx).await });
         while let Some(token) = token_rx.recv().await { yield Ok(axum::response::sse::Event::default().event("token").data(token)); }
-        let npc_response = match llm_task.await { Ok(Ok(resp)) => resp, Ok(Err(e)) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(format!("태스크 패닉: {e}"))); return; } };
-        
+        let chat_resp = match llm_task.await { Ok(Ok(resp)) => resp, Ok(Err(e)) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(format!("태스크 패닉: {e}"))); return; } };
+        let npc_response = chat_resp.text;
+        let timings = chat_resp.timings;
+
         let (stimulus, beat_changed) = match StudioService::process_chat_turn_result(&state, &req, npc_response.clone()).await {
             Ok(res) => res,
             Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; }
         };
 
-        let final_response = ChatTurnResponse { npc_response, stimulus, beat_changed };
+        let final_response = ChatTurnResponse { npc_response, stimulus, beat_changed, timings };
         yield Ok(axum::response::sse::Event::default().event("done").data(serde_json::to_string(&final_response).unwrap_or_default()));
     };
     axum::response::Sse::new(stream)

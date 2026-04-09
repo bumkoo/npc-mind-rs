@@ -36,4 +36,6 @@ pub use application::dialogue_test_service::{
     ChatTurnResponse, DialogueTestError, DialogueTestService, PadInput,
 };
 #[cfg(feature = "chat")]
-pub use ports::{ConversationError, ConversationPort, DialogueRole, DialogueTurn};
+pub use ports::{
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
+};

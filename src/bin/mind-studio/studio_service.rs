@@ -479,11 +479,13 @@ impl StudioService {
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let npc_response: String = chat_port.send_message(&req.session_id, &req.utterance)
+        let chat_resp = chat_port.send_message(&req.session_id, &req.utterance)
             .await
             .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
+        let npc_response = chat_resp.text;
+        let timings = chat_resp.timings;
         let (stimulus, beat_changed) = Self::process_chat_turn_result(state, &req, npc_response.clone()).await?;
-        Ok(ChatTurnResponse { npc_response, stimulus, beat_changed })
+        Ok(ChatTurnResponse { npc_response, stimulus, beat_changed, timings })
     }
 
     #[cfg(feature = "chat")]
