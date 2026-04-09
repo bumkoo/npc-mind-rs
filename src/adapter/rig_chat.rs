@@ -435,36 +435,45 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
 impl LlamaServerMonitor for RigChatAdapter {
     async fn health(&self) -> Result<LlamaHealth, String> {
         let url = format!("{}/health", self.server_url);
-        self.http_client
+        let resp = self
+            .http_client
             .get(&url)
             .send()
             .await
             .map_err(|e| format!("헬스 체크 실패: {e}"))?
-            .json()
+            .error_for_status()
+            .map_err(|e| format!("헬스 체크 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        resp.json()
             .await
             .map_err(|e| format!("헬스 응답 파싱 실패: {e}"))
     }
 
     async fn slots(&self) -> Result<Vec<LlamaSlotInfo>, String> {
         let url = format!("{}/slots", self.server_url);
-        self.http_client
+        let resp = self
+            .http_client
             .get(&url)
             .send()
             .await
             .map_err(|e| format!("슬롯 조회 실패: {e}"))?
-            .json()
+            .error_for_status()
+            .map_err(|e| format!("슬롯 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        resp.json()
             .await
             .map_err(|e| format!("슬롯 응답 파싱 실패: {e}"))
     }
 
     async fn metrics(&self) -> Result<LlamaMetrics, String> {
         let url = format!("{}/metrics", self.server_url);
-        let raw = self
+        let resp = self
             .http_client
             .get(&url)
             .send()
             .await
             .map_err(|e| format!("메트릭 조회 실패: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("메트릭 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+        let raw = resp
             .text()
             .await
             .map_err(|e| format!("메트릭 응답 읽기 실패: {e}"))?;
