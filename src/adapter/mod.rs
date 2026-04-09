@@ -10,6 +10,8 @@
 pub mod ort_embedder;
 
 #[cfg(feature = "chat")]
+pub mod llama_timings;
+#[cfg(feature = "chat")]
 pub mod rig_chat;
 
 pub mod anchor_common;

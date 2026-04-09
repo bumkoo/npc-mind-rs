@@ -40,7 +40,7 @@
 use crate::domain::emotion::{AppraisalEngine, StimulusEngine};
 use crate::domain::pad::Pad;
 use crate::ports::{
-    Appraiser, ConversationError, ConversationPort, DialogueTurn, MindRepository,
+    Appraiser, ConversationError, ConversationPort, DialogueTurn, LlamaTimings, MindRepository,
     StimulusProcessor, UtteranceAnalyzer,
 };
 
@@ -114,6 +114,10 @@ pub struct ChatTurnResponse {
     pub stimulus: Option<StimulusResponse>,
     /// Beat 전환 여부
     pub beat_changed: bool,
+    /// llama-server 성능 메트릭 (없으면 None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub timings: Option<LlamaTimings>,
 }
 
 /// 대화 세션 종료 요청
@@ -249,10 +253,12 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, DialogueTestError> {
         // 1. LLM에 상대 대사 전달 → NPC 응답 (세션 고정 파라미터 사용)
-        let npc_response = self
+        let chat_resp = self
             .chat
             .send_message(&req.session_id, &req.utterance)
             .await?;
+        let npc_response = chat_resp.text;
+        let timings = chat_resp.timings;
 
         // 2. PAD 결정: 수동 입력 > 자동 분석 > 없음
         let pad = if let Some(pad_input) = &req.pad {
@@ -301,6 +307,7 @@ impl<R: MindRepository, C: ConversationPort, A: Appraiser, S: StimulusProcessor>
             npc_response,
             stimulus,
             beat_changed,
+            timings,
         })
     }
 

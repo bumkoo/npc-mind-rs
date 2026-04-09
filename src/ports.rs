@@ -229,6 +229,46 @@ pub enum DialogueRole {
     Assistant,
 }
 
+/// llama-server가 `/v1/chat/completions` 응답에 포함하는 성능 메트릭
+///
+/// prompt(프롬프트 처리)와 predicted(토큰 생성) 두 단계의 속도 정보를 담는다.
+/// llama-server 이외의 서버에서는 `None`으로 전달된다.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct LlamaTimings {
+    /// 프롬프트 토큰 수
+    pub prompt_n: u32,
+    /// 프롬프트 처리 총 시간 (ms)
+    pub prompt_ms: f64,
+    /// 프롬프트 토큰당 처리 시간 (ms)
+    pub prompt_per_token_ms: f64,
+    /// 프롬프트 처리 속도 (tokens/sec)
+    pub prompt_per_second: f64,
+    /// 생성된 토큰 수
+    pub predicted_n: u32,
+    /// 토큰 생성 총 시간 (ms)
+    pub predicted_ms: f64,
+    /// 토큰당 생성 시간 (ms)
+    pub predicted_per_token_ms: f64,
+    /// 토큰 생성 속도 (tokens/sec)
+    pub predicted_per_second: f64,
+}
+
+/// LLM 응답 + 선택적 성능 메트릭
+///
+/// `ConversationPort::send_message()` 및 `send_message_stream()`의 반환 타입.
+/// llama-server에서는 `timings`가 채워지고, 그 외 서버에서는 `None`.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ChatResponse {
+    /// LLM이 생성한 응답 텍스트
+    pub text: String,
+    /// llama-server 성능 메트릭 (없으면 None)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
+    pub timings: Option<LlamaTimings>,
+}
+
 /// 대화 에이전트 오류
 #[cfg(feature = "chat")]
 #[derive(Debug, thiserror::Error)]
@@ -348,19 +388,22 @@ pub trait ConversationPort: Send + Sync {
     /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 받는다.
     ///
     /// 대화 이력 및 생성 파라미터는 세션 내부에서 관리된다.
+    /// llama-server인 경우 `ChatResponse.timings`에 성능 메트릭이 포함된다.
     async fn send_message(
         &self,
         session_id: &str,
         user_message: &str,
-    ) -> Result<String, ConversationError>;
+    ) -> Result<ChatResponse, ConversationError>;
 
     /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 스트리밍으로 받는다.
+    ///
+    /// 토큰은 `token_tx`로 실시간 전송되고, 완성된 응답 + timings가 반환된다.
     async fn send_message_stream(
         &self,
         session_id: &str,
         user_message: &str,
         token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<String, ConversationError>;
+    ) -> Result<ChatResponse, ConversationError>;
 
     /// system_prompt를 갱신한다 (Beat 전환 시).
     ///
