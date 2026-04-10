@@ -79,7 +79,7 @@ pub async fn scene(
         let collector = state.collector.clone();
         let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
         let result = service.start_scene(req.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
-        let response = result.format(&*state.formatter);
+        let response = { let fmt = state.formatter.read().await; result.format(&**fmt) };
         if response.initial_appraise.is_some() {
             let turn_num = inner.turn_history.len() + 1;
             inner.turn_history.push(TurnRecord { label: format!("Turn {}: scene/appraise [{}] ({}→{})", turn_num, response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id, req.partner_id), action: "scene".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::to_value(&response).unwrap_or_default(), llm_model: None });
@@ -128,7 +128,8 @@ pub async fn guide(
         }
         let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
         let result = service.generate_guide(req)?;
-        result.format(&*state.formatter)
+        let fmt = state.formatter.read().await;
+        result.format(&**fmt)
     };
     state.emit(StateEvent::GuideGenerated);
     Ok(Json(response))

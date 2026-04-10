@@ -18,8 +18,10 @@ pub struct AppState {
     pub collector: AppraisalCollector,
     /// 대사 → PAD 분석기 (embed feature 활성 시에만 Some)
     pub analyzer: Option<Arc<Mutex<dyn UtteranceAnalyzer + Send>>>,
-    /// 연기 가이드 포맷터 (서버 시작 시 한 번 생성, 모든 핸들러에서 공유)
-    pub formatter: Arc<dyn npc_mind::ports::GuideFormatter>,
+    /// 연기 가이드 포맷터 (런타임 교체 가능 — set_prompt_override로 TOML 오버라이드 적용)
+    pub formatter: Arc<RwLock<Arc<dyn npc_mind::ports::GuideFormatter>>>,
+    /// 현재 적용 중인 TOML 오버라이드 (None이면 기본 빌트인)
+    pub locale_overrides: Arc<RwLock<Option<String>>>,
     /// 실시간 상태 변경 이벤트 브로드캐스트 채널
     pub event_tx: tokio::sync::broadcast::Sender<StateEvent>,
     /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
@@ -52,7 +54,8 @@ impl AppState {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a)) as Arc<Mutex<dyn UtteranceAnalyzer + Send>>),
-            formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
+            formatter: Arc::new(RwLock::new(Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()) as Arc<dyn npc_mind::ports::GuideFormatter>)),
+            locale_overrides: Arc::new(RwLock::new(None)),
             event_tx,
             chat: None,
             #[cfg(feature = "chat")]

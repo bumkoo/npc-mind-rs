@@ -390,7 +390,7 @@ impl LlmInfoProvider for RigChatAdapter {
             provider_url: self.base_url.clone(),
             model_name,
             temperature: None,
-            max_tokens: None,
+            max_tokens: Some(768),
             top_p: None,
             frequency_penalty: None,
             presence_penalty: None,

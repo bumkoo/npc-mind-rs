@@ -156,9 +156,8 @@ no_speech_style = "평범한 어조로 말한다."                         # 말
 # {name}, {emotion}, {intensity} 등은 런타임에 치환되는 플레이스홀더
 # ---------------------------------------------------------------------------
 [template]
-section_role = "[역할]"                                # 역할 섹션 헤더
-role_instruction = "당신은 {name}입니다. {name}의 시점에서 1인칭 대사로만 응답하세요. 해설이나 지문은 쓰지 않습니다."  # 역할 지시
-section_npc = "[NPC: {name}]"                          # NPC 이름 섹션 헤더
+section_role = "[역할: {name}]"                        # 역할 섹션 헤더 (NPC 이름 포함)
+role_instruction = "당신은 {name}를 연기하는 배우입니다. {name}의 시점에서 1인칭 대사로만 응답하세요. 해설이나 지문은 쓰지 않습니다."  # 역할 지시 (배우 프레임)
 section_personality = "[성격]"                          # 성격 섹션 헤더
 section_emotion = "[현재 감정]"                         # 감정 섹션 헤더
 section_situation = "[상황]"                            # 상황 섹션 헤더

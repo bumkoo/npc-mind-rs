@@ -177,12 +177,10 @@ pub struct FallbackLabels {
 /// `{name}`, `{emotion}`, `{intensity}` 등은 런타임에 치환되는 플레이스홀더.
 #[derive(Debug, Deserialize)]
 pub struct TemplateStrings {
-    /// 역할 섹션: "[역할]"
+    /// 역할 섹션: "[역할: {name}]"
     pub section_role: String,
-    /// 역할 지시: "당신은 {name}입니다..."
+    /// 역할 지시: "당신은 {name}를 연기하는 배우입니다..."
     pub role_instruction: String,
-    /// NPC 이름 섹션: "[NPC: {name}]"
-    pub section_npc: String,
     /// 성격 섹션: "[성격]"
     pub section_personality: String,
     /// 감정 섹션: "[현재 감정]"

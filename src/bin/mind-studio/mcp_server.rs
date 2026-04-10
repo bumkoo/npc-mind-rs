@@ -321,6 +321,25 @@ impl MindMcpService {
                 "name": "get_npc_llm_config",
                 "description": "NPC의 성격에 최적화된 LLM 생성 파라미터를 조회합니다.",
                 "inputSchema": { "type": "object", "properties": { "npc_id": { "type": "string" } }, "required": ["npc_id"] }
+            }),
+
+            // 프롬프트 오버라이드 (A/B 테스트)
+            serde_json::json!({
+                "name": "set_prompt_override",
+                "description": "TOML 형식의 프롬프트 오버라이드를 적용합니다. 빌트인 한국어 템플릿 위에 부분 덮어쓰기됩니다. 서버 재시작 없이 즉시 반영. 빈 문자열이면 기본값으로 복원. A/B 테스트에 사용합니다.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "overrides": { "type": "string", "description": "TOML 형식 오버라이드. 예: [template]\\nrole_instruction = \"당신은 {name}입니다.\"" },
+                        "lang": { "type": "string", "description": "베이스 언어 (기본값: ko)" }
+                    },
+                    "required": ["overrides"]
+                }
+            }),
+            serde_json::json!({
+                "name": "get_prompt_override",
+                "description": "현재 적용 중인 프롬프트 오버라이드 TOML을 조회합니다. 없으면 null 반환.",
+                "inputSchema": { "type": "object", "properties": {} }
             })
         ]
     }
@@ -438,7 +457,8 @@ impl MindMcpService {
                     }
                     let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
                     let result = service.generate_guide(req).map_err(|e| e.to_string())?;
-                    result.format(&*self.state.formatter)
+                    let fmt = self.state.formatter.read().await;
+                    result.format(&**fmt)
                 };
                 self.state.emit(StateEvent::GuideGenerated);
                 Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
@@ -483,22 +503,21 @@ impl MindMcpService {
             }
             "save_scenario" => {
                 let path = arguments["path"].as_str().ok_or("path is required")?;
+                let resolved = Self::resolve_data_path(path);
                 let save_type = arguments["save_type"].as_str();
                 let inner = self.state.inner.read().await;
-                let path_obj = std::path::Path::new(path);
+                let path_obj = std::path::Path::new(&resolved);
                 match save_type {
                     Some("report") => {
                         inner.save_report_to_file(path_obj).map_err(|e| e.to_string())?;
                         drop(inner);
                         self.state.emit(StateEvent::ScenarioSaved);
-                        Ok(serde_json::json!({ "status": "ok", "path": path, "saved": ["report"] }))
+                        Ok(serde_json::json!({ "status": "ok", "path": resolved, "saved": ["report"] }))
                     }
                     Some("all") => {
                         // JSON 결과 + 마크다운 레포트 동시 저장
-                        // path가 .json이면 그대로 result로, 같은 경로에서 확장자만 .md로 바꿔 report 저장
                         inner.save_to_file(path_obj, false).map_err(|e| e.to_string())?;
                         let report_path = path_obj.with_extension("md");
-                        // test_report가 비어있어도 result 저장은 성공했으므로 에러 무시
                         let report_saved = inner.save_report_to_file(&report_path).is_ok();
                         let saved: Vec<&str> = if report_saved {
                             vec!["result", "report"]
@@ -509,7 +528,7 @@ impl MindMcpService {
                         self.state.emit(StateEvent::ScenarioSaved);
                         Ok(serde_json::json!({
                             "status": "ok",
-                            "path": path,
+                            "path": resolved,
                             "report_path": report_path.to_string_lossy(),
                             "saved": saved,
                         }))
@@ -519,7 +538,7 @@ impl MindMcpService {
                         inner.save_to_file(path_obj, save_type == Some("scenario")).map_err(|e| e.to_string())?;
                         drop(inner);
                         self.state.emit(StateEvent::ScenarioSaved);
-                        Ok(serde_json::json!({ "status": "ok", "path": path }))
+                        Ok(serde_json::json!({ "status": "ok", "path": resolved }))
                     }
                 }
             }
@@ -557,7 +576,8 @@ impl MindMcpService {
                     let collector = self.state.collector.clone();
                     let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
                     let result = service.start_scene(req, || { collector.take_entries(); }, || collector.take_entries()).map_err(|e| e.to_string())?;
-                    result.format(&*self.state.formatter)
+                    let fmt = self.state.formatter.read().await;
+                    result.format(&**fmt)
                 };
                 self.state.emit(StateEvent::SceneStarted);
                 self.state.emit(StateEvent::HistoryChanged);
@@ -852,6 +872,41 @@ impl MindMcpService {
                 #[cfg(not(feature = "chat"))]
                 {
                     Err("chat feature가 비활성입니다. --features chat으로 빌드하세요.".into())
+                }
+            }
+            "set_prompt_override" => {
+                let overrides = arguments.get("overrides").and_then(|v| v.as_str()).unwrap_or("");
+                let lang = arguments.get("lang").and_then(|v| v.as_str()).unwrap_or("ko");
+
+                if overrides.is_empty() {
+                    // 오버라이드 해제 → 기본 포맷터 복원
+                    let base_toml = npc_mind::presentation::builtin_toml(lang)
+                        .ok_or_else(|| format!("Unsupported language: {}", lang))?;
+                    let bundle = npc_mind::presentation::locale::LocaleBundle::from_toml(base_toml)
+                        .map_err(|e| format!("Failed to parse base TOML: {}", e))?;
+                    let new_fmt = Arc::new(npc_mind::presentation::formatter::LocaleFormatter::new(bundle))
+                        as Arc<dyn npc_mind::ports::GuideFormatter>;
+                    *self.state.formatter.write().await = Arc::clone(&new_fmt);
+                    *self.state.locale_overrides.write().await = None;
+                    Ok(serde_json::json!({ "status": "reset", "lang": lang }))
+                } else {
+                    // TOML 오버라이드 적용
+                    let base_toml = npc_mind::presentation::builtin_toml(lang)
+                        .ok_or_else(|| format!("Unsupported language: {}", lang))?;
+                    let bundle = npc_mind::presentation::locale::LocaleBundle::from_toml_with_overrides(base_toml, overrides)
+                        .map_err(|e| format!("TOML parse error: {}", e))?;
+                    let new_fmt = Arc::new(npc_mind::presentation::formatter::LocaleFormatter::new(bundle))
+                        as Arc<dyn npc_mind::ports::GuideFormatter>;
+                    *self.state.formatter.write().await = Arc::clone(&new_fmt);
+                    *self.state.locale_overrides.write().await = Some(overrides.to_string());
+                    Ok(serde_json::json!({ "status": "applied", "lang": lang, "overrides": overrides }))
+                }
+            }
+            "get_prompt_override" => {
+                let current = self.state.locale_overrides.read().await;
+                match &*current {
+                    Some(toml_str) => Ok(serde_json::json!({ "active": true, "overrides": toml_str })),
+                    None => Ok(serde_json::json!({ "active": false, "overrides": null })),
                 }
             }
             _ => Err(format!("Unknown tool: {}", name)),

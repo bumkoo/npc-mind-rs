@@ -54,7 +54,8 @@ impl StudioService {
                 || collector.take_entries(),
             )?;
 
-            let response = result.format(&*state.formatter);
+            let fmt = state.formatter.read().await;
+            let response = result.format(&**fmt);
 
             // 턴 기록 통합 저장
             Self::record_turn(
@@ -93,7 +94,8 @@ impl StudioService {
             )?;
             drop(service);
 
-            let response = result.format(&*state.formatter);
+            let fmt = state.formatter.read().await;
+            let response = result.format(&**fmt);
 
             // 레이블 결정
             let label = if response.beat_changed {
@@ -318,7 +320,8 @@ impl StudioService {
         // (같은 시나리오로 여러 번 dialogue_start를 호출할 때 Beat 버그 방지)
         service.reset_scene_to_initial_focus();
         let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
-        let response = result.format(&*state.formatter);
+        let fmt = state.formatter.read().await;
+        let response = result.format(&**fmt);
         
         // dialogue_start 시점에 LLM 서버에서 모델명을 재감지한다.
         // 서버 기동 이후 모델이 교체된 경우에도 정확한 모델명을 반영한다.
@@ -335,6 +338,9 @@ impl StudioService {
         };
         llm_model_info.temperature = Some(temp);
         llm_model_info.top_p = Some(top_p);
+        if llm_model_info.max_tokens.is_none() {
+            llm_model_info.max_tokens = Some(768);
+        }
         
         chat_port.start_session(&req.session_id, &response.prompt, Some(llm_model_info.clone()))
             .await
@@ -423,9 +429,10 @@ impl StudioService {
         let pad = Self::resolve_pad(state, req).await;
 
         let mut inner = state.inner.write().await;
+        let fmt = state.formatter.read().await;
         let (stim_resp, changed) = if let Some(pad) = pad {
             let resp = Self::apply_stimulus_with_pad(
-                &mut *inner, &state.collector, &*state.formatter, req, pad,
+                &mut *inner, &state.collector, &**fmt, req, pad,
             )?;
             let changed = resp.beat_changed;
             if changed {

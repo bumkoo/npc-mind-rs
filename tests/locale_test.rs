@@ -71,13 +71,13 @@ fn locale_merge_템플릿_부분_덮어쓰기() {
     let base = builtin_toml("ko").unwrap();
     let overrides = r#"
 [template]
-section_npc = "[인물: {name}]"
+section_role = "[인물: {name}]"
 "#;
 
     let bundle = LocaleBundle::from_toml_with_overrides(base, overrides).unwrap();
 
     // 덮어쓴 키
-    assert_eq!(bundle.template.section_npc, "[인물: {name}]");
+    assert_eq!(bundle.template.section_role, "[인물: {name}]");
 
     // 덮어쓰지 않은 키 → 빌트인 유지
     assert_eq!(bundle.template.section_personality, "[성격]");
@@ -111,8 +111,8 @@ fn locale_merge_빈_오버라이드는_기본값_유지() {
         base_bundle.emotion.get("Anger")
     );
     assert_eq!(
-        bundle.template.section_npc,
-        base_bundle.template.section_npc
+        bundle.template.section_role,
+        base_bundle.template.section_role
     );
 }
 
@@ -151,7 +151,7 @@ fn formatted_service_한국어_프롬프트_생성() {
     let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     assert!(!response.prompt.is_empty());
-    assert!(response.prompt.contains("[NPC:"));
+    assert!(response.prompt.contains("[역할:"));
     assert!(response.prompt.contains("[성격]"));
     assert!(response.prompt.contains("[현재 감정]"));
 }
@@ -162,7 +162,7 @@ fn formatted_service_영어_프롬프트_생성() {
     let response = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
     assert!(!response.prompt.is_empty());
-    assert!(response.prompt.contains("[NPC:"));
+    assert!(response.prompt.contains("[Role:"));
     assert!(response.prompt.contains("[Personality]"));
     assert!(response.prompt.contains("[Current Emotion]"));
 }
@@ -207,7 +207,7 @@ fn formatted_service_커스텀_오버라이드_반영() {
 
     let overrides = r#"
 [template]
-section_npc = "[인물: {name}]"
+section_role = "[인물: {name}]"
 "#;
 
     let mut service = FormattedMindService::with_overrides(repo, "ko", overrides).unwrap();
@@ -386,7 +386,7 @@ fn formatted_service_전체_흐름() {
     // 1. Appraise
     let res1 = service.appraise(appraise_req(), || {}, Vec::new).unwrap();
     assert!(!res1.emotions.is_empty());
-    assert!(res1.prompt.contains("[NPC:"));
+    assert!(res1.prompt.contains("[역할:"));
 
     // 2. Stimulus
     let stim_req = StimulusRequest {

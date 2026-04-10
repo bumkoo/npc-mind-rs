@@ -156,9 +156,8 @@ no_speech_style = "Speaks in an ordinary manner."                              #
 # {name}, {emotion}, {intensity}, etc. are placeholders replaced at runtime
 # ---------------------------------------------------------------------------
 [template]
-section_role = "[Role]"                                      # 역할 섹션 헤더
-role_instruction = "You are {name}. Respond only with {name}'s first-person dialogue. Do not write narration or stage directions."
-section_npc = "[NPC: {name}]"                                # NPC 이름 섹션 헤더
+section_role = "[Role: {name}]"                              # 역할 섹션 헤더 (NPC 이름 포함)
+role_instruction = "You are an actor playing {name}. Respond only with {name}'s first-person dialogue. Do not write narration or stage directions."  # 배우 프레임
 section_personality = "[Personality]"                         # 성격 섹션 헤더
 section_emotion = "[Current Emotion]"                        # 감정 섹션 헤더
 section_situation = "[Situation]"                             # 상황 섹션 헤더

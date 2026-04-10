@@ -39,14 +39,11 @@ impl GuideFormatter for LocaleFormatter {
         let t = &l.template;
         let mut lines = Vec::new();
 
-        // --- 역할 (최상단) ---
-        lines.push(t.section_role.clone());
+        // --- 역할 (최상단, NPC 정보 통합) ---
+        lines.push(l.render_template(&t.section_role, &[("name", &guide.npc_name)]));
         lines.push(l.render_template(&t.role_instruction, &[("name", &guide.npc_name)]));
-        lines.push(String::new());
-
-        // --- NPC 기본 정보 ---
-        lines.push(l.render_template(&t.section_npc, &[("name", &guide.npc_name)]));
         if !guide.npc_description.is_empty() {
+            lines.push(String::new());
             lines.push(guide.npc_description.clone());
         }
         lines.push(String::new());

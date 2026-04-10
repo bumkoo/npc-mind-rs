@@ -651,7 +651,7 @@ fn formatted_service_start_scene() {
 
     // 포맷팅된 prompt 포함 확인
     let appraise = response.initial_appraise.unwrap();
-    assert!(appraise.prompt.contains("[NPC:"));
+    assert!(appraise.prompt.contains("[역할:"));
     assert!(appraise.prompt.contains("[성격]"));
 }
 

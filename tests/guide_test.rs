@@ -146,7 +146,7 @@ fn 가이드_프롬프트_구조_검증() {
     let formatter = KoreanFormatter::new();
     let prompt = formatter.format_prompt(&guide);
 
-    assert!(prompt.contains("[NPC: 무백]"), "NPC 이름 섹션");
+    assert!(prompt.contains("[역할: 무백]"), "역할 섹션 (NPC 이름 포함)");
     assert!(prompt.contains("[성격]"), "성격 섹션");
     assert!(prompt.contains("[현재 감정]"), "감정 섹션");
     assert!(prompt.contains("[상황]"), "상황 섹션");
