@@ -336,6 +336,7 @@ appraise → start_session(prompt)
 - **API 레퍼런스**: [`docs/api/api-reference.md`](docs/api/api-reference.md) — 공개 API, DTO, 포트, 도메인 타입
 - **통합 가이드**: [`docs/api/integration-guide.md`](docs/api/integration-guide.md) — 외부 프로젝트 통합 단계별 가이드
 - **아키텍처 v2**: [`docs/architecture/architecture-v2.md`](docs/architecture/architecture-v2.md)
+- **프론트엔드 아키텍처**: [`docs/architecture/frontend-architecture.md`](docs/architecture/frontend-architecture.md) — Vite+React+Zustand 구조, 스토어 설계, 데이터 흐름, 컴포넌트 트리
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
