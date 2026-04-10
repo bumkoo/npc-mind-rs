@@ -7,6 +7,7 @@ import { useSceneStore } from './stores/useSceneStore'
 import { useToast } from './hooks/useToast'
 import { useRefresh } from './hooks/useRefresh'
 import { useChatPolling } from './hooks/useChatPolling'
+import { useStateSync } from './hooks/useStateSync'
 import {
   handleAppraise, handleStimulus, handleGuide, handleAfterDialogue,
   handleStartChat, handleChatSend, handleEndChat,
@@ -105,6 +106,7 @@ export default function App() {
   const { toasts, toast } = useToast()
   const refresh = useRefresh()
   useChatPolling()
+  useStateSync(refresh)
 
   // --- Initial load ---
   useEffect(() => { refresh() }, [refresh])

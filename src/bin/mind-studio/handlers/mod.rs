@@ -9,7 +9,7 @@ use crate::state::TurnRecord;
 /// 공통 CRUD 핸들러 구현 매크로 (단일 ID 기준)
 #[macro_export]
 macro_rules! impl_crud_handlers {
-    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident) => {
+    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, $event:expr) => {
         pub async fn $list_fn(
             axum::extract::State(state): axum::extract::State<crate::state::AppState>
         ) -> axum::Json<Vec<$item_type>> {
@@ -23,9 +23,12 @@ macro_rules! impl_crud_handlers {
             axum::extract::State(state): axum::extract::State<crate::state::AppState>,
             axum::Json(item): axum::Json<$item_type>,
         ) -> axum::http::StatusCode {
-            let mut inner = state.inner.write().await;
-            inner.$field.insert(item.id.clone(), item);
-            inner.scenario_modified = true;
+            {
+                let mut inner = state.inner.write().await;
+                inner.$field.insert(item.id.clone(), item);
+                inner.scenario_modified = true;
+            }
+            state.emit($event);
             axum::http::StatusCode::OK
         }
 
@@ -33,15 +36,18 @@ macro_rules! impl_crud_handlers {
             axum::extract::State(state): axum::extract::State<crate::state::AppState>,
             axum::extract::Path(id): axum::extract::Path<String>,
         ) -> axum::http::StatusCode {
-            let mut inner = state.inner.write().await;
-            inner.$field.remove(&id);
-            inner.scenario_modified = true;
+            {
+                let mut inner = state.inner.write().await;
+                inner.$field.remove(&id);
+                inner.scenario_modified = true;
+            }
+            state.emit($event);
             axum::http::StatusCode::OK
         }
     };
 
     // 관계(Relationship) 전용 — .key() 메서드 활용
-    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, relationship) => {
+    ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, relationship, $event:expr) => {
         pub async fn $list_fn(
             axum::extract::State(state): axum::extract::State<crate::state::AppState>
         ) -> axum::Json<Vec<$item_type>> {
@@ -55,10 +61,13 @@ macro_rules! impl_crud_handlers {
             axum::extract::State(state): axum::extract::State<crate::state::AppState>,
             axum::Json(rel): axum::Json<$item_type>,
         ) -> axum::http::StatusCode {
-            let mut inner = state.inner.write().await;
-            let key = rel.key();
-            inner.$field.insert(key, rel);
-            inner.scenario_modified = true;
+            {
+                let mut inner = state.inner.write().await;
+                let key = rel.key();
+                inner.$field.insert(key, rel);
+                inner.scenario_modified = true;
+            }
+            state.emit($event);
             axum::http::StatusCode::OK
         }
 
@@ -66,10 +75,13 @@ macro_rules! impl_crud_handlers {
             axum::extract::State(state): axum::extract::State<crate::state::AppState>,
             axum::extract::Path((owner, target)): axum::extract::Path<(String, String)>,
         ) -> axum::http::StatusCode {
-            let mut inner = state.inner.write().await;
-            let key = format!("{}:{}", owner, target);
-            inner.$field.remove(&key);
-            inner.scenario_modified = true;
+            {
+                let mut inner = state.inner.write().await;
+                let key = format!("{}:{}", owner, target);
+                inner.$field.remove(&key);
+                inner.scenario_modified = true;
+            }
+            state.emit($event);
             axum::http::StatusCode::OK
         }
     };
@@ -79,6 +91,7 @@ pub mod npc;
 pub mod relationship;
 pub mod object;
 pub mod scenario;
+pub mod events;
 #[cfg(feature = "chat")]
 pub mod chat;
 #[cfg(feature = "chat")]

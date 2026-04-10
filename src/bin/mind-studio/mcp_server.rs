@@ -12,6 +12,7 @@ use tokio::sync::{mpsc, RwLock};
 use std::collections::HashMap;
 use uuid::Uuid;
 
+use crate::events::StateEvent;
 use crate::state::AppState;
 use crate::studio_service::StudioService;
 use crate::handlers::AppError;
@@ -334,16 +335,22 @@ impl MindMcpService {
             }
             "create_npc" => {
                 let npc: crate::state::NpcProfile = serde_json::from_value(arguments["npc"].clone()).map_err(|e| e.to_string())?;
-                let mut inner = self.state.inner.write().await;
-                inner.npcs.insert(npc.id.clone(), npc);
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.npcs.insert(npc.id.clone(), npc);
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "delete_npc" => {
                 let id = arguments["id"].as_str().ok_or("id is required")?;
-                let mut inner = self.state.inner.write().await;
-                inner.npcs.remove(id);
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.npcs.remove(id);
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "list_relationships" => {
@@ -353,17 +360,23 @@ impl MindMcpService {
             }
             "create_relationship" => {
                 let rel: crate::state::RelationshipData = serde_json::from_value(arguments["rel"].clone()).map_err(|e| e.to_string())?;
-                let mut inner = self.state.inner.write().await;
-                inner.relationships.insert(rel.key(), rel);
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.relationships.insert(rel.key(), rel);
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "delete_relationship" => {
                 let owner = arguments["owner_id"].as_str().ok_or("owner_id is required")?;
                 let target = arguments["target_id"].as_str().ok_or("target_id is required")?;
-                let mut inner = self.state.inner.write().await;
-                inner.relationships.remove(&format!("{}:{}", owner, target));
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.relationships.remove(&format!("{}:{}", owner, target));
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "list_objects" => {
@@ -373,16 +386,22 @@ impl MindMcpService {
             }
             "create_object" => {
                 let obj: crate::state::ObjectEntry = serde_json::from_value(arguments["obj"].clone()).map_err(|e| e.to_string())?;
-                let mut inner = self.state.inner.write().await;
-                inner.objects.insert(obj.id.clone(), obj);
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.objects.insert(obj.id.clone(), obj);
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "delete_object" => {
                 let id = arguments["id"].as_str().ok_or("id is required")?;
-                let mut inner = self.state.inner.write().await;
-                inner.objects.remove(id);
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.objects.remove(id);
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "appraise" => {
@@ -409,16 +428,19 @@ impl MindMcpService {
             }
             "generate_guide" => {
                 let mut req: npc_mind::application::dto::GuideRequest = serde_json::from_value(arguments["req"].clone()).map_err(|e| e.to_string())?;
-                let mut inner = self.state.inner.write().await;
-                // situation_description이 없으면 현재 상황에서 자동 추출
-                if req.situation_description.is_none() {
-                    if let Some(ref sit) = inner.current_situation {
-                        req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let response = {
+                    let mut inner = self.state.inner.write().await;
+                    // situation_description이 없으면 현재 상황에서 자동 추출
+                    if req.situation_description.is_none() {
+                        if let Some(ref sit) = inner.current_situation {
+                            req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                        }
                     }
-                }
-                let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-                let result = service.generate_guide(req).map_err(|e| e.to_string())?;
-                let response = result.format(&*self.state.formatter);
+                    let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+                    let result = service.generate_guide(req).map_err(|e| e.to_string())?;
+                    result.format(&*self.state.formatter)
+                };
+                self.state.emit(StateEvent::GuideGenerated);
                 Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
             }
             "get_history" => {
@@ -430,9 +452,12 @@ impl MindMcpService {
                 Ok(inner.current_situation.clone().unwrap_or(serde_json::Value::Null))
             }
             "update_situation" => {
-                let mut inner = self.state.inner.write().await;
-                inner.current_situation = Some(arguments["body"].clone());
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.current_situation = Some(arguments["body"].clone());
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::SituationChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "get_test_report" => {
@@ -441,9 +466,12 @@ impl MindMcpService {
             }
             "update_test_report" => {
                 let content = arguments["content"].as_str().ok_or("content is required")?;
-                let mut inner = self.state.inner.write().await;
-                inner.test_report = content.to_string();
-                inner.scenario_modified = true;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    inner.test_report = content.to_string();
+                    inner.scenario_modified = true;
+                }
+                self.state.emit(StateEvent::TestReportChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
             "list_scenarios" => {
@@ -461,6 +489,8 @@ impl MindMcpService {
                 match save_type {
                     Some("report") => {
                         inner.save_report_to_file(path_obj).map_err(|e| e.to_string())?;
+                        drop(inner);
+                        self.state.emit(StateEvent::ScenarioSaved);
                         Ok(serde_json::json!({ "status": "ok", "path": path, "saved": ["report"] }))
                     }
                     Some("all") => {
@@ -475,6 +505,8 @@ impl MindMcpService {
                         } else {
                             vec!["result"]
                         };
+                        drop(inner);
+                        self.state.emit(StateEvent::ScenarioSaved);
                         Ok(serde_json::json!({
                             "status": "ok",
                             "path": path,
@@ -485,6 +517,8 @@ impl MindMcpService {
                     _ => {
                         // "scenario" | "result" | None: 기존 동작 유지
                         inner.save_to_file(path_obj, save_type == Some("scenario")).map_err(|e| e.to_string())?;
+                        drop(inner);
+                        self.state.emit(StateEvent::ScenarioSaved);
                         Ok(serde_json::json!({ "status": "ok", "path": path }))
                     }
                 }
@@ -502,8 +536,11 @@ impl MindMcpService {
                         scene_restored = true;
                     }
                 }
-                let mut inner = self.state.inner.write().await;
-                *inner = loaded;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    *inner = loaded;
+                }
+                self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "scene_restored": scene_restored }))
             }
             "get_npc_llm_config" => {
@@ -515,11 +552,15 @@ impl MindMcpService {
             }
             "start_scene" => {
                 let req: npc_mind::application::dto::SceneRequest = serde_json::from_value(arguments["req"].clone()).map_err(|e| e.to_string())?;
-                let mut inner = self.state.inner.write().await;
-                let collector = self.state.collector.clone();
-                let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-                let result = service.start_scene(req, || { collector.take_entries(); }, || collector.take_entries()).map_err(|e| e.to_string())?;
-                let response = result.format(&*self.state.formatter);
+                let response = {
+                    let mut inner = self.state.inner.write().await;
+                    let collector = self.state.collector.clone();
+                    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+                    let result = service.start_scene(req, || { collector.take_entries(); }, || collector.take_entries()).map_err(|e| e.to_string())?;
+                    result.format(&*self.state.formatter)
+                };
+                self.state.emit(StateEvent::SceneStarted);
+                self.state.emit(StateEvent::HistoryChanged);
                 Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
             }
             "get_scene_info" => {
@@ -549,8 +590,11 @@ impl MindMcpService {
                     }
                 }
                 let history_count = loaded.turn_history.len();
-                let mut inner = self.state.inner.write().await;
-                *inner = loaded;
+                {
+                    let mut inner = self.state.inner.write().await;
+                    *inner = loaded;
+                }
+                self.state.emit(StateEvent::ResultLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "turn_count": history_count }))
             }
             "list_source_texts" => {
@@ -702,9 +746,11 @@ impl MindMcpService {
                 }
                 let npc_count = state_inner.npcs.len();
                 let rel_count = state_inner.relationships.len();
-                let mut inner = self.state.inner.write().await;
-                *inner = state_inner;
-                
+                {
+                    let mut inner = self.state.inner.write().await;
+                    *inner = state_inner;
+                }
+                self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({
                     "status": "ok",
                     "path": resolved_path,
@@ -730,6 +776,8 @@ impl MindMcpService {
                             let beat_id = f.id.clone();
                             if advance {
                                 inner.script_cursor = cursor + 1;
+                                drop(inner);
+                                self.state.emit(StateEvent::SceneInfoChanged);
                             }
                             Ok(serde_json::json!({
                                 "utterance": utterance,

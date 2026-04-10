@@ -1,3 +1,4 @@
+use crate::events::StateEvent;
 use crate::state::{AppState, StateInner, TurnRecord, FORMAT_SCENARIO, FORMAT_RESULT};
 use npc_mind::application::dto::*;
 
@@ -39,32 +40,37 @@ impl StudioService {
         state: &AppState,
         req: AppraiseRequest,
     ) -> Result<AppraiseResponse, AppError> {
-        let mut inner = state.inner.write().await;
-        let collector = state.collector.clone();
+        let response = {
+            let mut inner = state.inner.write().await;
+            let collector = state.collector.clone();
 
-        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-        let result = service.appraise(
-            req.clone(),
-            || {
-                collector.take_entries();
-            },
-            || collector.take_entries(),
-        )?;
+            let result = service.appraise(
+                req.clone(),
+                || {
+                    collector.take_entries();
+                },
+                || collector.take_entries(),
+            )?;
 
-        let response = result.format(&*state.formatter);
+            let response = result.format(&*state.formatter);
 
-        // 턴 기록 통합 저장
-        Self::record_turn(
-            &mut *inner,
-            &format!("appraise ({}→{})", req.npc_id, req.partner_id),
-            "appraise",
-            &req,
-            &response,
-            None,
-        );
+            // 턴 기록 통합 저장
+            Self::record_turn(
+                &mut *inner,
+                &format!("appraise ({}→{})", req.npc_id, req.partner_id),
+                "appraise",
+                &req,
+                &response,
+                None,
+            );
 
-        inner.scenario_modified = true;
+            inner.scenario_modified = true;
+            response
+        };
+        state.emit(StateEvent::Appraised);
+        state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
 
@@ -73,33 +79,37 @@ impl StudioService {
         state: &AppState,
         req: StimulusRequest,
     ) -> Result<StimulusResponse, AppError> {
-        let mut inner = state.inner.write().await;
-        let collector = state.collector.clone();
+        let response = {
+            let mut inner = state.inner.write().await;
+            let collector = state.collector.clone();
 
-        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-        let result = service.apply_stimulus(
-            req.clone(),
-            || {
-                collector.take_entries();
-            },
-            || collector.take_entries(),
-        )?;
-        drop(service);
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+            let result = service.apply_stimulus(
+                req.clone(),
+                || {
+                    collector.take_entries();
+                },
+                || collector.take_entries(),
+            )?;
+            drop(service);
 
-        let response = result.format(&*state.formatter);
+            let response = result.format(&*state.formatter);
 
-        // 레이블 결정
-        let label = if response.beat_changed {
-            // Beat 전환 시 스크립트 커서 리셋
-            inner.script_cursor = 0;
-            format!("stimulus+beat [{}] ({})", response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
-        } else {
-            format!("stimulus ({})", req.npc_id)
+            // 레이블 결정
+            let label = if response.beat_changed {
+                // Beat 전환 시 스크립트 커서 리셋
+                inner.script_cursor = 0;
+                format!("stimulus+beat [{}] ({})", response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id)
+            } else {
+                format!("stimulus ({})", req.npc_id)
+            };
+
+            // 턴 기록 통합 저장
+            Self::record_turn(&mut *inner, &label, "stimulus", &req, &response, None);
+            response
         };
-
-        // 턴 기록 통합 저장
-        Self::record_turn(&mut *inner, &label, "stimulus", &req, &response, None);
-
+        state.emit(StateEvent::StimulusApplied);
+        state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
 
@@ -108,21 +118,25 @@ impl StudioService {
         state: &AppState,
         req: AfterDialogueRequest,
     ) -> Result<AfterDialogueResponse, AppError> {
-        let mut inner = state.inner.write().await;
-        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
+        let response = {
+            let mut inner = state.inner.write().await;
+            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-        let response = service.after_dialogue(req.clone())?;
+            let response = service.after_dialogue(req.clone())?;
 
-        // 턴 기록 통합 저장
-        Self::record_turn(
-            &mut *inner,
-            &format!("after_dialogue ({}→{})", req.npc_id, req.partner_id),
-            "after_dialogue",
-            &req,
-            &response,
-            None,
-        );
-
+            // 턴 기록 통합 저장
+            Self::record_turn(
+                &mut *inner,
+                &format!("after_dialogue ({}→{})", req.npc_id, req.partner_id),
+                "after_dialogue",
+                &req,
+                &response,
+                None,
+            );
+            response
+        };
+        state.emit(StateEvent::AfterDialogue);
+        state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
 
@@ -342,6 +356,9 @@ impl StudioService {
         // 턴 기록 통합 저장
         Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
 
+        drop(inner);
+        state.emit(StateEvent::ChatStarted);
+        state.emit(StateEvent::HistoryChanged);
         Ok(ChatStartResponse { session_id: req.session_id, appraise: response, llm_model_info: Some(llm_model_info), save_dir })
     }
 
@@ -470,6 +487,9 @@ impl StudioService {
             None,
         );
 
+        drop(inner);
+        state.emit(StateEvent::ChatTurnCompleted);
+        state.emit(StateEvent::HistoryChanged);
         Ok((stim_resp, changed))
     }
 
@@ -502,6 +522,8 @@ impl StudioService {
         } else {
             None
         };
+        state.emit(StateEvent::ChatEnded);
+        state.emit(StateEvent::HistoryChanged);
         Ok(ChatEndResponse { dialogue_history, after_dialogue })
     }
 }

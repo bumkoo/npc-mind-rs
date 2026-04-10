@@ -12,6 +12,7 @@ use tower_http::services::ServeDir;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod events;
 mod handlers;
 mod mcp_server;
 mod repository;
@@ -121,7 +122,9 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/save", post(handlers::scenario::save_state))
         .route("/api/save-dir", get(handlers::scenario::save_dir))
         .route("/api/load", post(handlers::scenario::load_state))
-        .route("/api/load-result", post(handlers::scenario::load_result));
+        .route("/api/load-result", post(handlers::scenario::load_result))
+        // 실시간 상태 변경 이벤트 스트림
+        .route("/api/events", get(handlers::events::sse_events));
 
     // chat feature 활성 시 대화 테스트 + LLM 모니터링 엔드포인트 추가
     #[cfg(feature = "chat")]

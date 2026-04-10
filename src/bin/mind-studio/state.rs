@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
+use crate::events::StateEvent;
 use crate::trace_collector::AppraisalCollector;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
@@ -19,6 +20,8 @@ pub struct AppState {
     pub analyzer: Option<Arc<Mutex<dyn UtteranceAnalyzer + Send>>>,
     /// 연기 가이드 포맷터 (서버 시작 시 한 번 생성, 모든 핸들러에서 공유)
     pub formatter: Arc<dyn npc_mind::ports::GuideFormatter>,
+    /// 실시간 상태 변경 이벤트 브로드캐스트 채널
+    pub event_tx: tokio::sync::broadcast::Sender<StateEvent>,
     /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
     #[cfg(feature = "chat")]
     pub chat: Option<Arc<dyn npc_mind::ports::ConversationPort>>,
@@ -44,11 +47,13 @@ impl AppState {
         collector: AppraisalCollector,
         analyzer: Option<impl UtteranceAnalyzer + Send + 'static>,
     ) -> Self {
+        let (event_tx, _) = tokio::sync::broadcast::channel(64);
         Self {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a)) as Arc<Mutex<dyn UtteranceAnalyzer + Send>>),
             formatter: Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()),
+            event_tx,
             chat: None,
             #[cfg(feature = "chat")]
             llm_info: None,
@@ -58,6 +63,11 @@ impl AppState {
             llm_monitor: None,
             mcp_server: None,
         }
+    }
+
+    /// 상태 변경 이벤트를 브로드캐스트한다. 수신자가 없으면 무시.
+    pub fn emit(&self, event: StateEvent) {
+        let _ = self.event_tx.send(event);
     }
 
     /// MCP 서버 인스턴스를 설정한다.

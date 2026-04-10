@@ -3,6 +3,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use npc_mind::application::dto::*;
 use serde::{Deserialize, Serialize};
+use crate::events::StateEvent;
 use crate::state::*;
 use crate::studio_service::{StudioService, ScenarioInfo, SaveDirInfo};
 use crate::repository::{ReadOnlyAppStateRepo};
@@ -73,15 +74,20 @@ pub async fn scene(
     State(state): State<AppState>,
     Json(req): Json<SceneRequest>,
 ) -> Result<Json<SceneResponse>, AppError> {
-    let mut inner = state.inner.write().await;
-    let collector = state.collector.clone();
-    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-    let result = service.start_scene(req.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
-    let response = result.format(&*state.formatter);
-    if response.initial_appraise.is_some() {
-        let turn_num = inner.turn_history.len() + 1;
-        inner.turn_history.push(TurnRecord { label: format!("Turn {}: scene/appraise [{}] ({}→{})", turn_num, response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id, req.partner_id), action: "scene".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::to_value(&response).unwrap_or_default(), llm_model: None });
-    }
+    let response = {
+        let mut inner = state.inner.write().await;
+        let collector = state.collector.clone();
+        let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+        let result = service.start_scene(req.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
+        let response = result.format(&*state.formatter);
+        if response.initial_appraise.is_some() {
+            let turn_num = inner.turn_history.len() + 1;
+            inner.turn_history.push(TurnRecord { label: format!("Turn {}: scene/appraise [{}] ({}→{})", turn_num, response.active_focus_id.as_deref().unwrap_or("?"), req.npc_id, req.partner_id), action: "scene".into(), request: serde_json::to_value(&req).unwrap_or_default(), response: serde_json::to_value(&response).unwrap_or_default(), llm_model: None });
+        }
+        response
+    };
+    state.emit(StateEvent::SceneStarted);
+    state.emit(StateEvent::HistoryChanged);
     Ok(Json(response))
 }
 
@@ -99,9 +105,12 @@ pub async fn get_situation(State(state): State<AppState>) -> Json<serde_json::Va
 
 /// PUT /api/situation
 pub async fn put_situation(State(state): State<AppState>, Json(body): Json<serde_json::Value>) -> StatusCode {
-    let mut inner = state.inner.write().await;
-    inner.current_situation = Some(body);
-    inner.scenario_modified = true;
+    {
+        let mut inner = state.inner.write().await;
+        inner.current_situation = Some(body);
+        inner.scenario_modified = true;
+    }
+    state.emit(StateEvent::SituationChanged);
     StatusCode::OK
 }
 
@@ -110,38 +119,45 @@ pub async fn guide(
     State(state): State<AppState>,
     Json(mut req): Json<GuideRequest>,
 ) -> Result<Json<GuideResponse>, AppError> {
-    let mut inner = state.inner.write().await;
-    if req.situation_description.is_none() {
-        if let Some(ref sit) = inner.current_situation {
-            req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let response = {
+        let mut inner = state.inner.write().await;
+        if req.situation_description.is_none() {
+            if let Some(ref sit) = inner.current_situation {
+                req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+            }
         }
-    }
-    let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-    let result = service.generate_guide(req)?;
-    Ok(Json(result.format(&*state.formatter)))
+        let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
+        let result = service.generate_guide(req)?;
+        result.format(&*state.formatter)
+    };
+    state.emit(StateEvent::GuideGenerated);
+    Ok(Json(response))
 }
 
 /// POST /api/save
 pub async fn save_state(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<Json<super::SaveResponse>, AppError> {
-    let mut inner = state.inner.write().await;
     let save_path = req.path.clone();
-    if save_path.is_empty() { return Err(AppError::Internal("저장 경로가 비어있습니다".into())); }
-    let path_obj = std::path::Path::new(&save_path);
-    match req.save_type.as_deref() {
-        Some("report") => {
-            inner.save_report_to_file(path_obj).map_err(AppError::Internal)?;
-        }
-        Some("all") => {
-            inner.save_to_file(path_obj, false).map_err(AppError::Internal)?;
-            let report_path = path_obj.with_extension("md");
-            let _ = inner.save_report_to_file(&report_path);
-        }
-        _ => {
-            let as_scenario = match req.save_type.as_deref() { Some("scenario") => true, Some("result") => false, _ => inner.turn_history.is_empty() };
-            inner.save_to_file(path_obj, as_scenario).map_err(AppError::Internal)?;
-            if as_scenario { inner.scenario_modified = false; inner.loaded_path = Some(save_path.clone()); }
+    {
+        let mut inner = state.inner.write().await;
+        if save_path.is_empty() { return Err(AppError::Internal("저장 경로가 비어있습니다".into())); }
+        let path_obj = std::path::Path::new(&save_path);
+        match req.save_type.as_deref() {
+            Some("report") => {
+                inner.save_report_to_file(path_obj).map_err(AppError::Internal)?;
+            }
+            Some("all") => {
+                inner.save_to_file(path_obj, false).map_err(AppError::Internal)?;
+                let report_path = path_obj.with_extension("md");
+                let _ = inner.save_report_to_file(&report_path);
+            }
+            _ => {
+                let as_scenario = match req.save_type.as_deref() { Some("scenario") => true, Some("result") => false, _ => inner.turn_history.is_empty() };
+                inner.save_to_file(path_obj, as_scenario).map_err(AppError::Internal)?;
+                if as_scenario { inner.scenario_modified = false; inner.loaded_path = Some(save_path.clone()); }
+            }
         }
     }
+    state.emit(StateEvent::ScenarioSaved);
     Ok(Json(super::SaveResponse { path: save_path }))
 }
 
@@ -162,8 +178,11 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
             StudioService::load_scene_into_state(&mut loaded, &scene_req);
         }
     }
-    let mut inner = state.inner.write().await;
-    *inner = loaded;
+    {
+        let mut inner = state.inner.write().await;
+        *inner = loaded;
+    }
+    state.emit(StateEvent::ScenarioLoaded);
     Ok(StatusCode::OK)
 }
 
@@ -178,8 +197,11 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
         }
     }
     let history = loaded.turn_history.clone();
-    let mut inner = state.inner.write().await;
-    *inner = loaded;
+    {
+        let mut inner = state.inner.write().await;
+        *inner = loaded;
+    }
+    state.emit(StateEvent::ResultLoaded);
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }
 
@@ -194,10 +216,18 @@ pub async fn put_test_report(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> StatusCode {
-    let mut inner = state.inner.write().await;
-    if let Some(content) = body.get("content").and_then(|v| v.as_str()) {
-        inner.test_report = content.to_string();
-        inner.scenario_modified = true;
+    let ok = {
+        let mut inner = state.inner.write().await;
+        if let Some(content) = body.get("content").and_then(|v| v.as_str()) {
+            inner.test_report = content.to_string();
+            inner.scenario_modified = true;
+            true
+        } else {
+            false
+        }
+    };
+    if ok {
+        state.emit(StateEvent::TestReportChanged);
         StatusCode::OK
     } else {
         StatusCode::BAD_REQUEST
