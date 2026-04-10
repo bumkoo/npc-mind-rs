@@ -386,8 +386,8 @@ export async function saveScenario(toast: ToastFn): Promise<boolean> {
     if (dirRes.ok) info = await dirRes.json()
   } catch (_) { /* ignore */ }
   if (!info) { toast('시나리오를 먼저 로드하세요', 'error'); return false }
-  const { loaded_path, scenario_name, has_existing_results } = info
-  if (has_existing_results) {
+  const { loaded_path, scenario_name, scenario_modified, has_existing_results } = info
+  if (scenario_modified && has_existing_results) {
     const displayDir = (loaded_path || '').replace(/^data\//, '').replace(/\/[^/]+$/, '/')
     const name = prompt(`[${scenario_name}] 시나리오 저장\n기존 테스트 결과가 있어 원본을 덮어쓸 수 없습니다.\n위치: ${displayDir}\n새 파일 이름:`, '')
     if (!name) return false
