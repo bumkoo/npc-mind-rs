@@ -24,11 +24,11 @@ pub async fn sse_events(
         while let Some(result) = broadcast.next().await {
             match result {
                 Ok(event) => {
-                    yield Ok(Event::default().event(event.name()).data(""));
+                    yield Ok(Event::default().event(event.name()).data("ok"));
                 }
                 Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(_)) => {
                     // 이벤트 누락 — 프론트엔드에 전체 동기화 요청
-                    yield Ok(Event::default().event("resync").data(""));
+                    yield Ok(Event::default().event("resync").data("ok"));
                 }
             }
         }

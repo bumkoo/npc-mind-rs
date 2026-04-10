@@ -1541,3 +1541,78 @@ async fn llm_status_mock_서버_통합() {
     let json = body_json(resp).await;
     assert_eq!(json["kv_cache_usage_ratio"], 0.33);
 }
+
+// ---------------------------------------------------------------------------
+// SSE 이벤트 브로드캐스트 테스트
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn broadcast_npc_changed_on_create() {
+    let state = test_state();
+    let mut rx = state.event_tx.subscribe();
+
+    let app = crate::build_api_router(state);
+
+    // NPC 생성 → NpcChanged 이벤트 발행 확인
+    let resp = app.oneshot(json_post("/api/npcs", mu_baek_profile())).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = rx.try_recv().unwrap();
+    assert_eq!(event.name(), "npc_changed");
+}
+
+#[tokio::test]
+async fn broadcast_npc_changed_on_delete() {
+    let state = test_state();
+
+    // NPC 먼저 생성
+    let app = crate::build_api_router(state.clone());
+    let resp = app.oneshot(json_post("/api/npcs", mu_baek_profile())).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 구독 시작 (생성 이벤트 이후)
+    let mut rx = state.event_tx.subscribe();
+
+    let app = crate::build_api_router(state);
+    let resp = app.oneshot(delete("/api/npcs/mu_baek")).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = rx.try_recv().unwrap();
+    assert_eq!(event.name(), "npc_changed");
+}
+
+#[tokio::test]
+async fn broadcast_situation_changed_on_put() {
+    let state = test_state();
+    let mut rx = state.event_tx.subscribe();
+
+    let app = crate::build_api_router(state);
+    let body = serde_json::json!({ "description": "테스트 상황" });
+    let resp = app.oneshot(json_put("/api/situation", body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = rx.try_recv().unwrap();
+    assert_eq!(event.name(), "situation_changed");
+}
+
+#[tokio::test]
+async fn broadcast_test_report_changed_on_put() {
+    let state = test_state();
+    let mut rx = state.event_tx.subscribe();
+
+    let app = crate::build_api_router(state);
+    let body = serde_json::json!({ "content": "# 테스트 보고서" });
+    let resp = app.oneshot(json_put("/api/test-report", body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let event = rx.try_recv().unwrap();
+    assert_eq!(event.name(), "test_report_changed");
+}
+
+#[tokio::test]
+async fn no_receivers_does_not_panic() {
+    // 수신자 없이 emit해도 패닉 없음
+    let state = test_state();
+    state.emit(crate::events::StateEvent::NpcChanged);
+    state.emit(crate::events::StateEvent::ScenarioLoaded);
+}
