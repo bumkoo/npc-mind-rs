@@ -71,6 +71,7 @@ mind-studio-ui/           ← 프론트엔드 프로젝트 루트
 ┌────────────────────────────┴────────────────────────────────┐
 │                  Axum REST API Backend                        │
 │  /api/npcs · /api/appraise · /api/chat/message/stream (SSE) │
+│  /api/events (SSE 실시간 상태 동기화)                          │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -185,12 +186,30 @@ POST /api/chat/message/stream
 - **AbortController**로 요청 취소 지원 (메모리 누수 방지)
 - **클로저 캡처**로 메시지 인덱스 안정성 보장 (`capturedIdx`)
 
+### 실시간 상태 동기화 (useStateSync)
+
+```
+백엔드 상태 변경 (MCP tool / REST handler)
+  → state.emit(StateEvent::XxxChanged)
+  → tokio::sync::broadcast 채널
+  → GET /api/events (SSE 스트림)
+  → EventSource (프론트엔드)
+  → 이벤트 종류별 targeted re-fetch → Zustand 스토어 업데이트
+```
+
+- **이벤트 종류**: `npc_changed`, `relationship_changed`, `object_changed`, `appraised`, `stimulus_applied`, `after_dialogue`, `scene_started`, `scene_info_changed`, `scenario_loaded`, `result_loaded`, `scenario_saved`, `situation_changed`, `test_report_changed`, `chat_started`, `chat_turn_completed`, `chat_ended`, `history_changed`
+- **디바운싱**: 100ms leading-edge — 빠른 연속 이벤트(예: `create_full_scenario`에서 NPC 다수 생성) 시 중복 fetch 방지
+- **재연결**: 연결 끊김 시 exponential backoff (1s → 30s)
+- **이벤트 누락**: `BroadcastStream` lagged 발생 시 `resync` → 전체 refresh
+- **전체 상태 교체**: `scenario_loaded`, `result_loaded`, `resync` → `refresh()` 호출
+
 ## 커스텀 훅
 
 | 훅 | 역할 | 트리거 |
 |----|------|--------|
 | **useRefresh** | 8개 API 병렬 fetch → 5개 스토어 동기화 | 마운트, CRUD 후, 대화 액션 후 |
-| **useChatPolling** | 2초 간격 히스토리 폴링 | `chatMode === true` |
+| **useStateSync** | SSE `/api/events` 구독 → 이벤트별 targeted re-fetch | 마운트 시 연결, 자동 재연결 |
+| **useChatPolling** | 2초 간격 히스토리 폴링 (SSE 보조) | `chatMode === true` |
 | **useToast** | 알림 메시지 관리 (3초 자동 제거) | 핸들러에서 호출 |
 | **useAutoSave** | 디바운스 자동 저장 (500ms) | SituationPanel 입력 변경 |
 
