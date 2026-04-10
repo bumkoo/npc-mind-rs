@@ -6,7 +6,7 @@ type ResultTab = 'emotions' | 'stimulus' | 'context' | 'trace' | 'history' | 'mo
 interface ResultStore {
   result: AppraiseResult | null
   traceHistory: TraceEntry[]
-  resultTab: ResultTab
+  resultTab: string
   testReport: string
   stimulusUtterance: string
   llmModelInfo: LlmModelInfo | null
@@ -15,7 +15,7 @@ interface ResultStore {
   updateResult: (updater: (prev: AppraiseResult | null) => AppraiseResult | null) => void
   setTraceHistory: (trace: TraceEntry[]) => void
   appendTrace: (entry: TraceEntry) => void
-  setResultTab: (tab: ResultTab) => void
+  setResultTab: (tab: string) => void
   setTestReport: (report: string) => void
   setStimulusUtterance: (utterance: string) => void
   setLlmModelInfo: (info: LlmModelInfo | null) => void

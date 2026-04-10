@@ -72,7 +72,7 @@ export default function EmotionView({ result }: EmotionViewProps) {
               {result.mood != null ? result.mood.toFixed(3) : '—'}
             </span>
           </div>
-          {result.emotions.map((e, i) => (
+          {(result.emotions || []).map((e, i) => (
             <div key={i} className="emotion-row">
               <span className="etype">{e.emotion_type}</span>
               <div className="bar-bg">

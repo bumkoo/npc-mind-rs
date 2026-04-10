@@ -7,7 +7,7 @@ interface StimulusViewProps {
   onUtteranceChange: (u: string) => void
   initialPad: Pad | undefined
   onApply: (data: { pleasure: number; arousal: number; dominance: number; situation_description: string }) => void
-  toast: (msg: string, type?: string) => void
+  toast: (msg: string, type?: 'info' | 'success' | 'error') => void
 }
 
 export default function StimulusView({ utterance, onUtteranceChange, initialPad, onApply, toast }: StimulusViewProps) {
@@ -43,7 +43,7 @@ export default function StimulusView({ utterance, onUtteranceChange, initialPad,
         body: JSON.stringify({ utterance: utterance.trim() }),
       })
       if (res.status === 501) {
-        toast('임베딩 미지원 — PAD를 수동 입력하세요', 'warn')
+        toast('임베딩 미지원 — PAD를 수동 입력하세요', 'info')
         return
       }
       if (!res.ok) {

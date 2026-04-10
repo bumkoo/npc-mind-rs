@@ -1,4 +1,4 @@
-import type { AppraiseResult, TurnHistory, TraceEntry, ChatMessage, SceneInfo, LlmModelInfo, Pad } from '../../types'
+import type { AppraiseResult, TurnHistory, TraceEntry, ChatMessage, SceneInfo, LlmModelInfo, Pad, ToastFn } from '../../types'
 import ScenePanel from './ScenePanel'
 import EmotionView from './EmotionView'
 import ContextView from './ContextView'
@@ -16,7 +16,7 @@ interface ResultPanelProps {
   onUpdateReport: (content: string) => void
   onGuide: () => void
   onStimulus: (data: { pleasure: number; arousal: number; dominance: number; situation_description: string | null }) => void
-  toast: (msg: string, type?: string) => void
+  toast: ToastFn
   sceneInfo: SceneInfo | null
   chatMessages: ChatMessage[]
   selectedMsgIdx: number | null

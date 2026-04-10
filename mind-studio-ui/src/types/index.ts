@@ -105,7 +105,7 @@ export interface FocusInput {
 export interface AppraiseResult {
   npc_id?: string
   partner_id?: string
-  emotions: Emotion[]
+  emotions?: Emotion[]
   dominant?: Emotion
   mood?: number
   prompt?: string
@@ -115,6 +115,8 @@ export interface AppraiseResult {
   active_focus_id?: string
   input_pad?: Pad
   afterDialogue?: boolean
+  llm_model?: LlmModelInfo
+  [key: string]: unknown
 }
 
 // --- Scene ---
@@ -228,8 +230,12 @@ export interface FocusSettings {
 }
 
 // --- Toast ---
+export type ToastType = 'info' | 'success' | 'error'
+
 export interface Toast {
   id: number
   msg: string
-  type: 'info' | 'success' | 'error'
+  type: ToastType
 }
+
+export type ToastFn = (msg: string, type?: ToastType) => void
