@@ -24,6 +24,9 @@ Desktop.ini
 .fastembed_cache/
 .claude/
 
+# Frontend
+mind-studio-ui/node_modules/
+
 
 # Image files (필요에 따라 적용)
 *.jpg
