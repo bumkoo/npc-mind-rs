@@ -439,8 +439,8 @@ impl StudioService {
                     } else {
                         tracing::debug!(
                             "script_cursor NOT advanced: utterance mismatch. expected={:?}, got={:?}",
-                            &focus.test_script[cursor][..focus.test_script[cursor].len().min(30)],
-                            &req.utterance[..req.utterance.len().min(30)]
+                            &focus.test_script[cursor][..focus.test_script[cursor].floor_char_boundary(30)],
+                            &req.utterance[..req.utterance.floor_char_boundary(30)]
                         );
                     }
                 }
