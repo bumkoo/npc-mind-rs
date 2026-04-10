@@ -110,7 +110,8 @@ export default function SituationPanel({
 
   // --- 시나리오 로드 시 상황설정 복원 ---
   const restoreKeyRef = useRef<SavedSituation | null>(null)
-  const skipSituationSaveUntilRef = useRef(0)
+  const userEditingRef = useRef(false)
+  const baselineDepsRef = useRef<string | null>(null)
   useEffect(() => {
     if (!savedSituation || savedSituation === restoreKeyRef.current) return
     restoreKeyRef.current = savedSituation
@@ -138,8 +139,9 @@ export default function SituationPanel({
         objAp: s.objAp || 0,
       })
     }
-    // 복원으로 인한 state 변경이 auto-save를 트리거하지 않도록 2초간 억제
-    skipSituationSaveUntilRef.current = Date.now() + 2000
+    // 복원으로 인한 state 변경이 auto-save를 트리거하지 않도록 편집 플래그 리셋
+    userEditingRef.current = false
+    baselineDepsRef.current = null
   }, [savedSituation])
 
   // --- 상황설정 변경 시 자동 저장 (debounced) ---
@@ -147,8 +149,13 @@ export default function SituationPanel({
   const allDeps = JSON.stringify({ desc, significance, focusSettings, singleFs, npcId, partnerId })
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    // 로드 직후 자동저장 억제 (scenario_modified 오염 방지)
-    if (Date.now() < skipSituationSaveUntilRef.current) return
+    if (!userEditingRef.current) {
+      // 사용자 편집 전: baseline 갱신만 하고 저장하지 않음
+      baselineDepsRef.current = allDeps
+      return
+    }
+    // 사용자가 편집했지만 값이 로드 시점과 동일하면 저장 불필요
+    if (allDeps === baselineDepsRef.current) return
     saveTimerRef.current = setTimeout(() => {
       const activeFs = sceneInfo ? focusSettings : { _single: singleFs }
       const data = {
@@ -207,7 +214,7 @@ export default function SituationPanel({
   const focuses: SceneFocus[] = sceneInfo?.focuses || []
 
   return (
-    <div className="center" style={disabled ? { opacity: 0.6, pointerEvents: 'none' } : {}}>
+    <div className="center" style={disabled ? { opacity: 0.6, pointerEvents: 'none' } : {}} onChangeCapture={() => { userEditingRef.current = true }}>
       <h2>상황 설정</h2>
       {disabled && (
         <div
