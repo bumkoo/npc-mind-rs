@@ -191,16 +191,18 @@ export async function handleChatSend(
   }
   // Add user message
   updateChatMessages((prev) => [...prev, { role: 'user', content: utterance, emotions: null, mood: null }])
-  // Add assistant placeholder
-  const assistantIdx = { current: 0 }
+  // Add assistant placeholder — capture index via closure (not mutable ref)
+  let capturedIdx = 0
   updateChatMessages((prev) => {
-    assistantIdx.current = prev.length
+    capturedIdx = prev.length
     return [...prev, {
       role: 'assistant', content: '', emotions: null, mood: null,
       beat_changed: false, new_focus: null, snapshot: null,
       activePrompt: currentPrompt, streaming: true,
     }]
   })
+
+  const controller = new AbortController()
   try {
     const body: Record<string, unknown> = { session_id: chatSessionId, npc_id: npcId, partner_id: partnerId, utterance }
     if (pad) body.pad = pad
@@ -208,10 +210,11 @@ export async function handleChatSend(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: controller.signal,
     })
     if (!res.ok) {
       toast('대사 전송 실패: ' + (await res.text()), 'error')
-      updateChatMessages((prev) => prev.filter((_, i) => i !== assistantIdx.current))
+      updateChatMessages((prev) => prev.filter((_, i) => i !== capturedIdx))
       return
     }
     const reader = res.body!.getReader()
@@ -232,9 +235,9 @@ export async function handleChatSend(
           if (eventType === 'token') {
             updateChatMessages((prev) => {
               const updated = [...prev]
-              const msg = { ...updated[assistantIdx.current] }
-              msg.content += data
-              updated[assistantIdx.current] = msg
+              if (updated[capturedIdx]) {
+                updated[capturedIdx] = { ...updated[capturedIdx], content: updated[capturedIdx].content + data }
+              }
               return updated
             })
           } else if (eventType === 'done') {
@@ -247,10 +250,9 @@ export async function handleChatSend(
             }
             updateChatMessages((prev) => {
               const updated = [...prev]
-              const aIdx = assistantIdx.current
-              if (updated[aIdx]) {
-                updated[aIdx] = {
-                  ...updated[aIdx],
+              if (updated[capturedIdx]) {
+                updated[capturedIdx] = {
+                  ...updated[capturedIdx],
                   content: result.npc_response,
                   emotions: result.stimulus ? emotions : null,
                   mood: result.stimulus?.mood || null,
@@ -292,10 +294,10 @@ export async function handleChatSend(
           const lastTurn = history[history.length - 1]
           updateChatMessages((prev) => {
             const updated = [...prev]
-            if (updated[assistantIdx.current]) {
-              updated[assistantIdx.current] = {
-                ...updated[assistantIdx.current],
-                snapshot: { ...updated[assistantIdx.current].snapshot, llm_model: lastTurn.llm_model },
+            if (updated[capturedIdx]) {
+              updated[capturedIdx] = {
+                ...updated[capturedIdx],
+                snapshot: { ...updated[capturedIdx].snapshot, llm_model: lastTurn.llm_model },
               }
             }
             return updated
@@ -304,8 +306,11 @@ export async function handleChatSend(
       }
     } catch (_) { /* ignore */ }
     refresh()
-  } catch (e) { toast('요청 실패: ' + e, 'error') }
-  finally { setChatLoading(false) }
+  } catch (e) {
+    if ((e as Error).name !== 'AbortError') {
+      toast('요청 실패: ' + e, 'error')
+    }
+  } finally { setChatLoading(false) }
 }
 
 export async function handleEndChat(

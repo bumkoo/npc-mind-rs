@@ -56,6 +56,7 @@ export const useChatStore = create<ChatStore>((set) => ({
       chatLoading: false,
       chatScenarioTurns: [],
       chatScenarioIdx: 0,
+      chatEnded: false,
       selectedMsgIdx: null,
     }),
 }))

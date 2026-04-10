@@ -1,6 +1,9 @@
 export const api = {
   get: <T = unknown>(url: string): Promise<T> =>
-    fetch(url).then((r) => r.json()),
+    fetch(url).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+      return r.json()
+    }),
 
   post: (url: string, data?: unknown): Promise<Response> =>
     fetch(url, {
@@ -24,5 +27,8 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
-    }).then((r) => r.json()),
+    }).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+      return r.json()
+    }),
 }

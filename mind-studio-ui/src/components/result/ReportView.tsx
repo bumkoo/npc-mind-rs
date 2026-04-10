@@ -1,10 +1,28 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { marked } from 'marked'
+
+// Configure marked to sanitize output
+marked.setOptions({ breaks: true })
 
 interface ReportViewProps {
   content: string
   onUpdate: (content: string) => void
   isReadOnly?: boolean
+}
+
+function sanitizeHtml(html: string): string {
+  const div = document.createElement('div')
+  div.innerHTML = html
+  // Remove script tags and event handlers
+  div.querySelectorAll('script, iframe, object, embed, link[rel="import"]').forEach((el) => el.remove())
+  div.querySelectorAll('*').forEach((el) => {
+    for (const attr of [...el.attributes]) {
+      if (attr.name.startsWith('on') || attr.value.startsWith('javascript:')) {
+        el.removeAttribute(attr.name)
+      }
+    }
+  })
+  return div.innerHTML
 }
 
 export default function ReportView({ content, onUpdate, isReadOnly }: ReportViewProps) {
@@ -15,7 +33,10 @@ export default function ReportView({ content, onUpdate, isReadOnly }: ReportView
     setText(content || '')
   }, [content])
 
-  const html = marked.parse(text || '*보고서 내용이 없습니다.*') as string
+  const html = useMemo(
+    () => sanitizeHtml(marked.parse(text || '*보고서 내용이 없습니다.*') as string),
+    [text],
+  )
 
   if (!editMode || isReadOnly) {
     return (
