@@ -305,7 +305,7 @@ impl<R, A, S, C> DialogueTestService<R, A, S, C> {
 | `GET /api/llm/slots` | llama-server 슬롯 상태 |
 | `GET /api/llm/metrics` | Prometheus 메트릭 (파싱 + 원문) |
 
-**UI 패널 (index.html 확장):**
+**UI 패널 (`mind-studio-ui/` — Vite + React + Zustand):**
 - 채팅 인터페이스: Player 대사 입력 → NPC 응답 표시
 - 실시간 감정 변화 그래프 (기존 턴 히스토리 활용)
 - Beat 전환 알림 배너
@@ -325,7 +325,7 @@ src/
     handlers/chat.rs       ← /api/chat/* 엔드포인트
     handlers/llm.rs        ← /api/llm/* 모니터링 엔드포인트
     state.rs               ← AppState (chat, llm_info, llm_detector, llm_monitor)
-    static/index.html      ← 채팅 UI 패널
+    static/                ← mind-studio-ui/ 빌드 출력 (Vite)
 tests/
   llm_monitor_test.rs      ← LlamaServerMonitor mock 서버 테스트
   llama_timings_test.rs    ← TimingsCapturingClient mock 서버 테스트
@@ -420,7 +420,7 @@ tests/
 3. [x] `RigChatAdapter` 구현 (`src/adapter/rig_chat.rs`) + feature gate `chat`
 4. [x] `DialogueTestService` 구현 (`src/application/dialogue_test_service.rs`)
 5. [x] Mind Studio `/api/chat/*` 엔드포인트 추가 (`chat/start`, `chat/message`, `chat/end`)
-6. [ ] 채팅 UI 패널 구현 (index.html)
+6. [x] 채팅 UI 패널 구현 (`mind-studio-ui/` — Vite + React + Zustand)
 7. [ ] MockConversationPort로 대화 루프 단위 테스트
 8. [ ] `data/huckleberry_finn/` 시나리오로 E2E 대화 테스트
 9. [ ] MCP 서버에 `start_chat`, `send_chat_message`, `end_chat` 도구 추가

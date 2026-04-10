@@ -210,14 +210,20 @@ let service = FormattedMindService::with_overrides(repo, "ko", overrides)?;
 
 ## Mind Studio (Development Tool)
 
-A browser-based simulator for designing and testing NPC personalities and scenes — without writing code.
+A browser-based simulator for designing and testing NPC personalities and scenes — without writing code. Built with **Vite + React + TypeScript + Zustand** frontend and **Axum** REST API backend.
 
 ```bash
+# 1. Build frontend (first time or after UI changes)
+cd mind-studio-ui && npm install && npm run build && cd ..
+
+# 2. Run server (serves built UI at http://127.0.0.1:3000)
 cargo run --features mind-studio --bin npc-mind-studio
-# Opens at http://127.0.0.1:3000
 
 # With auto dialogue → PAD analysis (requires BGE-M3 model)
 cargo run --features mind-studio,embed --bin npc-mind-studio
+
+# Frontend dev mode (HMR + API proxy to Axum)
+cd mind-studio-ui && npm run dev  # http://localhost:5173
 ```
 
 **What you can do:**

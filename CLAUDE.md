@@ -21,7 +21,13 @@ cargo test --features embed        # 전체 테스트 (임베딩 포함)
 # 개별 테스트는 tests/ 디렉토리 참조
 # PAD 벤치마크(pad_benchmark_test 등)는 --features embed 필요
 
-# mind-studio 실행
+# 프론트엔드 빌드/테스트 (mind-studio-ui/)
+cd mind-studio-ui && npm install        # 최초 의존성 설치
+cd mind-studio-ui && npm run build      # 프로덕션 빌드 → src/bin/mind-studio/static/
+cd mind-studio-ui && npm test           # Vitest 테스트 실행
+cd mind-studio-ui && npm run dev        # 개발 서버 (http://localhost:5173, proxy → Axum)
+
+# mind-studio 실행 (빌드된 UI 포함)
 cargo run --features mind-studio,chat,embed --bin npc-mind-studio  # http://127.0.0.1:3000
 ```
 
@@ -52,11 +58,12 @@ src/
   ports.rs        헥사고날 포트 트레이트 전체
   adapter/        포트 구현 (InMemoryRepository, OrtEmbedder, RigChatAdapter+LlamaServerMonitor, TimingsCapturingClient, FileAnchorSource)
   presentation/   다국어 포맷터 (ko, en TOML 기반, deep merge 지원)
-  bin/mind-studio/  Axum 기반 웹 UI + REST API + 네이티브 SSE MCP 서버
+  bin/mind-studio/  Axum REST API + SSE MCP 서버 + static 파일 서빙
 tests/            통합 테스트 (TestContext 공유)
 locales/          ko.toml, en.toml + PAD 앵커 (locales/anchors/)
 docs/             아키텍처/감정/성격/가이드 상세 문서
 data/             소설 기반 테스트 시나리오 + 캐릭터 프리셋(presets/)
+mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 → bin/mind-studio/static/)
 ```
 
 ## 아키텍처
@@ -209,8 +216,49 @@ delta = pad_dot × absorb_rate × STIMULUS_IMPACT_RATE × inertia
 
 Claude(API)와 Bekay(브라우저)가 동시에 사용하는 심리 엔진 시뮬레이터. Mind Studio handlers는 `MindService` API의 얇은 래퍼입니다.
 
-- 서버 실행: `cargo run --features mind-studio,chat,embed --bin npc-mind-studio` → http://127.0.0.1:3000
-- 주요 기능: NPC/관계/오브젝트 CRUD, 감정 평가, 가이드 생성, 대사→PAD 자동 분석(embed), 시나리오 로드/세이브, 턴 히스토리, 테스트 레포트
+### 아키텍처
+
+- **백엔드**: Axum REST API + SSE MCP 서버 (`src/bin/mind-studio/`)
+- **프론트엔드**: Vite + React 18 + TypeScript + Zustand (`mind-studio-ui/`)
+- 빌드 출력이 `src/bin/mind-studio/static/`에 배치되어 Axum `ServeDir`로 서빙
+
+### 실행 방법
+
+```bash
+# 프론트엔드 빌드 (최초 1회 또는 UI 변경 시)
+cd mind-studio-ui && npm install && npm run build
+
+# Axum 서버 실행 (빌드된 UI 포함)
+cargo run --features mind-studio,chat,embed --bin npc-mind-studio  # http://127.0.0.1:3000
+
+# 프론트엔드 개발 모드 (HMR, API proxy → Axum 3000)
+cd mind-studio-ui && npm run dev  # http://localhost:5173
+
+# 프론트엔드 테스트
+cd mind-studio-ui && npm test
+```
+
+### 프론트엔드 구조 (`mind-studio-ui/`)
+
+```
+src/
+  App.tsx               레이아웃 셸 (스토어 연결)
+  api/client.ts         fetch wrapper (get/post/put/del/postJson)
+  stores/               Zustand 스토어 5개 (Entity, UI, Result, Chat, Scene)
+  handlers/             비즈니스 로직 (appHandlers, loadHandlers)
+  hooks/                useToast, useRefresh, useChatPolling, useAutoSave
+  components/
+    sidebar/            NPC/관계/오브젝트 목록
+    modals/             NpcModal, RelModal, ObjModal
+    situation/          SituationPanel, FocusEditor
+    chat/               ChatPanel (SSE 스트리밍)
+    result/             ResultPanel + 10개 서브뷰
+  types/index.ts        공유 TypeScript 타입
+  __tests__/            Vitest 테스트 (스토어/핸들러/API/훅)
+```
+
+### 주요 기능
+- NPC/관계/오브젝트 CRUD, 감정 평가, 가이드 생성, 대사→PAD 자동 분석(embed), 시나리오 로드/세이브, 턴 히스토리, 테스트 레포트
 - **Scene Focus 패널**: 시나리오 JSON에 정의된 Focus 옵션 목록을 읽기 전용으로 표시 (활성/대기 상태, trigger 조건, test_script)
 - **Beat 전환 표시**: stimulus 결과에서 Beat 전환 발생 시 시각적 배너
 - **테스트 스크립트**: 각 Beat의 `test_script` 대사 목록을 Focus 패널에 표시하고, 대화 입력 영역에서 '스크립트 전송' 버튼으로 순차 전송 가능
