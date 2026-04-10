@@ -110,7 +110,7 @@ export default function SituationPanel({
 
   // --- 시나리오 로드 시 상황설정 복원 ---
   const restoreKeyRef = useRef<SavedSituation | null>(null)
-  const skipSituationSaveRef = useRef(false)
+  const skipSituationSaveUntilRef = useRef(0)
   useEffect(() => {
     if (!savedSituation || savedSituation === restoreKeyRef.current) return
     restoreKeyRef.current = savedSituation
@@ -138,8 +138,8 @@ export default function SituationPanel({
         objAp: s.objAp || 0,
       })
     }
-    // 복원으로 인한 state 변경이 auto-save를 트리거하지 않도록 스킵 플래그 설정
-    skipSituationSaveRef.current = true
+    // 복원으로 인한 state 변경이 auto-save를 트리거하지 않도록 2초간 억제
+    skipSituationSaveUntilRef.current = Date.now() + 2000
   }, [savedSituation])
 
   // --- 상황설정 변경 시 자동 저장 (debounced) ---
@@ -147,11 +147,8 @@ export default function SituationPanel({
   const allDeps = JSON.stringify({ desc, significance, focusSettings, singleFs, npcId, partnerId })
   useEffect(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    // 로드 직후 첫 자동저장은 건너뜀 (scenario_modified 오염 방지)
-    if (skipSituationSaveRef.current) {
-      skipSituationSaveRef.current = false
-      return
-    }
+    // 로드 직후 자동저장 억제 (scenario_modified 오염 방지)
+    if (Date.now() < skipSituationSaveUntilRef.current) return
     saveTimerRef.current = setTimeout(() => {
       const activeFs = sceneInfo ? focusSettings : { _single: singleFs }
       const data = {
