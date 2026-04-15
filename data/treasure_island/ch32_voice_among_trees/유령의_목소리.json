@@ -1,0 +1,252 @@
+{
+  "current_situation": null,
+  "format": "mind-studio/scenario",
+  "npcs": {
+    "george_merry": {
+      "aesthetic_appreciation": -0.4000000059604645,
+      "anxiety": 0.4000000059604645,
+      "creativity": -0.30000001192092896,
+      "dependence": 0.20000000298023224,
+      "description": "노란 눈의 키 큰 해적. 성급하고 도전적이며 규칙을 내세워 실버에 맞서지만, 실버의 언변에 결국 눌린다. 선동에는 능하나 진정한 리더십은 부족하고, 탐욕에 쉽게 흔들린다. 미신과 공포에 쉽게 흔들린다.",
+      "diligence": -0.20000000298023224,
+      "fairness": -0.30000001192092896,
+      "fearfulness": 0.30000001192092896,
+      "flexibility": -0.4000000059604645,
+      "forgiveness": -0.5,
+      "gentleness": -0.6000000238418579,
+      "greed_avoidance": -0.8999999761581421,
+      "id": "george_merry",
+      "inquisitiveness": -0.20000000298023224,
+      "liveliness": 0.20000000298023224,
+      "modesty": -0.6000000238418579,
+      "name": "George Merry",
+      "organization": -0.30000001192092896,
+      "patience": -0.6000000238418579,
+      "perfectionism": -0.10000000149011612,
+      "prudence": -0.5,
+      "sentimentality": -0.30000001192092896,
+      "sincerity": -0.699999988079071,
+      "sociability": 0.30000001192092896,
+      "social_boldness": 0.6000000238418579,
+      "social_self_esteem": 0.5,
+      "unconventionality": -0.20000000298023224
+    },
+    "silver": {
+      "aesthetic_appreciation": -0.20000000298023224,
+      "anxiety": -0.30000001192092896,
+      "creativity": 0.699999988079071,
+      "dependence": -0.5,
+      "description": "외다리 해적, 선상 요리사. Walrus 선장 Flint의 옛 부하였다. 겉으로는 다정하고 유쾌하지만 속은 냉혹하고 계산적이다. 목적을 위해 여러 편에 발을 걸치며 순식간에 표정을 바꾼다. 리더십과 언변이 뛰어나고 상황을 읽는 감각이 탁월하다.",
+      "diligence": 0.20000000298023224,
+      "fairness": -0.6000000238418579,
+      "fearfulness": -0.5,
+      "flexibility": 0.8999999761581421,
+      "forgiveness": -0.30000001192092896,
+      "gentleness": -0.4000000059604645,
+      "greed_avoidance": -0.800000011920929,
+      "id": "silver",
+      "inquisitiveness": 0.5,
+      "liveliness": 0.5,
+      "modesty": -0.5,
+      "name": "Long John Silver",
+      "organization": 0.30000001192092896,
+      "patience": 0.699999988079071,
+      "perfectionism": -0.20000000298023224,
+      "prudence": 0.6000000238418579,
+      "sentimentality": -0.20000000298023224,
+      "sincerity": -0.8999999761581421,
+      "sociability": 0.800000011920929,
+      "social_boldness": 0.800000011920929,
+      "social_self_esteem": 0.800000011920929,
+      "unconventionality": 0.4000000059604645
+    }
+  },
+  "objects": {
+    "compass": {
+      "category": null,
+      "description": "실버가 방위를 잡는 데 쓰는 항해 도구. 그의 전문성과 리더십의 상징.",
+      "id": "compass"
+    },
+    "treasure_map": {
+      "category": null,
+      "description": "플린트 선장이 남긴 보물 위치 지도. 해적들의 모든 탐욕이 수렴되는 목표물.",
+      "id": "treasure_map"
+    }
+  },
+  "relationships": {
+    "george_merry:silver": {
+      "closeness": -0.30000001192092896,
+      "owner_id": "george_merry",
+      "power": -0.30000001192092896,
+      "target_id": "silver",
+      "trust": -0.6000000238418579
+    },
+    "silver:george_merry": {
+      "closeness": -0.4000000059604645,
+      "owner_id": "silver",
+      "power": 0.5,
+      "target_id": "george_merry",
+      "trust": -0.699999988079071
+    }
+  },
+  "scenario": {
+    "description": "Treasure Island Ch.XXXII — 보물 코앞에서 실버 일행이 유령 같은 목소리(플린트의 노래)를 듣는다. 실버는 미신적 공포에 휩싸이지만 이성으로 공포를 이겨내고, 다시 황금을 향한 탐욕에 사로잡힌다. 자신감→공포→이성 회복→탐욕의 감정 아크를 실버 관점에서 추적.",
+    "name": "나무 사이의 목소리 — 실버의 담력",
+    "notes": [
+      "원작: Treasure Island, Chapter XXXII 'The Treasure-hunt — The Voice Among the Trees'",
+      "POV: Long John Silver (짐 호킨스가 아닌 실버의 내면을 본다)",
+      "Beat 1 (confident_leader): 나침반으로 방위 확인, 'It's child's play' — Pride/Joy",
+      "Beat 2 (spectral_terror): 숲에서 들려온 플린트의 노래, 얼굴이 재가 되고 이가 덜덜 — Fear/Distress",
+      "Beat 3 (rational_recovery): 메아리가 있는 유령은 없다는 논증으로 부하들 다잡음 — Pride/Gratification",
+      "Beat 4 (murderous_greed): 700,000파운드 코앞, 배신 계획과 살의 — Joy/Hope",
+      "핵심 감정 아크: Pride → Fear → Pride(이성 회복) → Joy(탐욕)"
+    ]
+  },
+  "scene": {
+    "description": "스파이글래스 산의 고원. 뜨거운 태양, 소나무들 사이로 탁 트인 전망. 실버 일행은 세 그루의 큰 나무 중 첫 번째를 향해 올라가는 중. 해골섬이 뒤로 보인다.",
+    "focuses": [
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버 자신이 나침반으로 방위를 정확히 잡고 부하들 앞에서 리더십을 과시함",
+          "praiseworthiness": 0.7
+        },
+        "description": "실버가 나침반으로 방위를 확인하며 부하들에게 보물 위치를 짚어준다. '여기서 찾는 건 애들 장난이지.' 700,000파운드가 반 마일 앞에 있다는 확신. 리더로서의 자신감이 절정.",
+        "event": {
+          "description": "보물이 코앞이고 방위가 완벽하게 일치함 — 평생의 꿈이 이뤄지기 직전",
+          "desirability_for_self": 0.8
+        },
+        "id": "confident_leader",
+        "test_script": [
+          "John, 이번엔 진짜 찾을 수 있겠지? 보물이 정말 저기 있는 거 맞아?",
+          "자네 나침반 하나는 믿을 만하군. 그런데 플린트가 여기에 혼자 왔다면...",
+          "그래, 애들 장난이면 좋겠군. 빨리 끝내고 술이나 한 잔 하세."
+        ],
+        "trigger": null
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버 자신이 공포에 질려 말을 잇지 못하고 부하들 앞에서 약한 모습을 보임",
+          "praiseworthiness": -0.6
+        },
+        "description": "갑자기 숲 한가운데서 얇고 떨리는 목소리가 플린트의 노래를 부른다. '죽은 자의 상자 위에 열다섯 사람—요-호-호, 럼 한 병!' 해적 여섯 명의 얼굴이 재처럼 하얗게 질린다. 실버조차 이가 덜덜 떨리고 입술이 잿빛으로 변한다. 죽은 플린트의 유령이라는 공포.",
+        "event": {
+          "description": "죽은 플린트의 노래가 숲에서 들려옴 — 저주받은 보물, 죽음의 예고",
+          "desirability_for_self": -0.85
+        },
+        "id": "spectral_terror",
+        "test_script": [
+          "John! 들었나? 플린트의 목소리야! 저주받았어, 우리 다 죽는 거야!",
+          "Darby! Darby M'Graw! 플린트가 마지막으로 부른 그 이름이야! 도망가야 해!",
+          "John, 어서 뭔가 말해봐! 자네도 떨고 있잖아! 저게 사람 목소리라고?"
+        ],
+        "trigger": [
+          [
+            {
+              "below": 0.87,
+              "emotion": "Joy"
+            }
+          ],
+          [
+            {
+              "below": 0.85,
+              "emotion": "Pride"
+            }
+          ]
+        ]
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버 자신이 기지를 발휘해 '유령에게 메아리가 있을 리 없다'는 논증으로 부하들을 설득",
+          "praiseworthiness": 0.85
+        },
+        "description": "실버가 가까스로 정신을 차리고 논리를 들이민다. '유령에게 메아리가 있었던 적이 있나? 저건 산 사람이야.' 부하들이 놀랍게도 이 빈약한 논증에 설득된다. George Merry가 'Ben Gunn 목소리 같기도 하군' 하며 두려움을 털어낸다. 실버의 담력과 기지가 다시 리더십을 세운다.",
+        "event": {
+          "description": "실버가 논리로 부하들의 공포를 잠재움 — 위기에서 리더십 회복",
+          "desirability_for_self": 0.6
+        },
+        "id": "rational_recovery",
+        "test_script": [
+          "메아리... 메아리가 있었다고? 그건 유령이 아니다. 듣고 보니 자네 말이 맞아, John!",
+          "하긴... 죽은 놈 목소리를 이 섬에서 누가 알겠어? 자네 머리는 여전히 돌아가는군.",
+          "Ben Gunn! 그 놈 목소리 같기도 하고! 산 놈이라면 얘기가 다르지."
+        ],
+        "trigger": [
+          [
+            {
+              "above": 0.35,
+              "emotion": "Fear"
+            }
+          ],
+          [
+            {
+              "above": 0.35,
+              "emotion": "Distress"
+            }
+          ],
+          [
+            {
+              "above": 0.35,
+              "emotion": "Shame"
+            }
+          ]
+        ]
+      },
+      {
+        "action": {
+          "agent_id": "silver",
+          "description": "실버 자신이 짐에게 한 약속을 저버리고 정직한 자들을 모두 죽일 계획을 세움",
+          "praiseworthiness": 0.3
+        },
+        "description": "세 번째 큰 나무가 보인다 — 200피트 높이의 거대한 나무. 700,000파운드가 그 그늘 아래 묻혀 있다. 공포는 사라지고 탐욕이 모든 것을 삼킨다. 실버의 콧구멍이 벌름거리고 눈빛이 살벌해진다. 짐에게 한 약속도, 의사의 경고도 과거의 일이다. 보물을 손에 넣자마자 정직한 목은 모두 베고 HISPANIOLA를 차지하리라.",
+        "event": {
+          "description": "700,000파운드 보물이 눈앞의 나무 아래 — 평생의 야망 실현 직전",
+          "desirability_for_self": 0.95
+        },
+        "id": "murderous_greed",
+        "test_script": [
+          "John, 저기 그 큰 나무 보이지? 700,000파운드가 저 그늘에 있어! 이제 우리가 왕이야!",
+          "그 꼬마 짐은 어떻게 할 거야? 약속 같은 건 잊어버렸겠지?",
+          "빨리 가자, John! 삽을 들자! 오늘 밤 우린 부자가 된다!"
+        ],
+        "trigger": [
+          [
+            {
+              "above": 0.4,
+              "emotion": "Pride"
+            },
+            {
+              "above": 0.08,
+              "emotion": "Distress"
+            },
+            {
+              "below": 0.4,
+              "emotion": "Distress"
+            }
+          ],
+          [
+            {
+              "above": 0.4,
+              "emotion": "Gratification"
+            },
+            {
+              "above": 0.08,
+              "emotion": "Distress"
+            },
+            {
+              "below": 0.4,
+              "emotion": "Distress"
+            }
+          ]
+        ]
+      }
+    ],
+    "initial_focus_id": "confident_leader",
+    "npc_id": "silver",
+    "partner_id": "george_merry",
+    "significance": 0.9
+  },
+  "test_report": ""
+}
