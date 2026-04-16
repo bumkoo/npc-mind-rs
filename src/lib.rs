@@ -28,6 +28,21 @@ pub use ports::{
 pub use presentation::builtin_toml;
 pub use presentation::formatter::LocaleFormatter;
 
+// --- Event Sourcing (Phase 1) ---
+pub use application::event_bus::EventBus;
+pub use application::event_service::EventAwareMindService;
+pub use application::event_store::{EventStore, InMemoryEventStore};
+pub use application::projection::{
+    EmotionProjection, Projection, ProjectionRegistry, RelationshipProjection, SceneProjection,
+};
+pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
+
+// --- CQRS Command/Agent (Phase 2) ---
+pub use application::command::{
+    Command, CommandDispatcher, CommandResult, EmotionAgent, GuideAgent, HandlerContext,
+    HandlerOutput, RelationshipAgent,
+};
+
 #[cfg(feature = "chat")]
 pub use adapter::rig_chat::RigChatAdapter;
 #[cfg(feature = "chat")]

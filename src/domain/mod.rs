@@ -1,4 +1,5 @@
 pub mod emotion;
+pub mod event;
 pub mod guide;
 pub mod pad;
 pub mod pad_anchors;
