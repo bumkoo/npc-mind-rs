@@ -566,3 +566,53 @@ pub trait GuideFormatter: Send + Sync {
     /// JSON 출력 생성
     fn format_json(&self, guide: &ActingGuide) -> Result<String, serde_json::Error>;
 }
+
+// ---------------------------------------------------------------------------
+// 기억 저장소 포트 (RAG)
+// ---------------------------------------------------------------------------
+
+use crate::domain::memory::{MemoryEntry, MemoryResult};
+
+/// 기억 저장/검색 포트 — RAG 인덱스 추상화
+///
+/// `&self`로 호출하여 `Arc<dyn MemoryStore>` 공유가 가능합니다.
+/// 내부 가변성(interior mutability)으로 동시성을 처리합니다.
+pub trait MemoryStore: Send + Sync {
+    /// 기억 인덱싱 (메타데이터 + 선택적 임베딩 벡터)
+    fn index(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>) -> Result<(), MemoryError>;
+
+    /// 의미 기반 검색 (벡터 유사도)
+    fn search_by_meaning(
+        &self,
+        query_embedding: &[f32],
+        npc_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryResult>, MemoryError>;
+
+    /// 키워드 기반 검색 (텍스트 매칭)
+    fn search_by_keyword(
+        &self,
+        keyword: &str,
+        npc_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<MemoryResult>, MemoryError>;
+
+    /// 최근 기억 조회 (시간순 내림차순)
+    fn get_recent(
+        &self,
+        npc_id: &str,
+        limit: usize,
+    ) -> Result<Vec<MemoryEntry>, MemoryError>;
+
+    /// 저장된 기억 수
+    fn count(&self) -> usize;
+}
+
+/// 기억 저장소 오류
+#[derive(Debug, thiserror::Error)]
+pub enum MemoryError {
+    #[error("기억 저장소 오류: {0}")]
+    StorageError(String),
+    #[error("임베딩 오류: {0}")]
+    EmbeddingError(String),
+}
