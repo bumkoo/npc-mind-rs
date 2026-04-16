@@ -43,6 +43,16 @@ pub use application::command::{
     HandlerOutput, RelationshipAgent,
 };
 
+// --- Memory / RAG (Phase 3) ---
+pub use application::memory_store::InMemoryMemoryStore;
+pub use domain::memory::{MemoryEntry, MemoryResult, MemoryType};
+pub use ports::{MemoryError, MemoryStore};
+
+#[cfg(feature = "embed")]
+pub use adapter::sqlite_memory::SqliteMemoryStore;
+#[cfg(feature = "embed")]
+pub use application::memory_agent::MemoryAgent;
+
 #[cfg(feature = "chat")]
 pub use adapter::rig_chat::RigChatAdapter;
 #[cfg(feature = "chat")]

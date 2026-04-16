@@ -106,6 +106,19 @@ pub enum EventPayload {
         partner_id: String,
     },
 
+    /// 대화 턴 완료
+    DialogueTurnCompleted {
+        npc_id: String,
+        partner_id: String,
+        /// 화자: "user" 또는 "assistant"
+        speaker: String,
+        /// 대사 내용
+        utterance: String,
+        /// 대사 시점 감정 스냅샷
+        #[serde(default)]
+        emotion_snapshot: Vec<(String, f32)>,
+    },
+
     /// 감정 상태 초기화
     EmotionCleared {
         npc_id: String,
@@ -146,6 +159,7 @@ impl DomainEvent {
             EventPayload::SceneEnded { .. } => "SceneEnded",
             EventPayload::RelationshipUpdated { .. } => "RelationshipUpdated",
             EventPayload::GuideGenerated { .. } => "GuideGenerated",
+            EventPayload::DialogueTurnCompleted { .. } => "DialogueTurnCompleted",
             EventPayload::EmotionCleared { .. } => "EmotionCleared",
         }
     }
