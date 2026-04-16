@@ -8,7 +8,9 @@ use crate::ports::{Appraiser, MindRepository};
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::mind_service::MindServiceError;
+use super::super::pipeline::{Pipeline, PipelineState};
 use super::super::situation_service::SituationService;
+use super::super::tiered_event_bus::TieredEventBus;
 use super::agents::{EmotionAgent, GuideAgent, RelationshipAgent};
 use super::handler::{HandlerContext, HandlerOutput};
 use super::types::{Command, CommandResult};
@@ -27,6 +29,7 @@ pub struct CommandDispatcher<R: MindRepository> {
     situation_service: SituationService,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
+    tiered_bus: Option<Arc<TieredEventBus>>,
     correlation_id: Option<u64>,
 }
 
@@ -44,8 +47,17 @@ impl<R: MindRepository> CommandDispatcher<R> {
             situation_service: SituationService::new(),
             event_store,
             event_bus,
+            tiered_bus: None,
             correlation_id: None,
         }
+    }
+
+    /// TieredEventBus 설정 (선택적)
+    ///
+    /// 설정하면 이벤트 발행 시 기존 EventBus와 TieredEventBus 모두에 발행.
+    pub fn with_tiered_bus(mut self, bus: Arc<TieredEventBus>) -> Self {
+        self.tiered_bus = Some(bus);
+        self
     }
 
     pub fn set_correlation_id(&mut self, id: u64) {
@@ -58,6 +70,10 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
     pub fn event_bus(&self) -> &Arc<EventBus> {
         &self.event_bus
+    }
+
+    pub fn tiered_bus(&self) -> Option<&Arc<TieredEventBus>> {
+        self.tiered_bus.as_ref()
     }
 
     pub fn repository(&self) -> &R {
@@ -197,7 +213,51 @@ impl<R: MindRepository> CommandDispatcher<R> {
             }
             self.event_store.append(&[event.clone()]);
             self.event_bus.publish(&event);
+            // TieredEventBus (있으면)
+            if let Some(ref tiered) = self.tiered_bus {
+                tiered.publish(&event);
+            }
         }
+    }
+
+    /// Pipeline 실행 — 순차 에이전트 체인
+    ///
+    /// Pipeline의 단계들을 순차 실행하고, 축적된 side-effect를
+    /// repository에 적용한 뒤, 이벤트를 발행합니다.
+    pub fn execute_pipeline(
+        &mut self,
+        pipeline: Pipeline,
+        cmd: &Command,
+    ) -> Result<CommandResult, MindServiceError> {
+        let ctx = self.build_context(cmd)?;
+        let initial = PipelineState::new(ctx);
+
+        let final_state = pipeline.execute(initial)?;
+
+        // Side-effects 적용
+        if let Some((npc_id, state)) = &final_state.new_emotion_state {
+            self.repository.save_emotion_state(npc_id, state.clone());
+        }
+        if let Some((owner, target, rel)) = &final_state.new_relationship {
+            self.repository.save_relationship(owner, target, rel.clone());
+        }
+        if let Some(npc_id) = &final_state.clear_emotion {
+            self.repository.clear_emotion_state(npc_id);
+        }
+        if final_state.clear_scene {
+            self.repository.clear_scene();
+        }
+        if let Some(scene) = &final_state.save_scene {
+            self.repository.save_scene(scene.clone());
+        }
+
+        // 이벤트 발행
+        let aggregate_id = cmd.npc_id().to_string();
+        self.emit_events(&aggregate_id, &final_state.accumulated_events);
+
+        final_state.final_result.ok_or_else(|| {
+            MindServiceError::InvalidSituation("파이프라인이 결과를 생성하지 못했습니다.".into())
+        })
     }
 
     /// StartScene — 복합 처리 (Scene 생성 + 초기 Focus appraise)
