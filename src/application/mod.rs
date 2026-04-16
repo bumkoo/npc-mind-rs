@@ -8,10 +8,12 @@ pub mod formatted_service;
 pub mod memory_agent;
 pub mod memory_store;
 pub mod mind_service;
+pub mod pipeline;
 pub mod projection;
 pub mod relationship_service;
 pub mod scene_service;
 pub mod situation_service;
+pub mod tiered_event_bus;
 
 #[cfg(feature = "chat")]
 pub mod dialogue_test_service;

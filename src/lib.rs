@@ -53,6 +53,13 @@ pub use adapter::sqlite_memory::SqliteMemoryStore;
 #[cfg(feature = "embed")]
 pub use application::memory_agent::MemoryAgent;
 
+// --- Pipeline + TieredEventBus ---
+pub use application::pipeline::{Pipeline, PipelineStage, PipelineState};
+pub use application::tiered_event_bus::{AsyncEventSink, StdThreadSink, TieredEventBus};
+
+#[cfg(feature = "chat")]
+pub use application::tiered_event_bus::TokioSink;
+
 #[cfg(feature = "chat")]
 pub use adapter::rig_chat::RigChatAdapter;
 #[cfg(feature = "chat")]

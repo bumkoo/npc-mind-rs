@@ -35,12 +35,27 @@ impl MemoryAgent {
         }
     }
 
-    /// EventBus에 자기 자신을 구독자로 등록
+    /// EventBus에 자기 자신을 구독자로 등록 (동기, Tier 1)
     pub fn subscribe_to(self: &Arc<Self>, bus: &EventBus) {
         let agent = Arc::clone(self);
         bus.subscribe(move |event| {
             agent.on_event(event);
         });
+    }
+
+    /// TieredEventBus의 Tier 2에 등록 (비동기, 백그라운드 스레드)
+    ///
+    /// `subscribe_to`와 달리 dispatch()를 블로킹하지 않습니다.
+    /// 임베딩(~50ms) 등 시간 소요 작업이 백그라운드에서 실행됩니다.
+    pub fn register_async(
+        self: &Arc<Self>,
+        bus: &crate::application::tiered_event_bus::TieredEventBus,
+    ) {
+        let agent = Arc::clone(self);
+        let sink = crate::application::tiered_event_bus::StdThreadSink::spawn(move |event| {
+            agent.on_event(&event);
+        });
+        bus.register_async(sink);
     }
 
     /// 이벤트 처리 (EventBus 콜백에서 호출)
