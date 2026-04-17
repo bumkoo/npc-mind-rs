@@ -25,6 +25,7 @@
 > - **RAG 저장소**: 문서는 SQLite + LanceDB 하이브리드 → 구현은 단일 SQLite 파일에 FTS5(trigram) + sqlite-vec vec0 가상 테이블을 함께 둔다. LanceDB async-only 제약 회피 + sqlite-vec은 순수 C 확장이라 tokio 런타임 미요구. 벡터 BLOB 자체 구현도 제거되고 vec0가 ANN을 대신한다.
 > - **Pipeline**: 문서에 없던 개념. Tier 1(커맨드 내부 순차 동기) 역할 담당. EventBus v2 이후 "Tier"라는 분류 체계는 Pipeline(동기) vs EventBus(비동기)로 자연 정렬됨.
 > - **Lag 복구**: broadcast capacity 초과 시 `subscribe_with_lag()`의 `Lagged(n)` 통지를 받고 `EventStore::get_events_after_id()`로 replay하여 at-least-once 유지.
+> - **DialogueAgent 형태**: 문서 §7.4 원안은 `GuideGenerated` 구독 subscriber → 구현은 **explicit orchestrator**(`start_session`/`turn`/`end_session` async API)로 전환. LLM 호출 타이밍이 user utterance 주도이고 세션 시작/종료는 외부 제어가 필요하기 때문. `DialogueTurnCompleted`는 dispatcher의 `event_store()`/`event_bus()`/`projections()` 노출 훅을 통해 dispatcher와 동일한 경로로 직접 발행한다(§7.6 참조).
 
 ---
 
@@ -504,8 +505,10 @@ CommandDispatcher.dispatch(cmd)                      ← sync 진입
   → ProjectionRegistry.apply_all(&event)             ← L1 동기 (쿼리 일관성)
   → EventBus.publish(&event)                         ← L2 broadcast
        ↓  fan-out (런타임-무관 Stream)
-  [MemoryAgent] [DialogueAgent] [StoryAgent] [SSE]    ← L2 독립 async 소비
+  [MemoryAgent] [StoryAgent] [SSE]                    ← L2 독립 async 소비
 ```
+
+※ DialogueAgent는 L2 구독자가 아니라 dispatch 경로 상위에 위치한 orchestrator다(§7.6). `DialogueTurnCompleted`를 발행하는 쪽이며, 그 이벤트는 MemoryAgent 등 L2 구독자가 받는다.
 
 **핵심 포인트**:
 
@@ -557,10 +560,15 @@ Phase 2~3 구현은 두 가지 에이전트 유형을 구분한다:
 - 순서 보장, borrow 충돌 회피, Pipeline 순차 체인 가능
 - Command 처리 중에는 단일 task — 동시 발행 없음
 
-**Read-side / Reactive Agent** (MemoryAgent, 향후 DialogueAgent/StoryAgent/SummaryAgent)
+**Read-side / Reactive Agent** (MemoryAgent, 향후 StoryAgent/SummaryAgent)
 - `EventBus::subscribe()` Stream을 자기 async task에서 소비
-- Side-effect (RAG 인덱싱, LLM 호출, 서사 판단) 수행
+- Side-effect (RAG 인덱싱, 서사 판단) 수행
 - At-least-once 필요 시 `subscribe_with_lag()` + EventStore replay
+
+**Orchestrator Agent** (DialogueAgent — Phase 4에서 도입)
+- 원안은 Read-side 구독자였으나(§7.4), 실제 구현은 explicit orchestrator로 변경(§7.6)
+- `CommandDispatcher`를 소유하고 외부에서 호출되는 async API(`start_session`/`turn`/`end_session`) 제공
+- 내부에서 Command dispatch + LLM 호출을 조합하며 `DialogueTurnCompleted`를 직접 발행
 
 공통 원칙:
 1. **단일 목표(Single Goal)**: 각 에이전트는 하나의 도메인 책임만 담당
@@ -569,6 +577,8 @@ Phase 2~3 구현은 두 가지 에이전트 유형을 구분한다:
 4. **이벤트는 발생 결과** — Command의 직접 결과는 `CommandResult`, 이후 부수 소비는 broadcast로 전파
 
 ### 7.2 에이전트 카탈로그
+
+> DialogueAgent 행은 원안(subscriber) 분류. 실제 구현은 orchestrator이며 상위 코드가 직접 호출한다(§7.6).
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -579,8 +589,8 @@ Phase 2~3 구현은 두 가지 에이전트 유형을 구분한다:
 │ EmotionAgent │ 감정 평가/변동   │ SceneStarted,          │
 │              │                  │ DialogueTurnCompleted   │
 ├──────────────┼──────────────────┼────────────────────────┤
-│ DialogueAgent│ NPC 대사 생성    │ GuideGenerated,        │
-│              │                  │ DialogueTurnCompleted   │
+│ DialogueAgent│ NPC 대사 생성    │ (원안) GuideGenerated  │
+│  — §7.6 참조 │                  │ 실제: orchestrator API │
 ├──────────────┼──────────────────┼────────────────────────┤
 │ StoryAgent   │ 서사 진행 판단   │ BeatTransitioned,      │
 │              │                  │ RelationshipUpdated,    │
@@ -680,6 +690,8 @@ impl Agent for EmotionAgent {
 ```
 
 #### DialogueAgent — NPC 대사 생성 전담
+
+> **구현 주의**: 아래는 원안(subscriber 형태) 스케치이며, 실제 구현은 explicit orchestrator로 변경되었다. 현행 API와 플로우는 [§7.6 DialogueAgent 현행 구현](#76-dialogueagent-현행-구현-phase-4) 참조.
 
 ```rust
 pub struct DialogueAgent;
@@ -836,6 +848,43 @@ Phase 4: + StoryAgent
   - 서사 진행 분석
   - 다중 NPC 관점 지원
 ```
+
+### 7.6 DialogueAgent 현행 구현 (Phase 4)
+
+§7.4의 `DialogueAgent` 원안은 `GuideGenerated` 이벤트 구독자였지만, 실제 LLM 호출은 user utterance가 주도하고 세션 시작/종료에 외부 제어가 필요해 **explicit orchestrator**로 바꾸어 구현했다. 파일: `src/application/dialogue_agent.rs` (chat feature gate).
+
+**구성**: `DialogueAgent<R, C>`는 `CommandDispatcher<R>`와 `C: ConversationPort`를 소유하고, 세션별 `(npc_id, partner_id)` 메타를 `HashMap`으로 추적한다. `GuideFormatter`로 프롬프트를 포맷팅하고, 선택적으로 `UtteranceAnalyzer`로 대사→PAD 자동 분석을 수행한다.
+
+**공개 API** (모두 `async fn`):
+
+| 메서드 | 동작 |
+|--------|------|
+| `start_session(sid, npc, partner, situation?)` | `Command::Appraise` dispatch → `EmotionAppraised` 이벤트 + ActingGuide 생성. 가이드를 프롬프트로 포맷팅 → `ConversationPort::start_session`. 세션 메타 등록. |
+| `turn(sid, utterance, pad?, sit_desc?)` | 아래 "턴 플로우" 참조. |
+| `end_session(sid, significance?)` | `ConversationPort::end_session` → 대화 이력. `significance`가 있으면 `Command::EndDialogue` dispatch → `RelationshipUpdated`/`EmotionCleared`/`SceneEnded` 이벤트. 세션 메타 제거. |
+
+**턴 플로우**:
+
+```
+turn(session_id, user_utterance, pad_hint?)
+  ├─ emit DialogueTurnCompleted { speaker: "user", utterance, snapshot(stimulus 이전) }
+  ├─ PAD 결정 (hint > analyzer > None)
+  ├─ if PAD:
+  │   └─ Command::ApplyStimulus dispatch
+  │        ├─ StimulusApplied (+ BeatTransitioned / RelationshipUpdated 가능)
+  │        └─ beat_changed → ConversationPort.update_system_prompt
+  ├─ ConversationPort.send_message → NPC 응답 + timings
+  └─ emit DialogueTurnCompleted { speaker: "assistant", utterance, snapshot(stimulus 이후) }
+```
+
+**`DialogueTurnCompleted` 직접 발행**: `Command` enum에 대화 턴 전용 variant를 추가하지 않고, dispatcher가 노출한 `event_store()`/`event_bus()`/`projections()` 훅으로 dispatcher와 동일한 발행 시퀀스(`append → apply_all → publish`)를 재사용한다. 새 Command variant 없이 `CommandDispatcher` 표면을 보존한다.
+
+**Event Sourcing 일원화 효과**: `MemoryAgent`는 이미 `DialogueTurnCompleted`를 구독하므로, DialogueAgent가 발행하는 user/assistant 양쪽 턴이 자동으로 RAG에 인덱싱된다. `DialogueTestService`(`FormattedMindService` 기반 얇은 래퍼)는 프롬프트 품질 테스트 등 Event Sourcing 경로가 필요 없는 용도로 유지된다.
+
+**한계**:
+- `send_message_stream` 경로 미지원 (스트리밍이 필요한 경우 `DialogueTestService` 또는 `ConversationPort` 직접 호출).
+- `LlamaTimings`는 `DialogueTurnOutcome.timings`로만 반환되며, `DialogueTurnCompleted` 이벤트 스키마에는 포함되지 않는다. 향후 스키마 확장 시 추가 여부 재검토.
+- `turn()` 중간 실패(stimulus dispatch 또는 LLM 호출) 시 이미 발행된 user 턴 이벤트가 orphan으로 남는다. 재시도 시 중복될 수 있다.
 
 ---
 
@@ -1499,40 +1548,6 @@ Step 5: MindService 제거
 - `MemoryStore` — RAG 인덱스
 - `Agent` — 에이전트 트레이트
 - `Tool` — 도구 추상화
-
----
-
-## 16.5 DialogueAgent (Phase 4 — 현행 구현)
-
-`DialogueAgent<R, C>`는 `CommandDispatcher<R>`와 `C: ConversationPort`를 조합한 async 오케스트레이터다. `DialogueTestService`가 `FormattedMindService` 경로로만 동작했던 한계를 극복하고, **LLM 대화 흐름을 Event Sourcing 경로에 일원화**한다.
-
-### 형태 선택: subscriber vs orchestrator
-
-문서 7.4의 원안은 DialogueAgent를 `GuideGenerated` 이벤트 구독자로 설계했다. 하지만 실제 LLM 호출 타이밍은 상대 대사(user utterance)가 주도하며, 세션 시작/종료는 외부 제어가 필요하다. 이에 따라 구현은 **explicit orchestrator 타입**을 채택했다 — `start_session` / `turn` / `end_session` async API를 제공하고, 내부에서 `CommandDispatcher`로 Command를 dispatch한다.
-
-### DialogueTurnCompleted 발행 경로
-
-`Command` enum에는 대화 턴 전용 variant가 없다(순수 기록 이벤트, side-effect 없음). DialogueAgent는 dispatcher가 노출한 `event_store()` / `event_bus()` / `projections()`를 통해 **dispatcher와 동일한 발행 시퀀스**(`append → apply_all → publish`)로 `DialogueTurnCompleted`를 직접 발행한다. 새 Command variant를 추가하지 않아 `CommandDispatcher` 표면은 유지된다.
-
-### 턴 플로우
-
-```
-turn(session_id, user_utterance, pad_hint?)
-  ├─ emit DialogueTurnCompleted { speaker: "user", utterance, snapshot(stimulus 이전) }
-  ├─ PAD 결정 (hint > analyzer > None)
-  ├─ if PAD:
-  │   └─ Command::ApplyStimulus dispatch
-  │        ├─ StimulusApplied (+ BeatTransitioned / RelationshipUpdated 가능)
-  │        └─ beat_changed → ConversationPort.update_system_prompt
-  ├─ ConversationPort.send_message → NPC 응답 + timings
-  └─ emit DialogueTurnCompleted { speaker: "assistant", utterance, snapshot(stimulus 이후) }
-```
-
-MemoryAgent는 `DialogueTurnCompleted`를 이미 구독하므로, `DialogueAgent`가 발행하는 user/assistant 양쪽 턴이 자동으로 RAG에 인덱싱된다. 이로써 도메인 이벤트 흐름과 LLM 대화 흐름이 일원화된다.
-
-### DialogueTestService와의 공존
-
-`DialogueTestService`(`src/application/dialogue_test_service.rs`)는 `FormattedMindService` 기반의 얇은 래퍼로 유지된다. Event Sourcing 경로가 필요 없는 프롬프트 품질 테스트나 Mind Studio의 단순 대화 체크에서 계속 활용된다. 향후 Event Sourcing 이점이 필요한 경로는 모두 `DialogueAgent`로 이관한다.
 
 ---
 
