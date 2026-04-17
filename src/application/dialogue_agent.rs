@@ -179,6 +179,11 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
     /// 1. `Command::Appraise` dispatch → 감정 + ActingGuide 생성 + EventBus 발행
     /// 2. 가이드를 프롬프트로 포맷팅
     /// 3. `ConversationPort::start_session`
+    ///
+    /// 같은 `session_id`를 가진 세션이 이미 존재하면 세션 메타가 새 값으로
+    /// 덮어씌워지며, `ConversationPort`의 동작(대부분 에러 반환)에 맡긴다.
+    /// LLM start_session이 성공한 이후에만 세션 메타를 기록하므로 실패 경로에서
+    /// 메타가 오염되지 않는다.
     pub async fn start_session(
         &mut self,
         session_id: &str,
@@ -198,7 +203,8 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             _ => return Err(DialogueAgentError::UnexpectedResult("Appraise")),
         };
 
-        let prompt = self.formatter.format_prompt(&appraise_result.guide);
+        // format()은 내부에서 format_prompt를 한 번 호출하므로, 결과의 prompt를
+        // 그대로 재사용하여 동일 가이드를 중복 포맷팅하지 않는다.
         let appraise_resp: AppraiseResponse = appraise_result.format(&*self.formatter);
 
         // NPC 성격 기반 생성 파라미터 유도 (옵션)
@@ -213,7 +219,7 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             });
 
         self.chat
-            .start_session(session_id, &prompt, generation_config)
+            .start_session(session_id, &appraise_resp.prompt, generation_config)
             .await?;
 
         self.sessions.insert(
@@ -238,6 +244,11 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
     /// 4. Beat 전환 시 `update_system_prompt`
     /// 5. LLM 호출 → NPC 응답
     /// 6. assistant 턴을 `DialogueTurnCompleted` 이벤트로 기록
+    ///
+    /// 중간 단계에서 실패하면(예: stimulus dispatch, LLM 호출) 이미 발행된
+    /// user 턴 이벤트는 EventStore에 남는다. 호출자는 실패 시 적절히 대응하여
+    /// orphan 이벤트를 처리해야 한다. 재시도 시 동일 utterance에 대한 user 턴
+    /// 이벤트가 중복될 수 있다.
     pub async fn turn(
         &mut self,
         session_id: &str,
@@ -276,7 +287,7 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
                 pleasure: pad.pleasure,
                 arousal: pad.arousal,
                 dominance: pad.dominance,
-                situation_description: situation_description.clone(),
+                situation_description,
             };
             let result = self.dispatcher.dispatch(stim_cmd)?;
             let stim_result = match result {
