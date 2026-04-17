@@ -12,10 +12,19 @@ use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::application::projection::{EmotionProjection, Projection};
-use npc_mind::domain::event::EventPayload;
+use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::{EventStore, InMemoryRepository};
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+/// 테스트용 공유 Projection 래퍼
+struct Shared<P: Projection + Send + Sync>(Arc<RwLock<P>>);
+
+impl<P: Projection + Send + Sync> Projection for Shared<P> {
+    fn apply(&mut self, event: &DomainEvent) {
+        self.0.write().unwrap().apply(event);
+    }
+}
 
 fn make_dispatcher(
     repo: InMemoryRepository,
@@ -270,23 +279,84 @@ fn projection_updates_from_dispatcher_events() {
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
 
-    let proj = Arc::new(std::sync::RwLock::new(EmotionProjection::new()));
-    {
-        let p = proj.clone();
-        bus.subscribe(move |event| {
-            p.write().unwrap().apply(event);
-        });
-    }
-
+    let proj = Arc::new(RwLock::new(EmotionProjection::new()));
     let mut dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus);
+    dispatcher.register_projection(Shared(proj.clone()));
 
     dispatcher.dispatch(appraise_cmd()).unwrap();
 
+    // L1 Projection은 dispatch 직후 즉시 최신 상태 (쿼리 일관성)
     let p = proj.read().unwrap();
     assert!(p.get_mood("mu_baek").is_some());
     assert!(p.get_snapshot("mu_baek").is_some());
     let snapshot = p.get_snapshot("mu_baek").unwrap();
     assert!(!snapshot.is_empty());
+}
+
+#[test]
+fn with_projections_shares_registry_across_services() {
+    use npc_mind::application::projection::ProjectionRegistry;
+
+    // 외부에서 생성한 registry를 여러 dispatcher에 공유 주입
+    let ctx = TestContext::new();
+    let shared_registry = Arc::new(RwLock::new(ProjectionRegistry::new()));
+
+    let proj = Arc::new(RwLock::new(EmotionProjection::new()));
+    shared_registry
+        .write()
+        .unwrap()
+        .add(Shared(proj.clone()));
+
+    let store = Arc::new(InMemoryEventStore::new());
+    let bus = Arc::new(EventBus::new());
+    let mut dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
+        .with_projections(shared_registry.clone());
+
+    dispatcher.dispatch(appraise_cmd()).unwrap();
+
+    // 공유 registry에 등록된 projection이 dispatch로 갱신됨
+    let p = proj.read().unwrap();
+    assert!(p.get_mood("mu_baek").is_some());
+
+    // 접근자도 같은 registry를 가리킴
+    assert!(Arc::ptr_eq(dispatcher.projections(), &shared_registry));
+}
+
+#[test]
+fn projections_update_in_order_of_registration() {
+    // L1 Projection은 apply_all 호출로 등록 순서대로 적용됨
+    let ctx = TestContext::new();
+    let store = Arc::new(InMemoryEventStore::new());
+    let bus = Arc::new(EventBus::new());
+
+    let order = Arc::new(RwLock::new(Vec::<&'static str>::new()));
+
+    struct OrderRecorder {
+        tag: &'static str,
+        log: Arc<RwLock<Vec<&'static str>>>,
+    }
+    impl npc_mind::application::projection::Projection for OrderRecorder {
+        fn apply(&mut self, _event: &DomainEvent) {
+            self.log.write().unwrap().push(self.tag);
+        }
+    }
+
+    let dispatcher = CommandDispatcher::new(ctx.repo, store, bus);
+    dispatcher.register_projection(OrderRecorder {
+        tag: "first",
+        log: order.clone(),
+    });
+    dispatcher.register_projection(OrderRecorder {
+        tag: "second",
+        log: order.clone(),
+    });
+
+    let mut dispatcher = dispatcher;
+    dispatcher.dispatch(appraise_cmd()).unwrap();
+
+    let log = order.read().unwrap();
+    // appraise는 이벤트 1개 → 등록 순서로 2회 실행
+    assert_eq!(*log, vec!["first", "second"]);
 }
 
 #[test]

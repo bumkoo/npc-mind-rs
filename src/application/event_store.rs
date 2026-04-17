@@ -18,6 +18,9 @@ pub trait EventStore: Send + Sync {
     /// 전체 이벤트 조회
     fn get_all_events(&self) -> Vec<DomainEvent>;
 
+    /// 주어진 event id 이후(exclusive)의 이벤트 조회 — broadcast lag 복구용
+    fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent>;
+
     /// 다음 이벤트 ID 발급
     fn next_id(&self) -> EventId;
 
@@ -64,6 +67,11 @@ impl EventStore for InMemoryEventStore {
     fn get_all_events(&self) -> Vec<DomainEvent> {
         let store = self.events.read().unwrap();
         store.clone()
+    }
+
+    fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent> {
+        let store = self.events.read().unwrap();
+        store.iter().filter(|e| e.id > after_id).cloned().collect()
     }
 
     fn next_id(&self) -> EventId {

@@ -13,7 +13,6 @@ pub mod projection;
 pub mod relationship_service;
 pub mod scene_service;
 pub mod situation_service;
-pub mod tiered_event_bus;
 
 #[cfg(feature = "chat")]
 pub mod dialogue_test_service;

@@ -10,8 +10,9 @@ use super::dto::*;
 use super::event_bus::EventBus;
 use super::event_store::{EventStore, InMemoryEventStore};
 use super::mind_service::{MindService, MindServiceError};
+use super::projection::ProjectionRegistry;
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// 이벤트 발행을 추가한 MindService 래퍼 (Strangler Fig Pattern)
 ///
@@ -25,6 +26,7 @@ pub struct EventAwareMindService<
     inner: MindService<R, A, S>,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
+    projections: Arc<RwLock<ProjectionRegistry>>,
     correlation_id: Option<u64>,
 }
 
@@ -41,8 +43,25 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor>
             inner,
             event_store,
             event_bus,
+            projections: Arc::new(RwLock::new(ProjectionRegistry::new())),
             correlation_id: None,
         }
+    }
+
+    /// L1 Projection Registry 주입 (옵션)
+    pub fn with_projections(mut self, projections: Arc<RwLock<ProjectionRegistry>>) -> Self {
+        self.projections = projections;
+        self
+    }
+
+    /// 단일 Projection을 L1 registry에 추가
+    pub fn register_projection(&self, projection: impl crate::application::projection::Projection + 'static) {
+        self.projections.write().unwrap().add(projection);
+    }
+
+    /// L1 Projection Registry 접근자
+    pub fn projections(&self) -> &Arc<RwLock<ProjectionRegistry>> {
+        &self.projections
     }
 
     /// correlation_id 설정 — 같은 요청에서 발생한 이벤트 묶음 추적
@@ -92,6 +111,9 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor>
             event = event.with_correlation(cid);
         }
         self.event_store.append(&[event.clone()]);
+        // L1: Projection 동기 갱신 (쿼리 일관성)
+        self.projections.write().unwrap().apply_all(&event);
+        // L2: broadcast fan-out
         self.event_bus.publish(&event);
     }
 
