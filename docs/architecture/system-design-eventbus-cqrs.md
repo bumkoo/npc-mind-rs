@@ -1,7 +1,7 @@
 # NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Agent 시스템 디자인
 
-> **Status**: In Progress (Phase 1-3 + Pipeline + EventBus v2 완료)  
-> **Date**: 2026-04-16 (최종 업데이트: 2026-04-17 — RAG 저장소 현행화: sqlite-vec vec0 채택)  
+> **Status**: In Progress (Phase 1-4 + Pipeline + EventBus v2 완료)  
+> **Date**: 2026-04-16 (최종 업데이트: 2026-04-17 — Phase 4 DialogueAgent 추가)  
 > **Scope**: 엔진 전체 리팩토링 — 현재 헥사고날 아키텍처를 이벤트 기반으로 전환  
 > **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 에이전트, 게임 히스토리 RAG
 >
@@ -14,7 +14,8 @@
 > | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `SqliteMemoryStore`(FTS5 trigram + sqlite-vec vec0) [embed], `MemoryAgent`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트. 테스트 전용 `InMemoryMemoryStore`는 `tests/common/in_memory_store.rs`로 분리(public API 미노출) |
 > | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파) |
 > | **EventBus v2** | ✅ 완료 | `tokio::sync::broadcast` 기반 단일화. `subscribe()` → `impl Stream<Arc<DomainEvent>>` (runtime-agnostic). L1 `ProjectionRegistry`(Dispatcher 내부, 동기 쓰기 경로)로 쿼리 일관성 보장. `TieredEventBus`/`StdThreadSink`/`TokioSink` 삭제. |
-> | **Phase 4+** | 미구현 | DialogueAgent, StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
+> | **Phase 4** | ✅ 완료 | `DialogueAgent<R, C>` — `CommandDispatcher` + `ConversationPort` 통합 orchestrator (`src/application/dialogue_agent.rs`, chat feature). `start_session`/`turn`/`end_session` async API로 LLM 다턴 대화 + Event Sourcing 경로 일원화. `DialogueTurnCompleted` 이벤트(user/assistant)를 EventBus에 발행하여 MemoryAgent 자동 인덱싱 가능 |
+> | **Phase 5+** | 미구현 | StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
 >
 > ### 설계 문서와 구현의 차이
 >
@@ -1501,13 +1502,52 @@ Step 5: MindService 제거
 
 ---
 
+## 16.5 DialogueAgent (Phase 4 — 현행 구현)
+
+`DialogueAgent<R, C>`는 `CommandDispatcher<R>`와 `C: ConversationPort`를 조합한 async 오케스트레이터다. `DialogueTestService`가 `FormattedMindService` 경로로만 동작했던 한계를 극복하고, **LLM 대화 흐름을 Event Sourcing 경로에 일원화**한다.
+
+### 형태 선택: subscriber vs orchestrator
+
+문서 7.4의 원안은 DialogueAgent를 `GuideGenerated` 이벤트 구독자로 설계했다. 하지만 실제 LLM 호출 타이밍은 상대 대사(user utterance)가 주도하며, 세션 시작/종료는 외부 제어가 필요하다. 이에 따라 구현은 **explicit orchestrator 타입**을 채택했다 — `start_session` / `turn` / `end_session` async API를 제공하고, 내부에서 `CommandDispatcher`로 Command를 dispatch한다.
+
+### DialogueTurnCompleted 발행 경로
+
+`Command` enum에는 대화 턴 전용 variant가 없다(순수 기록 이벤트, side-effect 없음). DialogueAgent는 dispatcher가 노출한 `event_store()` / `event_bus()` / `projections()`를 통해 **dispatcher와 동일한 발행 시퀀스**(`append → apply_all → publish`)로 `DialogueTurnCompleted`를 직접 발행한다. 새 Command variant를 추가하지 않아 `CommandDispatcher` 표면은 유지된다.
+
+### 턴 플로우
+
+```
+turn(session_id, user_utterance, pad_hint?)
+  ├─ emit DialogueTurnCompleted { speaker: "user", utterance, snapshot(stimulus 이전) }
+  ├─ PAD 결정 (hint > analyzer > None)
+  ├─ if PAD:
+  │   └─ Command::ApplyStimulus dispatch
+  │        ├─ StimulusApplied (+ BeatTransitioned / RelationshipUpdated 가능)
+  │        └─ beat_changed → ConversationPort.update_system_prompt
+  ├─ ConversationPort.send_message → NPC 응답 + timings
+  └─ emit DialogueTurnCompleted { speaker: "assistant", utterance, snapshot(stimulus 이후) }
+```
+
+MemoryAgent는 `DialogueTurnCompleted`를 이미 구독하므로, `DialogueAgent`가 발행하는 user/assistant 양쪽 턴이 자동으로 RAG에 인덱싱된다. 이로써 도메인 이벤트 흐름과 LLM 대화 흐름이 일원화된다.
+
+### DialogueTestService와의 공존
+
+`DialogueTestService`(`src/application/dialogue_test_service.rs`)는 `FormattedMindService` 기반의 얇은 래퍼로 유지된다. Event Sourcing 경로가 필요 없는 프롬프트 품질 테스트나 Mind Studio의 단순 대화 체크에서 계속 활용된다. 향후 Event Sourcing 이점이 필요한 경로는 모두 `DialogueAgent`로 이관한다.
+
+---
+
 ## 17. 다음 단계
 
-1. **Phase 1 구현 시작**: `DomainEvent` enum + `InMemoryEventStore` + `EventBus`
-2. **EventAwareMindService 래퍼**: 기존 테스트 100% 통과 확인
-3. **EmotionProjection + RelationshipProjection**: Event replay로 상태 재구성 검증
-4. **EmotionAgent + GuideAgent 추출**: MindService에서 로직 이관
-5. **MemoryAgent + RAG**: DialogueHistoryProjection → 임베딩 인덱싱
+1. ~~**Phase 1 구현 시작**~~ ✅ 완료
+2. ~~**EventAwareMindService 래퍼**~~ ✅ 완료
+3. ~~**EmotionProjection + RelationshipProjection**~~ ✅ 완료
+4. ~~**EmotionAgent + GuideAgent 추출**~~ ✅ 완료
+5. ~~**MemoryAgent + RAG**~~ ✅ 완료
+6. ~~**DialogueAgent** (Phase 4)~~ ✅ 완료
+7. **Phase 5 StoryAgent**: `BeatTransitioned` / `RelationshipUpdated` / `SceneEnded` 구독으로 서사 분석
+8. **Phase 6 Tool 시스템**: `ToolRegistry` 도입으로 Agent의 외부 리소스 접근 통일
+9. **Phase 7 WorldKnowledgeStore**: 정적 세계관 지식 (3계층 관계 Layer 1 포함)
+10. **Phase 8 SummaryAgent**: 컨텍스트 윈도우 관리 (ContextProjection + 요약 이벤트)
 
 ---
 

@@ -14,4 +14,6 @@ pub mod scene_service;
 pub mod situation_service;
 
 #[cfg(feature = "chat")]
+pub mod dialogue_agent;
+#[cfg(feature = "chat")]
 pub mod dialogue_test_service;

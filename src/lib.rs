@@ -58,6 +58,11 @@ pub use application::pipeline::{Pipeline, PipelineStage, PipelineState};
 #[cfg(feature = "chat")]
 pub use adapter::rig_chat::RigChatAdapter;
 #[cfg(feature = "chat")]
+pub use application::dialogue_agent::{
+    DialogueAgent, DialogueAgentError, DialogueEndOutcome, DialogueStartOutcome,
+    DialogueTurnOutcome,
+};
+#[cfg(feature = "chat")]
 pub use application::dialogue_test_service::{
     ChatEndRequest, ChatEndResponse, ChatStartRequest, ChatStartResponse, ChatTurnRequest,
     ChatTurnResponse, DialogueTestError, DialogueTestService, PadInput,

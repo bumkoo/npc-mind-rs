@@ -6,6 +6,8 @@
 #![allow(dead_code)]
 
 pub mod in_memory_store;
+#[cfg(feature = "chat")]
+pub mod mock_chat;
 
 use npc_mind::InMemoryRepository;
 use npc_mind::application::mind_service::MindService;
