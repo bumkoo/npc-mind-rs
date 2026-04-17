@@ -6,7 +6,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 
 [features]
 default = []
-embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid"]
+embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy"]
 chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
 
@@ -34,11 +34,14 @@ rmcp = { version = "0.16", optional = true, features = ["server"] }
 futures-util = { version = "0.3", optional = true }
 uuid = { version = "1.11", features = ["v4"], optional = true }
 rusqlite = { version = "0.33", features = ["bundled"], optional = true }
+sqlite-vec = { version = "0.1", optional = true }
+zerocopy = { version = "0.7", optional = true }
 
 [dev-dependencies]
 approx = "0.5"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+tempfile = "3"
 # 통합 테스트에서 EventBus broadcast Stream 소비 검증용 (feature 플래그와 무관하게 필요)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 

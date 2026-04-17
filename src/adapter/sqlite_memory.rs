@@ -1,39 +1,84 @@
-//! SqliteMemoryStore — SQLite FTS5 + 벡터 BLOB 기반 기억 저장소
+//! SqliteMemoryStore — SQLite FTS5(텍스트/키워드) + sqlite-vec vec0(임베딩) 기반 기억 저장소
 //!
-//! 메타데이터 + 전문 검색(FTS5) + 벡터 저장을 하나의 SQLite DB로 처리.
-//! 10K 미만 규모에서 brute-force cosine이 sub-ms 성능.
+//! 하나의 SQLite 파일 안에서 세 레이어가 `id`로 조인된다:
+//! - `memories`      : 일반 테이블 (메타데이터 + 원문 TEXT)
+//! - `memories_fts`  : FTS5 가상 테이블 (키워드 전문 검색)
+//! - `memories_vec`  : sqlite-vec `vec0` 가상 테이블 (코사인 ANN)
+//!
+//! sqlite-vec는 순수 C 확장이라 tokio 런타임을 요구하지 않는다.
+//! `embed` feature가 활성화되어도 라이브러리 코어의 runtime-agnostic 원칙은 유지된다.
 
 use crate::domain::memory::{MemoryEntry, MemoryResult, MemoryType};
 use crate::ports::{MemoryError, MemoryStore};
-use rusqlite::{params, Connection};
-use std::sync::Mutex;
+use rusqlite::{ffi::sqlite3_auto_extension, params, Connection};
+use sqlite_vec::sqlite3_vec_init;
+use std::sync::{Mutex, Once};
+use zerocopy::AsBytes;
 
-/// SQLite 기반 기억 저장소
+/// bge-m3 dense 임베딩 차원 (기본값).
+pub const DEFAULT_EMBEDDING_DIM: usize = 1024;
+
+/// sqlite-vec auto-extension 등록은 프로세스 전역 1회만 수행.
+static VEC_INIT: Once = Once::new();
+
+fn ensure_vec_extension_loaded() {
+    VEC_INIT.call_once(|| {
+        // sqlite3_vec_init을 auto-extension으로 등록하면
+        // 이후 모든 Connection::open() 호출에서 vec0 모듈이 로드된다.
+        unsafe {
+            sqlite3_auto_extension(Some(std::mem::transmute(
+                sqlite3_vec_init as *const (),
+            )));
+        }
+    });
+}
+
+/// SQLite 기반 기억 저장소 (FTS5 + sqlite-vec).
 pub struct SqliteMemoryStore {
     conn: Mutex<Connection>,
+    dim: usize,
 }
 
 impl SqliteMemoryStore {
-    /// 파일 기반 저장소 생성
+    /// 파일 기반 저장소 생성. 임베딩 차원은 `DEFAULT_EMBEDDING_DIM`(1024).
     pub fn new(path: &str) -> Result<Self, MemoryError> {
+        Self::with_dim(path, DEFAULT_EMBEDDING_DIM)
+    }
+
+    /// 파일 기반 저장소 + 임베딩 차원 지정.
+    pub fn with_dim(path: &str, dim: usize) -> Result<Self, MemoryError> {
+        ensure_vec_extension_loaded();
         let conn = Connection::open(path)
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+            dim,
+        };
         store.init_tables()?;
         Ok(store)
     }
 
-    /// 인메모리 저장소 생성 (테스트용)
+    /// 인메모리 저장소 생성 (테스트용). 기본 차원.
     pub fn in_memory() -> Result<Self, MemoryError> {
+        Self::in_memory_with_dim(DEFAULT_EMBEDDING_DIM)
+    }
+
+    /// 인메모리 저장소 + 임베딩 차원 지정 (테스트용).
+    pub fn in_memory_with_dim(dim: usize) -> Result<Self, MemoryError> {
+        ensure_vec_extension_loaded();
         let conn = Connection::open_in_memory()
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-        let store = Self { conn: Mutex::new(conn) };
+        let store = Self {
+            conn: Mutex::new(conn),
+            dim,
+        };
         store.init_tables()?;
         Ok(store)
     }
 
     fn init_tables(&self) -> Result<(), MemoryError> {
         let conn = self.conn.lock().unwrap();
+
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS memories (
                 id TEXT PRIMARY KEY,
@@ -48,13 +93,23 @@ impl SqliteMemoryStore {
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
-                USING fts5(id, content);
+                USING fts5(id, content);",
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-            CREATE TABLE IF NOT EXISTS vectors (
+        // vec0는 스키마에 차원을 하드코딩해야 해서 동적 SQL로 생성.
+        // id를 TEXT PRIMARY KEY로, npc_id를 partition key로 두어 npc별 검색을 가속.
+        let vec_ddl = format!(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS memories_vec USING vec0(
                 id TEXT PRIMARY KEY,
-                embedding BLOB NOT NULL
-            );"
-        ).map_err(|e| MemoryError::StorageError(e.to_string()))?;
+                npc_id TEXT partition key,
+                embedding FLOAT[{dim}] distance_metric=cosine
+            );",
+            dim = self.dim,
+        );
+        conn.execute_batch(&vec_ddl)
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
         Ok(())
     }
 }
@@ -84,18 +139,31 @@ impl MemoryStore for SqliteMemoryStore {
             ],
         ).map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-        // FTS5 인덱스에 직접 삽입
         conn.execute(
             "INSERT OR REPLACE INTO memories_fts (id, content) VALUES (?1, ?2)",
             params![entry.id, entry.content],
-        ).map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
         if let Some(emb) = embedding {
-            let blob = floats_to_blob(&emb);
+            if emb.len() != self.dim {
+                return Err(MemoryError::EmbeddingError(format!(
+                    "embedding dim {} != expected {}",
+                    emb.len(),
+                    self.dim
+                )));
+            }
+            // vec0는 INSERT OR REPLACE를 지원하지 않는 경우가 있어 DELETE 후 INSERT.
             conn.execute(
-                "INSERT OR REPLACE INTO vectors (id, embedding) VALUES (?1, ?2)",
-                params![entry.id, blob],
-            ).map_err(|e| MemoryError::StorageError(e.to_string()))?;
+                "DELETE FROM memories_vec WHERE id = ?1",
+                params![entry.id],
+            )
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+            conn.execute(
+                "INSERT INTO memories_vec (id, npc_id, embedding) VALUES (?1, ?2, ?3)",
+                params![entry.id, entry.npc_id, emb.as_bytes()],
+            )
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         }
 
         Ok(())
@@ -107,35 +175,52 @@ impl MemoryStore for SqliteMemoryStore {
         npc_id: Option<&str>,
         limit: usize,
     ) -> Result<Vec<MemoryResult>, MemoryError> {
+        if query_embedding.len() != self.dim {
+            return Err(MemoryError::EmbeddingError(format!(
+                "query dim {} != expected {}",
+                query_embedding.len(),
+                self.dim
+            )));
+        }
+
         let conn = self.conn.lock().unwrap();
 
-        // 모든 벡터 로드 + cosine 계산 (brute-force, 10K 이하에서 충분)
+        // sqlite-vec vec0의 KNN 구문:
+        //   WHERE embedding MATCH ? AND k = ?
+        //   ORDER BY distance
+        // npc_id 필터는 partition key로 적용 가능하지만 NULL-or-match 패턴을 그대로 쓴다.
+        let sql = "SELECT v.id, v.distance
+                   FROM memories_vec v
+                   WHERE v.embedding MATCH ?1
+                     AND k = ?2
+                     AND (?3 IS NULL OR v.npc_id = ?3)
+                   ORDER BY v.distance";
+
         let mut stmt = conn
-            .prepare("SELECT v.id, v.embedding FROM vectors v JOIN memories m ON v.id = m.id WHERE (?1 IS NULL OR m.npc_id = ?1)")
+            .prepare(sql)
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-        let mut scored: Vec<(String, f32)> = stmt
-            .query_map(params![npc_id], |row| {
-                let id: String = row.get(0)?;
-                let blob: Vec<u8> = row.get(1)?;
-                let emb = blob_to_floats(&blob);
-                let score = cosine_sim(query_embedding, &emb);
-                Ok((id, score))
-            })
-            .map_err(|e| MemoryError::StorageError(e.to_string()))?
-            .filter_map(|r| r.ok())
-            .collect();
+        let rows = stmt
+            .query_map(
+                params![query_embedding.as_bytes(), limit as i64, npc_id],
+                |row| {
+                    let id: String = row.get(0)?;
+                    let distance: f64 = row.get(1)?;
+                    Ok((id, distance as f32))
+                },
+            )
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        scored.truncate(limit);
+        let scored: Vec<(String, f32)> = rows.filter_map(|r| r.ok()).collect();
 
         let results = scored
             .into_iter()
-            .filter_map(|(id, score)| {
+            .filter_map(|(id, distance)| {
                 let entry = load_entry(&conn, &id).ok()?;
+                // cosine distance(0=동일, 2=반대) → similarity [−1, 1] 범위로 변환.
                 Some(MemoryResult {
                     entry,
-                    relevance_score: score,
+                    relevance_score: 1.0 - distance,
                 })
             })
             .collect();
@@ -166,7 +251,6 @@ impl MemoryStore for SqliteMemoryStore {
             .unwrap_or_default();
 
         let results: Vec<MemoryEntry> = if fts_results.is_empty() {
-            // LIKE fallback (CJK/유니코드 키워드)
             let pattern = format!("%{}%", keyword);
             conn.prepare(
                 "SELECT * FROM memories WHERE content LIKE ?1 LIMIT ?2",
@@ -180,7 +264,6 @@ impl MemoryStore for SqliteMemoryStore {
             fts_results
         };
 
-        // npc_id 필터
         let results = results
             .into_iter()
             .filter(|e| npc_id.map_or(true, |id| e.npc_id == id))
@@ -266,27 +349,4 @@ fn load_entry(conn: &Connection, id: &str) -> Result<MemoryEntry, MemoryError> {
         row_to_entry,
     )
     .map_err(|e| MemoryError::StorageError(e.to_string()))
-}
-
-fn floats_to_blob(floats: &[f32]) -> Vec<u8> {
-    floats
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect()
-}
-
-fn blob_to_floats(blob: &[u8]) -> Vec<f32> {
-    blob.chunks_exact(4)
-        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-        .collect()
-}
-
-fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
-    let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
-    let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let nb: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
-    if na == 0.0 || nb == 0.0 {
-        return 0.0;
-    }
-    dot / (na * nb)
 }

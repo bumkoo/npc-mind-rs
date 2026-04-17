@@ -6,7 +6,6 @@ pub mod event_store;
 pub mod formatted_service;
 #[cfg(feature = "embed")]
 pub mod memory_agent;
-pub mod memory_store;
 pub mod mind_service;
 pub mod pipeline;
 pub mod projection;

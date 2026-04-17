@@ -5,8 +5,10 @@
 
 #![cfg(feature = "embed")]
 
+mod common;
+
+use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::event_store::InMemoryEventStore;
-use npc_mind::application::memory_store::InMemoryMemoryStore;
 use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::ports::{EmbedError, MemoryStore, TextEmbedder};
 use npc_mind::{EventStore, MemoryAgent};
