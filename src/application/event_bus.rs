@@ -43,8 +43,12 @@ impl EventBus {
     }
 
     /// 명시적 capacity로 생성
+    ///
+    /// `tokio::sync::broadcast::channel`은 `capacity == 0`에서 panic하므로
+    /// 최소 1로 클램프한다. 실수 방지를 위해 debug 빌드에서는 assert도 켠다.
     pub fn with_capacity(capacity: usize) -> Self {
-        let (sender, _) = broadcast::channel(capacity);
+        debug_assert!(capacity > 0, "EventBus capacity must be greater than 0");
+        let (sender, _) = broadcast::channel(capacity.max(1));
         Self { sender }
     }
 

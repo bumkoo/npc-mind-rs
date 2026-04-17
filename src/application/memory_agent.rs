@@ -6,14 +6,17 @@
 //! # 구독 모델
 //!
 //! `EventBus`가 `tokio::sync::broadcast` 기반이므로 소비자는 자기 async
-//! 태스크에서 Stream을 폴링해야 한다. `spawn_on(&bus, handle)` 헬퍼로
-//! 지정한 tokio Runtime에 소비 태스크를 등록한다.
+//! 태스크에서 Stream을 폴링해야 한다. `run(bus, event_store)` 헬퍼가
+//! 소비 Future를 돌려주고, subscribe는 `.await` 시점에 수행되므로 Future를
+//! spawn한 뒤 발행된 이벤트는 모두 수신한다.
 //!
 //! # Lag 복구
 //!
-//! broadcast는 capacity를 초과하면 이벤트를 drop한다. `spawn_on`은
+//! broadcast는 capacity를 초과하면 이벤트를 drop한다. `run`은
 //! `subscribe_with_lag`로 Lagged 통지를 받고, `EventStore::get_events_after_id`
 //! 로 놓친 이벤트를 replay하여 at-least-once 보장을 유지한다.
+//! `last_processed_id`는 항상 단조 증가하므로, broadcast 잔여 이벤트가
+//! replay 이후 뒤늦게 수신되더라도 커서가 역행하지 않는다.
 
 use crate::application::event_bus::EventBus;
 use crate::application::event_store::EventStore;
@@ -53,32 +56,45 @@ impl MemoryAgent {
     /// EventBus를 구독하고 소비 Future를 반환
     ///
     /// 호출자가 자기 async 런타임(tokio::spawn / bevy_tasks 등)에서
-    /// 반환된 Future를 spawn해야 실제 소비가 시작된다.
+    /// 반환된 Future를 spawn해야 실제 소비가 시작된다. `subscribe`는
+    /// Future가 처음 polled될 때 수행되므로 spawn 이후 발행된 이벤트는
+    /// 모두 수신된다.
+    ///
+    /// `EventBus`는 `Clone`이 저렴(`Arc<Sender>` 공유)하므로 `.clone()`으로
+    /// 넘기면 된다.
     ///
     /// ```rust,ignore
     /// let agent = Arc::new(MemoryAgent::new(store, embedder));
-    /// tokio::spawn(agent.run(&bus, event_store));
+    /// tokio::spawn(agent.run(bus.clone(), event_store));
     /// ```
     ///
     /// `event_store`는 broadcast lag 발생 시 놓친 이벤트를 replay하여
     /// at-least-once 보장을 유지하기 위해 사용된다.
     pub fn run(
         self: Arc<Self>,
-        bus: &EventBus,
+        bus: EventBus,
         event_store: Arc<dyn EventStore>,
     ) -> impl Future<Output = ()> + Send + 'static {
-        let mut stream = Box::pin(bus.subscribe_with_lag());
         let agent = self;
         async move {
+            // subscribe는 Future가 polled된 시점에 수행 — spawn 이후 publish
+            // 된 이벤트는 모두 수신된다.
+            let mut stream = Box::pin(bus.subscribe_with_lag());
+            // 이미 처리한 이벤트의 최대 id. broadcast 잔여 이벤트가 replay
+            // 이후에 뒤늦게 수신돼도 커서가 역행하지 않도록 max로 갱신한다.
             let mut last_processed_id: u64 = 0;
             while let Some(item) = stream.next().await {
                 match item {
                     Ok(event) => {
+                        let id = event.id;
+                        if id <= last_processed_id {
+                            // 이미 replay로 처리된 이벤트가 뒤늦게 도착 — 중복 방지
+                            continue;
+                        }
                         agent.on_event(&event);
-                        last_processed_id = event.id;
+                        last_processed_id = id;
                     }
                     Err(skipped) => {
-                        // broadcast lag — 놓친 이벤트를 EventStore에서 replay
                         tracing::warn!(
                             skipped,
                             last_processed_id,
@@ -86,8 +102,9 @@ impl MemoryAgent {
                         );
                         let missed = event_store.get_events_after_id(last_processed_id);
                         for ev in missed {
+                            let id = ev.id;
                             agent.on_event(&ev);
-                            last_processed_id = ev.id;
+                            last_processed_id = last_processed_id.max(id);
                         }
                     }
                 }
@@ -146,7 +163,7 @@ impl MemoryAgent {
         let content = format!("[{}] {}", speaker, utterance);
         let entry = self.make_entry(npc_id, &content, event, MemoryType::Dialogue);
         let embedding = self.embed(&content);
-        let _ = self.memory_store.index(entry, embedding);
+        self.persist(entry, embedding, event.id);
     }
 
     fn index_relationship(
@@ -162,7 +179,7 @@ impl MemoryAgent {
         );
         let entry = self.make_entry(owner_id, &content, event, MemoryType::Relationship);
         let embedding = self.embed(&content);
-        let _ = self.memory_store.index(entry, embedding);
+        self.persist(entry, embedding, event.id);
     }
 
     fn index_beat_transition(
@@ -176,14 +193,21 @@ impl MemoryAgent {
         let content = format!("감정 전환: {} → {}", from, to_focus_id);
         let entry = self.make_entry(npc_id, &content, event, MemoryType::BeatTransition);
         let embedding = self.embed(&content);
-        let _ = self.memory_store.index(entry, embedding);
+        self.persist(entry, embedding, event.id);
     }
 
     fn index_scene_end(&self, event: &DomainEvent, npc_id: &str, partner_id: &str) {
         let content = format!("{}와의 대화가 종료됨", partner_id);
         let entry = self.make_entry(npc_id, &content, event, MemoryType::SceneEnd);
         let embedding = self.embed(&content);
-        let _ = self.memory_store.index(entry, embedding);
+        self.persist(entry, embedding, event.id);
+    }
+
+    /// MemoryStore 저장 — 실패 시 로깅하여 디버깅 가시성 확보
+    fn persist(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>, event_id: u64) {
+        if let Err(e) = self.memory_store.index(entry, embedding) {
+            tracing::warn!(event_id, error = ?e, "MemoryAgent: memory_store.index failed");
+        }
     }
 
     fn make_entry(
@@ -212,8 +236,20 @@ impl MemoryAgent {
     }
 
     fn embed(&self, text: &str) -> Option<Vec<f32>> {
-        let mut embedder = self.embedder.lock().ok()?;
-        let result = embedder.embed(&[text]).ok()?;
-        result.into_iter().next()
+        let mut embedder = match self.embedder.lock() {
+            Ok(e) => e,
+            Err(e) => {
+                tracing::error!(error = ?e, "MemoryAgent: embedder mutex poisoned");
+                return None;
+            }
+        };
+        match embedder.embed(&[text]) {
+            Ok(v) => v.into_iter().next(),
+            Err(e) => {
+                tracing::warn!(error = ?e, text_len = text.len(), "MemoryAgent: embedding failed");
+                None
+            }
+        }
     }
 }
+

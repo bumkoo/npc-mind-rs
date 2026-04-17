@@ -175,6 +175,23 @@ async fn slow_subscriber_does_not_block_fast_one() {
 }
 
 #[test]
+#[cfg(not(debug_assertions))]
+fn with_capacity_zero_is_clamped_to_one_in_release() {
+    // debug 빌드에서는 debug_assert가 panic하지만 release에서는 clamp로 살아남아야 한다
+    let bus = EventBus::with_capacity(0);
+    let _rx = bus.subscribe();
+    bus.publish(&make_event(1));
+    // panic 없이 실행되면 통과
+}
+
+#[test]
+#[should_panic(expected = "EventBus capacity must be greater than 0")]
+#[cfg(debug_assertions)]
+fn with_capacity_zero_panics_in_debug() {
+    let _ = EventBus::with_capacity(0);
+}
+
+#[test]
 fn bus_is_clone_and_shares_sender() {
     let bus_a = EventBus::new();
     let bus_b = bus_a.clone();
