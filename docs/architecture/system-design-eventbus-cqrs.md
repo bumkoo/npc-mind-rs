@@ -56,40 +56,49 @@ MindService<R, A, S>  ← God Object (appraise + stimulus + scene + guide + rela
 ## 2. 목표 아키텍처 개요
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Game Runtime                           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐    │
-│  │ Emotion  │  │ Dialogue │  │  Story   │  │ Memory   │    │
-│  │  Agent   │  │  Agent   │  │  Agent   │  │  Agent   │    │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘    │
-│       │              │              │              │         │
-│  ═════╪══════════════╪══════════════╪══════════════╪═════    │
-│       │         EventBus (tokio::broadcast)        │         │
-│  ═════╪══════════════╪══════════════╪══════════════╪═════    │
-│       │              │              │              │         │
-│  ┌────┴─────────────────────────────┴────────────────┐      │
-│  │              Command Handlers (Write)              │      │
-│  │  AppraiseCmd · StimulusCmd · EndDialogueCmd · ...  │      │
-│  └────┬───────────────────────────────────────────────┘      │
-│       │                                                      │
-│  ┌────┴──────────┐    ┌──────────────────┐                   │
-│  │  Event Store  │───▶│  Read Projections │                  │
-│  │  (Append-only)│    │  (Query Side)     │                  │
-│  └───────────────┘    └──────────────────┘                   │
-│                              │                               │
-│                        ┌─────┴──────┐                        │
-│                        │  RAG Index │                        │
-│                        │ (History)  │                        │
-│                        └────────────┘                        │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────┐
+│                      Game Runtime                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│  │ Dialogue │  │  Story   │  │ Memory   │  │   SSE    │      │
+│  │  Agent   │  │  Agent   │  │  Agent   │  │  Bridge  │      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
+│       │ .next().await (futures::Stream, runtime-agnostic)    │
+│  ═════╪══════════════╪══════════════╪══════════════╪══════    │
+│       │   EventBus (tokio::broadcast 내부, Stream 공개)       │
+│  ═════╪══════════════╪══════════════╪══════════════╪══════    │
+│       ▲                                                       │
+│       │ publish()                                             │
+│  ┌────┴──────────────────────────────────────────────┐       │
+│  │         CommandDispatcher (Write Side)             │       │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
+│  │  │ Emotion  │  │  Guide   │  │   Rel    │ 직접 호출 │       │
+│  │  │  Agent   │  │  Agent   │  │  Agent   │ (Pipeline)│       │
+│  │  └──────────┘  └──────────┘  └──────────┘          │       │
+│  │                      │                              │       │
+│  │  (1) Repository write-back                          │       │
+│  │  (2) EventStore.append()                            │       │
+│  │  (3) L1 ProjectionRegistry.apply_all() ← 동기       │       │
+│  │  (4) EventBus.publish()                 ← broadcast │       │
+│  └────┬───────────────────────────────────────────────┘       │
+│       │                                                       │
+│  ┌────┴────────┐    ┌────────────────────┐                    │
+│  │ Event Store │    │ L1 Projections     │                    │
+│  │ (append-only│    │ (쿼리 일관성, sync)│                    │
+│  │  replay 소스)│    │ Emotion/Rel/Scene  │                    │
+│  └─────────────┘    └────────────────────┘                    │
+│        ▲                                                      │
+│        │ replay on Lagged(n)                                  │
+│   (MemoryAgent at-least-once 복구)                            │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ### 핵심 원칙
 
 1. **모든 상태 변경은 Command → Event → Store** 경로만 허용
-2. **에이전트는 EventBus로만 소통** — 직접 메서드 호출 없음
-3. **Query는 Projection에서만 읽음** — Event Store 직접 읽기 금지
-4. **Event Store는 append-only** — 삭제/수정 없음, 스냅샷으로 최적화
+2. **Projection은 쓰기 경로 일부** — Dispatcher가 `apply_all()` 동기 호출 (L1). 쿼리 일관성 보장
+3. **후속 소비자는 EventBus broadcast** — Agent, SSE, 외부 도구 (L2). 독립 async 실행
+4. **Event Store는 append-only** — 삭제/수정 없음. broadcast lag 복구용 replay 소스
+5. **공개 API는 runtime-agnostic** — `futures::Stream`만 노출. 호출자 tokio 인식 불요 (Bevy 등에서 직접 소비 가능)
 
 ---
 
@@ -181,7 +190,6 @@ pub enum EventPayload {
         cause: RelationshipCause,       // Dialogue / BeatTransition / GameEvent
     },
 
-    // ── NPC 월드 ──
     // ── 컨텍스트 관리 ──
     ContextSummarized {
         session_id: String,
@@ -331,76 +339,89 @@ pub struct GuideProjection {
 }
 ```
 
-### 4.3 CQRS 데이터 흐름
+### 4.3 CQRS 데이터 흐름 (L1/L2 분리)
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  Command    │────▶│  Command     │────▶│ Event Store │
-│  (Write)    │     │  Handler     │     │ (append)    │
-└─────────────┘     └──────────────┘     └──────┬──────┘
-                                                │
-                                    ┌───────────┤  (publish)
-                                    │           │
-                              ┌─────▼─────┐  ┌──▼──────────┐
-                              │ Projection│  │  EventBus   │
-                              │ Updater   │  │ (broadcast) │
-                              └─────┬─────┘  └──┬──────────┘
-                                    │            │
-                              ┌─────▼─────┐  ┌──▼──────────┐
-                              │  Read DB  │  │  Agents     │
-                              │ (Query)   │  │ (subscribe) │
-                              └───────────┘  └─────────────┘
+┌─────────────┐      ┌──────────────────┐      ┌─────────────┐
+│  Command    │────▶ │ CommandDispatcher│────▶ │ Event Store │
+│  (Write)    │      │  (sync 경로)     │      │ (append)    │
+└─────────────┘      └────────┬─────────┘      └─────────────┘
+                              │
+              ┌───────────────┼──────────────────┐
+              │ L1 동기       │ L2 비동기         │
+              ▼               ▼                  │
+     ┌───────────────┐   ┌─────────────┐         │
+     │ L1 Projection │   │  EventBus   │         │
+     │ Registry      │   │(broadcast)  │         │
+     │ (apply_all)   │   └──────┬──────┘         │
+     │               │          │ fan-out        │
+     │ Emotion/Rel   │          ▼                │
+     │ /Scene        │   ┌─────────────┐         │
+     └───────┬───────┘   │  L2 소비자  │         │
+             │           │ Agents·SSE  │         │
+             │           │(async task) │         │
+             │           └─────────────┘         │
+             ▼                                   │
+     ┌───────────────┐                           │
+     │  Query API    │                           │
+     │  (동기 최신)  │                           │
+     └───────────────┘                           │
+                                                 │
+                   (Lagged 복구 경로 — replay)    │
+   L2 at-least-once 소비자 ◀──────────────────────┘
+      get_events_after_id()
 ```
+
+**분류 기준**: "dispatch 리턴 직후 다음 Command의 입력에 쓰이는가" — 예이면 L1, 아니면 L2.
+
+| Projection | L1/L2 | 근거 |
+|-----------|-------|------|
+| EmotionProjection | **L1** | 다음 stimulus가 현재 감정 기반 |
+| RelationshipProjection | **L1** | 다음 appraise가 현재 관계 기반 |
+| SceneProjection | **L1** | Beat 전환 판단이 현재 Scene 기반 |
+| GuideProjection (예정) | L2 | 재생성 가능, eventual OK |
+| DialogueHistoryProjection (예정) | L2 | 검색이 최신 턴 1~2개 지연 허용 |
+| ContextProjection (예정) | L2 | LLM 요약이 본래 async |
 
 ---
 
 ## 5. Event Store 설계
 
-### 5.1 저장 구조
+### 5.1 저장 구조 (현행 구현)
+
+트레이트는 sync 시그니처. 내부 가변성(`RwLock`)으로 `&self` append를 지원하여 `Arc<dyn EventStore>` 공유가 자연스럽다.
 
 ```rust
-#[async_trait]
 pub trait EventStore: Send + Sync {
     /// 이벤트 추가 (append-only)
-    async fn append(&self, events: Vec<DomainEvent>) -> Result<(), StoreError>;
-    
+    fn append(&self, events: &[DomainEvent]);
+
     /// 특정 aggregate의 이벤트 스트림 조회
-    async fn get_events(
-        &self, 
-        aggregate_id: &str, 
-        after_sequence: Option<u64>,
-    ) -> Result<Vec<DomainEvent>, StoreError>;
-    
-    /// 특정 타입의 이벤트만 필터
-    async fn get_events_by_type(
-        &self,
-        event_type: &str,
-        after: Option<Timestamp>,
-    ) -> Result<Vec<DomainEvent>, StoreError>;
-    
-    /// 스냅샷 저장 (N턴마다)
-    async fn save_snapshot(
-        &self,
-        aggregate_id: &str,
-        sequence: u64,
-        state: &[u8],  // serialized aggregate state
-    ) -> Result<(), StoreError>;
-    
-    /// 스냅샷 로드 (최신)
-    async fn load_snapshot(
-        &self,
-        aggregate_id: &str,
-    ) -> Result<Option<(u64, Vec<u8>)>, StoreError>;
+    fn get_events(&self, aggregate_id: &str) -> Vec<DomainEvent>;
+
+    /// 전체 이벤트 조회
+    fn get_all_events(&self) -> Vec<DomainEvent>;
+
+    /// 주어진 event id 이후(exclusive)의 이벤트 조회 — broadcast lag 복구용
+    fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent>;
+
+    /// 다음 이벤트 ID 발급 (global monotonic)
+    fn next_id(&self) -> EventId;
+
+    /// 특정 aggregate의 다음 시퀀스 번호
+    fn next_sequence(&self, aggregate_id: &str) -> u64;
 }
 ```
 
+`get_events_after_id`는 EventBus v2의 lag 복구 경로에서 사용된다. `broadcast`가 `Lagged(n)` 통지를 보내면 소비자는 마지막 처리 id 이후를 store에서 다시 읽어 at-least-once를 유지한다.
+
 ### 5.2 구현 전략 — 단계별
 
-| 단계 | 저장소 | 용도 |
+| 단계 | 저장소 | 상태 |
 |------|--------|------|
-| **Phase 1** | `InMemoryEventStore` | 개발/테스트. `Vec<DomainEvent>` + `HashMap<String, Vec<usize>>` |
-| **Phase 2** | `FileEventStore` | 싱글 프로세스 게임. Append-only JSON Lines 파일 |
-| **Phase 3** | `SqliteEventStore` | 프로덕션. WAL 모드, aggregate_id 인덱스 |
+| **Phase 1** | `InMemoryEventStore` (`Vec<DomainEvent>` + `AtomicU64`) | ✅ 구현됨 |
+| **Phase 2** | `FileEventStore` (Append-only JSON Lines) | 미구현 |
+| **Phase 3** | `SqliteEventStore` (WAL 모드, aggregate_id 인덱스) | 미구현 |
 
 ### 5.3 스냅샷 정책
 
@@ -420,66 +441,107 @@ Scene 종료(SceneEnded) 시 자동 스냅샷 생성
 
 ---
 
-## 6. EventBus 설계
+## 6. EventBus 설계 (v2 — 현행 구현)
 
 ### 6.1 버스 구조
 
-```rust
-use tokio::sync::broadcast;
+내부는 `tokio::sync::broadcast::Sender`, 공개 API는 `futures::Stream`만 노출한다. 호출자는 tokio 런타임을 deps에 추가할 필요가 없으며 Bevy/smol/async-std 등 임의 executor에서 Stream을 폴링할 수 있다.
 
+```rust
+use futures::{Stream, StreamExt};
+use std::sync::Arc;
+use tokio::sync::broadcast;
+use tokio_stream::wrappers::BroadcastStream;
+
+pub const DEFAULT_CAPACITY: usize = 256;
+
+#[derive(Clone)]
 pub struct EventBus {
     sender: broadcast::Sender<Arc<DomainEvent>>,
 }
 
 impl EventBus {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new() -> Self { Self::with_capacity(DEFAULT_CAPACITY) }
+
+    pub fn with_capacity(capacity: usize) -> Self {
         let (sender, _) = broadcast::channel(capacity);
         Self { sender }
     }
-    
-    /// 이벤트 발행 — Event Store 저장 후 호출
-    pub fn publish(&self, event: Arc<DomainEvent>) {
-        // lagged receivers는 최신 이벤트부터 재수신
-        let _ = self.sender.send(event);
+
+    /// 이벤트 발행 — sync. broadcast::Sender::send()가 non-blocking이므로
+    /// dispatch 경로 전체가 async로 바뀌지 않는다. 구독자 0명이면 drop.
+    pub fn publish(&self, event: &DomainEvent) {
+        let _ = self.sender.send(Arc::new(event.clone()));
     }
-    
-    /// 구독자 생성
-    pub fn subscribe(&self) -> broadcast::Receiver<Arc<DomainEvent>> {
-        self.sender.subscribe()
+
+    /// 구독 Stream — Lagged는 내부에서 걸러짐 (일반 소비자용)
+    pub fn subscribe(&self) -> impl Stream<Item = Arc<DomainEvent>> + Send + 'static {
+        BroadcastStream::new(self.sender.subscribe()).filter_map(|r| async move { r.ok() })
     }
+
+    /// Lagged 통지 포함 Stream — at-least-once 복구가 필요한 소비자용
+    pub fn subscribe_with_lag(
+        &self,
+    ) -> impl Stream<Item = Result<Arc<DomainEvent>, u64>> + Send + 'static {
+        BroadcastStream::new(self.sender.subscribe()).map(|r| match r {
+            Ok(ev) => Ok(ev),
+            Err(BroadcastStreamRecvError::Lagged(n)) => Err(n),
+        })
+    }
+
+    pub fn receiver_count(&self) -> usize { self.sender.receiver_count() }
 }
 ```
 
 ### 6.2 이벤트 흐름 보장
 
 ```
-Command 수신
-  → CommandHandler.handle() → Vec<DomainEvent>
-  → EventStore.append(events)    ← 영속화 먼저
-  → EventBus.publish(events)     ← 성공 후 발행
-  → Projections.apply(events)    ← 비동기 갱신
-  → Agents receive via subscribe ← 비동기 반응
+CommandDispatcher.dispatch(cmd)                      ← sync 진입
+  → Agent.handle_*() → HandlerOutput
+  → repository write-back (emotion_state, relationship, scene)
+  → EventStore.append(&[event])                      ← 영속화
+  → ProjectionRegistry.apply_all(&event)             ← L1 동기 (쿼리 일관성)
+  → EventBus.publish(&event)                         ← L2 broadcast
+       ↓  fan-out (런타임-무관 Stream)
+  [MemoryAgent] [DialogueAgent] [StoryAgent] [SSE]    ← L2 독립 async 소비
 ```
 
-**At-least-once 보장**: EventStore에 저장된 이벤트는 반드시 발행. 재시작 시 마지막 발행 sequence 이후 이벤트를 재발행.
+**핵심 포인트**:
 
-### 6.3 이벤트 필터링
+1. `publish()`는 sync — `broadcast::Sender::send()`가 sync이므로 dispatch 시그니처는 불변.
+2. **L1 Projection은 bus 밖** — Dispatcher가 `apply_all()`을 동기 호출하여 dispatch 리턴 직후 즉시 쿼리 최신성 확보. Projection이 broadcast 구독자가 되면 race + lag 시 상태 손상 위험이 있어 분리했다.
+3. **L2 구독자는 async 자유** — 각자 `futures::Stream`을 소비. LLM 호출, 임베딩 등 시간 소요 작업에 자연스러움.
 
-에이전트별로 관심 이벤트만 수신:
+### 6.3 Lag 복구 (at-least-once)
+
+`broadcast`는 capacity 초과 시 가장 오래된 이벤트를 덮어쓴다. 엄격한 at-least-once가 필요한 소비자는 `subscribe_with_lag()`를 쓰고, `Err(skipped)` 수신 시 EventStore에서 놓친 이벤트를 replay한다. 표준 패턴:
 
 ```rust
-pub struct EventFilter {
-    pub event_types: Option<HashSet<String>>,   // None = 전부
-    pub aggregate_ids: Option<HashSet<String>>,  // None = 전부
-}
-
-impl EventFilter {
-    pub fn matches(&self, event: &DomainEvent) -> bool {
-        // type + aggregate 모두 일치해야 통과
-        self.type_matches(event) && self.aggregate_matches(event)
+let mut stream = Box::pin(bus.subscribe_with_lag());
+let mut last_id: u64 = 0;
+while let Some(item) = stream.next().await {
+    match item {
+        Ok(event) => { handle(&event).await; last_id = event.id; }
+        Err(skipped) => {
+            // broadcast lag 감지 → EventStore에서 놓친 이벤트 replay
+            for ev in event_store.get_events_after_id(last_id) {
+                handle(&ev).await;
+                last_id = ev.id;
+            }
+        }
     }
 }
 ```
+
+`MemoryAgent::run()`이 이 패턴을 구현한다 (중복 인덱싱은 허용, 유실은 금지).
+
+### 6.4 구독자 유형별 선택 기준
+
+| 유형 | API | 사용처 |
+|------|-----|--------|
+| 일반 반응형 | `subscribe() -> Stream<Arc<DomainEvent>>` | SSE 브릿지, UI 업데이트, 로깅. Lag 시 이벤트 일부 유실 수용 |
+| At-least-once | `subscribe_with_lag() -> Stream<Result<_, u64>>` + EventStore replay | MemoryAgent, 향후 SummaryAgent 등 데이터 무결성 필요 |
+| 쿼리 일관성 | bus 구독 금지. L1 Projection으로 등록 | EmotionProjection, RelationshipProjection, SceneProjection |
 
 ---
 
@@ -487,11 +549,23 @@ impl EventFilter {
 
 ### 7.1 에이전트 설계 원칙
 
+Phase 2~3 구현은 두 가지 에이전트 유형을 구분한다:
+
+**Write-side Agent** (EmotionAgent / GuideAgent / RelationshipAgent)
+- `CommandDispatcher`가 Command enum으로 라우팅해 **직접 호출**
+- 순서 보장, borrow 충돌 회피, Pipeline 순차 체인 가능
+- Command 처리 중에는 단일 task — 동시 발행 없음
+
+**Read-side / Reactive Agent** (MemoryAgent, 향후 DialogueAgent/StoryAgent/SummaryAgent)
+- `EventBus::subscribe()` Stream을 자기 async task에서 소비
+- Side-effect (RAG 인덱싱, LLM 호출, 서사 판단) 수행
+- At-least-once 필요 시 `subscribe_with_lag()` + EventStore replay
+
+공통 원칙:
 1. **단일 목표(Single Goal)**: 각 에이전트는 하나의 도메인 책임만 담당
-2. **이벤트 구동(Event-Driven)**: EventBus 구독으로 작동, 직접 호출 없음
-3. **Command 발행**: 상태 변경이 필요하면 Command를 발행 (직접 저장 금지)
-4. **Tool 사용**: 외부 리소스(LLM, 임베딩, RAG) 접근은 Tool 인터페이스로 추상화
-5. **상태 없음(Stateless)**: 에이전트 자체는 상태를 보유하지 않음. Projection에서 읽기
+2. **Tool 사용**: 외부 리소스(LLM, 임베딩, RAG) 접근은 Tool/포트 인터페이스로 추상화
+3. **Repository는 진실의 원천** — Projection은 파생 뷰. Write-side Agent는 repository 상태를 읽고 HandlerOutput으로 변경 의도만 반환
+4. **이벤트는 발생 결과** — Command의 직접 결과는 `CommandResult`, 이후 부수 소비는 broadcast로 전파
 
 ### 7.2 에이전트 카탈로그
 
@@ -1276,7 +1350,7 @@ pub struct ContextSummary {
 
 ## 13. 마이그레이션 전략
 
-### 11.1 점진적 전환 (Strangler Fig Pattern)
+### 13.1 점진적 전환 (Strangler Fig Pattern)
 
 현재 `MindService`를 한 번에 교체하지 않고, 이벤트 기반 래퍼로 감싸서 점진 전환:
 
@@ -1303,7 +1377,7 @@ impl<R: MindRepository> EventAwareMindService<R> {
 }
 ```
 
-### 11.2 전환 단계
+### 13.2 전환 단계
 
 ```
 Step 1: EventAwareMindService 래퍼
@@ -1331,7 +1405,7 @@ Step 5: MindService 제거
 
 ## 14. Trade-off 분석
 
-### 12.1 EventBus
+### 14.1 EventBus
 
 | 장점 | 단점 |
 |------|------|
@@ -1341,7 +1415,7 @@ Step 5: MindService 제거
 
 **위험 완화**: correlation_id로 이벤트 체인 추적, tracing span으로 에이전트별 로깅
 
-### 12.2 CQRS
+### 14.2 CQRS
 
 | 장점 | 단점 |
 |------|------|
@@ -1351,7 +1425,7 @@ Step 5: MindService 제거
 
 **현실적 판단**: 싱글 프로세스 게임에서는 Projection이 동기적으로 갱신되므로 일관성 문제 없음
 
-### 12.3 Event Sourcing
+### 14.3 Event Sourcing
 
 | 장점 | 단점 |
 |------|------|
@@ -1361,7 +1435,7 @@ Step 5: MindService 제거
 
 **핵심 가치**: NPC 게임에서 "과거에 무슨 일이 있었는가"는 게임플레이의 핵심. Event Sourcing이 자연스러운 선택.
 
-### 12.4 Multi-Agent
+### 14.4 Multi-Agent
 
 | 장점 | 단점 |
 |------|------|
@@ -1371,7 +1445,7 @@ Step 5: MindService 제거
 
 **1인 개발자 고려**: Phase 1 (EmotionAgent + GuideAgent)만으로도 충분한 가치. 나머지는 필요 시 추가.
 
-### 12.5 RAG
+### 14.5 RAG
 
 | 장점 | 단점 |
 |------|------|
@@ -1385,13 +1459,17 @@ Step 5: MindService 제거
 
 | 결정 | 선택 | 이유 |
 |------|------|------|
-| EventBus 구현 | `tokio::broadcast` | 이미 tokio 사용 중, 단순, 충분한 성능 |
-| Event Store (Phase 1) | In-memory | 빠른 프로토타이핑, 테스트 용이 |
-| Event Store (Phase 2) | SQLite WAL | 싱글 프로세스, 파일 기반, Rust 생태계 성숙 |
+| EventBus 구현 | `tokio::sync::broadcast` | fan-out + lag 통지 기본 제공, 단순 |
+| EventBus 공개 API | `futures::Stream` (`BroadcastStream` 래핑) | 호출자 tokio 무인식. Bevy·smol·async-std 등 임의 executor에서 폴링 가능 |
+| Dispatch 시그니처 | **sync** 유지 | `broadcast::Sender::send()`가 sync이므로 전체 async 전환 불필요 |
+| Projection 배치 | L1 (Dispatcher 동기) + L2 (broadcast 구독) 이원화 | 쿼리 일관성 보장 + L2 독립 async 자유 |
+| Event Store (Phase 1) | `InMemoryEventStore` | 빠른 프로토타이핑, 테스트 용이. `get_events_after_id`로 lag 복구 지원 |
+| Event Store (Phase 2) | SQLite WAL (미구현) | 싱글 프로세스, 파일 기반, Rust 생태계 성숙 |
 | RAG 임베딩 | 기존 `bge-m3-onnx-rust` 재사용 | 추가 의존성 없음 |
 | RAG 저장소 (Phase 1) | In-memory + cosine | 개발 속도 우선 |
+| RAG 저장소 (Phase 2) | SQLite (FTS5 + 벡터 BLOB) [embed] | LanceDB async 제약, SQLite-Primary로 단순화 |
 | 직렬화 | `serde_json` | 이벤트 디버깅 용이, 스키마 진화에 유리 |
-| 에이전트 런타임 | `tokio::spawn` + `broadcast::Receiver` | 기존 async 런타임 활용 |
+| 소비자 런타임 | 호출자 소유 (tokio·bevy_tasks·smol 등) | 라이브러리는 Runtime 소유하지 않음 |
 
 ---
 
