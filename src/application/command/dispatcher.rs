@@ -9,13 +9,13 @@ use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::mind_service::MindServiceError;
 use super::super::pipeline::{Pipeline, PipelineState};
+use super::super::projection::ProjectionRegistry;
 use super::super::situation_service::SituationService;
-use super::super::tiered_event_bus::TieredEventBus;
 use super::agents::{EmotionAgent, GuideAgent, RelationshipAgent};
 use super::handler::{HandlerContext, HandlerOutput};
 use super::types::{Command, CommandResult};
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 /// Command 기반 오케스트레이터
 ///
@@ -29,7 +29,7 @@ pub struct CommandDispatcher<R: MindRepository> {
     situation_service: SituationService,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
-    tiered_bus: Option<Arc<TieredEventBus>>,
+    projections: Arc<RwLock<ProjectionRegistry>>,
     correlation_id: Option<u64>,
 }
 
@@ -47,17 +47,23 @@ impl<R: MindRepository> CommandDispatcher<R> {
             situation_service: SituationService::new(),
             event_store,
             event_bus,
-            tiered_bus: None,
+            projections: Arc::new(RwLock::new(ProjectionRegistry::new())),
             correlation_id: None,
         }
     }
 
-    /// TieredEventBus 설정 (선택적)
+    /// L1 Projection Registry 주입 (옵션)
     ///
-    /// 설정하면 이벤트 발행 시 기존 EventBus와 TieredEventBus 모두에 발행.
-    pub fn with_tiered_bus(mut self, bus: Arc<TieredEventBus>) -> Self {
-        self.tiered_bus = Some(bus);
+    /// 외부에서 이미 구성한 registry를 공유하려면 사용. 기본값은
+    /// 빈 registry로, `register_projection`으로 항목을 추가할 수 있다.
+    pub fn with_projections(mut self, projections: Arc<RwLock<ProjectionRegistry>>) -> Self {
+        self.projections = projections;
         self
+    }
+
+    /// 단일 Projection을 L1 registry에 추가
+    pub fn register_projection(&self, projection: impl crate::application::projection::Projection + 'static) {
+        self.projections.write().unwrap().add(projection);
     }
 
     pub fn set_correlation_id(&mut self, id: u64) {
@@ -72,8 +78,8 @@ impl<R: MindRepository> CommandDispatcher<R> {
         &self.event_bus
     }
 
-    pub fn tiered_bus(&self) -> Option<&Arc<TieredEventBus>> {
-        self.tiered_bus.as_ref()
+    pub fn projections(&self) -> &Arc<RwLock<ProjectionRegistry>> {
+        &self.projections
     }
 
     pub fn repository(&self) -> &R {
@@ -212,11 +218,10 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 event = event.with_correlation(cid);
             }
             self.event_store.append(&[event.clone()]);
+            // L1: Projection 동기 갱신 — publish 이전에 수행하여 쿼리 일관성 확보
+            self.projections.write().unwrap().apply_all(&event);
+            // L2: broadcast fan-out — 구독자(Agent/SSE)는 자기 async 태스크에서 소비
             self.event_bus.publish(&event);
-            // TieredEventBus (있으면)
-            if let Some(ref tiered) = self.tiered_bus {
-                tiered.publish(&event);
-            }
         }
     }
 

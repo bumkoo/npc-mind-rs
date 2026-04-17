@@ -1,4 +1,4 @@
-//! Pipeline + TieredEventBus 테스트
+//! Pipeline + EventBus broadcast 테스트
 
 mod common;
 
@@ -10,11 +10,11 @@ use npc_mind::application::dto::*;
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::application::mind_service::MindServiceError;
-use npc_mind::application::pipeline::{Pipeline, PipelineState};
-use npc_mind::application::tiered_event_bus::{StdThreadSink, TieredEventBus};
+use npc_mind::application::pipeline::Pipeline;
 use npc_mind::domain::event::EventPayload;
 use npc_mind::{EventStore, InMemoryRepository};
 
+use futures::StreamExt;
 use std::sync::{Arc, atomic::{AtomicUsize, Ordering}};
 
 fn make_dispatcher(repo: InMemoryRepository) -> (CommandDispatcher<InMemoryRepository>, Arc<InMemoryEventStore>) {
@@ -164,80 +164,89 @@ fn pipeline_accumulates_events() {
 }
 
 // ---------------------------------------------------------------------------
-// TieredEventBus 테스트
+// EventBus broadcast Stream 테스트
 // ---------------------------------------------------------------------------
 
-#[test]
-fn tiered_bus_sync_listener_called_inline() {
-    let bus = TieredEventBus::new();
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn bus_broadcast_stream_delivers_event() {
+    let bus = EventBus::new();
     let counter = Arc::new(AtomicUsize::new(0));
 
+    // subscribe 후 자기 태스크에서 Stream 소비
+    let mut stream = Box::pin(bus.subscribe());
     let c = counter.clone();
-    bus.subscribe_sync(move |_event| {
-        c.fetch_add(1, Ordering::SeqCst);
+    let handle = tokio::spawn(async move {
+        while let Some(_event) = stream.next().await {
+            c.fetch_add(1, Ordering::SeqCst);
+        }
     });
 
+    // 수신자가 준비될 때까지 짧게 대기
+    tokio::task::yield_now().await;
+
     let event = npc_mind::DomainEvent::new(
-        1, "test".into(), 1,
-        EventPayload::GuideGenerated { npc_id: "a".into(), partner_id: "b".into() },
+        1,
+        "test".into(),
+        1,
+        EventPayload::GuideGenerated {
+            npc_id: "a".into(),
+            partner_id: "b".into(),
+        },
     );
     bus.publish(&event);
 
+    // async 전달 시간 확보
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+    drop(bus);
+    let _ = handle.await;
     assert_eq!(counter.load(Ordering::SeqCst), 1);
 }
 
-#[test]
-fn tiered_bus_async_sink_receives_event() {
-    let bus = TieredEventBus::new();
-    let counter = Arc::new(AtomicUsize::new(0));
-
-    let c = counter.clone();
-    let sink = StdThreadSink::spawn(move |_event| {
-        c.fetch_add(1, Ordering::SeqCst);
-    });
-    bus.register_async(sink);
-
-    let event = npc_mind::DomainEvent::new(
-        1, "test".into(), 1,
-        EventPayload::GuideGenerated { npc_id: "a".into(), partner_id: "b".into() },
-    );
-    bus.publish(&event);
-
-    // 백그라운드 스레드가 처리할 시간
-    std::thread::sleep(std::time::Duration::from_millis(50));
-    assert_eq!(counter.load(Ordering::SeqCst), 1);
-}
-
-#[test]
-fn tiered_bus_subscribe_alias_is_sync() {
-    let bus = TieredEventBus::new();
-    let counter = Arc::new(AtomicUsize::new(0));
-
-    let c = counter.clone();
-    bus.subscribe(move |_| { c.fetch_add(1, Ordering::SeqCst); });
-
-    assert_eq!(bus.sync_listener_count(), 1);
-    assert_eq!(bus.async_sink_count(), 0);
-}
-
-#[test]
-fn dispatcher_with_tiered_bus_emits_to_both() {
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dispatcher_publishes_to_broadcast_subscribers() {
     let ctx = TestContext::new();
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let tiered = Arc::new(TieredEventBus::new());
 
-    let tiered_counter = Arc::new(AtomicUsize::new(0));
-    let c = tiered_counter.clone();
-    tiered.subscribe_sync(move |_| { c.fetch_add(1, Ordering::SeqCst); });
+    let counter = Arc::new(AtomicUsize::new(0));
+    let mut stream = Box::pin(bus.subscribe());
+    let c = counter.clone();
+    let handle = tokio::spawn(async move {
+        while let Some(_ev) = stream.next().await {
+            c.fetch_add(1, Ordering::SeqCst);
+        }
+    });
 
-    let mut dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus)
-        .with_tiered_bus(tiered);
+    let mut dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus);
+    tokio::task::yield_now().await;
 
     dispatcher.dispatch(appraise_cmd()).unwrap();
 
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
     // EventStore에 저장됨
     assert!(!store.get_all_events().is_empty());
-    // TieredEventBus 리스너도 호출됨
-    assert!(tiered_counter.load(Ordering::SeqCst) > 0);
+    // Broadcast 구독자도 이벤트 수신
+    assert!(counter.load(Ordering::SeqCst) > 0);
+
+    drop(dispatcher);
+    let _ = handle.await;
+}
+
+#[test]
+fn bus_publish_without_subscribers_does_not_panic() {
+    let bus = EventBus::new();
+    let event = npc_mind::DomainEvent::new(
+        1,
+        "test".into(),
+        1,
+        EventPayload::GuideGenerated {
+            npc_id: "a".into(),
+            partner_id: "b".into(),
+        },
+    );
+    // 구독자 0명 — 이벤트는 drop되지만 panic/에러 없어야 함
+    bus.publish(&event);
+    assert_eq!(bus.receiver_count(), 0);
 }

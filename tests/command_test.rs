@@ -12,10 +12,19 @@ use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::application::projection::{EmotionProjection, Projection};
-use npc_mind::domain::event::EventPayload;
+use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::{EventStore, InMemoryRepository};
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+/// 테스트용 공유 Projection 래퍼
+struct Shared<P: Projection + Send + Sync>(Arc<RwLock<P>>);
+
+impl<P: Projection + Send + Sync> Projection for Shared<P> {
+    fn apply(&mut self, event: &DomainEvent) {
+        self.0.write().unwrap().apply(event);
+    }
+}
 
 fn make_dispatcher(
     repo: InMemoryRepository,
@@ -270,18 +279,13 @@ fn projection_updates_from_dispatcher_events() {
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
 
-    let proj = Arc::new(std::sync::RwLock::new(EmotionProjection::new()));
-    {
-        let p = proj.clone();
-        bus.subscribe(move |event| {
-            p.write().unwrap().apply(event);
-        });
-    }
-
+    let proj = Arc::new(RwLock::new(EmotionProjection::new()));
     let mut dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus);
+    dispatcher.register_projection(Shared(proj.clone()));
 
     dispatcher.dispatch(appraise_cmd()).unwrap();
 
+    // L1 Projection은 dispatch 직후 즉시 최신 상태 (쿼리 일관성)
     let p = proj.read().unwrap();
     assert!(p.get_mood("mu_baek").is_some());
     assert!(p.get_snapshot("mu_baek").is_some());

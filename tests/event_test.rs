@@ -11,10 +11,19 @@ use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::mind_service::MindService;
 use npc_mind::application::projection::{EmotionProjection, Projection, RelationshipProjection};
-use npc_mind::domain::event::EventPayload;
+use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::{EventStore, InMemoryRepository};
 
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+
+/// 테스트용 공유 Projection 래퍼 — registry에 등록하면서 외부에서도 읽도록 함
+struct Shared<P: Projection + Send + Sync>(Arc<RwLock<P>>);
+
+impl<P: Projection + Send + Sync> Projection for Shared<P> {
+    fn apply(&mut self, event: &DomainEvent) {
+        self.0.write().unwrap().apply(event);
+    }
+}
 
 fn make_service(
     repo: &mut InMemoryRepository,
@@ -225,26 +234,21 @@ fn projection_updates_on_events() {
     let store: Arc<dyn npc_mind::EventStore> = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
 
-    // Projection 준비
-    let emotion_proj = Arc::new(std::sync::RwLock::new(EmotionProjection::new()));
-    let rel_proj = Arc::new(std::sync::RwLock::new(RelationshipProjection::new()));
+    // Projection 준비 (공유 핸들)
+    let emotion_proj = Arc::new(RwLock::new(EmotionProjection::new()));
+    let rel_proj = Arc::new(RwLock::new(RelationshipProjection::new()));
 
-    // EventBus에 projection 구독
-    {
-        let ep = emotion_proj.clone();
-        let rp = rel_proj.clone();
-        bus.subscribe(move |event| {
-            ep.write().unwrap().apply(event);
-            rp.write().unwrap().apply(event);
-        });
-    }
+    let service = EventAwareMindService::new(inner, store, bus);
+    // L1 Projection 등록 — emit 경로에서 동기 호출됨
+    service.register_projection(Shared(emotion_proj.clone()));
+    service.register_projection(Shared(rel_proj.clone()));
 
-    let mut service = EventAwareMindService::new(inner, store, bus);
+    let mut service = service;
 
     // appraise
     service.appraise(appraise_req(), || {}, Vec::new).unwrap();
 
-    // EmotionProjection에 mood가 반영되었는지
+    // EmotionProjection에 mood가 반영되었는지 — dispatch 직후에도 최신 (쿼리 일관성)
     let ep = emotion_proj.read().unwrap();
     assert!(ep.get_mood("mu_baek").is_some());
 

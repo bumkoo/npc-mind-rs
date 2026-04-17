@@ -1,6 +1,6 @@
 # NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Agent 시스템 디자인
 
-> **Status**: In Progress (Phase 1-3 + Pipeline 완료)  
+> **Status**: In Progress (Phase 1-3 + Pipeline + EventBus v2 완료)  
 > **Date**: 2026-04-16 (최종 업데이트: 2026-04-17)  
 > **Scope**: 엔진 전체 리팩토링 — 현재 헥사고날 아키텍처를 이벤트 기반으로 전환  
 > **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 에이전트, 게임 히스토리 RAG
@@ -9,18 +9,21 @@
 >
 > | 단계 | 상태 | 구현 내용 |
 > |------|------|----------|
-> | **Phase 1** | ✅ 완료 | `DomainEvent`(9 variants, emotion_snapshot 포함), `InMemoryEventStore`, `EventBus`(동기 콜백), `EventAwareMindService`(Strangler Fig), `Projection` 3종 |
+> | **Phase 1** | ✅ 완료 | `DomainEvent`(9 variants, emotion_snapshot 포함), `InMemoryEventStore`, `EventBus`, `EventAwareMindService`(Strangler Fig), `Projection` 3종 |
 > | **Phase 2** | ✅ 완료 | `Command`(6 variants), `CommandDispatcher`(Orchestrator), `EmotionAgent`, `GuideAgent`, `RelationshipAgent`, `HandlerContext`/`HandlerOutput` |
-> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `InMemoryMemoryStore`, `SqliteMemoryStore`(FTS5+벡터BLOB) [embed], `MemoryAgent`(EventBus subscriber) [embed], `DialogueTurnCompleted` 이벤트 |
-> | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파), `TieredEventBus`(Tier 1 동기 + Tier 2 비동기), `StdThreadSink`, `TokioSink` [chat] |
+> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `InMemoryMemoryStore`, `SqliteMemoryStore`(FTS5+벡터BLOB) [embed], `MemoryAgent`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트 |
+> | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파) |
+> | **EventBus v2** | ✅ 완료 | `tokio::sync::broadcast` 기반 단일화. `subscribe()` → `impl Stream<Arc<DomainEvent>>` (runtime-agnostic). L1 `ProjectionRegistry`(Dispatcher 내부, 동기 쓰기 경로)로 쿼리 일관성 보장. `TieredEventBus`/`StdThreadSink`/`TokioSink` 삭제. |
 > | **Phase 4+** | 미구현 | DialogueAgent, StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
 >
 > ### 설계 문서와 구현의 차이
 >
-> - **EventBus**: 문서는 `tokio::broadcast` 제안 → 구현은 `std::sync::RwLock` 콜백 기반 (코어에 tokio 의존 없음). `TieredEventBus`로 비동기 확장.
-> - **Agent 통신**: 문서는 EventBus 구독 기반 → 구현은 Orchestrator 패턴 (`CommandDispatcher`가 직접 호출). 순서 보장 + borrow 충돌 회피.
+> - **EventBus**: 문서 원안(`tokio::broadcast`) 채택. `EventBus v2`에서 `tokio::sync::broadcast::Sender` 내부 구현 + `tokio_stream::wrappers::BroadcastStream`으로 공개 API를 `futures::Stream`으로 감쌈. 호출자는 tokio deps 불요.
+> - **Projection 위치**: 문서는 "모든 소비자가 EventBus 구독" 전제 → 구현은 **B-lite**: Projection은 bus 밖 L1, Agent/SSE는 broadcast 구독 L2. Projection을 broadcast 구독자로 두면 race·lag 시 상태 손상 위험이 있어 쿼리 일관성을 위해 분리.
+> - **Agent 통신**: Command 처리는 Orchestrator 패턴(`CommandDispatcher`가 직접 호출, 순서 보장), 이벤트 후속 소비는 broadcast Stream 기반.
 > - **RAG 저장소**: 문서는 SQLite + LanceDB 하이브리드 → 구현은 SQLite-Primary (LanceDB async-only 제약). 벡터는 BLOB으로 저장.
-> - **Pipeline**: 문서에 없던 개념. 순차 에이전트 체인 + 비동기 Tier 2를 추가로 설계·구현.
+> - **Pipeline**: 문서에 없던 개념. Tier 1(커맨드 내부 순차 동기) 역할 담당. EventBus v2 이후 "Tier"라는 분류 체계는 Pipeline(동기) vs EventBus(비동기)로 자연 정렬됨.
+> - **Lag 복구**: broadcast capacity 초과 시 `subscribe_with_lag()`의 `Lagged(n)` 통지를 받고 `EventStore::get_events_after_id()`로 replay하여 at-least-once 유지.
 
 ---
 
