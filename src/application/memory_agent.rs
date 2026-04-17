@@ -24,7 +24,7 @@ use crate::domain::event::{DomainEvent, EventPayload};
 use crate::domain::memory::{MemoryEntry, MemoryType};
 use crate::ports::{MemoryStore, TextEmbedder};
 
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
@@ -79,33 +79,49 @@ impl MemoryAgent {
         async move {
             // subscribe는 Future가 polled된 시점에 수행 — spawn 이후 publish
             // 된 이벤트는 모두 수신된다.
-            let mut stream = Box::pin(bus.subscribe_with_lag());
-            // 이미 처리한 이벤트의 최대 id. broadcast 잔여 이벤트가 replay
-            // 이후에 뒤늦게 수신돼도 커서가 역행하지 않도록 max로 갱신한다.
-            let mut last_processed_id: u64 = 0;
-            while let Some(item) = stream.next().await {
-                match item {
-                    Ok(event) => {
-                        let id = event.id;
-                        if id <= last_processed_id {
-                            // 이미 replay로 처리된 이벤트가 뒤늦게 도착 — 중복 방지
-                            continue;
-                        }
-                        agent.on_event(&event);
-                        last_processed_id = id;
+            let stream = Box::pin(bus.subscribe_with_lag());
+            agent.consume_stream(stream, event_store).await;
+        }
+    }
+
+    /// Stream 소비 루프 — `run`의 핵심 로직을 분리하여 테스트 가능하게 한 것
+    ///
+    /// 이 함수는 `Stream<Item = Result<Arc<DomainEvent>, u64>>`을 그대로 받으므로
+    /// 테스트에서 `futures::stream::iter`로 확정적 시퀀스를 주입해 broadcast·
+    /// 타이밍 의존성 없이 at-least-once 보장과 `last_processed_id` 단조성을
+    /// 검증할 수 있다.
+    pub async fn consume_stream<S>(
+        self: Arc<Self>,
+        mut stream: std::pin::Pin<Box<S>>,
+        event_store: Arc<dyn EventStore>,
+    ) where
+        S: Stream<Item = Result<Arc<DomainEvent>, u64>> + Send + ?Sized,
+    {
+        // 이미 처리한 이벤트의 최대 id. broadcast 잔여 이벤트가 replay
+        // 이후에 뒤늦게 수신돼도 커서가 역행하지 않도록 max로 갱신한다.
+        let mut last_processed_id: u64 = 0;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(event) => {
+                    let id = event.id;
+                    if id <= last_processed_id {
+                        // 이미 replay로 처리된 이벤트가 뒤늦게 도착 — 중복 방지
+                        continue;
                     }
-                    Err(skipped) => {
-                        tracing::warn!(
-                            skipped,
-                            last_processed_id,
-                            "MemoryAgent: broadcast lag detected, replaying from event store"
-                        );
-                        let missed = event_store.get_events_after_id(last_processed_id);
-                        for ev in missed {
-                            let id = ev.id;
-                            agent.on_event(&ev);
-                            last_processed_id = last_processed_id.max(id);
-                        }
+                    self.on_event(&event);
+                    last_processed_id = id;
+                }
+                Err(skipped) => {
+                    tracing::warn!(
+                        skipped,
+                        last_processed_id,
+                        "MemoryAgent: broadcast lag detected, replaying from event store"
+                    );
+                    let missed = event_store.get_events_after_id(last_processed_id);
+                    for ev in missed {
+                        let id = ev.id;
+                        self.on_event(&ev);
+                        last_processed_id = last_processed_id.max(id);
                     }
                 }
             }
