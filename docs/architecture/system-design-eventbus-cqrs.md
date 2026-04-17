@@ -1,7 +1,7 @@
 # NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Agent 시스템 디자인
 
 > **Status**: In Progress (Phase 1-3 + Pipeline + EventBus v2 완료)  
-> **Date**: 2026-04-16 (최종 업데이트: 2026-04-17)  
+> **Date**: 2026-04-16 (최종 업데이트: 2026-04-17 — RAG 저장소 현행화: sqlite-vec vec0 채택)  
 > **Scope**: 엔진 전체 리팩토링 — 현재 헥사고날 아키텍처를 이벤트 기반으로 전환  
 > **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 에이전트, 게임 히스토리 RAG
 >
@@ -11,7 +11,7 @@
 > |------|------|----------|
 > | **Phase 1** | ✅ 완료 | `DomainEvent`(9 variants, emotion_snapshot 포함), `InMemoryEventStore`, `EventBus`, `EventAwareMindService`(Strangler Fig), `Projection` 3종 |
 > | **Phase 2** | ✅ 완료 | `Command`(6 variants), `CommandDispatcher`(Orchestrator), `EmotionAgent`, `GuideAgent`, `RelationshipAgent`, `HandlerContext`/`HandlerOutput` |
-> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `InMemoryMemoryStore`, `SqliteMemoryStore`(FTS5+벡터BLOB) [embed], `MemoryAgent`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트 |
+> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `SqliteMemoryStore`(FTS5 trigram + sqlite-vec vec0) [embed], `MemoryAgent`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트. 테스트 전용 `InMemoryMemoryStore`는 `tests/common/in_memory_store.rs`로 분리(public API 미노출) |
 > | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파) |
 > | **EventBus v2** | ✅ 완료 | `tokio::sync::broadcast` 기반 단일화. `subscribe()` → `impl Stream<Arc<DomainEvent>>` (runtime-agnostic). L1 `ProjectionRegistry`(Dispatcher 내부, 동기 쓰기 경로)로 쿼리 일관성 보장. `TieredEventBus`/`StdThreadSink`/`TokioSink` 삭제. |
 > | **Phase 4+** | 미구현 | DialogueAgent, StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
@@ -21,7 +21,7 @@
 > - **EventBus**: 문서 원안(`tokio::broadcast`) 채택. `EventBus v2`에서 `tokio::sync::broadcast::Sender` 내부 구현 + `tokio_stream::wrappers::BroadcastStream`으로 공개 API를 `futures::Stream`으로 감쌈. 호출자는 tokio deps 불요.
 > - **Projection 위치**: 문서는 "모든 소비자가 EventBus 구독" 전제 → 구현은 **B-lite**: Projection은 bus 밖 L1, Agent/SSE는 broadcast 구독 L2. Projection을 broadcast 구독자로 두면 race·lag 시 상태 손상 위험이 있어 쿼리 일관성을 위해 분리.
 > - **Agent 통신**: Command 처리는 Orchestrator 패턴(`CommandDispatcher`가 직접 호출, 순서 보장), 이벤트 후속 소비는 broadcast Stream 기반.
-> - **RAG 저장소**: 문서는 SQLite + LanceDB 하이브리드 → 구현은 SQLite-Primary (LanceDB async-only 제약). 벡터는 BLOB으로 저장.
+> - **RAG 저장소**: 문서는 SQLite + LanceDB 하이브리드 → 구현은 단일 SQLite 파일에 FTS5(trigram) + sqlite-vec vec0 가상 테이블을 함께 둔다. LanceDB async-only 제약 회피 + sqlite-vec은 순수 C 확장이라 tokio 런타임 미요구. 벡터 BLOB 자체 구현도 제거되고 vec0가 ANN을 대신한다.
 > - **Pipeline**: 문서에 없던 개념. Tier 1(커맨드 내부 순차 동기) 역할 담당. EventBus v2 이후 "Tier"라는 분류 체계는 Pipeline(동기) vs EventBus(비동기)로 자연 정렬됨.
 > - **Lag 복구**: broadcast capacity 초과 시 `subscribe_with_lag()`의 `Lagged(n)` 통지를 받고 `EventStore::get_events_after_id()`로 replay하여 at-least-once 유지.
 
@@ -945,7 +945,9 @@ pub struct MemoryResult {
 }
 ```
 
-### 9.3 하이브리드 저장 구조 (SQLite + LanceDB)
+### 9.3 하이브리드 저장 구조 (SQLite + LanceDB) *— 구현 변경됨*
+
+> **구현 현황**: 실제로는 LanceDB 대신 **sqlite-vec vec0 가상 테이블**을 같은 SQLite 파일에 두어 하이브리드를 구성한다. 3-레이어 구조(`memories` 일반 테이블 + `memories_fts` FTS5(trigram) + `memories_vec` vec0)를 id로 조인한다. LanceDB async-only 제약 회피 + sqlite-vec는 순수 C 확장이라 tokio 런타임을 전이시키지 않는다. 아래 "분리된 DB" 설계는 초기 비전이며 개념적으로는 동일하다 — "텍스트/메타데이터용 엔진과 벡터 ANN 엔진을 id로 연결"한다는 핵심은 유지된다.
 
 텍스트 검색과 벡터 검색은 최적 구조가 다르므로, 각자 강한 DB에 나눠 저장하고 **같은 id로 연결**한다.
 
@@ -1033,9 +1035,9 @@ NPC가 대사를 생성할 때:
 
 | 단계 | 구현 | 비고 |
 |------|------|------|
-| Phase 1 | In-memory Vec + brute-force cosine | 개발/테스트용. 벡터 분리 없음 |
-| Phase 2 | **SQLite(FTS5) + LanceDB(벡터)** | 하이브리드. 서버 없이 파일 기반. id로 연결 |
-| Phase 3 | 필요 시 LanceDB → 외부 벡터DB 교체 | MemoryStore 포트 뒤에 숨어있으므로 교체 용이 |
+| Phase 1 | In-memory Vec + brute-force cosine | 개발/테스트용. 벡터 분리 없음. 현재 `tests/common/in_memory_store.rs`로 이동 |
+| Phase 2 | **SQLite(FTS5 trigram) + sqlite-vec vec0** (채택됨) | 단일 파일. FTS5 trigram이 한글/CJK 커버, vec0가 코사인 ANN 담당. id로 3-레이어 조인 |
+| Phase 3 | 필요 시 vec0 → 외부 벡터DB 교체 | `MemoryStore` 포트 뒤에 숨어있으므로 교체 용이 |
 
 ---
 
@@ -1467,7 +1469,7 @@ Step 5: MindService 제거
 | Event Store (Phase 2) | SQLite WAL (미구현) | 싱글 프로세스, 파일 기반, Rust 생태계 성숙 |
 | RAG 임베딩 | 기존 `bge-m3-onnx-rust` 재사용 | 추가 의존성 없음 |
 | RAG 저장소 (Phase 1) | In-memory + cosine | 개발 속도 우선 |
-| RAG 저장소 (Phase 2) | SQLite (FTS5 + 벡터 BLOB) [embed] | LanceDB async 제약, SQLite-Primary로 단순화 |
+| RAG 저장소 (Phase 2) | SQLite (FTS5 trigram + sqlite-vec vec0) [embed] | LanceDB async 제약 회피 + sqlite-vec가 tokio 런타임 미요구 (순수 C 확장). vec0가 코사인 ANN 담당 |
 | 직렬화 | `serde_json` | 이벤트 디버깅 용이, 스키마 진화에 유리 |
 | 소비자 런타임 | 호출자 소유 (tokio·bevy_tasks·smol 등) | 라이브러리는 Runtime 소유하지 않음 |
 
