@@ -294,6 +294,72 @@ fn projection_updates_from_dispatcher_events() {
 }
 
 #[test]
+fn with_projections_shares_registry_across_services() {
+    use npc_mind::application::projection::ProjectionRegistry;
+
+    // 외부에서 생성한 registry를 여러 dispatcher에 공유 주입
+    let ctx = TestContext::new();
+    let shared_registry = Arc::new(RwLock::new(ProjectionRegistry::new()));
+
+    let proj = Arc::new(RwLock::new(EmotionProjection::new()));
+    shared_registry
+        .write()
+        .unwrap()
+        .add(Shared(proj.clone()));
+
+    let store = Arc::new(InMemoryEventStore::new());
+    let bus = Arc::new(EventBus::new());
+    let mut dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
+        .with_projections(shared_registry.clone());
+
+    dispatcher.dispatch(appraise_cmd()).unwrap();
+
+    // 공유 registry에 등록된 projection이 dispatch로 갱신됨
+    let p = proj.read().unwrap();
+    assert!(p.get_mood("mu_baek").is_some());
+
+    // 접근자도 같은 registry를 가리킴
+    assert!(Arc::ptr_eq(dispatcher.projections(), &shared_registry));
+}
+
+#[test]
+fn projections_update_in_order_of_registration() {
+    // L1 Projection은 apply_all 호출로 등록 순서대로 적용됨
+    let ctx = TestContext::new();
+    let store = Arc::new(InMemoryEventStore::new());
+    let bus = Arc::new(EventBus::new());
+
+    let order = Arc::new(RwLock::new(Vec::<&'static str>::new()));
+
+    struct OrderRecorder {
+        tag: &'static str,
+        log: Arc<RwLock<Vec<&'static str>>>,
+    }
+    impl npc_mind::application::projection::Projection for OrderRecorder {
+        fn apply(&mut self, _event: &DomainEvent) {
+            self.log.write().unwrap().push(self.tag);
+        }
+    }
+
+    let dispatcher = CommandDispatcher::new(ctx.repo, store, bus);
+    dispatcher.register_projection(OrderRecorder {
+        tag: "first",
+        log: order.clone(),
+    });
+    dispatcher.register_projection(OrderRecorder {
+        tag: "second",
+        log: order.clone(),
+    });
+
+    let mut dispatcher = dispatcher;
+    dispatcher.dispatch(appraise_cmd()).unwrap();
+
+    let log = order.read().unwrap();
+    // appraise는 이벤트 1개 → 등록 순서로 2회 실행
+    assert_eq!(*log, vec!["first", "second"]);
+}
+
+#[test]
 fn full_workflow_appraise_stimulus_guide_end() {
     let ctx = TestContext::new();
     let (mut dispatcher, store) = make_dispatcher(ctx.repo);
