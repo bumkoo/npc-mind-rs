@@ -44,12 +44,11 @@ pub use application::command::{
 };
 
 // --- Memory / RAG (Phase 3) ---
-pub use application::memory_store::InMemoryMemoryStore;
 pub use domain::memory::{MemoryEntry, MemoryResult, MemoryType};
 pub use ports::{MemoryError, MemoryStore};
 
 #[cfg(feature = "embed")]
-pub use adapter::sqlite_memory::SqliteMemoryStore;
+pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
 #[cfg(feature = "embed")]
 pub use application::memory_agent::MemoryAgent;
 

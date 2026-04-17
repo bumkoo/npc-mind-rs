@@ -1,8 +1,11 @@
 //! 테스트 공통 유틸리티
 //!
 //! 무협 4인 캐릭터 빌더 + Score 헬퍼 + 관계 팩토리 + 테스트 컨텍스트
+//! + 테스트 전용 InMemoryMemoryStore (in_memory_store 모듈)
 
 #![allow(dead_code)]
+
+pub mod in_memory_store;
 
 use npc_mind::InMemoryRepository;
 use npc_mind::application::mind_service::MindService;

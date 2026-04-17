@@ -1,8 +1,10 @@
 //! InMemoryMemoryStore + MemoryAgent 통합 테스트 (feature flag 없이 실행 가능)
 
+mod common;
+
+use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
-use npc_mind::application::memory_store::InMemoryMemoryStore;
 use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::domain::memory::{MemoryEntry, MemoryType};
 use npc_mind::{EventStore, MemoryStore};

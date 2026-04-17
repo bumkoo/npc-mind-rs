@@ -1,7 +1,11 @@
 # NPC Tool & Memory 시스템 설계
 
-> **Status**: Draft — 2026-04-11  
-> **Scope**: NPC에게 "도구(Tool)"를 부여하고, 첫 번째 도구로 "기억(Memory)"을 구현하는 시스템 설계
+> **Status**: Superseded — 2026-04-11 (original draft)  
+> **현행 설계**: [`system-design-eventbus-cqrs.md` §9 RAG 설계](system-design-eventbus-cqrs.md#9-rag-설계-게임-내-히스토리)
+>
+> 이 문서는 초기 LanceDB 기반 설계안이다. 실제 구현은 단일 SQLite 파일에 FTS5(trigram) + sqlite-vec vec0 가상 테이블을 함께 두는 방식으로 결정되었다. LanceDB async-only 제약 회피 + sqlite-vec가 순수 C 확장이라 tokio 런타임 전이 없음이 결정 근거. 아래 내용은 역사적 참고용으로만 보존한다.
+>
+> **Scope (원본)**: NPC에게 "도구(Tool)"를 부여하고, 첫 번째 도구로 "기억(Memory)"을 구현하는 시스템 설계
 
 ---
 

@@ -1,12 +1,13 @@
-//! InMemoryMemoryStore — 개발/테스트용 기억 저장소
+//! 테스트 전용 InMemoryMemoryStore — 라이브러리 코어에서 제외된 brute-force cosine 스토어.
 //!
-//! Vec + brute-force cosine. Feature flag 없이 무조건 포함.
+//! `MemoryStore` 트레이트의 결정적 참조 구현으로서 테스트에서만 사용한다.
+//! 프로덕션 경로에서는 `SqliteMemoryStore`(sqlite-vec 기반)가 기본 구현이다.
 
-use crate::domain::memory::{MemoryEntry, MemoryResult};
-use crate::ports::{MemoryError, MemoryStore};
+use npc_mind::domain::memory::{MemoryEntry, MemoryResult};
+use npc_mind::ports::{MemoryError, MemoryStore};
 use std::sync::RwLock;
 
-/// 인메모리 기억 저장소
+/// 인메모리 기억 저장소 (테스트용).
 pub struct InMemoryMemoryStore {
     entries: RwLock<Vec<(MemoryEntry, Option<Vec<f32>>)>>,
 }
@@ -41,9 +42,7 @@ impl MemoryStore for InMemoryMemoryStore {
         let entries = self.entries.read().unwrap();
         let mut scored: Vec<_> = entries
             .iter()
-            .filter(|(e, emb)| {
-                emb.is_some() && npc_id.map_or(true, |id| e.npc_id == id)
-            })
+            .filter(|(e, emb)| emb.is_some() && npc_id.map_or(true, |id| e.npc_id == id))
             .map(|(entry, emb)| {
                 let score = cosine_sim(query_embedding, emb.as_ref().unwrap());
                 MemoryResult {
@@ -103,7 +102,6 @@ impl MemoryStore for InMemoryMemoryStore {
     }
 }
 
-/// 코사인 유사도 (brute-force)
 fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {
     let dot: f32 = a.iter().zip(b.iter()).map(|(x, y)| x * y).sum();
     let na: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
