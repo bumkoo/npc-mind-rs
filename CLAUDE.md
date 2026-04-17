@@ -235,9 +235,11 @@ MemoryAgent (EventBus subscriber)
 
 SqliteMemoryStore (기본 구현, 단일 SQLite 파일):
   ├── memories       (일반 테이블 — 메타 + 원문 TEXT)
-  ├── memories_fts   (FTS5 가상 테이블 — 키워드 전문 검색)
+  ├── memories_fts   (FTS5 가상 테이블, tokenize='trigram' — 한글/CJK 전문 검색)
   └── memories_vec   (sqlite-vec vec0 가상 테이블 — 코사인 ANN, FLOAT[dim])
   세 레이어가 id로 조인. search_by_meaning: vec0 Top-K → memories batch load.
+  FTS5 trigram 토크나이저는 3-gram 기반이라 한글 단어 경계 문제를 우회한다
+  (SQLite 3.34+). 예외 시 LIKE fallback으로 방어.
 
 테스트 전용:
   tests/common/in_memory_store.rs — InMemoryMemoryStore (brute-force cosine).

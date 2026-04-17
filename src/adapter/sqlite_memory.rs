@@ -93,7 +93,7 @@ impl SqliteMemoryStore {
             );
 
             CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts
-                USING fts5(id, content);",
+                USING fts5(id, content, tokenize='trigram');",
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
@@ -236,7 +236,9 @@ impl MemoryStore for SqliteMemoryStore {
     ) -> Result<Vec<MemoryResult>, MemoryError> {
         let conn = self.conn.lock().unwrap();
 
-        // FTS5 검색 시도, 실패 시 LIKE fallback (CJK 토크나이저 부재 대응)
+        // FTS5(trigram)로 검색 — trigram 토크나이저가 한글/CJK를 3-gram으로 분해해
+        // 기본 토크나이저의 언어별 단어 경계 문제를 우회한다.
+        // 잘못된 FTS5 구문이나 기타 예외 시 LIKE fallback으로 방어.
         let fts_results: Vec<MemoryEntry> = conn
             .prepare(
                 "SELECT m.* FROM memories m

@@ -46,6 +46,24 @@ fn sqlite_fts5_keyword_search() {
 }
 
 #[test]
+fn sqlite_fts5_trigram_korean_multichar() {
+    // trigram 토크나이저는 3글자 이상의 부분 문자열을 FTS5에서 직접 매칭.
+    // 기본 토크나이저로는 한글 단어 경계를 제대로 처리하지 못해 이 테스트가 실패했을 것.
+    let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
+
+    store.index(sample_entry("m1", "npc1", "무림맹주를 칭송한다", 100), None).unwrap();
+    store.index(sample_entry("m2", "npc1", "화산파 검법의 정수", 200), None).unwrap();
+    store.index(sample_entry("m3", "npc1", "무림맹주가 등장했다", 300), None).unwrap();
+
+    // 3자 이상 한글 쿼리 — trigram 인덱스가 직접 매치
+    let results = store.search_by_keyword("무림맹주", None, 10).unwrap();
+    assert_eq!(results.len(), 2);
+    let ids: Vec<_> = results.iter().map(|r| r.entry.id.clone()).collect();
+    assert!(ids.contains(&"m1".to_string()));
+    assert!(ids.contains(&"m3".to_string()));
+}
+
+#[test]
 fn sqlite_vec0_cosine_search() {
     let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
 
