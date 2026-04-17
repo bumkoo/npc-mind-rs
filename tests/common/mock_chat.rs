@@ -10,6 +10,7 @@ use npc_mind::ports::{
     ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
     LlmModelInfo,
 };
+use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 /// ConversationPort에 대한 호출 이력 항목
@@ -34,12 +35,12 @@ pub enum ChatCall {
 
 /// 설정 가능한 mock ConversationPort
 ///
-/// - `responses`: `send_message`가 순서대로 반환할 응답 큐.
+/// - `responses`: `send_message`가 FIFO(선입선출)로 반환할 응답 큐.
 ///   비어있으면 기본값("mock response", timings=None)을 반환.
 /// - `calls`: 모든 호출 이력.
 pub struct MockConversationPort {
     pub calls: Arc<Mutex<Vec<ChatCall>>>,
-    pub responses: Arc<Mutex<Vec<ChatResponse>>>,
+    pub responses: Arc<Mutex<VecDeque<ChatResponse>>>,
     /// 세션별 누적된 대화 이력 (end_session 반환용)
     pub history: Arc<Mutex<Vec<DialogueTurn>>>,
 }
@@ -48,13 +49,14 @@ impl MockConversationPort {
     pub fn new() -> Self {
         Self {
             calls: Arc::new(Mutex::new(Vec::new())),
-            responses: Arc::new(Mutex::new(Vec::new())),
+            responses: Arc::new(Mutex::new(VecDeque::new())),
             history: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
+    /// 응답 큐에 뒤(push_back)로 추가 — `send_message`가 FIFO로 소비한다.
     pub fn with_response(self, text: &str, timings: Option<LlamaTimings>) -> Self {
-        self.responses.lock().unwrap().push(ChatResponse {
+        self.responses.lock().unwrap().push_back(ChatResponse {
             text: text.to_string(),
             timings,
         });
@@ -110,7 +112,7 @@ impl ConversationPort for MockConversationPort {
             .responses
             .lock()
             .unwrap()
-            .pop()
+            .pop_front()
             .unwrap_or(ChatResponse {
                 text: "mock response".to_string(),
                 timings: None,

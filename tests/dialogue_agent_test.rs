@@ -11,7 +11,10 @@ use common::mock_chat::{ChatCall, MockConversationPort};
 use common::TestContext;
 
 use npc_mind::application::command::dispatcher::CommandDispatcher;
-use npc_mind::application::dto::{ActionInput, EventInput, SituationInput};
+use npc_mind::application::command::types::Command;
+use npc_mind::application::dto::{
+    ActionInput, ConditionInput, EventInput, SceneFocusInput, SituationInput,
+};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::EventPayload;
@@ -121,7 +124,7 @@ async fn start_session_emits_emotion_appraised_and_starts_llm() {
 
 #[tokio::test]
 async fn turn_emits_events_in_correct_order() {
-    let (mut agent, store, _calls) = setup();
+    let (mut agent, store, calls) = setup();
 
     agent
         .start_session(
@@ -184,20 +187,53 @@ async fn turn_emits_events_in_correct_order() {
     assert!(user < stim, "user 턴이 stimulus 이전");
     assert!(stim < assistant, "stimulus가 assistant 턴 이전");
 
-    // DialogueTurnCompleted 페이로드 내용 검증
-    if let EventPayload::DialogueTurnCompleted {
-        speaker, utterance, ..
-    } = &events[user].payload
-    {
-        assert_eq!(speaker, "user");
-        assert_eq!(utterance, "오랜만이군.");
+    // DialogueTurnCompleted 페이로드 내용 검증 (speaker/utterance/npc_id/partner_id)
+    match &events[user].payload {
+        EventPayload::DialogueTurnCompleted {
+            speaker,
+            utterance,
+            npc_id,
+            partner_id,
+            ..
+        } => {
+            assert_eq!(speaker, "user");
+            assert_eq!(utterance, "오랜만이군.");
+            assert_eq!(npc_id, "mu_baek");
+            assert_eq!(partner_id, "gyo_ryong");
+        }
+        _ => panic!("user 턴 payload 형식 오류"),
     }
-    if let EventPayload::DialogueTurnCompleted {
-        speaker, utterance, ..
-    } = &events[assistant].payload
-    {
-        assert_eq!(speaker, "assistant");
-        assert_eq!(utterance, "mock response");
+    match &events[assistant].payload {
+        EventPayload::DialogueTurnCompleted {
+            speaker,
+            utterance,
+            npc_id,
+            partner_id,
+            ..
+        } => {
+            assert_eq!(speaker, "assistant");
+            assert_eq!(utterance, "mock response");
+            assert_eq!(npc_id, "mu_baek");
+            assert_eq!(partner_id, "gyo_ryong");
+        }
+        _ => panic!("assistant 턴 payload 형식 오류"),
+    }
+
+    // ConversationPort.send_message가 user_utterance 원문으로 호출되었는지 확인
+    let calls = calls.lock().unwrap();
+    let send_call = calls
+        .iter()
+        .find(|c| matches!(c, ChatCall::SendMessage { .. }))
+        .expect("send_message 호출 1회");
+    match send_call {
+        ChatCall::SendMessage {
+            session_id,
+            user_message,
+        } => {
+            assert_eq!(session_id, "session-1");
+            assert_eq!(user_message, "오랜만이군.", "LLM에 전달된 대사가 원문과 동일");
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -229,17 +265,20 @@ async fn turn_without_pad_skips_stimulus_dispatch() {
     assert!(outcome.stimulus.is_none(), "PAD 없음 → stimulus 없음");
     assert!(!outcome.beat_changed);
 
-    // PAD 없을 때 이벤트 증가량: user 턴 1 + assistant 턴 1 = 2
+    // PAD 없을 때 증가한 이벤트는 user/assistant 턴 2건뿐이어야 한다.
     let post = store.get_all_events();
+    let new_events: Vec<_> = post.iter().skip(pre_count).collect();
     assert_eq!(
-        post.len() - pre_count,
+        new_events.len(),
         2,
         "PAD 없으면 DialogueTurnCompleted 2건만 추가"
     );
-    assert!(post
-        .iter()
-        .all(|e| !matches!(e.payload, EventPayload::StimulusApplied { .. })
-            || post.iter().take_while(|x| x.id <= e.id).count() <= pre_count));
+    assert!(
+        new_events
+            .iter()
+            .all(|e| matches!(e.payload, EventPayload::DialogueTurnCompleted { .. })),
+        "추가된 이벤트 모두 DialogueTurnCompleted여야 함"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -361,8 +400,148 @@ async fn turn_on_unknown_session_fails() {
     }
 }
 
+/// `end_session`도 존재하지 않는 세션에서는 `SessionNotFound`로 실패해야 한다.
+/// LLM도 호출되지 않아야 한다 (세션 메타 확인이 먼저).
+#[tokio::test]
+async fn end_session_on_unknown_session_fails() {
+    let (mut agent, _store, calls) = setup();
+
+    let result = agent.end_session("missing", Some(0.5)).await;
+    match result {
+        Err(npc_mind::DialogueAgentError::SessionNotFound(id)) => assert_eq!(id, "missing"),
+        Err(other) => panic!("기대: SessionNotFound, 실제: {}", other),
+        Ok(_) => panic!("세션이 없으므로 실패해야 함"),
+    }
+
+    // 세션 메타 확인이 실패했으므로 ConversationPort는 호출되지 않아야 한다.
+    assert!(
+        calls.lock().unwrap().is_empty(),
+        "세션 확인 실패 시 LLM 호출 없음"
+    );
+}
+
 // ---------------------------------------------------------------------------
-// 7. ConversationPort에 EventBus 통한 실제 broadcast 수신 확인
+// 7. Beat 전환 시 ConversationPort.update_system_prompt 호출
+// ---------------------------------------------------------------------------
+
+/// Beat 전환이 발생하면 DialogueAgent는 새 프롬프트로 system prompt를 갱신해야 한다.
+/// Scene 설정 전략은 application_test.rs::test_beat_transition_and_emotion_merging와 동일 —
+/// 교룡(gyo_ryong)은 감정 민감도가 높아 Joy가 쉽게 소멸하고,
+/// Joy absent 조건의 Focus로 바로 전환된다.
+#[tokio::test]
+async fn beat_transition_calls_update_system_prompt() {
+    let (mut agent, store, calls) = setup();
+
+    // Scene 설정 — 두 Focus: 초기(약한 Joy) + 전환(Joy 소멸 시)
+    let scene_cmd = Command::StartScene {
+        npc_id: "gyo_ryong".into(),
+        partner_id: "mu_baek".into(),
+        significance: Some(0.5),
+        focuses: vec![
+            SceneFocusInput {
+                id: "calm".into(),
+                description: "평온한 대화".into(),
+                trigger: None, // Initial
+                event: Some(EventInput {
+                    description: "초기 상황".into(),
+                    desirability_for_self: 0.05, // 약한 Joy — 쉽게 소멸
+                    other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+                test_script: vec![],
+            },
+            SceneFocusInput {
+                id: "angry".into(),
+                description: "갑작스러운 갈등".into(),
+                trigger: Some(vec![vec![ConditionInput {
+                    emotion: "Joy".into(),
+                    absent: Some(true), // Joy가 사라지면 전환
+                    below: None,
+                    above: None,
+                }]]),
+                event: Some(EventInput {
+                    description: "모욕을 당함".into(),
+                    desirability_for_self: -0.6,
+                    other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+                test_script: vec![],
+            },
+        ],
+    };
+    agent.dispatcher_mut().dispatch(scene_cmd).unwrap();
+
+    // LLM 세션 시작 (Scene의 active focus로 자동 appraise)
+    agent
+        .start_session("s", "gyo_ryong", "mu_baek", None)
+        .await
+        .unwrap();
+
+    // 교룡에게 강한 불쾌 자극 → Joy 소멸 → Beat 전환
+    let outcome = agent
+        .turn(
+            "s",
+            "원칙 타령은 지겹군.",
+            Some(Pad {
+                pleasure: -1.0,
+                arousal: -1.0,
+                dominance: -1.0,
+            }),
+            None,
+        )
+        .await
+        .expect("turn ok");
+
+    assert!(outcome.beat_changed, "민감한 교룡은 즉시 Beat 전환");
+
+    // BeatTransitioned 이벤트 발행 확인
+    let events = store.get_all_events();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e.payload, EventPayload::BeatTransitioned { .. })),
+        "BeatTransitioned 이벤트 발행"
+    );
+
+    // DialogueAgent가 update_system_prompt를 호출했는지 확인
+    let calls = calls.lock().unwrap();
+    let update_call = calls
+        .iter()
+        .find(|c| matches!(c, ChatCall::UpdateSystemPrompt { .. }))
+        .expect("Beat 전환 시 update_system_prompt 호출");
+    match update_call {
+        ChatCall::UpdateSystemPrompt {
+            session_id,
+            new_prompt,
+        } => {
+            assert_eq!(session_id, "s");
+            assert!(!new_prompt.is_empty(), "새 프롬프트 비어있지 않음");
+        }
+        _ => unreachable!(),
+    }
+
+    // 호출 순서: StartSession → UpdateSystemPrompt → SendMessage
+    // (DialogueAgent.turn 내부: stimulus → [beat이면 update_prompt] → send_message)
+    let update_idx = calls
+        .iter()
+        .position(|c| matches!(c, ChatCall::UpdateSystemPrompt { .. }))
+        .unwrap();
+    let send_idx = calls
+        .iter()
+        .position(|c| matches!(c, ChatCall::SendMessage { .. }))
+        .unwrap();
+    assert!(
+        update_idx < send_idx,
+        "update_system_prompt가 send_message 이전에 호출되어야 함"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 8. ConversationPort에 EventBus 통한 실제 broadcast 수신 확인
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
