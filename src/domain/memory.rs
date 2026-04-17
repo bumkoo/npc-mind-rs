@@ -36,6 +36,31 @@ pub enum MemoryType {
     GameEvent,
 }
 
+impl MemoryType {
+    /// 영속화용 문자열 표현. 저장소 스키마의 일부이므로 Rust 식별자 변경과 무관하게 유지된다.
+    pub fn as_persisted(&self) -> &'static str {
+        match self {
+            MemoryType::Dialogue => "Dialogue",
+            MemoryType::Relationship => "Relationship",
+            MemoryType::BeatTransition => "BeatTransition",
+            MemoryType::SceneEnd => "SceneEnd",
+            MemoryType::GameEvent => "GameEvent",
+        }
+    }
+
+    /// 영속화된 문자열 → 변종. 알 수 없는 값은 `None`.
+    pub fn from_persisted(s: &str) -> Option<Self> {
+        match s {
+            "Dialogue" => Some(MemoryType::Dialogue),
+            "Relationship" => Some(MemoryType::Relationship),
+            "BeatTransition" => Some(MemoryType::BeatTransition),
+            "SceneEnd" => Some(MemoryType::SceneEnd),
+            "GameEvent" => Some(MemoryType::GameEvent),
+            _ => None,
+        }
+    }
+}
+
 /// 기억 검색 결과
 #[derive(Debug, Clone)]
 pub struct MemoryResult {

@@ -65,6 +65,66 @@ fn sqlite_keyword_search_matches_korean_multichar() {
 }
 
 #[test]
+fn sqlite_reindex_same_id_does_not_duplicate_fts_rows() {
+    // FTS5 가상 테이블은 id 컬럼에 UNIQUE 제약이 없어, INSERT OR REPLACE로는
+    // 기존 행을 덮어쓰지 못하고 새 rowid를 추가한다. 구현은 DELETE + INSERT로
+    // 이를 회피해야 하며, 같은 id 재인덱싱 후 keyword 검색 결과가 1건이어야 한다.
+    let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
+
+    store.index(sample_entry("m1", "npc1", "무림맹주가 배신했다", 100), None).unwrap();
+    // 같은 id로 여러 번 덮어쓰기 — content도 모두 동일 키워드 포함
+    store.index(sample_entry("m1", "npc1", "무림맹주가 배신했다 (v2)", 200), None).unwrap();
+    store.index(sample_entry("m1", "npc1", "무림맹주가 배신했다 (v3)", 300), None).unwrap();
+
+    let results = store.search_by_keyword("배신", None, 10).unwrap();
+    assert_eq!(
+        results.len(),
+        1,
+        "같은 id 재인덱싱이 FTS에 중복 행을 누적하면 안 됨"
+    );
+    assert_eq!(results[0].entry.id, "m1");
+    // 최신 content가 살아있어야 한다 (INSERT OR REPLACE on memories 동작 확인).
+    assert!(results[0].entry.content.contains("(v3)"));
+}
+
+#[test]
+fn sqlite_memory_type_persistence_roundtrip() {
+    // MemoryType의 5개 변종이 모두 as_persisted / from_persisted 왕복 후 보존되는지.
+    let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
+    let types = [
+        ("m1", MemoryType::Dialogue),
+        ("m2", MemoryType::Relationship),
+        ("m3", MemoryType::BeatTransition),
+        ("m4", MemoryType::SceneEnd),
+        ("m5", MemoryType::GameEvent),
+    ];
+    for (id, ty) in &types {
+        let entry = MemoryEntry {
+            id: (*id).to_string(),
+            npc_id: "npc1".to_string(),
+            content: format!("{id} content"),
+            emotional_context: None,
+            timestamp_ms: 100,
+            event_id: 1,
+            memory_type: ty.clone(),
+        };
+        store.index(entry, None).unwrap();
+    }
+
+    let recent = store.get_recent("npc1", 10).unwrap();
+    assert_eq!(recent.len(), 5);
+    for (id, expected) in &types {
+        let got = recent
+            .iter()
+            .find(|e| e.id == *id)
+            .expect("entry not found")
+            .memory_type
+            .clone();
+        assert_eq!(got, *expected, "{id} memory_type roundtrip");
+    }
+}
+
+#[test]
 fn sqlite_fts5_uses_trigram_tokenizer() {
     // memories_fts 가상 테이블이 실제로 trigram 토크나이저로 생성되었는지
     // sqlite_master의 CREATE 문을 직접 조회해 검증한다.

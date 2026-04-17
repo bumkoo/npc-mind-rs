@@ -135,12 +135,20 @@ impl MemoryStore for SqliteMemoryStore {
                 ed,
                 entry.timestamp_ms as i64,
                 entry.event_id as i64,
-                format!("{:?}", entry.memory_type),
+                entry.memory_type.as_persisted(),
             ],
         ).map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
+        // FTS5 가상 테이블은 `id` TEXT 컬럼에 UNIQUE 제약이 없어 `INSERT OR REPLACE`가
+        // 기존 행을 덮어쓰지 않고 새 rowid를 추가한다. 같은 id로 재인덱싱하면 검색에서
+        // 중복 히트가 발생하므로, memories_vec과 마찬가지로 DELETE 후 INSERT를 쓴다.
         conn.execute(
-            "INSERT OR REPLACE INTO memories_fts (id, content) VALUES (?1, ?2)",
+            "DELETE FROM memories_fts WHERE id = ?1",
+            params![entry.id],
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO memories_fts (id, content) VALUES (?1, ?2)",
             params![entry.id, entry.content],
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
@@ -321,14 +329,7 @@ fn row_to_entry(row: &rusqlite::Row) -> rusqlite::Result<MemoryEntry> {
     };
 
     let type_str: String = row.get(8)?;
-    let memory_type = match type_str.as_str() {
-        "Dialogue" => MemoryType::Dialogue,
-        "Relationship" => MemoryType::Relationship,
-        "BeatTransition" => MemoryType::BeatTransition,
-        "SceneEnd" => MemoryType::SceneEnd,
-        "GameEvent" => MemoryType::GameEvent,
-        _ => MemoryType::Dialogue,
-    };
+    let memory_type = MemoryType::from_persisted(&type_str).unwrap_or(MemoryType::Dialogue);
 
     let ts: i64 = row.get(6)?;
     let eid: i64 = row.get(7)?;
