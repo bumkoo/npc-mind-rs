@@ -46,21 +46,49 @@ fn sqlite_fts5_keyword_search() {
 }
 
 #[test]
-fn sqlite_fts5_trigram_korean_multichar() {
-    // trigram 토크나이저는 3글자 이상의 부분 문자열을 FTS5에서 직접 매칭.
-    // 기본 토크나이저로는 한글 단어 경계를 제대로 처리하지 못해 이 테스트가 실패했을 것.
+fn sqlite_keyword_search_matches_korean_multichar() {
+    // 한글 다글자 쿼리가 부분 문자열을 포함한 항목을 반환하는 regression test.
+    // 주의: trigram FTS5 또는 LIKE fallback 어느 경로를 통해서도 통과한다
+    // (둘 다 "무림맹주를 ..."에서 "무림맹주"를 매치).
+    // trigram 적용 여부의 구조적 검증은 sqlite_fts5_uses_trigram_tokenizer 참조.
     let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
 
     store.index(sample_entry("m1", "npc1", "무림맹주를 칭송한다", 100), None).unwrap();
     store.index(sample_entry("m2", "npc1", "화산파 검법의 정수", 200), None).unwrap();
     store.index(sample_entry("m3", "npc1", "무림맹주가 등장했다", 300), None).unwrap();
 
-    // 3자 이상 한글 쿼리 — trigram 인덱스가 직접 매치
     let results = store.search_by_keyword("무림맹주", None, 10).unwrap();
     assert_eq!(results.len(), 2);
     let ids: Vec<_> = results.iter().map(|r| r.entry.id.clone()).collect();
     assert!(ids.contains(&"m1".to_string()));
     assert!(ids.contains(&"m3".to_string()));
+}
+
+#[test]
+fn sqlite_fts5_uses_trigram_tokenizer() {
+    // memories_fts 가상 테이블이 실제로 trigram 토크나이저로 생성되었는지
+    // sqlite_master의 CREATE 문을 직접 조회해 검증한다.
+    // 이 테스트만이 trigram 적용 여부를 구조적으로 보장한다.
+    let tmp = tempfile::tempdir().unwrap();
+    let db_path = tmp.path().join("mem.db");
+
+    {
+        let _store = SqliteMemoryStore::with_dim(db_path.to_str().unwrap(), TEST_DIM).unwrap();
+    }
+
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let sql: String = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='memories_fts'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+
+    assert!(
+        sql.to_lowercase().contains("trigram"),
+        "memories_fts는 trigram 토크나이저로 생성되어야 합니다. 실제 SQL: {sql}"
+    );
 }
 
 #[test]
