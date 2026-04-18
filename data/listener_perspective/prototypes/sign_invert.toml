@@ -1,0 +1,52 @@
+# 부호 반전 프로토타입 (sign_invert)
+#
+# 청자가 체감하는 P 부호가 화자와 반대인 발화.
+# 사과/간청/위로 (P- → 약한 P+), 빈정 (P+ → 강한 P-)
+#
+# 분류기는 이 프로토타입들과 cosine 유사도로 "invert" 판정을 내린다.
+#
+# 큐레이션 원칙:
+#   1. 명확한 사례만 (경계/혼합 발화는 테스트 케이스로)
+#   2. 그룹 내 다양성 (subtype 균형)
+#   3. 톤 통일 (1인칭 대사, 무협체)
+#   4. 수집 가능성 보장 (source 필드)
+#   5. 형식 대칭 배치 (빈정 변종 3종: 평범/반복강조/과장존칭)
+#
+# 상세: docs/emotion/sign-classifier-design.md §3.3
+
+[meta]
+language = "ko"
+register = "wuxia"
+version = "2"
+group = "sign_invert"
+last_updated = "2026-04-18"
+
+[prototypes]
+items = [
+    # --- 사과 (apology) ---
+    { text = "내 생각이 짧았소, 부디 용서하시오.", subtype = "apology", source = "created_by_bekay" },
+    { text = "면목 없소이다, 입이 열 개라도 할 말이 없구려.", subtype = "apology", source = "created_by_bekay" },
+    { text = "소인이 어리석었사옵니다, 부디 너그러이 용서해 주십시오.", subtype = "apology", source = "created_by_bekay" },
+
+    # --- 간청 (plea) ---
+    { text = "부디 자비를 베풀어 주소서, 다시는 이런 짓 하지 않으리다.", subtype = "plea", source = "created_by_bekay" },
+    { text = "이 청 한 번만 들어주시오, 평생 은혜로 새기겠소.", subtype = "plea", source = "created_by_bekay" },
+    # v2: 017 대응 — 비굴함 강조로 "살려" 어휘의 Invert 고정
+    { text = "부디 살려만 주십시오, 시키는 건 무엇이든 하겠나이다.", subtype = "plea", source = "v2_patch" },
+    { text = "개처럼 빌겠소, 제발 목숨만은 거두지 마시오.", subtype = "plea", source = "v2_patch" },
+
+    # --- 위로 (condolence) ---
+    { text = "얼마나 상심이 크시겠소, 말로 다 못할 심정이시겠지요.", subtype = "condolence", source = "created_by_bekay" },
+    { text = "힘내시오, 그대라면 능히 이겨내리다.", subtype = "condolence", source = "created_by_bekay" },
+
+    # --- 빈정 (sarcasm) ---
+    # 평범형 (감탄사 + 역설)
+    { text = "흥, 참 대단하신 일을 하셨군.", subtype = "sarcasm", source = "created_by_bekay" },
+    # 반복 강조형 (§3.3.1 형식 대칭 — keep praise "장하도다" 와 대칭)
+    { text = "그래, 잘났다 잘났어.", subtype = "sarcasm", source = "created_by_bekay" },
+    # 과장 존칭형
+    { text = "아이고 대인 나리, 이 미천한 것이 어찌 감히 따를 수 있겠나이까.", subtype = "sarcasm", source = "created_by_bekay" },
+    # v2: 020 대응 — 반어적 어휘 보강 (테스트 020과 "허허 참으로" 구조 회피)
+    { text = "그래그래, 어지간히도 충성스러우시군.", subtype = "sarcasm", source = "v2_patch" },
+    { text = "어련하시겠소, 그 잘난 자존심 어디 가겠소?", subtype = "sarcasm", source = "v2_patch" },
+]

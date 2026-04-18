@@ -1,0 +1,315 @@
+# 부호 축 분류기 벤치마크 테스트 케이스
+#
+# sign_keep.toml / sign_invert.toml 프로토타입과 중복 금지 (데이터 누수 방지).
+# expected_* 라벨 임의 변경 금지. 변경 시 Bekay 확인 필수.
+#
+# 배분:
+#   easy 10 (keep 5 + invert 5)
+#   medium 10 (keep 5 + invert 5)
+#   hard 6 (keep 3 + invert 3)
+#
+# 상세: docs/emotion/sign-classifier-design.md §4.4
+
+[meta]
+language = "ko"
+register = "wuxia"
+version = "1"
+last_updated = "2026-04-18"
+
+# ====================
+# EASY (10) — 프로토타입 near-duplicate, 명확한 의도
+# ====================
+
+[[case]]
+id = "001"
+utterance = "크나큰 은혜를 입었소."
+label = "명확한 감사"
+expected_sign = "keep"
+speaker_p_sign = "positive"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "gratitude"
+notes = "감사 전형. 프로토타입 near-duplicate."
+
+[[case]]
+id = "002"
+utterance = "그 무공, 실로 놀라운 경지로구려."
+label = "명확한 칭찬"
+expected_sign = "keep"
+speaker_p_sign = "positive"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "praise"
+notes = "무공 찬탄. 전형 칭찬."
+
+[[case]]
+id = "003"
+utterance = "한심하기 짝이 없소."
+label = "명확한 비난"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "easy"
+subtype = "criticism"
+notes = "직설 비난."
+
+[[case]]
+id = "004"
+utterance = "한 발짝만 움직이면 즉시 베어버리겠다."
+label = "명확한 위협"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "easy"
+subtype = "threat"
+notes = "조건부 위협. 직설."
+
+[[case]]
+id = "005"
+utterance = "내일 아침에 출발하겠소."
+label = "중립 서술"
+expected_sign = "keep"
+speaker_p_sign = "neutral"
+listener_p_sign = "neutral"
+difficulty = "easy"
+subtype = "assertion"
+notes = "일정 공유. 중립 톤."
+
+[[case]]
+id = "006"
+utterance = "내 불찰이오, 용서해 주시오."
+label = "명확한 사과"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "apology"
+notes = "전형 사과. 용서 구함."
+
+[[case]]
+id = "007"
+utterance = "송구하오, 모두 내 잘못이오."
+label = "자책 사과"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "apology"
+notes = "책임 인정형 사과."
+
+[[case]]
+id = "008"
+utterance = "한 번만 기회를 주시오, 간곡히 청하오."
+label = "기회 간청"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "plea"
+notes = "기회 부탁. 전형 간청."
+
+[[case]]
+id = "009"
+utterance = "마음이 얼마나 아프시겠소."
+label = "공감 위로"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "easy"
+subtype = "condolence"
+notes = "상심 공감."
+
+[[case]]
+id = "010"
+utterance = "아이고, 훌륭하기도 하셔라."
+label = "빈정 (감탄사 + 과장 존칭)"
+expected_sign = "invert"
+speaker_p_sign = "positive"
+listener_p_sign = "negative"
+difficulty = "easy"
+subtype = "sarcasm"
+notes = "'아이고' 감탄사 + '~하기도 하셔라' 과장. 형식 마커 뚜렷."
+
+# ====================
+# MEDIUM (10) — 표현 차이가 크지만 의도 명확
+# ====================
+
+[[case]]
+id = "011"
+utterance = "그대 아니었으면 이 몸은 이미 이 세상 사람이 아니었으리."
+label = "반사실 감사"
+expected_sign = "keep"
+speaker_p_sign = "positive"
+listener_p_sign = "positive"
+difficulty = "medium"
+subtype = "gratitude"
+notes = "반사실적 조건절 감사. 프로토타입 어휘 회피."
+
+[[case]]
+id = "012"
+utterance = "천하에 다시없을 검객이시오."
+label = "극찬"
+expected_sign = "keep"
+speaker_p_sign = "positive"
+listener_p_sign = "positive"
+difficulty = "medium"
+subtype = "praise"
+notes = "무협체 극찬. '천하' 고어 어휘."
+
+[[case]]
+id = "013"
+utterance = "무림의 수치로다, 그대 같은 자는."
+label = "무림 비난"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "medium"
+subtype = "criticism"
+notes = "도치법 무협 비난."
+
+[[case]]
+id = "014"
+utterance = "이 검이 그대 피를 맛보게 될 것이오."
+label = "검 위협"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "medium"
+subtype = "threat"
+notes = "은유적 살해 예고."
+
+[[case]]
+id = "015"
+utterance = "북쪽 산맥에 눈이 쌓였다 하오."
+label = "정보 전달"
+expected_sign = "keep"
+speaker_p_sign = "neutral"
+listener_p_sign = "neutral"
+difficulty = "medium"
+subtype = "assertion"
+notes = "지형 정보. 중립."
+
+[[case]]
+id = "016"
+utterance = "돌이킬 수 없는 과오를 저질렀소, 어찌 낯을 들리."
+label = "깊은 자책 사과"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "medium"
+subtype = "apology"
+notes = "수사 의문 포함 자책."
+
+[[case]]
+id = "017"
+utterance = "이 한목숨 내어놓을 터이니, 제자만은 살려주시오."
+label = "자기희생 간청"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "medium"
+subtype = "plea"
+notes = "조건부 간청. 자기희생 제시."
+
+[[case]]
+id = "018"
+utterance = "천붕지통을 어찌 말로 위로하리."
+label = "부모 상실 위로"
+expected_sign = "invert"
+speaker_p_sign = "negative"
+listener_p_sign = "positive"
+difficulty = "medium"
+subtype = "condolence"
+notes = "'천붕지통' 고사성어. 부모 상실."
+
+[[case]]
+id = "019"
+utterance = "과연 대협이시로세, 이리도 훌륭한 판단을 내리시다니."
+label = "빈정 (과장 존칭)"
+expected_sign = "invert"
+speaker_p_sign = "positive"
+listener_p_sign = "negative"
+difficulty = "medium"
+subtype = "sarcasm"
+notes = "'대협' 호칭 + 반어. 과장 존칭형."
+
+[[case]]
+id = "020"
+utterance = "허허, 참으로 갸륵한 마음씨로구려."
+label = "빈정 (웃음 + 과장)"
+expected_sign = "invert"
+speaker_p_sign = "positive"
+listener_p_sign = "negative"
+difficulty = "medium"
+subtype = "sarcasm"
+notes = "'허허' 웃음 + '갸륵' 반어. 형식 마커."
+
+# ====================
+# HARD (6) — 의도적 어려운 케이스 (§4.4 필수 커버리지)
+# ====================
+
+[[case]]
+id = "021"
+utterance = "그렇게 잘났으면 혼자 하시구려."
+label = "반어법 빈정"
+expected_sign = "invert"
+speaker_p_sign = "positive"
+listener_p_sign = "negative"
+difficulty = "hard"
+subtype = "sarcasm"
+notes = "표면 어휘 '잘났다' 긍정 + 역설. 반어법 표준."
+
+[[case]]
+id = "022"
+utterance = "미안하지만 그 청은 들어줄 수 없소."
+label = "마커+거절 (짧음)"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "hard"
+subtype = "apology"
+notes = "'미안하지만' 사과 마커 + 거절 본문. 청자 체감은 P-. 짧은 버전."
+
+[[case]]
+id = "023"
+utterance = "미안하오, 허나 이 일만은 양보할 수 없소이다."
+label = "마커+거절 (긴 버전)"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "hard"
+subtype = "apology"
+notes = "사과 + '허나' 역접 + 거절. 복합 절 긴 버전."
+
+[[case]]
+id = "024"
+utterance = "좋소, 그대 뜻대로 하시오."
+label = "체념 표현"
+expected_sign = "keep"
+speaker_p_sign = "negative"
+listener_p_sign = "negative"
+difficulty = "hard"
+subtype = "assertion"
+notes = "'좋소' 긍정 어휘지만 분노 후 내던짐. 맥락 의존 모호성."
+
+[[case]]
+id = "025"
+utterance = "허, 참..."
+label = "짧은 감탄사"
+expected_sign = "keep"
+speaker_p_sign = "neutral"
+listener_p_sign = "neutral"
+difficulty = "hard"
+subtype = "assertion"
+notes = "모호한 감탄사. margin 작게 나와 fallback(keep 기본) 발동 기대."
+
+[[case]]
+id = "026"
+utterance = "그대를 마음에 품은 지 오래되었소."
+label = "관계 전환 (고백)"
+expected_sign = "keep"
+speaker_p_sign = "positive"
+listener_p_sign = "positive"
+difficulty = "hard"
+subtype = "praise"
+notes = "고백. Phase 1에서 부호만 맞추면 성공. 강도는 Phase 4 과제 (§8 열린 질문 4)."

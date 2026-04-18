@@ -1,0 +1,57 @@
+# 부호 유지 프로토타입 (sign_keep)
+#
+# 청자가 체감하는 P 부호가 화자와 같은 발화.
+# 감사/칭찬 (P+ → P+), 비난/위협 (P- → P-), 중립 단언 포함.
+#
+# 분류기는 이 프로토타입들과 cosine 유사도로 "keep" 판정을 내린다.
+#
+# 큐레이션 원칙:
+#   1. 명확한 사례만 (경계/혼합 발화는 테스트 케이스로)
+#   2. 그룹 내 다양성 (subtype 균형)
+#   3. 톤 통일 (1인칭 대사, 무협체)
+#   4. 수집 가능성 보장 (source 필드)
+#   5. 형식 대칭 배치 (질문형 비난/위협, 반복 강조 포함)
+#
+# 상세: docs/emotion/sign-classifier-design.md §3.3
+
+[meta]
+language = "ko"
+register = "wuxia"
+version = "2"
+group = "sign_keep"
+last_updated = "2026-04-18"
+
+[prototypes]
+items = [
+    # --- 감사 (gratitude) ---
+    { text = "이 신세, 언제고 갚겠소이다.", subtype = "gratitude", source = "created_by_bekay" },
+    { text = "고맙구려, 진심이오.", subtype = "gratitude", source = "created_by_bekay" },
+    # v2: 001 대응 — "은혜" 어휘의 Keep 정착
+    { text = "대협의 은혜, 잊지 않겠소이다.", subtype = "gratitude", source = "v2_patch" },
+    { text = "크나큰 은혜를 입었으니, 어찌 보답해야 할지 모르겠구려.", subtype = "gratitude", source = "v2_patch" },
+
+    # --- 칭찬 (praise) ---
+    { text = "과연 뛰어나시오, 내 탄복하였소.", subtype = "praise", source = "created_by_bekay" },
+    # 반복 강조형 (invert 쪽 빈정과 대칭 배치)
+    { text = "장하도다, 참으로 장하도다.", subtype = "praise", source = "created_by_bekay" },
+    # v2: 012 대응 — 극존칭/고금제일 키워드 선점 (테스트 012와 구조 회피)
+    { text = "고금에 보기 드문 인재시오.", subtype = "praise", source = "v2_patch" },
+    { text = "실로 고금제일의 실력이시오.", subtype = "praise", source = "v2_patch" },
+
+    # --- 비난 (criticism) ---
+    { text = "어찌 이리 못났단 말인가.", subtype = "criticism", source = "created_by_bekay" },
+    # 질문형 (§3.3.1 형식 대칭)
+    { text = "네놈이 정녕 제정신이더냐?", subtype = "criticism", source = "created_by_bekay" },
+    # v2: 003 대응 — 짧은 부정문 강도 보강
+    { text = "실망스럽구려, 이리도 한심할 줄이야.", subtype = "criticism", source = "v2_patch" },
+    { text = "네 행태가 참으로 가관이로다.", subtype = "criticism", source = "v2_patch" },
+
+    # --- 위협 (threat) ---
+    { text = "오늘 이 자리에서 네 숨통을 끊어놓겠다.", subtype = "threat", source = "created_by_bekay" },
+    # 질문형 (§3.3.1 형식 대칭)
+    { text = "이 검 아래 목숨을 부지할 수 있겠느냐?", subtype = "threat", source = "created_by_bekay" },
+
+    # --- 중립 단언 (assertion) ---
+    { text = "길이 멀구려, 날이 저물기 전에 닿을 수 있을런지.", subtype = "assertion", source = "created_by_bekay" },
+    { text = "저 산 너머에 마을이 있다 들었소.", subtype = "assertion", source = "created_by_bekay" },
+]

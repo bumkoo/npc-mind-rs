@@ -32,3 +32,8 @@ mind-studio-ui/node_modules/
 *.jpg
 
 /archived
+
+# Listener-perspective 벤치 결과 — 런별 로그는 로컬에만, baseline만 커밋
+data/listener_perspective/results/*.md
+!data/listener_perspective/results/baseline.md
+!data/listener_perspective/results/README.md
