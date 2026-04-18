@@ -1,0 +1,44 @@
+# 강도 Normal 프로토타입 (magnitude_normal)
+#
+# 청자가 체감하는 P 절대값이 중간 구간 (0.15 ≤ |P_L| < 0.4).
+# 표준 감사/칭찬/위협/비난 + 깊은 사과·간청 포함.
+#
+# 분류기는 이 프로토타입들과 cosine 유사도로 "normal" 판정을 내린다.
+#
+# 큐레이션 원칙 (§3.3 + §3.7.4):
+#   1. 명확한 사례만
+#   2. subtype 균형 (gratitude/praise/criticism/threat/apology_deep/plea_deep)
+#   3. 1인칭 무협체, 반말 제외
+#   4. 테스트 케이스 핵심 어휘 회피
+#
+# 상세: docs/emotion/sign-classifier-design.md §3.3, §3.7.4
+
+[meta]
+language = "ko"
+register = "wuxia"
+version = "1"
+group = "magnitude_normal"
+last_updated = "2026-04-19"
+
+[prototypes]
+items = [
+    # --- 표준 감사 (gratitude) ---
+    { text = "이 마음 깊이 간직하고 돌아가리다.", subtype = "gratitude", source = "created_by_bekay" },
+    { text = "고마운 마음 한시도 잊은 적 없소.", subtype = "gratitude", source = "created_by_bekay" },
+
+    # --- 표준 칭찬 (praise) ---
+    { text = "그 솜씨, 보는 이의 감탄을 자아내는구려.", subtype = "praise", source = "created_by_bekay" },
+    { text = "고아한 품격이 드러나는 한 수로소이다.", subtype = "praise", source = "created_by_bekay" },
+
+    # --- 깊은 사과 (apology_deep) ---
+    { text = "씻을 수 없는 허물을 범하였으니 어찌 낯을 드오리까.", subtype = "apology_deep", source = "created_by_bekay" },
+    { text = "천번 사죄하여도 모자랄 일이오.", subtype = "apology_deep", source = "created_by_bekay" },
+
+    # --- 깊은 간청 (plea_deep) ---
+    { text = "이 몸 하나 바쳐서라도 청을 올리고자 하오.", subtype = "plea_deep", source = "created_by_bekay" },
+    { text = "마지막 청이오, 부디 이 뜻을 살펴주시오.", subtype = "plea_deep", source = "created_by_bekay" },
+
+    # --- 표준 비난 (criticism, strong보다 약한 형태) ---
+    { text = "그리도 경솔한 처사가 어디 있단 말이오.", subtype = "criticism", source = "created_by_bekay" },
+    { text = "이 일의 책임이 그대에게 있음을 모르겠는가.", subtype = "criticism", source = "created_by_bekay" },
+]

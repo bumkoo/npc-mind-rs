@@ -1,9 +1,11 @@
 # 부호 축 분류기 설계 — Listener-perspective 변환 (임베딩 기반)
 
-**상태**: Phase 3 완료 (정규식 프리필터 96% 달성) · Sparse 대체 불가 확인
+**상태**: Phase 4 완료 (magnitude k-NN 81% 달성) · Phase 7 진입 준비
 **날짜**: 2026-04-18
 **작성자**: Bekay + Claude
-**관련 문서**: [`adr-pad-v2-redesign.md`](adr-pad-v2-redesign.md) (LLM 기반 PAD 추출, 장기 방향)
+**관련 문서**: [`adr-pad-v2-redesign.md`](adr-pad-v2-redesign.md) (LLM 기반 PAD 추출, 장기 방향), [`phase7-converter-integration.md`](phase7-converter-integration.md) (프로덕션 통합 설계)
+
+**Register 지원 범위 요약**: 무협 존대 ✅ 완성 · 현대 존대 ⏳ Phase 5 · **반말 ⏳ Phase 6** (Relationship layer + trust 기반 해석). 상세 §3.7.0 한눈에 보기.
 
 ## Phase 1 완료 요약 (2026-04-18)
 
@@ -279,6 +281,205 @@ Phase 3 정규식을 BGE-M3 sparse(lexical) 임베딩으로 대체 가능한지 
 - BGE-M3 공식 fine-tuning으로 sparse 품질 개선 (별도 모델 학습 필요)
 - 위 셋 모두 현재 Phase 3 96% baseline 대비 투입 대비 개선 기대치 낮음
 
+### 3.7 Register 확장 전략 — γ+δ 설계
+
+현재 엔진은 **무협체 1인칭 존대 (`wuxia`) 단일 register** 가정으로 구축되어 있다. 프로덕션 통합 시 플레이어 발화(현대어) 및 관계 기반 반말/존대 전환이 필수 대응 영역이다.
+
+#### 3.7.0 한눈에 보기
+
+**핵심 주장**: 반말은 포기하지 않았다. **Phase 6 Relationship layer 에서 완성**되도록 의존성 순서상 뒤에 배치했을 뿐이다.
+
+##### Register 매트릭스 — 어떤 조합이 어디서 처리되나
+
+| | **무협체** | **현대어 존대** | **현대어 반말** |
+|---|---|---|---|
+| **존대** | ✅ 현재 완성<br>(PAD 앵커 + Phase 4 프로토타입) | ⏳ Phase 5<br>(벤치 확장 + 앵커 혼합) | — |
+| **반말 (친밀)** | ⏳ Phase 6<br>(trust>0.5 × Informal → P+) | — | ⏳ Phase 6 |
+| **반말 (적대)** | ⏳ Phase 6<br>(trust<0 × Informal → P-) | — | ⏳ Phase 6 |
+| **반말 (무례)** | ⏳ Phase 6<br>(|trust|<0.3 × Informal → D+, P-) | — | ⏳ Phase 6 |
+
+**읽는 법**:
+- ✅ = 현재 엔진이 올바르게 처리
+- ⏳ = 계획된 Phase 에서 처리 예정
+- — = 고유 조합이 거의 없음 (무협 세계 NPC가 현대어 반말 쓰는 상황은 드뭄)
+
+##### 의존성 사슬
+
+```
+                 ┌─────────────────────────────────────────────┐
+                 │ 왜 반말은 Phase 6 인가?                      │
+                 └─────────────────────────────────────────────┘
+
+반말 "이 자식이" — 이 한 발화의 P 부호는 무엇인가?
+    ├─ 친구 사이 (trust 높음) → P+ (친밀 표현)
+    └─ 적 사이  (trust 낮음) → P- (도발 표현)
+
+        ↓ PadAnalyzer 만으로는 판정 불가
+        ↓ trust 값이 필요하다
+        ↓ trust 는 Relationship 도메인
+
+∴ Relationship layer (Phase 6) 가 없으면 반말 해석 불가
+∴ Phase 6 가 구현되기 전까지 반말은 임시 처리 (존대 fallback 또는 dead zone)
+```
+
+##### 로드맵 시각화
+
+```
+  완료                                  현재                        대기
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ Phase 1~4       │──│ Phase 7         │──│ Phase 5         │
+│ 무협 존대 완성  │  │ 프로덕션 통합   │  │ 현대 존대 벤치  │
+│ sign 81%        │  │ Converter trait │  │ 20~30 페어 케   │
+│ prefilter 96%   │  │ MindService     │  │ 이스 추가       │
+│ magnitude 81%   │  │ 통합            │  │                 │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+                                                    │
+                                                    ↓
+                                          ┌─────────────────┐
+                                          │ Phase 6         │
+                                          │ Relationship +  │
+                                          │ 반말 register   │
+                                          │ trust×informal  │
+                                          │ 테이블          │
+                                          └─────────────────┘
+                                                    │
+                                                    ↓
+                                                [MVP Ready]
+                                                    │
+                                                    ↓
+                                          ┌─────────────────┐
+                                          │ Post-MVP        │
+                                          │ 슬랭 / 줄임말   │
+                                          │ 혼합체          │
+                                          └─────────────────┘
+```
+
+##### 시점별 커버리지
+
+| 시점 | 지원되는 입력 | 미지원 (임시 fallback) |
+|---|---|---|
+| **현재 (Phase 4 완료)** | NPC 무협체 존대 | 현대어, 반말 전반 |
+| **Phase 5 완료 후** | + Player 현대 존대 | 반말 전반 |
+| **Phase 6 완료 후 (MVP)** | + 무협·현대 반말 (trust 기반 해석) | 슬랭·혼합체 |
+| **Post-MVP** | + 슬랭, 혼합체 | — |
+
+##### 현재 반말 입력이 들어오면?
+
+Phase 6 이전에 Player 가 "야, 고마워" 같은 반말을 입력하면:
+
+1. **PadAnalyzer** — ko.toml 앵커와 cosine 유사도 낮음 → 저전압 PAD 반환 (dead zone)
+2. **Sign classifier** — sign_keep/sign_invert 무협체 프로토와 거리 멀음 → margin 작은 분류 (불안정)
+3. **Prefilter** — 패턴 매칭 안 됨 → miss
+4. **결과** — 약한 중립 감정으로 처리됨. 완전 오류는 아니나 무미건조.
+
+**임시 완화책 (Phase 7 통합 시 고려)**: 반말 감지 시 warning 로그 + `register = Informal` 필드 기록. Phase 6 진입 시 과거 세션 로그 분석 데이터로 활용.
+
+---
+
+#### 3.7.1 핵심 통찰 — "반말"은 register가 아닌 관계 신호
+
+반말/존대 선택은 이미 **관계 정보를 담은 meta 신호**이다:
+
+- **친밀**: "야, 고마워" — trust 가산 요인
+- **적대**: "네놈이 감히" — 적대 표식, P- 강화
+- **무례**: 낯선 상대에 반말 — D+ 자극, P- 약간
+
+즉 같은 반말 표현 "이 자식이" 가 친구 간 농담(P+)과 적 간 도발(P-)로 양의하는 현상은 **PAD 레이어 단독 해결 불가**. Relationship layer (Phase 6)가 협조해야 한다.
+
+#### 3.7.2 채택 전략 — γ+δ 조합
+
+**γ (Relationship reframe 위임)**:
+- PadAnalyzer는 발화의 **감정 톤을 있는 그대로 추출**
+- Relationship layer가 `trust`, `closeness` 등으로 **사후 보정**
+- 책임 분리: PAD = 감정, Relationship = 문맥 해석
+
+**δ (단일 앵커에 반말·현대어 샘플 섞기, 축소판)**:
+- 앵커 centroid가 다양한 register를 커버하도록 **제한적으로** 확장
+- 전체 교체 아닌 점진 추가 (P 100% 회귀 방어)
+- Phase 4 작업 중 프로토타입 큐레이션 시 함께 진행
+
+**제외된 옵션**:
+- α (4개 register 파일 분리) — 유지보수 폭발
+- β (informality modifier 즉시 주입) — Phase 6 없이는 소비자 없음
+- δ 단독 — register 감지 로직 공백
+
+#### 3.7.3 발화 meta 정보 추출
+
+Phase 6 Relationship layer가 소비할 수 있도록, 현 시점에 **meta 필드만 구조화**하여 보관:
+
+```rust
+struct UtteranceRegisterMeta {
+    formality: Formality,     // Formal / Informal / Mixed
+    era: Era,                 // Wuxia / Modern / Mixed
+    honorifics: Vec<String>,  // 감지된 존칭 어미 (~하오, ~습니다 등)
+    casual_markers: Vec<String>, // 반말 마커 (~야, ~다, ~냐 등)
+}
+```
+
+추출 방식 (Phase 6 진입 시 구현):
+- 어미 기반 정규식 (PadAnalyzer/SignClassifier와 별개 layer)
+- PadAnalyzer 결과와 **나란히 출력** (대체 아님)
+
+현 시점에는 **구조만 설계하고 구현은 Phase 6 진입 시**.
+
+#### 3.7.4 Phase 4 진입 시 영향
+
+Phase 4 (magnitude k-NN 분류기) 프로토타입 큐레이션 시:
+- `magnitude_strong.toml` 에 **무협체 + 현대어 존대 샘플 혼합** 소규모 실험
+- 예: "천하에 다시없을 기재요" (무협) + "정말 대단하세요" (현대 존대)
+- 반말 샘플은 **제외** — 적대/친밀 양의 위험, Phase 6 대기
+- 각 카테고리당 무협:현대 = 7:3 정도 비율
+
+##### Step C 실험 결과 (2026-04-19) — 현대 존대 불가결성 확인
+
+**실험 목적**: 현대 존대 3개가 centroid 희석 요인인지 단일 변수 검증.
+
+**방법**: `magnitude_strong.toml` v1 (무협 7 + 현대 3) → v2 (무협 7만) 로 변경 후 재측정.
+
+**결과**:
+
+| 버전 | 구성 | 전체 정확도 | strong 정확도 |
+|---|---|---|---|
+| v1 | 무협 7 + 현대 3 (run01) | **54%** | 27% (4/15) |
+| v2 | 무협 7만 (run02) | **42%** | 7% (1/15) |
+
+**결론 (반직관적)**: 현대 존대 제거가 오히려 악화. 현대 존대 프로토타입이 strong centroid를 **좁은 무협 특수 어휘(오장육부/천인공노/영웅호걸)에 갇히지 않도록 확장하는 역할**을 하고 있었음.
+
+**악화 메커니즘**:
+- "정말 대단하십니다" — 001 "크나큰 은혜를 입었소" 와 감사 축 공유 → v2에서 001이 strong → normal 로 이동
+- "어쩜 이리 훌륭하신지" — 010/019 빈정 케이스와 표면 긍정 톤 공유 → v2에서 이탈
+- 무협체 7개만으로는 subtype 다양성 부족 → 일반 감사/빈정 발화 포섭 실패
+
+**적용**: 
+- v3로 원복 (v1 + 실험 로그 주석)
+- 향후 현대 존대 확장은 **허용**, 축소는 **금지** 원칙
+- weak/normal 에도 현대 존대 혼합 검토 가능 (Step B 로 연기)
+
+**회귀 감시**:
+- Phase 4 벤치에서 무협 케이스 정확도 유지 확인
+- 떨어지면 현대어 샘플 수 축소 아닌 **무협 샘플 다양성 추가**로 대응 (Step C 교훈)
+
+#### 3.7.5 Phase 6 진입 시 완성 계획
+
+1. `UtteranceRegisterMeta` 구조 구현 (어미 정규식 기반)
+2. Relationship modifier가 meta 정보 소비:
+   - `trust > 0.5 + Informal` → P+ 보강 (친밀 반말)
+   - `trust < 0 + Informal` → P- 보강 (적대 반말)
+   - `|trust| < 0.3 + Informal` → D+ 자극 + P- 약간 (무례)
+3. 반말 프로토타입/앵커 선택적 추가 (Relationship layer 검증 후)
+
+#### 3.7.6 프로덕션 Day 1 커버 범위
+
+| 시나리오 | 처리 |
+|---|---|
+| NPC↔NPC (무협 존대) | ✅ 현재 완성 |
+| NPC↔NPC (무협 반말, 적대/친밀) | Phase 6 대기 — 현재는 앵커 커버리지 부족으로 dead zone 위험 |
+| Player(현대 존대) → NPC | Phase 4 에서 일부 커버 — 앵커에 소규모 혼합 |
+| Player(현대 반말) → NPC | Phase 6 대기 — 반말 프로토타입 미큐레이션 |
+| NPC(무협) → Player(현대) | 입력 측은 무협체 그대로 — 처리 영향 없음 |
+
+**결론**: MVP는 존대 중심 (무협 + 현대) 커버. 반말·슬랭은 Post-MVP.
+
 ---
 
 ## 4. 파일 구조
@@ -427,10 +628,12 @@ overall_accuracy: 0.83
 | **P2** | P축 변환식 계수 튜닝 (magnitude 기반) | ✅ **완료 (2026-04-19)** — Calibration 58% → 앵커 보강 62% |
 | **P1.5** | PAD 앵커 보강 (`locales/anchors/ko.toml`) | ✅ **완료 (2026-04-19)** — P+ 4/P- 2 추가, PAD P 100% 보존 |
 | **P3** | 정규식 프리필터 | ✅ **완료 (2026-04-19)** — 96% (25/26), Sparse 대체 불가 확인 (§3.6) |
-| **P4** | 강도 축 분류기 | 후속 (4그룹 완성, A/D축 변환) |
-| **P5** | 현대어 register 추가 | 후속 (플레이어 발화 대응) |
-| **P6** | Relationship modulation | 후속 (trust/closeness 변조 레이어) |
-| **P7** | 프로덕션 port 통합 | 후속 (`ListenerPerspectiveConverter` trait) |
+| **P3.7** | Register 확장 전략 (γ+δ 설계) | ✅ **완료 (2026-04-19)** — §3.7 설계 문서화 |
+| **P4** | 강도 축 k-NN 분류기 | ✅ **완료 (2026-04-19)** — 81% (21/26). weak 100%, strong 80%. v5 Step A (8개 프로토 확장) 효과 실증 |
+| **P7** | 프로덕션 port 통합 | **진입** — `ListenerPerspectiveConverter` trait 설계 (`phase7-converter-integration.md`) |
+| **P5** | 현대어 register 벤치 확장 | Phase 7 이후 — 20~30 현대어 **존대** 페어 케이스 추가, 앵커·프로토타입 현대 존대 비율 확장 |
+| **P6** | Relationship layer + **반말 register 완성** | Phase 5 이후 — `UtteranceRegisterMeta` 구현 (§3.7.3), `trust × informality` 테이블 (§3.7.5), 반말 프로토타입/앵커 큐레이션 |
+| Post-MVP | 슬랭 / 줄임말 / 혼합체 | Phase 6 이후 — 별도 연구 과제 |
 
 ---
 
@@ -446,10 +649,11 @@ overall_accuracy: 0.83
 
 | 리스크 | 완화 |
 |--------|------|
-| 빈정거림 등 의도 층위 발화 오분류 | Phase 3 정규식 프리필터 |
-| 무협체 한정 — 현대어 미지원 | Phase 5 |
+| 빈정거림 등 의도 층위 발화 오분류 | Phase 3 정규식 프리필터 (완료 96%) |
+| 무협체 한정 — 현대 존대 미지원 | Phase 5 (현대 페어 벤치) — §3.7.0 매트릭스 |
+| **반말 (친밀/적대/무례 양의)** | **Phase 6 (Relationship layer + `trust × informality`)** — §3.7.5 |
 | 프로토타입 편향 | version 관리 + 실패 흡수 루프 |
-| BGE-M3의 D축 76% 천장 | Phase 1은 P축만 대상 |
+| BGE-M3의 D축 76% 천장 | Phase 1~4는 P축만 대상 |
 
 ### 열린 질문
 

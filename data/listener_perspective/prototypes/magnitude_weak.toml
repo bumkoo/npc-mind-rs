@@ -1,0 +1,42 @@
+# 강도 Weak 프로토타입 (magnitude_weak)
+#
+# 청자가 체감하는 P 절대값이 작은 발화 (|P_L| < 0.15).
+# 사과/간청/위로 (invert 후 약한 체감), 중립 정보 전달 포함.
+#
+# 분류기는 이 프로토타입들과 cosine 유사도로 "weak" 판정을 내린다.
+#
+# 큐레이션 원칙 (§3.3 + §3.7.4):
+#   1. 명확한 사례만 (경계/혼합 발화는 테스트 케이스로)
+#   2. subtype 균형 (apology/plea/condolence/neutral_info)
+#   3. 1인칭 무협체, 반말 제외 (Phase 6 대기)
+#   4. 테스트 케이스 핵심 어휘 회피 (누수 방지)
+#
+# 상세: docs/emotion/sign-classifier-design.md §3.3, §3.7.4
+
+[meta]
+language = "ko"
+register = "wuxia"
+version = "1"
+group = "magnitude_weak"
+last_updated = "2026-04-19"
+
+[prototypes]
+items = [
+    # --- 사과 (apology, 표준) ---
+    { text = "제가 어리석었소, 너그러이 용서하시오.", subtype = "apology", source = "created_by_bekay" },
+    { text = "부족한 제 탓이오, 깊이 뉘우치고 있소이다.", subtype = "apology", source = "created_by_bekay" },
+    { text = "무례를 저질렀으니 책임을 지리다.", subtype = "apology", source = "created_by_bekay" },
+
+    # --- 간청 (plea, 표준) ---
+    { text = "한 가지 청이 있어 이리 찾아왔소.", subtype = "plea", source = "created_by_bekay" },
+    { text = "부디 제 부탁 하나만 들어주시오.", subtype = "plea", source = "created_by_bekay" },
+
+    # --- 위로 (condolence, 표준) ---
+    { text = "그대의 심정, 어찌 헤아릴 수 있으리.", subtype = "condolence", source = "created_by_bekay" },
+    { text = "깊은 슬픔 속에서 얼마나 힘드시겠소.", subtype = "condolence", source = "created_by_bekay" },
+
+    # --- 중립 정보 전달 (neutral_info) ---
+    { text = "오시는 길에 주막 하나가 있더이다.", subtype = "neutral_info", source = "created_by_bekay" },
+    { text = "이 서신을 먼저 전해드리고자 하오.", subtype = "neutral_info", source = "created_by_bekay" },
+    { text = "오늘은 바람이 잔잔하구려.", subtype = "neutral_info", source = "created_by_bekay" },
+]

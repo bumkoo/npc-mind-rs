@@ -1,0 +1,71 @@
+# 강도 Strong 프로토타입 (magnitude_strong)
+#
+# 청자가 체감하는 P 절대값이 큼 (|P_L| ≥ 0.4).
+# 극찬/위협/강한 비난/빈정/강한 감사 포함.
+#
+# 분류기는 이 프로토타입들과 cosine 유사도로 "strong" 판정을 내린다.
+#
+# 큐레이션 원칙 (§3.3 + §3.7.4):
+#   1. 명확한 사례만
+#   2. subtype 균형 (extreme_praise/extreme_gratitude/threat/strong_criticism/sarcasm)
+#   3. 1인칭, 반말 제외
+#   4. 테스트 케이스 핵심 어휘 회피
+#   5. §3.7.4 현대 존대 3개 혼합 — centroid 다양성 확보 (Step C 검증 완료)
+#
+# Step C 실험 (v2, 2026-04-19): 현대 존대 3개 제거 → 54% → 42% 로 악화.
+# 현대 존대 프로토타입이 실제로 centroid를 건강하게 확장하는 역할을 함을 확인.
+# 원복하여 v3 유지. 상세: §3.7.4
+#
+# 상세: docs/emotion/sign-classifier-design.md §3.3, §3.7.4
+
+[meta]
+language = "ko"
+register = "wuxia_with_modern_polite"
+version = "5"
+group = "magnitude_strong"
+last_updated = "2026-04-19"
+
+[prototypes]
+items = [
+    # --- 극찬 (extreme_praise) ---
+    { text = "이 같은 절기를 뵌 것은 생애 처음이오, 참으로 경이롭소이다!", subtype = "extreme_praise", source = "created_by_bekay" },
+    { text = "고금을 통틀어 이만한 영웅호걸이 또 있을런지!", subtype = "extreme_praise", source = "created_by_bekay" },
+
+    # --- 강한 감사 (extreme_gratitude) ---
+    { text = "죽어 혼백이 되어서도 이 은덕 결코 저버리지 않으리다.", subtype = "extreme_gratitude", source = "created_by_bekay" },
+
+    # --- 위협 (threat) ---
+    { text = "오늘 이 자리에서 네 오장육부를 꺼내주마.", subtype = "threat", source = "created_by_bekay" },
+
+    # --- 강한 비난 (strong_criticism) ---
+    { text = "천인공노할 흉악한 짓이로다!", subtype = "strong_criticism", source = "created_by_bekay" },
+
+    # --- 빈정 (sarcasm, 표면 P+) ---
+    { text = "그 놀라운 재주에 이 사람이 넋을 잃을 뻔하였소이다.", subtype = "sarcasm", source = "created_by_bekay" },
+    { text = "과연 천하의 영웅이신가 보오, 내 두 번 절하고 돌아가리다.", subtype = "sarcasm", source = "created_by_bekay" },
+
+    # --- 현대 존대 시범 (§3.7.4, v3 복귀) ---
+    { text = "정말 대단하십니다, 이런 분을 뵙다니 영광입니다.", subtype = "extreme_praise", source = "modern_polite_pilot" },
+    { text = "진심으로 감사드립니다, 평생 이 은혜 잊지 않겠습니다.", subtype = "extreme_gratitude", source = "modern_polite_pilot" },
+    { text = "어쩜 이리 훌륭하신지, 존경스러울 따름입니다.", subtype = "sarcasm", source = "modern_polite_pilot" },
+
+    # --- v4 확장 (Step A, 실패 카테고리별 보강) ---
+    # sarcasm 다양성 확대 (010/019/020 실패 대응)
+    { text = "과분한 칭찬이로소이다, 몸둘 바를 모르겠구려.", subtype = "sarcasm", source = "v4_step_a" },
+    # extreme_gratitude 어휘 확장 (001/011 실패 대응, "은혜" 중복 회피)
+    { text = "그 크신 베푸심에 이 몸 한 조각 남김없이 보답하고자 하오.", subtype = "extreme_gratitude", source = "v4_step_a" },
+    # 체념 의사표시 (024 실패 대응, strong 축에 체념 신호)
+    { text = "더는 어쩔 도리가 없으니, 하고자 하는 대로 행하시오.", subtype = "resignation", source = "v4_step_a" },
+    # 거절 (022/023 실패 대응, '미안/송구' 우회)
+    { text = "공교롭게도 그 청만은 받들기 어렵겠소이다.", subtype = "rejection", source = "v4_step_a" },
+
+    # --- v5 확장 (Step A 계속, 근접 실패 9건 중 margin<0.025 타겟) ---
+    # 위협 직접화 (004/014 margin 0.000~0.011 대응)
+    { text = "단칼에 네 목숨을 거두리라.", subtype = "threat", source = "v5_step_a" },
+    # 비난 무협 도덕축 (013 margin 0.010 대응)
+    { text = "강호의 의리를 저버린 파렴치한 놈이로다!", subtype = "strong_criticism", source = "v5_step_a" },
+    # 빈정 과장 감격형 (020 margin 0.021 대응)
+    { text = "아아, 그 넓은 아량에 이 사람이 참으로 감격하여 눈물이 앞을 가리오.", subtype = "sarcasm", source = "v5_step_a" },
+    # 거절 "사과 프리픽스 + 강한 거절" 구조 (022/023 margin 0.006~0.020 대응)
+    { text = "참으로 면목 없으나 그 청은 도저히 받들 수 없음이로소이다.", subtype = "rejection", source = "v5_step_a" },
+]
