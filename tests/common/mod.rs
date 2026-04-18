@@ -8,6 +8,7 @@
 pub mod in_memory_store;
 #[cfg(feature = "chat")]
 pub mod mock_chat;
+pub mod prefilter;
 
 use npc_mind::InMemoryRepository;
 use npc_mind::application::mind_service::MindService;

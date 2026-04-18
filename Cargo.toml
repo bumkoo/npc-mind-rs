@@ -42,6 +42,8 @@ approx = "0.5"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tempfile = "3"
+regex = "1"
+tokenizers = "0.21"
 # 통합 테스트에서 EventBus broadcast Stream 소비 검증용 (feature 플래그와 무관하게 필요)
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 

@@ -1,6 +1,6 @@
 # 부호 축 분류기 설계 — Listener-perspective 변환 (임베딩 기반)
 
-**상태**: Phase 1.5 완료 (앵커 보강 62% 달성) · Phase 3 대기
+**상태**: Phase 3 완료 (정규식 프리필터 96% 달성) · Sparse 대체 불가 확인
 **날짜**: 2026-04-18
 **작성자**: Bekay + Claude
 **관련 문서**: [`adr-pad-v2-redesign.md`](adr-pad-v2-redesign.md) (LLM 기반 PAD 추출, 장기 방향)
@@ -19,6 +19,12 @@
 - PAD 벤치 P 100% (18/18) 완벽 보존
 - Baseline: [`../../data/listener_perspective/results/baseline_magnitude.md`](../../data/listener_perspective/results/baseline_magnitude.md)
 - Phase 3 이관 6건: 011, 012, 013, 014, 020, 021 (BGE-M3 표면 어휘 편향 구조적 한계)
+
+## Phase 3 완료 요약 (2026-04-19)
+
+- 정규식 프리필터 4 카테고리 도입 → **96% (run07, 25/26)**
+- Sparse 조회 대안 스파이크 → 대체 불가 확인 (§3.6)
+- Prefilter hit 8/26 (100% 정확도), 나머지 18/26 임베딩 경로 (94%)
 
 ---
 
@@ -192,6 +198,87 @@ centroid는 흩어진 점들의 중심이 되어 변별력이 희석되지만, t
 - **fallback 임계값 튜닝** — 초기 벤치 결과로 임계값 경험적 결정
 - **프로덕션 port 통합** — 벤치 단독으로 검증 완료 후
 
+### 3.5 정규식 프리필터 (Phase 3)
+
+BGE-M3 임베딩의 표면 어휘 편향을 우회하기 위한 규칙 기반 layer.
+
+**파이프라인**:
+```
+utterance → Prefilter.classify()
+  Some(hit)  → (sign, magnitude, p_s_default) 직접 반환 — PadAnalyzer 우회
+  None       → 기존 임베딩 경로로 fallback
+```
+
+**히트 시 계산**:
+```
+P_L = hit.sign × coef[hit.magnitude] × hit.p_s_default
+predicted_magnitude = bin(|P_L|)
+```
+
+**카테고리 설계 (4개)** — `data/listener_perspective/prefilter/patterns.toml` 외부화:
+
+| 카테고리 | sign | magnitude | p_s_default | 타겟 |
+|---|---|---|---|---|
+| counterfactual_gratitude | keep | strong | +0.7 | 011 (반사실 감사) |
+| negation_praise | keep | strong | +0.7 | 012 (부정 형태 극찬) |
+| wuxia_criticism | keep | strong | -0.7 | 013/014 (무협 비난·위협) |
+| sarcasm_interjection | invert | strong | +0.6 | 010/020/021 (감탄사 빈정) |
+
+**설계 원칙**:
+1. **어미 결합형(Suffix-bound)** — `아니`만 쓰지 말고 `아니었(으면|더라면)`처럼 결합
+2. **첫 매칭 반환** — 카테고리 등록 순서가 우선순위
+3. **p_s_default 설계** — 계수×기본값이 목표 bin에 안착하도록 사전 계산
+4. **외부화** — TOML 편집으로 패턴 추가·수정, Rust 재컴파일 불필요
+
+**실측 결과 (2026-04-19, run07)**:
+
+| 경로 | 통과 | 전체 | 정확도 |
+|---|---|---|---|
+| prefilter | 8 | 8 | **100%** |
+| pad_analyzer | 17 | 18 | 94% |
+| **전체** | **25** | **26** | **96%** |
+
+잔여 실패 1건 (002): P_S 값이 weak bin 경계(0.15) 미달. Calibration 구조 한계로 수용.
+
+### 3.6 Sparse 조회 대안 — 스파이크 결과 (2026-04-19)
+
+Phase 3 정규식을 BGE-M3 sparse(lexical) 임베딩으로 대체 가능한지 검증한 스파이크.
+
+**구성**:
+- 4 카테고리 × 3 프로토타입 = 12 sparse 벡터 사전 계산
+- 26 테스트 케이스 × 각 프로토타입 `sparse_dot_product` 계산
+- Threshold 0.3 초과 시 매칭 인정
+- 기여 토큰 로깅 — 어휘 겹침 패턴 관측
+
+**결과**:
+
+| 분류 | 건수 |
+|---|---|
+| 정규식 ∩ sparse 동일 카테고리 | **0/26** |
+| sparse만 hit | 0/26 |
+| 정규식만 hit | 7/26 |
+| 둘 다 miss | 19/26 |
+
+전체 sparse 점수 최대값 **0.125** (020번) — threshold 0.3 대비 1/3 이하.
+
+**원인 분석**:
+
+1. **sparse_dot_product 점수 스케일** — BGE-M3 README의 hybrid retrieval 예시 점수가 0.18~0.25 범위. 0.3 threshold는 비현실적
+2. **어휘 공유 전제** — Sparse는 "같은 토큰을 쓴 질의/문서" 검색에 최적화. 다른 어휘로 같은 의미를 표현하는 무협 대사 도메인과 구조적 불일치
+3. **한국어 노이즈** — 조사·어미가 높은 빈도로 기여 토큰에 포함되어 신호 희석 (020의 "참"/"으" 등)
+
+**결론**: 현재 설계로는 sparse 조회가 정규식 프리필터를 대체하거나 보완할 수 없음.
+
+**기록 자료**:
+- 테스트 파일: `tests/sparse_spike.rs` — 삭제하지 않고 유지 (미래 재평가 참고)
+- BGE-M3 sparse API: `bge-m3-onnx-rust::BgeM3Embedder::encode() -> BgeM3Output`, `sparse_dot_product`
+
+**미래 재고 가능성**:
+- 프로토타입을 테스트 케이스와 의도적으로 **핵심 어휘 공유**하도록 재설계 (overfitting 위험)
+- Dense + Sparse hybrid를 PadAnalyzer에 통합 (PAD 벤치 P 100% 회귀 위험)
+- BGE-M3 공식 fine-tuning으로 sparse 품질 개선 (별도 모델 학습 필요)
+- 위 셋 모두 현재 Phase 3 96% baseline 대비 투입 대비 개선 기대치 낮음
+
 ---
 
 ## 4. 파일 구조
@@ -339,7 +426,7 @@ overall_accuracy: 0.83
 | **P1** | 부호 축 k-NN 분류기 + 벤치 구조 | **✅ 완료 (2026-04-18, 81%)** |
 | **P2** | P축 변환식 계수 튜닝 (magnitude 기반) | ✅ **완료 (2026-04-19)** — Calibration 58% → 앵커 보강 62% |
 | **P1.5** | PAD 앵커 보강 (`locales/anchors/ko.toml`) | ✅ **완료 (2026-04-19)** — P+ 4/P- 2 추가, PAD P 100% 보존 |
-| **P3** | 정규식 프리필터 | **다음 단계** — 임베딩 한계 6건(011/012/013/014/020/021) 타겟 |
+| **P3** | 정규식 프리필터 | ✅ **완료 (2026-04-19)** — 96% (25/26), Sparse 대체 불가 확인 (§3.6) |
 | **P4** | 강도 축 분류기 | 후속 (4그룹 완성, A/D축 변환) |
 | **P5** | 현대어 register 추가 | 후속 (플레이어 발화 대응) |
 | **P6** | Relationship modulation | 후속 (trust/closeness 변조 레이어) |

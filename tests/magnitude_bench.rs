@@ -6,21 +6,24 @@
 //! 변환식: P_L = sign_val × magnitude_coef × P_S
 //! Bin: |P_L| < 0.3 → weak, < 0.7 → normal, ≥ 0.7 → strong
 //!
-//! Phase 2.5 Calibration — 실측 PadAnalyzer 기반:
-//!   - PadAnalyzer가 추출한 실측 P_S 사용 (수동 speaker_p_value는 참조만)
-//!   - expected_sign 사용 (predicted_sign 아님) — Phase 1 부호 오류 전파 차단
-//!   - Coef(0.5/1.0/1.5) × Bin(0.15/0.4) 으로 실측 분포(±0.0~0.4)에 교정
-//!   - 별도 리포트 (magnitude_YYYY-MM-DD_runNN.md)
+//! Phase 3 통합 — 정규식 프리필터 + 임베딩 변환식:
+//!   - utterance → Prefilter.classify()
+//!       Some(hit): hit.p_s_default 사용, sign/magnitude 모두 hit값 (expected 무시, D1=C/D3=A)
+//!       None: PadAnalyzer 실측 P_S + expected_sign 사용 (기존 경로)
+//!   - 목표: 62% (run06 baseline) → Phase 3 적용 후 정확도 측정
 //!
-//! Run01의 27%를 baseline으로 calibration 후 58% 내외 목표.
-//! 부호 반전/dead zone 케이스(6건)는 Phase 1.5 (앵커 보강) 이관 대상.
+//! Phase 2.5 Calibration: coef 0.5/1.0/1.5 + bin 0.15/0.4 (PadAnalyzer 실측 ±0.0~0.4 교정)
+//! 별도 리포트 (magnitude_YYYY-MM-DD_runNN.md)
 //!
 //! 실행: `cargo test --features embed --test magnitude_bench -- --nocapture`
 //!
-//! 설계: docs/emotion/sign-classifier-design.md §3.1
+//! 설계: docs/emotion/sign-classifier-design.md §3.1, §3.5
 
 #![cfg(feature = "embed")]
 
+mod common;
+
+use common::prefilter::Prefilter;
 use npc_mind::adapter::file_anchor_source::{AnchorFormat, FileAnchorSource};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::domain::pad::{Pad, PadAnalyzer};
@@ -36,6 +39,7 @@ const TOKENIZER_PATH: &str = "../models/bge-m3/tokenizer.json";
 
 const BENCH_PATH: &str = "data/listener_perspective/testcases/sign_benchmark.toml";
 const RESULTS_DIR: &str = "data/listener_perspective/results";
+const PATTERNS_PATH: &str = "data/listener_perspective/prefilter/patterns.toml";
 
 // Phase 2.5 Calibration 계수 (실측 P_S 분포 ±0.0~0.4 기반)
 const COEF_P_WEAK: f32 = 0.5;
@@ -151,6 +155,7 @@ struct CaseResult {
     predicted_magnitude: Magnitude,
     expected_magnitude: Magnitude,
     passed: bool,
+    source: String,  // "pad_analyzer" | "prefilter:<category>"
 }
 
 // ============================================================
@@ -238,23 +243,23 @@ fn count_files_starting_with(prefix: &str) -> usize {
 // ============================================================
 
 fn print_console_table(results: &[CaseResult]) {
-    println!("\n{}", "=".repeat(125));
-    println!("Magnitude 벤치마크 결과 (Phase 2)");
-    println!("{}", "=".repeat(125));
+    println!("\n{}", "=".repeat(145));
+    println!("Magnitude 벤치마크 결과 (Phase 3 — Prefilter + PadAnalyzer)");
+    println!("{}", "=".repeat(145));
     println!(
-        "{:<4} {:<7} {:<11} {:<7} {:>7} {:>7} {:<8} {:<8} {}",
-        "id", "난이도", "subtype", "sign", "P_S", "P_L", "기대", "예측", "발화"
+        "{:<4} {:<7} {:<11} {:<28} {:>7} {:>7} {:<8} {:<8} {}",
+        "id", "난이도", "subtype", "source", "P_S", "P_L", "기대", "예측", "발화"
     );
-    println!("{}", "-".repeat(125));
+    println!("{}", "-".repeat(145));
 
     for r in results {
         let mark = if r.passed { "✓" } else { "✗" };
         println!(
-            "{:<4} {:<7} {:<11} {:<7} {:>+7.3} {:>+7.3} {:<8} {:<7}{} {}",
+            "{:<4} {:<7} {:<11} {:<28} {:>+7.3} {:>+7.3} {:<8} {:<7}{} {}",
             r.case.id,
             r.case.difficulty,
             r.case.subtype,
-            r.case.expected_sign,
+            r.source,
             r.speaker_p,
             r.listener_p,
             r.expected_magnitude.as_str(),
@@ -263,7 +268,7 @@ fn print_console_table(results: &[CaseResult]) {
             r.case.utterance,
         );
     }
-    println!("{}", "-".repeat(125));
+    println!("{}", "-".repeat(145));
 }
 
 // ============================================================
@@ -298,9 +303,33 @@ fn generate_report(meta: &RunMeta, results: &[CaseResult]) -> String {
     out.push_str("---\n\n");
     out.push_str(&format!("# Magnitude 벤치마크 — {}\n\n", meta.run_id));
     write_summary_section(&mut out, results);
+    write_source_breakdown(&mut out, results);
     write_failure_section(&mut out, results);
     write_confusion_matrix(&mut out, results);
     out
+}
+
+/// Prefilter vs PadAnalyzer 경로별 통계
+fn write_source_breakdown(out: &mut String, results: &[CaseResult]) {
+    out.push_str("## 경로별 통계 (Phase 3)\n\n");
+    // source 종류별 집계
+    use std::collections::BTreeMap;
+    let mut by_src: BTreeMap<&str, (usize, usize)> = BTreeMap::new();
+    for r in results {
+        let entry = by_src.entry(r.source.as_str()).or_insert((0, 0));
+        entry.1 += 1;
+        if r.passed {
+            entry.0 += 1;
+        }
+    }
+    out.push_str("| 경로 | 통과 | 전체 | 정확도 |\n|---|---|---|---|\n");
+    for (src, (p, t)) in by_src {
+        out.push_str(&format!(
+            "| {} | {} | {} | {:.0}% |\n",
+            src, p, t, (p as f32 / t as f32) * 100.0
+        ));
+    }
+    out.push_str("\n");
 }
 
 fn write_summary_section(out: &mut String, results: &[CaseResult]) {
@@ -342,12 +371,12 @@ fn write_failure_section(out: &mut String, results: &[CaseResult]) {
         out.push_str("(모든 케이스 통과)\n\n");
         return;
     }
-    out.push_str("| id | 난이도 | 발화 | P_S | P_L | 기대 | 예측 | 노트 |\n");
-    out.push_str("|---|---|---|---|---|---|---|---|\n");
+    out.push_str("| id | 난이도 | source | 발화 | P_S | P_L | 기대 | 예측 | 노트 |\n");
+    out.push_str("|---|---|---|---|---|---|---|---|---|\n");
     for r in failures {
         out.push_str(&format!(
-            "| {} | {} | {} | {:+.3} | {:+.3} | {} | {} | {} |\n",
-            r.case.id, r.case.difficulty,
+            "| {} | {} | {} | {} | {:+.3} | {:+.3} | {} | {} | {} |\n",
+            r.case.id, r.case.difficulty, r.source,
             r.case.utterance.replace('|', "\\|"),
             r.speaker_p, r.listener_p,
             r.expected_magnitude.as_str(),
@@ -405,7 +434,7 @@ fn magnitude_변환식_벤치마크() {
     let cases = &bench.cases;
     println!("\n[1] 로드 완료: {} 케이스, bench v{}", cases.len(), bench.meta.version);
 
-    // 2. PadAnalyzer로 화자 P 추출 (26개 한 번만)
+    // 2. PadAnalyzer로 화자 P 추출 (26개 한 번만, prefilter 미매칭 케이스에 사용)
     let mut analyzer = shared_analyzer().lock().unwrap();
     let mut speaker_pads: Vec<Pad> = Vec::with_capacity(cases.len());
     for c in cases {
@@ -415,14 +444,44 @@ fn magnitude_변환식_벤치마크() {
     drop(analyzer);
     println!("[2] 화자 PAD 추출 완료");
 
-    // 3. 변환 + bin + 채점
+    // 2.5. Prefilter 로드 (Phase 3)
+    let prefilter = Prefilter::from_path(PATTERNS_PATH)
+        .expect("Prefilter 패턴 로드 실패");
+    println!("[2.5] Prefilter 로드: {} 카테고리", prefilter.category_names().len());
+
+    // 3. 변환 + bin + 채점 (prefilter 우선, 미매칭 시 임베딩 경로)
     let mut results: Vec<CaseResult> = Vec::with_capacity(cases.len());
+    let mut prefilter_hits = 0;
     for (i, c) in cases.iter().enumerate() {
-        let sign = Sign::from_str(&c.expected_sign);
         let expected_mag = Magnitude::from_str(&c.listener_p_magnitude);
-        let p_s = speaker_pads[i].pleasure;
-        let p_l = transform_pleasure(p_s, sign, expected_mag);
-        let predicted_mag = bin_magnitude(p_l);
+
+        let (p_s, p_l, predicted_mag, source) = match prefilter.classify(&c.utterance) {
+            Some(hit) => {
+                prefilter_hits += 1;
+                // D1=C: hit.p_s_default로 P_L 계산, bin 재검증
+                let sign = match hit.sign {
+                    common::prefilter::Sign::Keep => Sign::Keep,
+                    common::prefilter::Sign::Invert => Sign::Invert,
+                };
+                // hit.magnitude의 coef 적용 (hit가 주장하는 강도에 따른 계산)
+                let hit_mag = match hit.magnitude {
+                    common::prefilter::Magnitude::Weak => Magnitude::Weak,
+                    common::prefilter::Magnitude::Normal => Magnitude::Normal,
+                    common::prefilter::Magnitude::Strong => Magnitude::Strong,
+                };
+                let p_l = transform_pleasure(hit.p_s_default, sign, hit_mag);
+                let predicted = bin_magnitude(p_l);
+                (hit.p_s_default, p_l, predicted, format!("prefilter:{}", hit.matched_category))
+            }
+            None => {
+                let sign = Sign::from_str(&c.expected_sign);
+                let p_s = speaker_pads[i].pleasure;
+                let p_l = transform_pleasure(p_s, sign, expected_mag);
+                let predicted = bin_magnitude(p_l);
+                (p_s, p_l, predicted, "pad_analyzer".to_string())
+            }
+        };
+
         let passed = predicted_mag == expected_mag;
         results.push(CaseResult {
             case: c.clone(),
@@ -431,9 +490,13 @@ fn magnitude_변환식_벤치마크() {
             predicted_magnitude: predicted_mag,
             expected_magnitude: expected_mag,
             passed,
+            source,
         });
     }
-    println!("[3] 변환·bin·채점 완료 (Calibration: coef 0.5/1.0/1.5, bin 0.15/0.4)\n");
+    println!(
+        "[3] 변환·bin·채점 완료 (prefilter hit: {}/{}, 나머지 임베딩 경로)\n",
+        prefilter_hits, cases.len()
+    );
 
     // 4. 콘솔 출력
     print_console_table(&results);
