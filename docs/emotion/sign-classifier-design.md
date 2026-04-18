@@ -1,6 +1,6 @@
 # 부호 축 분류기 설계 — Listener-perspective 변환 (임베딩 기반)
 
-**상태**: Phase 1 완료 (baseline 확정) · Phase 2 대기
+**상태**: Phase 1.5 완료 (앵커 보강 62% 달성) · Phase 3 대기
 **날짜**: 2026-04-18
 **작성자**: Bekay + Claude
 **관련 문서**: [`adr-pad-v2-redesign.md`](adr-pad-v2-redesign.md) (LLM 기반 PAD 추출, 장기 방향)
@@ -11,6 +11,14 @@
 - 벤치: 전체 81% (21/26), easy 100%, medium 80%, hard 50%
 - Baseline: [`../../data/listener_perspective/results/baseline.md`](../../data/listener_perspective/results/baseline.md)
 - 잔여 실패: 019/020 (Phase 후속 sarcasm 보강), 022/023 (Phase 3 정규식), 024 (체념 — 설계 범위 밖)
+
+## Phase 2 + 1.5 완료 요약 (2026-04-19)
+
+- Phase 2 Calibration: coef 0.5/1.0/1.5 + bin 0.15/0.4 → 58% (run04)
+- Phase 1.5 앵커 보강: P+ 4개, P- 2개 추가 → **62% (run06)**
+- PAD 벤치 P 100% (18/18) 완벽 보존
+- Baseline: [`../../data/listener_perspective/results/baseline_magnitude.md`](../../data/listener_perspective/results/baseline_magnitude.md)
+- Phase 3 이관 6건: 011, 012, 013, 014, 020, 021 (BGE-M3 표면 어휘 편향 구조적 한계)
 
 ---
 
@@ -65,52 +73,66 @@ Listener-perspective 변환은 두 축으로 분해된다:
 
 ## 3. 상세 설계
 
-### 3.1 4그룹 변환 패턴
+### 3.1 변환식 — Magnitude 기반 (Phase 2 채택)
 
-화자 PAD를 청자 PAD로 변환할 때, 4그룹이 다음과 같이 작동한다.
+**변환식**:
+```
+P_L = sign_val × magnitude_coef × P_S
+A_L = magnitude_coef_a × A_S
+D_L = magnitude_coef_d × D_S   (부호 유지, 크기만 조정)
+```
 
-| 그룹 | 부호 | 강도 | 대표 화행 | P 변환식 (예시) |
-|------|-----|------|----------|----------------|
-| `keep_normal` | 유지 | 보통 | 감사, 칭찬, 중립 단언 | `P_L = P_S × 1.0` |
-| `keep_strong` | 유지 | 강함 | 비난, 위협 | `P_L = P_S × 1.3` |
-| `invert_normal` | 반전 | 감쇄 | 사과, 간청, 위로 | `P_L = −P_S × 0.4` |
-| `invert_strong` | 반전 | 증폭 | 빈정거림, 조롱 | `P_L = −P_S × 1.2` |
+- `sign_val`: keep=+1, invert=-1
+- `magnitude_coef`: 라벨(`weak`/`normal`/`strong`)에서 계수표로 직접 매핑
 
-**주의 — 변환식의 구체 계수는 Phase 2 대상.**
-Phase 1은 그룹 **분류**만 검증하며, 실제 P 변환값은 측정하지 않는다.
+**초기 계수표 (Phase 2 baseline)**:
 
-#### 3.1.1 P축 중심 설계의 근거
+| magnitude | P 계수 | A 계수 | D 계수 | 대응 화행 |
+|---|---|---|---|---|
+| weak | 0.4 | 0.5 | 0.4 | 사과·간청·위로 (감쇄) |
+| normal | 1.0 | 1.0 | 1.0 | 감사·칭찬·중립 단언 (기준) |
+| strong | 1.3 | 1.3 | 1.3 | 비난·위협·빈정·극찬 (증폭) |
 
-부호 축 분류기는 **P축 변환만을 직접 결정**한다. A축과 D축은 별도의 부호 분류기가 필요하지 않다.
+**Magnitude 기반 채택 근거**:
 
-**P축 — 부호 축 필수**
-화자와 청자의 P 부호가 뒤집히는 케이스가 빈번하다 (사과, 빈정, 위로).
-`pad_dot` 내적에 직접 관여하므로 부호가 틀리면 감정 변동 방향 자체가 뒤집힌다.
-다른 어떤 레이어(성격, 관계)로도 복구 불가능한 결정적 오류.
+1. **직교성(Orthogonality)**: 부호(방향)와 강도(크기)를 독립 축으로 분리. 기존 §3.1 초안의 4그룹(keep_normal/keep_strong/invert_normal/invert_strong)은 이 둘을 묶어버려 해상도를 잃음.
+2. **해상도 이득**: `invert × normal` 조합이 가능해짐 — 깊은 사과(016, "돌이킬 수 없는 과오")를 `weak(0.4)`로 일괄 감쇄하지 않고 `normal(1.0)`로 처리 가능.
+3. **데이터 효율**: 4그룹 × 3축 = 12계수 → 3단 × 3축 = 9계수. 관리 부담 감소.
+4. **라벨 직접 매핑**: `listener_p_magnitude` 라벨이 계수 인덱스로 바로 사용됨. 중간 번역 레이어 불필요.
+5. **Phase 4 확장성**: magnitude 분류기를 별도로 만들 때 라벨·계수 구조 재활용.
 
-**A축 — 대부분 identity 변환**
-화자와 청자의 각성 방향은 일반적으로 같다 — 흥분된 발화는 청자도 긴장시키고, 차분한 발화는 청자도 차분해진다.
-**부호 반전 케이스가 실질적으로 없다.**
-예외(차분한 위협 등 화자 A 낮은데 청자 A 높음)는 부호 문제가 아니라 **강도 조절 문제**로, 그룹별 A 계수 보정으로 처리 가능.
+**Bin 경계 (청자 P 크기 → magnitude 분류)**:
 
-**D축 — 부호 반전의 실효성 없음**
-화자와 청자의 D 부호는 자연스럽게 반대(화자 명령 D+ / 청자 위축 D−).
-그러나 현재 `pad_dot` 공식은 D축을 내적 항이 아닌 **격차 스케일러**(`1.0 + |ΔD| × 0.3`)로 사용한다.
-격차 절대값만 의미를 가지므로 **D 부호를 뒤집어도 스케일러 결과는 동일**하다.
-참조: [`pad-stimulus-design-decisions.md`](pad-stimulus-design-decisions.md)
+산출된 `|P_L|` 값을 3단으로 bin화해 라벨과 비교:
 
-**결론**
-- Phase 1 부호 축 분류기는 **P축 전용**
-- A/D축은 Phase 2의 그룹별 변환식 계수로 흡수 (예: `keep_strong` 그룹이면 A × 1.3, `invert_normal` 그룹이면 A × 0.5)
-- 하나의 부호 축 분류 결과로 P/A/D 전 축 변환식이 모두 파생됨
+| magnitude | 구간 | 의미 |
+|---|---|---|
+| weak | \|P_L\| < 0.3 | 배경 노이즈 수준의 미미한 변화 |
+| normal | 0.3 ≤ \|P_L\| < 0.7 | 인지 가능한 명확한 감정 변화 |
+| strong | \|P_L\| ≥ 0.7 | 캐릭터 행동·톤을 즉각 바꾸는 강렬한 자극 |
 
-#### 3.1.2 축별 변환식 구조 (Phase 2 예정)
+Bin 경계(0.3 / 0.7)는 PAD 정규화 공간(-1.0~1.0)의 감정 역치로서 설정. 1차 벤치 결과에 따라 튜닝.
 
-| 축 | 부호 축 분류기 필요? | 변환 방식 |
-|----|--------------------|---------|
-| P | **필수** | 부호 축 라벨로 부호 결정 + 그룹별 스케일 |
-| A | 불필요 | 그룹별 스케일 계수만 (identity 기본) |
-| D | 불필요 | 그룹별 \|D\| 스케일 조정 (부호 유지) |
+#### 3.1.1 기존 4그룹 ↔ Magnitude 매핑 (호환성)
+
+| §3.1 초안 그룹 | magnitude 기반 | 차이 |
+|---|---|---|
+| keep_normal | keep × normal → +1.0 | 동일 |
+| keep_strong | keep × strong → +1.3 | 동일 |
+| invert_normal (사과·간청·위로) | invert × weak → -0.4 | 동일 |
+| invert_strong (빈정) | invert × strong → -1.3 | +0.1 |
+| (신규) invert × normal | -1.0 | **해상도 확장** — 깊은 사과/위로 |
+
+#### 3.1.2 축별 변환식 구조
+
+| 축 | 부호 축 | 크기 축 | 방식 |
+|----|--------|--------|------|
+| P | 분류기 결과 (keep/invert) | magnitude 계수 | `sign × coef × P_S` |
+| A | 유지 (변환 없음) | magnitude 계수 | `coef × A_S` |
+| D | 유지 (변환 없음) | magnitude 계수 | `coef × D_S` |
+
+**A축 근거**: 화자·청자 각성 방향 일반적으로 동일. 크기만 보정.
+**D축 근거**: `pad_dot`이 `|ΔD|`를 스케일러로 쓰므로 부호 반전 무의미. 크기 조정으로 위축감 수학적 강화.
 
 ### 3.2 부호 축 분류기 — k-NN top-k
 
@@ -315,8 +337,9 @@ overall_accuracy: 0.83
 | Phase | 작업 | 상태 |
 |-------|------|------|
 | **P1** | 부호 축 k-NN 분류기 + 벤치 구조 | **✅ 완료 (2026-04-18, 81%)** |
-| **P2** | P축 변환식 계수 튜닝 | 대기 (`listener_p_sign` 라벨 활용) |
-| **P3** | 정규식 프리필터 추가 | 후속 (복합 절 022/023 해결 목표) |
+| **P2** | P축 변환식 계수 튜닝 (magnitude 기반) | ✅ **완료 (2026-04-19)** — Calibration 58% → 앵커 보강 62% |
+| **P1.5** | PAD 앵커 보강 (`locales/anchors/ko.toml`) | ✅ **완료 (2026-04-19)** — P+ 4/P- 2 추가, PAD P 100% 보존 |
+| **P3** | 정규식 프리필터 | **다음 단계** — 임베딩 한계 6건(011/012/013/014/020/021) 타겟 |
 | **P4** | 강도 축 분류기 | 후속 (4그룹 완성, A/D축 변환) |
 | **P5** | 현대어 register 추가 | 후속 (플레이어 발화 대응) |
 | **P6** | Relationship modulation | 후속 (trust/closeness 변조 레이어) |
