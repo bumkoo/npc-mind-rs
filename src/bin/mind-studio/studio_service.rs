@@ -410,49 +410,37 @@ impl StudioService {
     }
 
     /// 화자 PAD → 청자 관점 PAD 변환 (Phase 7).
-    /// converter 미주입 또는 임베딩 부재 시 화자 PAD를 그대로 반환.
-    #[cfg(all(feature = "chat", feature = "listener_perspective"))]
-    fn convert_to_listener_pad(
-        state: &AppState,
-        utterance: &str,
-        speaker_pad: npc_mind::domain::pad::Pad,
-        embedding: Option<&[f32]>,
-    ) -> npc_mind::domain::pad::Pad {
-        let (Some(converter), Some(emb)) = (state.converter.as_ref(), embedding) else {
-            return speaker_pad;
-        };
-        match converter.convert(utterance, &speaker_pad, emb) {
-            Ok(result) => {
-                tracing::debug!(
-                    "대화 턴: listener PAD 변환 (P: {:.3}, A: {:.2}, D: {:.2}, sign={:?}, magnitude={:?})",
-                    result.listener_pad.pleasure,
-                    result.listener_pad.arousal,
-                    result.listener_pad.dominance,
-                    result.meta.sign,
-                    result.meta.magnitude
-                );
-                result.listener_pad
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = ?e,
-                    utterance = utterance,
-                    "listener-perspective conversion failed; falling back to speaker PAD"
-                );
-                speaker_pad
-            }
-        }
-    }
-
-    /// listener_perspective feature off 빌드 — 화자 PAD를 그대로 반환.
-    #[cfg(all(feature = "chat", not(feature = "listener_perspective")))]
+    ///
+    /// 도메인 헬퍼 `domain::listener_perspective::convert_or_fallback`에 위임.
+    /// DialogueAgent와 동일한 분기 로직 — drift 위험을 한 곳에서 차단한다.
+    /// 성공 시 변환된 PAD를 디버그 로그로 노출 (운영 가시성).
+    #[cfg(feature = "chat")]
     fn convert_to_listener_pad(
         _state: &AppState,
         _utterance: &str,
         speaker_pad: npc_mind::domain::pad::Pad,
         _embedding: Option<&[f32]>,
     ) -> npc_mind::domain::pad::Pad {
-        speaker_pad
+        #[cfg(feature = "listener_perspective")]
+        {
+            let listener = npc_mind::domain::listener_perspective::convert_or_fallback(
+                _state.converter.as_deref(),
+                _utterance,
+                speaker_pad,
+                _embedding,
+            );
+            tracing::debug!(
+                "대화 턴: listener PAD (P: {:.3}, A: {:.2}, D: {:.2})",
+                listener.pleasure,
+                listener.arousal,
+                listener.dominance
+            );
+            listener
+        }
+        #[cfg(not(feature = "listener_perspective"))]
+        {
+            speaker_pad
+        }
     }
 
     /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다.

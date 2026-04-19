@@ -285,6 +285,42 @@ impl EmbeddedConverter {
 }
 
 // ============================================================
+// 공유 fallback 헬퍼 — 호출 사이트 통합용
+// ============================================================
+
+/// Converter 변환을 시도하고 실패/입력 부족 시 화자 PAD를 그대로 반환.
+///
+/// DialogueAgent와 Mind Studio(StudioService)가 동일 분기 로직을 가져 path-for-path
+/// drift 위험이 있던 부분을 도메인 레벨 단일 헬퍼로 통합한다.
+///
+/// 변환 조건: `converter`와 `embedding`이 모두 `Some`일 때만 변환 시도.
+/// 변환 실패 시 `tracing::warn!`을 남기고 화자 PAD 그대로 반환 (silent failure 방지).
+/// 변환 성공 시 호출자가 추가 디버깅 로그를 원하면 결과 PAD를 사용해 별도 처리.
+///
+/// 입력이 부족한 경로(converter 미주입, 임베딩 부재)는 silent passthrough — 정상 동작.
+pub fn convert_or_fallback(
+    converter: Option<&dyn ListenerPerspectiveConverter>,
+    utterance: &str,
+    speaker_pad: Pad,
+    embedding: Option<&[f32]>,
+) -> Pad {
+    let (Some(converter), Some(emb)) = (converter, embedding) else {
+        return speaker_pad;
+    };
+    match converter.convert(utterance, &speaker_pad, emb) {
+        Ok(result) => result.listener_pad,
+        Err(e) => {
+            tracing::warn!(
+                error = ?e,
+                utterance = utterance,
+                "listener-perspective conversion failed; falling back to speaker PAD"
+            );
+            speaker_pad
+        }
+    }
+}
+
+// ============================================================
 // Trait 구현 — 핵심 변환
 // ============================================================
 

@@ -38,6 +38,7 @@ pub mod types;
 
 pub use converter::{
     ConvertMeta, ConvertPath, ConvertResult, EmbeddedConverter, ListenerPerspectiveConverter,
+    convert_or_fallback,
 };
 pub use magnitude_classifier::{MagnitudeClassifier, MagnitudeClassifyResult};
 pub use magnitude_coef::{MagnitudeBinThresholds, MagnitudeCoefTable};

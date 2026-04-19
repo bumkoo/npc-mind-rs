@@ -403,42 +403,37 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
 
     /// 화자 PAD를 청자 관점 PAD로 변환한다 (Phase 7).
     ///
-    /// 변환 조건: feature on + converter 주입 + utterance_embedding 가용.
-    /// 변환 실패 시 화자 PAD를 그대로 반환하고 `tracing::warn!`을 남긴다 (silent failure 방지).
-    /// 변환 가능한 입력이 부족하면(e.g. pad_hint 경로 — 임베딩 부재) 화자 PAD를 그대로 사용한다.
-    #[cfg(feature = "listener_perspective")]
-    fn convert_to_listener_pad(
-        &self,
-        utterance: &str,
-        speaker_pad: Option<Pad>,
-        utterance_embedding: Option<&[f32]>,
-    ) -> Option<Pad> {
-        let speaker = speaker_pad?;
-        let (Some(converter), Some(emb)) = (self.converter.as_ref(), utterance_embedding) else {
-            return Some(speaker);
-        };
-        match converter.convert(utterance, &speaker, emb) {
-            Ok(result) => Some(result.listener_pad),
-            Err(e) => {
-                tracing::warn!(
-                    error = ?e,
-                    utterance = utterance,
-                    "listener-perspective conversion failed; falling back to speaker PAD"
-                );
-                Some(speaker)
-            }
-        }
-    }
-
-    /// 변환기 미컴파일 빌드 — 화자 PAD를 그대로 반환.
-    #[cfg(not(feature = "listener_perspective"))]
+    /// 도메인 헬퍼 `domain::listener_perspective::convert_or_fallback`에 위임 —
+    /// converter 미주입 / 임베딩 부재 / 변환 실패 모두 화자 PAD 그대로 반환.
+    /// LP feature off 빌드는 converter 필드 자체가 컴파일에서 제외되므로
+    /// 항상 speaker PAD가 dispatch된다.
     fn convert_to_listener_pad(
         &self,
         _utterance: &str,
         speaker_pad: Option<Pad>,
         _utterance_embedding: Option<&[f32]>,
     ) -> Option<Pad> {
-        speaker_pad
+        let speaker = speaker_pad?;
+        #[cfg(feature = "listener_perspective")]
+        {
+            let listener = crate::domain::listener_perspective::convert_or_fallback(
+                self.converter.as_deref(),
+                _utterance,
+                speaker,
+                _utterance_embedding,
+            );
+            tracing::debug!(
+                "DialogueAgent.turn: PAD {{ P: {:.3}, A: {:.2}, D: {:.2} }} (converter on)",
+                listener.pleasure,
+                listener.arousal,
+                listener.dominance
+            );
+            Some(listener)
+        }
+        #[cfg(not(feature = "listener_perspective"))]
+        {
+            Some(speaker)
+        }
     }
 
     /// DialogueTurnCompleted 이벤트를 dispatcher와 동일 경로로 발행한다.
