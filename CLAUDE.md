@@ -20,6 +20,7 @@ cargo test                         # 기본 테스트
 cargo test --features embed        # 전체 테스트 (임베딩 포함)
 cargo test --features "embed listener_perspective"  # Phase 7 Converter 포함 엔드투엔드
 cargo test --features listener_perspective --lib domain::listener_perspective  # 39 도메인 단위
+cargo test --no-default-features --features chat --test dialogue_no_lp_passthrough  # Phase 7 Step 5: LP off 회귀 감시
 
 # 개별 테스트는 tests/ 디렉토리 참조
 # PAD 벤치마크(pad_benchmark_test 등)는 --features embed 필요

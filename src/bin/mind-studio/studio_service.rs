@@ -605,3 +605,202 @@ pub struct SaveDirInfo {
     pub has_turn_history: bool,
     pub has_existing_results: bool,
 }
+
+// ============================================================
+// resolve_pad / convert_to_listener_pad 단위 테스트 (Phase 7 Step 5)
+//
+// DialogueAgent 통합 테스트(`tests/dialogue_converter_integration.rs`)와
+// 동일한 4-시나리오 매트릭스를 Mind Studio 경로에서도 검증한다.
+// 두 구현이 path-for-path로 분기되어 있어 drift 시 silent 회귀 위험이 있음.
+// ============================================================
+#[cfg(all(test, feature = "chat", feature = "listener_perspective"))]
+mod tests {
+    use super::*;
+    use crate::trace_collector::AppraisalCollector;
+    use npc_mind::application::dialogue_test_service::PadInput;
+    use npc_mind::domain::listener_perspective::{
+        ConvertMeta, ConvertPath, ConvertResult, ListenerPerspectiveConverter,
+        ListenerPerspectiveError, Magnitude as LpMagnitude, Sign as LpSign,
+    };
+    use npc_mind::domain::pad::Pad;
+    use npc_mind::ports::{EmbedError, UtteranceAnalyzer};
+    use std::sync::Arc;
+
+    /// 정해진 PAD + 임베딩을 반환하는 mock UtteranceAnalyzer
+    struct ScriptedAnalyzer {
+        pad: Pad,
+        embedding: Option<Vec<f32>>,
+    }
+
+    impl UtteranceAnalyzer for ScriptedAnalyzer {
+        fn analyze(&mut self, _utterance: &str) -> Result<Pad, EmbedError> {
+            Ok(self.pad)
+        }
+        fn analyze_with_embedding(
+            &mut self,
+            _utterance: &str,
+        ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
+            Ok((self.pad, self.embedding.clone()))
+        }
+    }
+
+    /// 화자 pleasure 부호를 반전한 listener PAD를 반환
+    struct InvertingConverter;
+
+    impl ListenerPerspectiveConverter for InvertingConverter {
+        fn convert(
+            &self,
+            _utterance: &str,
+            speaker_pad: &Pad,
+            _utterance_embedding: &[f32],
+        ) -> Result<ConvertResult, ListenerPerspectiveError> {
+            Ok(ConvertResult {
+                listener_pad: Pad::new(
+                    -speaker_pad.pleasure,
+                    speaker_pad.arousal,
+                    speaker_pad.dominance,
+                ),
+                meta: ConvertMeta {
+                    path: ConvertPath::Classifier {
+                        sign_margin: 0.5,
+                        magnitude_margin: 0.3,
+                    },
+                    sign: LpSign::Invert,
+                    magnitude: LpMagnitude::Normal,
+                    applied_p_coef: -1.0,
+                    applied_a_coef: 1.0,
+                    applied_d_coef: 1.0,
+                },
+            })
+        }
+    }
+
+    /// 항상 실패 — fallback 경로 검증용
+    struct FailingConverter;
+
+    impl ListenerPerspectiveConverter for FailingConverter {
+        fn convert(
+            &self,
+            _utterance: &str,
+            _speaker_pad: &Pad,
+            _utterance_embedding: &[f32],
+        ) -> Result<ConvertResult, ListenerPerspectiveError> {
+            Err(ListenerPerspectiveError::Embed(
+                "intentional failure".to_string(),
+            ))
+        }
+    }
+
+    fn make_state(
+        analyzer: Option<ScriptedAnalyzer>,
+        converter: Option<Arc<dyn ListenerPerspectiveConverter>>,
+    ) -> AppState {
+        let mut state = AppState::new(AppraisalCollector::new(), analyzer);
+        if let Some(c) = converter {
+            state = state.with_converter(c);
+        }
+        state
+    }
+
+    fn make_request(utterance: &str, pad: Option<PadInput>) -> ChatTurnRequest {
+        ChatTurnRequest {
+            session_id: "s1".into(),
+            npc_id: "mu_baek".into(),
+            partner_id: "gyo_ryong".into(),
+            utterance: utterance.into(),
+            pad,
+            situation_description: None,
+        }
+    }
+
+    /// (a) Converter 주입 + analyzer 임베딩 → 변환된 listener PAD
+    #[tokio::test]
+    async fn resolve_pad_with_converter_and_embedding_inverts() {
+        let analyzer = ScriptedAnalyzer {
+            pad: Pad::new(0.6, 0.3, 0.1),
+            embedding: Some(vec![1.0, 2.0, 3.0]),
+        };
+        let state = make_state(Some(analyzer), Some(Arc::new(InvertingConverter)));
+        let req = make_request("test utterance", None);
+
+        let (p, a, d) = StudioService::resolve_pad(&state, &req)
+            .await
+            .expect("PAD 반환");
+
+        assert!(
+            (p - (-0.6)).abs() < 1e-5,
+            "pleasure 변환 (speaker +0.6 → listener -0.6), 실제={p}"
+        );
+        assert!((a - 0.3).abs() < 1e-5, "arousal 유지");
+        assert!((d - 0.1).abs() < 1e-5, "dominance 유지");
+    }
+
+    /// (b) Converter 미주입 + analyzer 사용 → speaker PAD 그대로
+    #[tokio::test]
+    async fn resolve_pad_without_converter_returns_speaker_pad() {
+        let analyzer = ScriptedAnalyzer {
+            pad: Pad::new(0.6, 0.3, 0.1),
+            embedding: Some(vec![1.0, 2.0, 3.0]),
+        };
+        let state = make_state(Some(analyzer), None);
+        let req = make_request("test utterance", None);
+
+        let (p, a, d) = StudioService::resolve_pad(&state, &req)
+            .await
+            .expect("PAD 반환");
+
+        assert!((p - 0.6).abs() < 1e-5);
+        assert!((a - 0.3).abs() < 1e-5);
+        assert!((d - 0.1).abs() < 1e-5);
+    }
+
+    /// (c) pad_hint 사용 → analyzer/converter 모두 우회 (pad_hint 그대로)
+    #[tokio::test]
+    async fn resolve_pad_pad_hint_short_circuits_conversion() {
+        // analyzer는 호출되어선 안 됨 — 호출되면 (0,0,0)이 나옴
+        let analyzer = ScriptedAnalyzer {
+            pad: Pad::new(0.0, 0.0, 0.0),
+            embedding: Some(vec![1.0, 2.0, 3.0]),
+        };
+        let state = make_state(Some(analyzer), Some(Arc::new(InvertingConverter)));
+        let req = make_request(
+            "test utterance",
+            Some(PadInput {
+                pleasure: 0.6,
+                arousal: 0.3,
+                dominance: 0.1,
+            }),
+        );
+
+        let (p, _, _) = StudioService::resolve_pad(&state, &req)
+            .await
+            .expect("PAD 반환");
+
+        assert!(
+            (p - 0.6).abs() < 1e-5,
+            "pad_hint 그대로 (변환 미발동), 실제={p}"
+        );
+    }
+
+    /// (d) Converter 변환 실패 → speaker PAD fallback
+    #[tokio::test]
+    async fn resolve_pad_converter_failure_falls_back() {
+        let analyzer = ScriptedAnalyzer {
+            pad: Pad::new(0.6, 0.3, 0.1),
+            embedding: Some(vec![1.0, 2.0, 3.0]),
+        };
+        let state = make_state(Some(analyzer), Some(Arc::new(FailingConverter)));
+        let req = make_request("test utterance", None);
+
+        let (p, a, d) = StudioService::resolve_pad(&state, &req)
+            .await
+            .expect("PAD 반환");
+
+        assert!(
+            (p - 0.6).abs() < 1e-5,
+            "변환 실패 시 speaker PAD fallback, 실제={p}"
+        );
+        assert!((a - 0.3).abs() < 1e-5);
+        assert!((d - 0.1).abs() < 1e-5);
+    }
+}
