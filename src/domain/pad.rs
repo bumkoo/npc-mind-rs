@@ -363,3 +363,143 @@ impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
         Ok((pad, Some(embedding)))
     }
 }
+
+// ---------------------------------------------------------------------------
+// PadAnalyzer::analyze_with_embedding 단위 테스트 (Phase 7 Step 5)
+// ---------------------------------------------------------------------------
+//
+// load-bearing invariant: 반환되는 임베딩이 to_pad에 사용된 것과 동일.
+// 이 invariant가 깨지면 ListenerPerspectiveConverter가 PadAnalyzer 추출 PAD와
+// 무관한 벡터로 분류를 수행해 silent 오류가 발생한다.
+
+#[cfg(test)]
+mod analyze_with_embedding_tests {
+    use super::*;
+    use crate::ports::{AnchorLoadError, PadAnchorSource, UtteranceAnalyzer};
+    use std::sync::{Arc, Mutex};
+
+    /// 호출 이력을 기록하는 mock embedder. outputs는 매 호출마다 그대로 반환.
+    struct SpyEmbedder {
+        outputs: Vec<Vec<f32>>,
+        call_log: Arc<Mutex<Vec<Vec<String>>>>,
+    }
+
+    impl TextEmbedder for SpyEmbedder {
+        fn embed(&mut self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbedError> {
+            self.call_log
+                .lock()
+                .unwrap()
+                .push(texts.iter().map(|s| s.to_string()).collect());
+            Ok(self.outputs.clone())
+        }
+    }
+
+    /// 캐싱된 axis embedding을 즉시 반환하는 anchor source —
+    /// PadAnalyzer::new가 init 단계에서 embedder를 호출하지 않게 한다.
+    struct CachedAnchorSource {
+        cached: CachedPadEmbeddings,
+    }
+
+    impl PadAnchorSource for CachedAnchorSource {
+        fn load_anchors(&self) -> Result<PadAnchorSet, AnchorLoadError> {
+            unreachable!("load_cached_embeddings가 Some 반환하므로 호출되지 않음")
+        }
+        fn load_cached_embeddings(
+            &self,
+        ) -> Result<Option<CachedPadEmbeddings>, AnchorLoadError> {
+            Ok(Some(self.cached.clone()))
+        }
+        fn save_cached_embeddings(
+            &self,
+            _: &CachedPadEmbeddings,
+        ) -> Result<(), AnchorLoadError> {
+            Ok(())
+        }
+    }
+
+    fn unit_axis_embeddings() -> CachedPadEmbeddings {
+        // 3차원 축 단위 벡터 — to_pad는 cosine 차이 기반이므로 명확한 분리만 있으면 충분.
+        CachedPadEmbeddings {
+            model_id: "test".into(),
+            dimension: 3,
+            pleasure: CachedAxisEmbeddings {
+                positive_mean: vec![1.0, 0.0, 0.0],
+                negative_mean: vec![-1.0, 0.0, 0.0],
+            },
+            arousal: CachedAxisEmbeddings {
+                positive_mean: vec![0.0, 1.0, 0.0],
+                negative_mean: vec![0.0, -1.0, 0.0],
+            },
+            dominance: CachedAxisEmbeddings {
+                positive_mean: vec![0.0, 0.0, 1.0],
+                negative_mean: vec![0.0, 0.0, -1.0],
+            },
+        }
+    }
+
+    fn make_analyzer(
+        spy_outputs: Vec<Vec<f32>>,
+    ) -> (PadAnalyzer, Arc<Mutex<Vec<Vec<String>>>>) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let embedder = SpyEmbedder {
+            outputs: spy_outputs,
+            call_log: log.clone(),
+        };
+        let source = CachedAnchorSource {
+            cached: unit_axis_embeddings(),
+        };
+        let analyzer = PadAnalyzer::new(Box::new(embedder), &source).expect("init");
+        (analyzer, log)
+    }
+
+    /// 반환 임베딩이 to_pad 입력과 동일하고, embedder는 발화 1회만 호출한다.
+    #[test]
+    fn returned_embedding_equals_input_for_to_pad() {
+        let utterance_emb = vec![0.5, 0.3, -0.2];
+        let (mut analyzer, log) = make_analyzer(vec![utterance_emb.clone()]);
+
+        let (pad, returned) = analyzer.analyze_with_embedding("test utterance").unwrap();
+
+        // embedder는 발화 텍스트로 정확히 1회 호출 (init은 cached로 우회)
+        let calls = log.lock().unwrap();
+        assert_eq!(calls.len(), 1, "embedder 1회 호출 (init 캐시 사용)");
+        assert_eq!(calls[0], vec!["test utterance".to_string()]);
+
+        // 반환 임베딩 == embedder 출력
+        let returned = returned.expect("Some 임베딩 반환");
+        assert_eq!(returned, utterance_emb, "반환 임베딩이 embedder 출력과 동일");
+
+        // PAD가 동일 임베딩으로 to_pad 호출한 것과 일치 (load-bearing invariant)
+        let recomputed = analyzer.to_pad(&returned);
+        assert_eq!(
+            pad, recomputed,
+            "PAD = to_pad(반환된 임베딩) — Converter가 PadAnalyzer와 동일 벡터 공유 보장"
+        );
+    }
+
+    /// 빈 임베딩 반환 시 (Pad::neutral, None) 페어를 반환한다.
+    #[test]
+    fn empty_embedding_returns_neutral_and_none() {
+        let (mut analyzer, _) = make_analyzer(vec![]);
+
+        let (pad, returned) = analyzer.analyze_with_embedding("test").unwrap();
+
+        assert_eq!(pad, Pad::neutral(), "빈 임베딩 → neutral PAD");
+        assert!(returned.is_none(), "빈 임베딩 → None (Converter 변환 skip 신호)");
+    }
+
+    /// trait의 `analyze`도 새 메서드와 일관된 결과를 낸다 (호환성 회귀 감시).
+    #[test]
+    fn analyze_matches_analyze_with_embedding_pad() {
+        let utterance_emb = vec![0.7, -0.4, 0.2];
+        let (mut analyzer, _) = make_analyzer(vec![utterance_emb.clone()]);
+
+        let pad_only = analyzer.analyze("test").unwrap();
+
+        // 새 인스턴스로 다시 만들어 analyze_with_embedding 호출
+        let (mut analyzer2, _) = make_analyzer(vec![utterance_emb]);
+        let (pad_with_emb, _) = analyzer2.analyze_with_embedding("test").unwrap();
+
+        assert_eq!(pad_only, pad_with_emb, "두 메서드의 PAD가 동일");
+    }
+}
