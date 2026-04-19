@@ -189,7 +189,7 @@ baseline: [`baseline_converter.md`](../../data/listener_perspective/results/base
 
 ### Step 5 — 기본 활성화 + Mind Studio 와이어업 + 정리 ✅ 완료 (2026-04-19)
 
-1. **feature default-on**: `Cargo.toml [features] default = ["listener_perspective"]`. `--no-default-features` 빌드도 정상 (모든 호출처 옵셔널 분기).
+1. **feature default-on**: `Cargo.toml [features] default = ["listener_perspective"]`. `--no-default-features` 빌드도 정상 (모든 호출처 옵셔널 분기). **Opt-out**: 다운스트림 라이브러리 의존자가 변환 모듈을 제외하려면 `npc-mind = { ..., default-features = false, features = ["embed", "chat"] }`로 default를 끄고 필요한 feature만 선언.
 2. **Mind Studio 와이어업**: `AppState`에 `converter: Option<Arc<dyn ListenerPerspectiveConverter>>` 필드 + `with_converter()` 빌더. `main.rs::init_listener_perspective_converter()`가 `NPC_MIND_LP_DATA_DIR` (default `data/listener_perspective`)와 `NPC_MIND_MODEL_DIR` 재사용해 초기화. 로드 실패 시 Mind Studio는 변환 없이 정상 동작.
 3. **`StudioService::resolve_pad` 재구성**: `analyze_with_embedding`으로 화자 PAD + 임베딩 동시 추출 → `convert_to_listener_pad()`로 변환 적용. DialogueAgent와 동일 fallback 정책.
 4. **이중 구현 제거**: `tests/common/prefilter.rs` 삭제. 사용처 3개 (`magnitude_bench`, `prefilter_unit`, `sparse_spike`)를 `npc_mind::domain::listener_perspective::Prefilter`로 마이그레이션.
@@ -211,6 +211,12 @@ baseline: [`baseline_converter.md`](../../data/listener_perspective/results/base
 
 **Could**
 - `src/bin/mind-studio/init_tests.rs`: `build_converter_from_data_dir`을 valid 6 toml / 빈 dir / 부분 누락 시나리오로 검증 (`tempfile`)
+
+**리뷰 후속 구조 정리** (코드 리뷰 M1/M2/m3/m4 반영)
+- **M1**: `domain::listener_perspective::convert_or_fallback` 공유 헬퍼 추출 — DialogueAgent와 StudioService의 path-for-path 중복 분기를 한 곳에 통합. cfg-gated `convert_to_listener_pad` 호출 사이트는 헬퍼에 위임하는 한 줄로 단순화 (drift 차단).
+- **M2**: `domain::pad::UtteranceEmbedding` newtype 도입 — `UtteranceAnalyzer::analyze_with_embedding`이 raw `Vec<f32>` 대신 의미적으로 태깅된 newtype 반환. `Deref<[f32]>` / `AsRef<[f32]>`로 호출자 변경 폭 최소.
+- **m3**: 다운스트림 라이브러리 의존자를 위한 opt-out 가이드 (이 §Step 5 항목 1 참고).
+- **m4**: DialogueAgent 변환 성공 분기에 `tracing::debug!` 추가 — Mind Studio와 운영 가시성 일치.
 
 ## 5. 주요 설계 결정
 
