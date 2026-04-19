@@ -10,6 +10,15 @@
 //!
 //! 패턴: data/listener_perspective/prefilter/patterns.toml
 //! 설계: docs/emotion/sign-classifier-design.md §3.5 (Phase 3)
+//!
+//! ## Phase 7 이관 상태 (Step 1 완료)
+//!
+//! 도메인 정식 구현은 `src/domain/listener_perspective/prefilter.rs` 로 이관됨.
+//! 이 파일은 **회귀 감시용 이중 구현**으로 유지된다 —
+//! `magnitude_bench.rs`, `sign_classifier_bench.rs` 등 기존 벤치가 feature flag
+//! 와 무관하게 계속 통과해야 하기 때문.
+//!
+//! Phase 7 Step 4 (MindService 통합) 완료 후 이 파일은 제거 예정.
 
 use regex::Regex;
 use serde::Deserialize;

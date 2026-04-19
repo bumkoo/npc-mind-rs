@@ -9,6 +9,9 @@ default = []
 embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy"]
 chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
+# Phase 7: Listener-perspective PAD 변환기 (prefilter + sign/magnitude 분류기)
+# 설계 문서: docs/emotion/phase7-converter-integration.md
+listener_perspective = ["dep:regex"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -36,6 +39,8 @@ uuid = { version = "1.11", features = ["v4"], optional = true }
 rusqlite = { version = "0.33", features = ["bundled"], optional = true }
 sqlite-vec = { version = "0.1", optional = true }
 zerocopy = { version = "0.7", optional = true }
+# Phase 7 listener_perspective feature 전용
+regex = { version = "1", optional = true }
 
 [dev-dependencies]
 approx = "0.5"

@@ -15,8 +15,8 @@ fn toml_빌트인_앵커_파싱() {
     let source = FileAnchorSource::from_content(toml, AnchorFormat::Toml);
     let anchors = source.load_anchors().expect("TOML 파싱 실패");
 
-    assert_eq!(anchors.pleasure.positive.len(), 10);
-    assert_eq!(anchors.pleasure.negative.len(), 10);
+    assert_eq!(anchors.pleasure.positive.len(), 14, "Phase 1.5: 10 기본 + Step1a 2 + Step1b 2");
+    assert_eq!(anchors.pleasure.negative.len(), 12, "Phase 1.5: 10 기본 + Step1a 1 + Step1b 1");
     assert_eq!(anchors.arousal.positive.len(), 14);  // 10 전투 + 4 감정적 고조
     assert_eq!(anchors.arousal.negative.len(), 10);
     assert_eq!(anchors.dominance.positive.len(), 10);
