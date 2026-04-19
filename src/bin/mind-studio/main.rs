@@ -23,6 +23,9 @@ mod trace_collector;
 #[cfg(test)]
 mod handler_tests;
 
+#[cfg(all(test, feature = "embed", feature = "listener_perspective"))]
+mod init_tests;
+
 use crate::state::AppState;
 use crate::trace_collector::AppraisalCollector;
 
@@ -193,7 +196,6 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
 fn init_listener_perspective_converter()
 -> Option<npc_mind::domain::listener_perspective::EmbeddedConverter> {
     use npc_mind::adapter::ort_embedder::OrtEmbedder;
-    use npc_mind::domain::listener_perspective::EmbeddedConverter;
 
     let model_dir =
         std::env::var("NPC_MIND_MODEL_DIR").unwrap_or_else(|_| "../models/bge-m3".to_string());
@@ -202,7 +204,6 @@ fn init_listener_perspective_converter()
 
     let data_dir = std::env::var("NPC_MIND_LP_DATA_DIR")
         .unwrap_or_else(|_| "data/listener_perspective".to_string());
-    let data_root = std::path::Path::new(&data_dir);
 
     let mut embedder = match OrtEmbedder::new(&model_path, &tokenizer_path) {
         Ok(e) => e,
@@ -215,24 +216,35 @@ fn init_listener_perspective_converter()
         }
     };
 
-    let result = EmbeddedConverter::from_paths(
-        &mut embedder,
+    build_converter_from_data_dir(&mut embedder, std::path::Path::new(&data_dir))
+}
+
+/// 순수 헬퍼: 외부 주입 embedder + data 디렉토리로 EmbeddedConverter 빌드.
+///
+/// `init_listener_perspective_converter`의 env/모델 의존부와 분리되어
+/// 테스트 가능(Mock embedder + tempfile). 패턴/프로토타입 로드 실패 시
+/// `tracing::warn!` 후 `None` 반환 (graceful degradation).
+#[cfg(all(feature = "embed", feature = "listener_perspective"))]
+fn build_converter_from_data_dir(
+    embedder: &mut dyn npc_mind::ports::TextEmbedder,
+    data_root: &std::path::Path,
+) -> Option<npc_mind::domain::listener_perspective::EmbeddedConverter> {
+    use npc_mind::domain::listener_perspective::EmbeddedConverter;
+
+    EmbeddedConverter::from_paths(
+        embedder,
         data_root.join("prefilter/patterns.toml"),
         data_root.join("prototypes/sign_keep.toml"),
         data_root.join("prototypes/sign_invert.toml"),
         data_root.join("prototypes/magnitude_weak.toml"),
         data_root.join("prototypes/magnitude_normal.toml"),
         data_root.join("prototypes/magnitude_strong.toml"),
-    );
-
-    match result {
-        Ok(c) => Some(c),
-        Err(e) => {
-            tracing::warn!(
-                "Listener-perspective Converter 초기화 스킵 — 패턴/프로토타입 로드 실패: {:?}",
-                e
-            );
-            None
-        }
-    }
+    )
+    .map_err(|e| {
+        tracing::warn!(
+            "Listener-perspective Converter 초기화 스킵 — 패턴/프로토타입 로드 실패: {:?}",
+            e
+        );
+    })
+    .ok()
 }
