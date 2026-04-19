@@ -28,10 +28,80 @@ impl UtteranceAnalyzer for SpyAnalyzer {
 }
 
 /// 테스트용 AppState 생성 (Spy 분석기 포함)
+#[allow(dead_code)] // chat feature 활성 시 test_state_with_spy_and_chat이 사용되지만, off 빌드에서는 이 헬퍼가 fallback
 fn test_state_with_spy() -> (AppState, Arc<Mutex<Vec<String>>>) {
     let calls = Arc::new(Mutex::new(Vec::new()));
     let spy = SpyAnalyzer { calls: calls.clone() };
     let state = AppState::new(AppraisalCollector::new(), Some(spy));
+    let mcp = crate::mcp_server::create_mcp_server(state.clone());
+    (state.with_mcp(mcp), calls)
+}
+
+/// chat 어댑터 호출을 무시하는 테스트용 mock ConversationPort.
+/// `process_chat_turn_result`가 chat 어댑터 부재로 즉시 NotImplemented를 반환하지
+/// 않게 하기 위한 최소 구현 — 분석기/심리 자극 검증 흐름에 집중.
+#[cfg(feature = "chat")]
+struct SilentChatPort;
+
+#[cfg(feature = "chat")]
+#[async_trait::async_trait]
+impl npc_mind::ports::ConversationPort for SilentChatPort {
+    async fn start_session(
+        &self,
+        _session_id: &str,
+        _system_prompt: &str,
+        _generation_config: Option<npc_mind::ports::LlmModelInfo>,
+    ) -> Result<(), npc_mind::ports::ConversationError> {
+        Ok(())
+    }
+
+    async fn send_message(
+        &self,
+        _session_id: &str,
+        _user_message: &str,
+    ) -> Result<npc_mind::ports::ChatResponse, npc_mind::ports::ConversationError> {
+        Ok(npc_mind::ports::ChatResponse {
+            text: "mock NPC response".to_string(),
+            timings: None,
+        })
+    }
+
+    async fn send_message_stream(
+        &self,
+        _session_id: &str,
+        _user_message: &str,
+        _token_tx: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<npc_mind::ports::ChatResponse, npc_mind::ports::ConversationError> {
+        Ok(npc_mind::ports::ChatResponse {
+            text: "mock NPC response".to_string(),
+            timings: None,
+        })
+    }
+
+    async fn update_system_prompt(
+        &self,
+        _session_id: &str,
+        _new_prompt: &str,
+    ) -> Result<(), npc_mind::ports::ConversationError> {
+        Ok(())
+    }
+
+    async fn end_session(
+        &self,
+        _session_id: &str,
+    ) -> Result<Vec<npc_mind::ports::DialogueTurn>, npc_mind::ports::ConversationError> {
+        Ok(Vec::new())
+    }
+}
+
+/// Spy 분석기 + Silent chat 어댑터를 모두 주입한 AppState.
+/// `process_chat_turn_result` 검증용 — chat feature 활성 시에만 컴파일.
+#[cfg(feature = "chat")]
+fn test_state_with_spy_and_chat() -> (AppState, Arc<Mutex<Vec<String>>>) {
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let spy = SpyAnalyzer { calls: calls.clone() };
+    let state = AppState::new(AppraisalCollector::new(), Some(spy))
+        .with_chat(Arc::new(SilentChatPort));
     let mcp = crate::mcp_server::create_mcp_server(state.clone());
     (state.with_mcp(mcp), calls)
 }
@@ -1314,6 +1384,10 @@ async fn mcp_tool_call_logic() {
 
 #[tokio::test]
 async fn test_studio_analysis_pipeline_integrity() {
+    // chat feature 활성 시 SilentChatPort 주입 — process_chat_turn_result 호출에 필요
+    #[cfg(feature = "chat")]
+    let (state, _calls) = test_state_with_spy_and_chat();
+    #[cfg(not(feature = "chat"))]
     let (state, _calls) = test_state_with_spy();
 
     // 1. 사전 데이터 등록
@@ -1364,7 +1438,14 @@ async fn test_studio_analysis_pipeline_integrity() {
         let last_turn = inner.turn_history.last().expect("히스토리가 기록되어야 함");
         assert_eq!(last_turn.action, "chat_message");
         assert!(last_turn.response["input_pad"].is_object(), "히스토리 응답 데이터에 input_pad 객체가 있어야 함");
-        assert_eq!(last_turn.response["input_pad"]["pleasure"], 0.1);
+        // f32(0.1) → JSON Number(f64)로 widening 시 정밀도가 노출되므로 epsilon 비교
+        let pleasure = last_turn.response["input_pad"]["pleasure"]
+            .as_f64()
+            .expect("pleasure는 숫자여야 함");
+        assert!(
+            (pleasure - 0.1).abs() < 1e-5,
+            "pleasure ≈ 0.1 (f32 정밀도), 실제={pleasure}"
+        );
     }
 }
 
