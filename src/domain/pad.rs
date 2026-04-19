@@ -347,4 +347,19 @@ impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
 
         Ok(self.to_pad(&embeddings[0]))
     }
+
+    fn analyze_with_embedding(
+        &mut self,
+        utterance: &str,
+    ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
+        let mut embeddings = self.embedder.embed(&[utterance])?;
+
+        if embeddings.is_empty() {
+            return Ok((Pad::neutral(), None));
+        }
+
+        let embedding = embeddings.remove(0);
+        let pad = self.to_pad(&embedding);
+        Ok((pad, Some(embedding)))
+    }
 }

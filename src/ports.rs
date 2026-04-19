@@ -159,6 +159,21 @@ pub enum AnchorLoadError {
 pub trait UtteranceAnalyzer {
     /// 대사 텍스트 → PAD (Pleasure, Arousal, Dominance)
     fn analyze(&mut self, utterance: &str) -> Result<Pad, EmbedError>;
+
+    /// 대사 텍스트 → (PAD, 발화 임베딩) — 후속 단계와 임베딩 공유용
+    ///
+    /// 임베딩을 가진 분석기(예: PadAnalyzer)는 이 메서드를 override하여
+    /// `Some(Vec<f32>)`을 반환할 수 있다. 기본 구현은 `analyze()`만 호출하고
+    /// 임베딩은 `None`으로 반환하므로 trait 호환성이 유지된다.
+    ///
+    /// 사용 예: `DialogueAgent`가 PAD 분석 결과의 임베딩을
+    /// `ListenerPerspectiveConverter`에 재사용하여 발화당 임베딩 1회를 보장.
+    fn analyze_with_embedding(
+        &mut self,
+        utterance: &str,
+    ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
+        self.analyze(utterance).map(|pad| (pad, None))
+    }
 }
 
 // ---------------------------------------------------------------------------

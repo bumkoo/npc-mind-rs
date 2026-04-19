@@ -51,6 +51,8 @@ use crate::application::dto::{
 };
 use crate::application::mind_service::MindServiceError;
 use crate::domain::event::{DomainEvent, EventPayload};
+#[cfg(feature = "listener_perspective")]
+use crate::domain::listener_perspective::ListenerPerspectiveConverter;
 use crate::domain::pad::Pad;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, GuideFormatter, LlamaTimings,
@@ -130,6 +132,9 @@ pub struct DialogueAgent<R: MindRepository, C: ConversationPort> {
     chat: C,
     formatter: Arc<dyn GuideFormatter>,
     analyzer: Option<Box<dyn UtteranceAnalyzer + Send>>,
+    /// Phase 7: 화자 PAD → 청자 PAD 변환기 (옵셔널, listener_perspective feature)
+    #[cfg(feature = "listener_perspective")]
+    converter: Option<Arc<dyn ListenerPerspectiveConverter>>,
     sessions: HashMap<String, SessionMeta>,
 }
 
@@ -145,6 +150,8 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             chat,
             formatter,
             analyzer: None,
+            #[cfg(feature = "listener_perspective")]
+            converter: None,
             sessions: HashMap::new(),
         }
     }
@@ -152,6 +159,23 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
     /// PAD 자동 분석기 설정 (embed feature와 함께 사용)
     pub fn with_analyzer(mut self, analyzer: impl UtteranceAnalyzer + Send + 'static) -> Self {
         self.analyzer = Some(Box::new(analyzer));
+        self
+    }
+
+    /// 청자 관점 PAD 변환기 설정 (Phase 7, listener_perspective feature)
+    ///
+    /// 주입 시 `turn()` 안에서 화자 PAD를 청자 PAD로 변환하여
+    /// `Command::ApplyStimulus`에 dispatch한다. 변환은 다음 조건을 모두 만족할 때만 수행:
+    /// 1. analyzer가 발화 임베딩을 함께 반환 (`PadAnalyzer` 등)
+    /// 2. `pad_hint`가 없음 (수동 PAD는 그대로 사용)
+    ///
+    /// 변환 실패 시 화자 PAD를 그대로 사용하고 `tracing::warn!` 로그를 남긴다.
+    #[cfg(feature = "listener_perspective")]
+    pub fn with_converter(
+        mut self,
+        converter: Arc<dyn ListenerPerspectiveConverter>,
+    ) -> Self {
+        self.converter = Some(converter);
         self
     }
 
@@ -266,18 +290,27 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
         let user_snapshot = self.current_emotion_snapshot(&meta.npc_id);
         self.emit_dialogue_turn(&meta, "user", user_utterance, user_snapshot);
 
-        // ② PAD 결정
-        let pad = match pad_hint {
-            Some(p) => Some(p),
+        // ② PAD 결정 — pad_hint > analyzer.analyze_with_embedding > None
+        // utterance_embedding은 listener-perspective 변환에 재사용 (analyzer 경로일 때만 가용)
+        let (speaker_pad, utterance_embedding): (Option<Pad>, Option<Vec<f32>>) = match pad_hint {
+            Some(p) => (Some(p), None),
             None => match self.analyzer.as_mut() {
-                Some(analyzer) => Some(
-                    analyzer
-                        .analyze(user_utterance)
-                        .map_err(|e| DialogueAgentError::Analysis(e.to_string()))?,
-                ),
-                None => None,
+                Some(analyzer) => {
+                    let (p, emb) = analyzer
+                        .analyze_with_embedding(user_utterance)
+                        .map_err(|e| DialogueAgentError::Analysis(e.to_string()))?;
+                    (Some(p), emb)
+                }
+                None => (None, None),
             },
         };
+
+        // ②.5 화자 PAD → 청자 PAD 변환 (Phase 7, listener_perspective feature)
+        let pad = self.convert_to_listener_pad(
+            user_utterance,
+            speaker_pad,
+            utterance_embedding.as_deref(),
+        );
 
         // ③ stimulus 적용 (PAD가 있을 때)
         let (stimulus_resp, beat_changed) = if let Some(pad) = pad {
@@ -366,6 +399,46 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
     // -----------------------------------------------------------------------
     // 내부 헬퍼
     // -----------------------------------------------------------------------
+
+    /// 화자 PAD를 청자 관점 PAD로 변환한다 (Phase 7).
+    ///
+    /// 변환 조건: feature on + converter 주입 + utterance_embedding 가용.
+    /// 변환 실패 시 화자 PAD를 그대로 반환하고 `tracing::warn!`을 남긴다 (silent failure 방지).
+    /// 변환 가능한 입력이 부족하면(e.g. pad_hint 경로 — 임베딩 부재) 화자 PAD를 그대로 사용한다.
+    #[cfg(feature = "listener_perspective")]
+    fn convert_to_listener_pad(
+        &self,
+        utterance: &str,
+        speaker_pad: Option<Pad>,
+        utterance_embedding: Option<&[f32]>,
+    ) -> Option<Pad> {
+        let speaker = speaker_pad?;
+        let (Some(converter), Some(emb)) = (self.converter.as_ref(), utterance_embedding) else {
+            return Some(speaker);
+        };
+        match converter.convert(utterance, &speaker, emb) {
+            Ok(result) => Some(result.listener_pad),
+            Err(e) => {
+                tracing::warn!(
+                    error = ?e,
+                    utterance = utterance,
+                    "listener-perspective conversion failed; falling back to speaker PAD"
+                );
+                Some(speaker)
+            }
+        }
+    }
+
+    /// 변환기 미컴파일 빌드 — 화자 PAD를 그대로 반환.
+    #[cfg(not(feature = "listener_perspective"))]
+    fn convert_to_listener_pad(
+        &self,
+        _utterance: &str,
+        speaker_pad: Option<Pad>,
+        _utterance_embedding: Option<&[f32]>,
+    ) -> Option<Pad> {
+        speaker_pad
+    }
 
     /// DialogueTurnCompleted 이벤트를 dispatcher와 동일 경로로 발행한다.
     ///
