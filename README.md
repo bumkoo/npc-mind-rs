@@ -278,7 +278,7 @@ Start here:
 1. [`mcp/README.md`](mcp/README.md) — connection guide and tool category overview
 2. [`mcp/docs/agent-playbook.md`](mcp/docs/agent-playbook.md) — **required reading for AI agents**: workflow guide
 3. [`mcp/docs/quality-metrics.md`](mcp/docs/quality-metrics.md) — directive quality scoring rubric (3 metrics, 5-point scale)
-4. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — API spec for all 35 tools
+4. [`mcp/docs/tools-reference.md`](mcp/docs/tools-reference.md) — API spec for all 34 tools
 5. [`mcp/docs/architecture.md`](mcp/docs/architecture.md) — SSE structure and DDD adapter position
 6. [`mcp/docs/troubleshooting.md`](mcp/docs/troubleshooting.md) — connection failures, build traps, etc.
 
@@ -378,7 +378,7 @@ See [locale guide](docs/locale-guide.md) for the full TOML schema.
 | [Integration Guide](docs/api/integration-guide.md) | Step-by-step: NPC creation → scene setup → directive generation |
 | [Locale Guide](docs/locale-guide.md) | TOML locale schema and customization |
 | [Architecture](docs/architecture/architecture-v2.md) | DDD + Hexagonal architecture design |
-| [MCP Server Guide](mcp/README.md) | Native Rust SSE MCP server (35 tools, AI agent playbook included) |
+| [MCP Server Guide](mcp/README.md) | Native Rust SSE MCP server (34 tools, AI agent playbook included) |
 
 ---
 
@@ -397,7 +397,8 @@ The engine is being validated against real literary scenes (currently: *Adventur
 - ✅ Power → tone mapping (PowerLevel in ActingDirective)
 - ✅ Devcontainer / GitHub Codespaces support
 - ✅ InMemoryRepository built-in adapter (Mind Studio JSON load)
-- ✅ MCP server for AI Agent integration (35 tools)
+- ✅ MCP server for AI Agent integration (34 tools)
+- ✅ Listener-perspective PAD converter (Phase 7 Step 1-3, 88% baseline) — speaker→listener PAD transform ready for `apply_stimulus` integration
 - 🔄 Literary validation sessions ongoing
 - 🔜 Multi-NPC dialogue context
 
