@@ -53,7 +53,7 @@ use crate::application::mind_service::MindServiceError;
 use crate::domain::event::{DomainEvent, EventPayload};
 #[cfg(feature = "listener_perspective")]
 use crate::domain::listener_perspective::ListenerPerspectiveConverter;
-use crate::domain::pad::Pad;
+use crate::domain::pad::{Pad, UtteranceEmbedding};
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, GuideFormatter, LlamaTimings,
     MindRepository, UtteranceAnalyzer,
@@ -292,18 +292,19 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
 
         // ② PAD 결정 — pad_hint > analyzer.analyze_with_embedding > None
         // utterance_embedding은 listener-perspective 변환에 재사용 (analyzer 경로일 때만 가용)
-        let (speaker_pad, utterance_embedding): (Option<Pad>, Option<Vec<f32>>) = match pad_hint {
-            Some(p) => (Some(p), None),
-            None => match self.analyzer.as_mut() {
-                Some(analyzer) => {
-                    let (p, emb) = analyzer
-                        .analyze_with_embedding(user_utterance)
-                        .map_err(|e| DialogueAgentError::Analysis(e.to_string()))?;
-                    (Some(p), emb)
-                }
-                None => (None, None),
-            },
-        };
+        let (speaker_pad, utterance_embedding): (Option<Pad>, Option<UtteranceEmbedding>) =
+            match pad_hint {
+                Some(p) => (Some(p), None),
+                None => match self.analyzer.as_mut() {
+                    Some(analyzer) => {
+                        let (p, emb) = analyzer
+                            .analyze_with_embedding(user_utterance)
+                            .map_err(|e| DialogueAgentError::Analysis(e.to_string()))?;
+                        (Some(p), emb)
+                    }
+                    None => (None, None),
+                },
+            };
 
         // ②.5 화자 PAD → 청자 PAD 변환 (Phase 7, listener_perspective feature)
         let pad = self.convert_to_listener_pad(

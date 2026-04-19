@@ -142,6 +142,50 @@ use crate::ports::{EmbedError, PadAnchorSource, TextEmbedder};
 // 외부 로드용 도메인 타입
 // ---------------------------------------------------------------------------
 
+/// 발화 임베딩 — 임베딩 모델 출력의 도메인 newtype.
+///
+/// `UtteranceAnalyzer`가 PAD 추출에 사용한 동일 벡터를 후속 변환 단계
+/// (`ListenerPerspectiveConverter` 등)에 공유 전달하는 데 쓰인다. newtype은
+/// "이것은 발화 임베딩이다"라는 의미를 전달하고 임의 `Vec<f32>`와 구분되게 한다.
+///
+/// `Deref<Target = [f32]>` / `AsRef<[f32]>` 구현으로 분류기가 요구하는
+/// `&[f32]` 타입에 자연스럽게 강제 변환된다.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UtteranceEmbedding(pub Vec<f32>);
+
+impl UtteranceEmbedding {
+    pub fn new(values: Vec<f32>) -> Self {
+        Self(values)
+    }
+
+    pub fn into_inner(self) -> Vec<f32> {
+        self.0
+    }
+
+    pub fn as_slice(&self) -> &[f32] {
+        &self.0
+    }
+}
+
+impl std::ops::Deref for UtteranceEmbedding {
+    type Target = [f32];
+    fn deref(&self) -> &[f32] {
+        &self.0
+    }
+}
+
+impl AsRef<[f32]> for UtteranceEmbedding {
+    fn as_ref(&self) -> &[f32] {
+        &self.0
+    }
+}
+
+impl From<Vec<f32>> for UtteranceEmbedding {
+    fn from(v: Vec<f32>) -> Self {
+        Self(v)
+    }
+}
+
 /// 외부 로드된 앵커 텍스트 (축 하나)
 pub struct PadAxisAnchorsOwned {
     pub positive: Vec<String>,
@@ -351,7 +395,7 @@ impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
     fn analyze_with_embedding(
         &mut self,
         utterance: &str,
-    ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
+    ) -> Result<(Pad, Option<UtteranceEmbedding>), EmbedError> {
         let mut embeddings = self.embedder.embed(&[utterance])?;
 
         if embeddings.is_empty() {
@@ -360,7 +404,7 @@ impl crate::ports::UtteranceAnalyzer for PadAnalyzer {
 
         let embedding = embeddings.remove(0);
         let pad = self.to_pad(&embedding);
-        Ok((pad, Some(embedding)))
+        Ok((pad, Some(UtteranceEmbedding::new(embedding))))
     }
 }
 
@@ -467,9 +511,14 @@ mod analyze_with_embedding_tests {
 
         // 반환 임베딩 == embedder 출력
         let returned = returned.expect("Some 임베딩 반환");
-        assert_eq!(returned, utterance_emb, "반환 임베딩이 embedder 출력과 동일");
+        assert_eq!(
+            returned.as_slice(),
+            utterance_emb.as_slice(),
+            "반환 임베딩이 embedder 출력과 동일"
+        );
 
         // PAD가 동일 임베딩으로 to_pad 호출한 것과 일치 (load-bearing invariant)
+        // Deref<[f32]> 강제 변환으로 &returned을 &[f32]로 사용
         let recomputed = analyzer.to_pad(&returned);
         assert_eq!(
             pad, recomputed,

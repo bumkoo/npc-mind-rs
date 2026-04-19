@@ -399,7 +399,13 @@ impl StudioService {
             speaker_pad.arousal,
             speaker_pad.dominance
         );
-        let final_pad = Self::convert_to_listener_pad(state, &req.utterance, speaker_pad, embedding.as_deref());
+        // UtteranceEmbedding의 Deref<[f32]>로 &[f32] 강제 변환
+        let final_pad = Self::convert_to_listener_pad(
+            state,
+            &req.utterance,
+            speaker_pad,
+            embedding.as_deref(),
+        );
         Some((final_pad.pleasure, final_pad.arousal, final_pad.dominance))
     }
 
@@ -622,7 +628,7 @@ mod tests {
         ConvertMeta, ConvertPath, ConvertResult, ListenerPerspectiveConverter,
         ListenerPerspectiveError, Magnitude as LpMagnitude, Sign as LpSign,
     };
-    use npc_mind::domain::pad::Pad;
+    use npc_mind::domain::pad::{Pad, UtteranceEmbedding};
     use npc_mind::ports::{EmbedError, UtteranceAnalyzer};
     use std::sync::Arc;
 
@@ -639,8 +645,11 @@ mod tests {
         fn analyze_with_embedding(
             &mut self,
             _utterance: &str,
-        ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
-            Ok((self.pad, self.embedding.clone()))
+        ) -> Result<(Pad, Option<UtteranceEmbedding>), EmbedError> {
+            Ok((
+                self.pad,
+                self.embedding.clone().map(UtteranceEmbedding::new),
+            ))
         }
     }
 

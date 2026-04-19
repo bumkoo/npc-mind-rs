@@ -28,7 +28,7 @@ use npc_mind::domain::listener_perspective::{
     ListenerPerspectiveConverter, ListenerPerspectiveError, Magnitude, Prefilter, Sign,
     load_prototypes_from_toml,
 };
-use npc_mind::domain::pad::Pad;
+use npc_mind::domain::pad::{Pad, UtteranceEmbedding};
 use npc_mind::ports::{EmbedError, GuideFormatter, TextEmbedder, UtteranceAnalyzer};
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
@@ -55,8 +55,11 @@ impl UtteranceAnalyzer for ScriptedAnalyzer {
     fn analyze_with_embedding(
         &mut self,
         _utterance: &str,
-    ) -> Result<(Pad, Option<Vec<f32>>), EmbedError> {
-        Ok((self.pad, self.embedding.clone()))
+    ) -> Result<(Pad, Option<UtteranceEmbedding>), EmbedError> {
+        Ok((
+            self.pad,
+            self.embedding.clone().map(UtteranceEmbedding::new),
+        ))
     }
 }
 
