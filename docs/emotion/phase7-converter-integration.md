@@ -3,7 +3,7 @@
 **상태**: Step 1-5 완료 (2026-04-19) — `listener_perspective` default-on, DialogueAgent · Mind Studio 양 경로 통합
 **관련 문서**: [`sign-classifier-design.md`](./sign-classifier-design.md) §3.1~§3.7
 **전제**: Phase 1 (sign 81%) + Phase 3 prefilter (magnitude_bench 85%) + Phase 4 (magnitude classifier 77%) 완료
-**통합 벤치 baseline**: **88% (23/26)** — [`baseline_converter.md`](../../data/listener_perspective/results/baseline_converter.md)
+**통합 벤치 baseline**: **88% (23/26)** — [`baseline.md`](../../data/listener_perspective/results/baseline.md)
 
 ## 1. 목적
 
@@ -171,7 +171,7 @@ speaker_utterance → analyze_with_embedding → (speaker_pad, embedding)
 **결과**: 88% (23/26) — 기존 magnitude_bench 85% 대비 **+3%p**. 
 Prefilter 7/7 (100%) + Classifier 16/19 (84%). meta vs bin 불일치 5건이 이중 판정 구조의 디버깅 가치 실증.
 
-baseline: [`baseline_converter.md`](../../data/listener_perspective/results/baseline_converter.md)
+baseline: [`baseline.md`](../../data/listener_perspective/results/baseline.md)
 
 ### Step 4 — MindService 호출 경로 통합 ✅ 완료 (2026-04-19)
 
