@@ -1,5 +1,7 @@
 //! Command / CommandResult — CQRS Write Side 타입 정의
 
+use crate::domain::aggregate::AggregateKey;
+
 use super::super::dto::*;
 
 /// 상태 변경 요청 (Write Side)
@@ -69,6 +71,36 @@ impl Command {
             | Command::UpdateRelationship { partner_id, .. }
             | Command::EndDialogue { partner_id, .. }
             | Command::StartScene { partner_id, .. } => partner_id,
+        }
+    }
+
+    /// 커맨드가 속한 aggregate 식별자 반환
+    ///
+    /// B안(다중 Scene) 이행 후 Director가 이 키로 적절한 SceneTask에 커맨드를 라우팅한다.
+    ///
+    /// **B4 Migration Note (plan §9.1):** `Command`에 `scene_id: Option<SceneId>` 필드가 추가되면
+    /// `Appraise` · `ApplyStimulus` · `GenerateGuide`를 `scene_id.is_some()`일 때
+    /// `Scene` 키로 승격해야 한다. 현재는 Scene 외부에서의 개별 NPC 평가로 간주.
+    pub fn aggregate_key(&self) -> AggregateKey {
+        match self {
+            Command::StartScene {
+                npc_id, partner_id, ..
+            }
+            | Command::EndDialogue {
+                npc_id, partner_id, ..
+            } => AggregateKey::Scene {
+                npc_id: npc_id.clone(),
+                partner_id: partner_id.clone(),
+            },
+            Command::UpdateRelationship {
+                npc_id, partner_id, ..
+            } => AggregateKey::Relationship {
+                owner_id: npc_id.clone(),
+                target_id: partner_id.clone(),
+            },
+            Command::Appraise { npc_id, .. }
+            | Command::ApplyStimulus { npc_id, .. }
+            | Command::GenerateGuide { npc_id, .. } => AggregateKey::Npc(npc_id.clone()),
         }
     }
 }

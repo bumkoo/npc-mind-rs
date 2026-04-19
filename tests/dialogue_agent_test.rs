@@ -1,3 +1,6 @@
+// B5.1: DialogueAgent가 v1 dispatch를 사용 → test에서도 allow 필요.
+#![allow(deprecated)]
+
 //! DialogueAgent 통합 테스트 (Phase 4)
 //!
 //! DialogueAgent가 LLM(mock)과 CommandDispatcher를 올바르게 연결하여

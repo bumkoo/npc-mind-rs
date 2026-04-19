@@ -2,11 +2,22 @@
 //!
 //! Phase 1에서는 검증용으로만 사용합니다.
 //! InMemoryRepository가 여전히 실제 읽기 경로를 담당합니다.
+//!
+//! **B5.1 (v0.2.0):** `Projection` trait과 `ProjectionRegistry`는 deprecated.
+//! v2 `EventHandler` with `DeliveryMode::Inline`으로 대체됨.
+//! `EmotionProjection` / `RelationshipProjection` / `SceneProjection` **구조체 자체**는
+//! v2 wrapper (`EmotionProjectionHandler` 등)가 내부적으로 재사용하므로 **deprecated 아님**.
+
+#![allow(deprecated)]
 
 use crate::domain::event::{DomainEvent, EventPayload};
 use std::collections::HashMap;
 
 /// 이벤트를 수신하여 뷰를 갱신하는 트레이트
+#[deprecated(
+    since = "0.2.0",
+    note = "v1 Projection trait은 v2 `EventHandler` with `DeliveryMode::Inline`으로 대체됨. `EmotionProjectionHandler` / `RelationshipProjectionHandler` / `SceneProjectionHandler` wrapper 참조. v0.3.0에서 제거 예정."
+)]
 pub trait Projection: Send + Sync {
     /// 이벤트 적용 — 뷰 갱신
     fn apply(&mut self, event: &DomainEvent);
@@ -187,6 +198,10 @@ impl Projection for SceneProjection {
 // ---------------------------------------------------------------------------
 
 /// 여러 Projection을 묶어 이벤트를 일괄 적용
+#[deprecated(
+    since = "0.2.0",
+    note = "v1 ProjectionRegistry는 v2 CommandDispatcher의 inline_handlers 목록으로 대체됨. `CommandDispatcher::with_default_handlers()` / `register_inline()` 참조. v0.3.0에서 제거 예정."
+)]
 pub struct ProjectionRegistry {
     projections: Vec<Box<dyn Projection>>,
 }

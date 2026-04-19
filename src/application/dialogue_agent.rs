@@ -1,5 +1,10 @@
 //! DialogueAgent — LLM 대사 생성 + EventBus 통합 오케스트레이터 (Phase 4)
 //!
+//! **B5.1 (v0.2.0) Note:** `CommandDispatcher::dispatch` (v1)와 `projections()`를 내부적으로
+//! 호출한다. v1이 deprecated이지만 v2 path (`dispatch_v2`)로의 마이그레이션은 B5.2에서
+//! 진행. 그 전까지 `#![allow(deprecated)]`로 warning 억제.
+#![allow(deprecated)]
+//!
 //! `CommandDispatcher`를 통해 상태 변경 Command를 발행하고,
 //! `ConversationPort`로 LLM 다턴 대화를 진행하며,
 //! 각 턴마다 `DialogueTurnCompleted` 이벤트를 EventBus에 발행한다.

@@ -1,6 +1,11 @@
 //! EmotionAgent — 감정 평가/변동 전담
 //!
 //! MindService의 `execute_appraise_workflow()` + `apply_stimulus()` 핵심 로직을 추출.
+//!
+//! B5.1: v1 `handle_appraise`/`handle_stimulus`는 deprecated. v2 `impl EventHandler` 사용.
+//! 내부 self-reference가 많아 모듈 레벨 allow.
+
+#![allow(deprecated)]
 
 use crate::application::command::handler::{emotion_snapshot, HandlerContext, HandlerOutput};
 use crate::application::command::types::CommandResult;
@@ -30,7 +35,14 @@ impl EmotionAgent {
         }
     }
 
-    /// Appraise Command 처리
+    /// Appraise Command 처리 — **v1, deprecated**
+    ///
+    /// B5.1 (v0.2.0): v2 `EventHandler::handle` impl로 대체됨. v0.3.0 제거 예정.
+    #[deprecated(
+        since = "0.2.0",
+        note = "v2 `impl EventHandler for EmotionAgent` 사용. v0.3.0에서 제거 예정."
+    )]
+    #[allow(deprecated)]
     pub fn handle_appraise(
         &self,
         npc_id: &str,
@@ -109,7 +121,14 @@ impl EmotionAgent {
         })
     }
 
-    /// ApplyStimulus Command 처리
+    /// ApplyStimulus Command 처리 — **v1, deprecated**
+    ///
+    /// B5.1 (v0.2.0): v2 `StimulusAgent` (별도 struct)가 Beat 전환까지 담당. v0.3.0 제거.
+    #[deprecated(
+        since = "0.2.0",
+        note = "v2 `StimulusAgent` + `impl EventHandler` 로 대체. v0.3.0에서 제거 예정."
+    )]
+    #[allow(deprecated)]
     pub fn handle_stimulus(
         &self,
         npc_id: &str,
@@ -275,6 +294,7 @@ impl EmotionAgent {
 
         let beat_event = EventPayload::BeatTransitioned {
             npc_id: npc_id.to_string(),
+            partner_id: partner_id.to_string(),
             from_focus_id,
             to_focus_id: focus_id,
         };
@@ -310,5 +330,193 @@ impl EmotionAgent {
 impl Default for EmotionAgent {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ===========================================================================
+// B1 — EventHandler impl (v2 진입점)
+// ===========================================================================
+//
+// 기존 `handle_appraise`(v1)와 공존. Dispatcher는 아직 이 impl을 호출하지 않는다
+// (B3에서 `dispatch_v2()`가 wiring). 차이점:
+// - v1은 `HandlerContext`(dispatcher pre-fetched)에서 읽고 side-effect 플래그를 반환.
+// - v2는 `EventHandlerContext.repo`에서 직접 읽고, `ctx.shared`에 상태 전파,
+//   `follow_up_events`로 `EmotionAppraised` 발행.
+// - v2는 repo 쓰기를 하지 않는다(Projection이 B2에서 담당).
+
+use crate::application::command::handler_v2::{
+    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+};
+use crate::application::command::priority;
+use crate::domain::event::{DomainEvent, EventKind};
+
+impl EventHandler for EmotionAgent {
+    fn name(&self) -> &'static str {
+        "EmotionAgent"
+    }
+
+    fn interest(&self) -> HandlerInterest {
+        HandlerInterest::Kinds(vec![EventKind::AppraiseRequested])
+    }
+
+    fn mode(&self) -> DeliveryMode {
+        DeliveryMode::Transactional {
+            priority: priority::transactional::EMOTION_APPRAISAL,
+            can_emit_follow_up: true,
+        }
+    }
+
+    fn handle(
+        &self,
+        event: &DomainEvent,
+        ctx: &mut EventHandlerContext<'_>,
+    ) -> Result<HandlerResult, HandlerError> {
+        let EventPayload::AppraiseRequested {
+            npc_id,
+            partner_id,
+            situation,
+        } = &event.payload
+        else {
+            return Ok(HandlerResult::default());
+        };
+
+        let npc = ctx
+            .repo
+            .get_npc(npc_id)
+            .ok_or(HandlerError::Precondition("npc not found"))?;
+        let relationship = ctx
+            .repo
+            .get_relationship(npc_id, partner_id)
+            .ok_or(HandlerError::Precondition("relationship not found"))?;
+
+        let emotion_state =
+            self.appraiser
+                .appraise(npc.personality(), situation, &relationship.modifiers());
+
+        // v1이 사용하던 Result 구성/dominant 계산은 CommandResult 생성에 필요한데,
+        // v2에서는 후속 Projection/Dispatcher가 처리. 여기서는 이벤트 + shared 상태만.
+        let dominant = emotion_state
+            .dominant()
+            .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()));
+        let mood = emotion_state.overall_valence();
+        let snapshot = emotion_snapshot(&emotion_state);
+
+        ctx.shared.emotion_state = Some(emotion_state.clone());
+        ctx.shared.relationship = Some(relationship);
+
+        let follow_up = DomainEvent::new(
+            0,
+            npc_id.clone(),
+            0,
+            EventPayload::EmotionAppraised {
+                npc_id: npc_id.clone(),
+                partner_id: partner_id.clone(),
+                situation_description: Some(situation.description.clone()),
+                dominant,
+                mood,
+                emotion_snapshot: snapshot,
+            },
+        );
+
+        Ok(HandlerResult {
+            follow_up_events: vec![follow_up],
+        })
+    }
+}
+
+// ===========================================================================
+// B1 — L1 단위 테스트 (EventHandler impl 검증)
+// ===========================================================================
+
+#[cfg(test)]
+mod handler_v2_tests {
+    use super::*;
+    use crate::application::command::handler_v2::test_support::HandlerTestHarness;
+    use crate::application::command::handler_v2::HandlerError;
+    use crate::domain::emotion::{EventFocus, Situation};
+    use crate::domain::event::{DomainEvent, EventKind, EventPayload};
+    use crate::domain::personality::NpcBuilder;
+    use crate::domain::relationship::Relationship;
+
+    fn positive_situation() -> Situation {
+        Situation::new(
+            "긍정적 상황",
+            Some(EventFocus {
+                description: "".into(),
+                desirability_for_self: 0.8,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+            None,
+            None,
+        )
+        .unwrap()
+    }
+
+    fn make_request(npc_id: &str, partner_id: &str, situation: Situation) -> DomainEvent {
+        DomainEvent::new(
+            0,
+            npc_id.to_string(),
+            0,
+            EventPayload::AppraiseRequested {
+                npc_id: npc_id.to_string(),
+                partner_id: partner_id.to_string(),
+                situation,
+            },
+        )
+    }
+
+    #[test]
+    fn appraise_request_emits_emotion_appraised_and_populates_shared() {
+        let agent = EmotionAgent::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let partner = NpcBuilder::new("bob", "Bob").build();
+        let rel = Relationship::neutral("alice", "bob");
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_npc(partner)
+            .with_relationship(rel);
+
+        let event = make_request("alice", "bob", positive_situation());
+        let result = harness.dispatch(&agent, event).expect("handler must succeed");
+
+        assert_eq!(result.follow_up_events.len(), 1);
+        assert_eq!(result.follow_up_events[0].kind(), EventKind::EmotionAppraised);
+        assert!(harness.shared.emotion_state.is_some());
+        assert!(harness.shared.relationship.is_some());
+    }
+
+    #[test]
+    fn ignores_unrelated_event_kind() {
+        let agent = EmotionAgent::new();
+        let mut harness = HandlerTestHarness::new();
+
+        // GuideGenerated is unrelated to EmotionAgent's interest
+        let event = DomainEvent::new(
+            0,
+            "alice".into(),
+            0,
+            EventPayload::GuideGenerated {
+                npc_id: "alice".into(),
+                partner_id: "bob".into(),
+            },
+        );
+
+        let result = harness.dispatch(&agent, event).expect("unrelated event should no-op");
+        assert!(result.follow_up_events.is_empty());
+        assert!(harness.shared.emotion_state.is_none());
+    }
+
+    #[test]
+    fn missing_npc_returns_precondition_error() {
+        let agent = EmotionAgent::new();
+        // Repo는 비어있음 — NPC가 존재하지 않아 Precondition 에러
+        let mut harness = HandlerTestHarness::new();
+
+        let event = make_request("ghost", "nobody", positive_situation());
+        let err = harness.dispatch(&agent, event).expect_err("must fail without npc");
+
+        assert!(matches!(err, HandlerError::Precondition("npc not found")));
     }
 }

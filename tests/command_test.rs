@@ -1,6 +1,11 @@
 //! CommandDispatcher 통합 테스트
 //!
 //! Dispatcher를 통한 Agent 호출이 MindService와 동일한 결과를 생성하는지 검증합니다.
+//!
+//! B5.1: v1 `CommandDispatcher::dispatch` 기준 테스트 집합. v2 path 테스트는
+//! `tests/dispatch_v2_test.rs` 참조. v1 제거(v0.3.0) 시 본 파일도 삭제 예정.
+
+#![allow(deprecated)]
 
 mod common;
 

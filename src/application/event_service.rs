@@ -1,7 +1,11 @@
-//! EventAwareMindService — Strangler Fig 래퍼
+//! EventAwareMindService — Strangler Fig 래퍼 (v1, **deprecated**)
 //!
-//! 기존 `MindService`를 감싸서 모든 상태 변경을 `DomainEvent`로 기록합니다.
-//! API 시그니처는 동일하며, 결과도 동일합니다. 이벤트는 부수 효과로 발생합니다.
+//! **B5.1 (v0.2.0):** v2 `CommandDispatcher` + `dispatch_v2()`로 대체됨.
+//! `EventAwareMindService`는 v1 MindService를 감싸 이벤트 발행을 추가하는 과도기
+//! Strangler Fig 래퍼였다. v2가 기능적으로 완성된 지금 이 래퍼는 불필요.
+//! v0.3.0에서 제거 예정.
+
+#![allow(deprecated)]
 
 use crate::domain::event::{DomainEvent, EventPayload};
 use crate::ports::{Appraiser, MindRepository, StimulusProcessor};
@@ -18,6 +22,10 @@ use std::sync::{Arc, RwLock};
 ///
 /// 모든 공개 메서드는 내부 `MindService`에 위임 후,
 /// 성공 시 해당 동작의 `DomainEvent`를 생성하여 저장·발행합니다.
+#[deprecated(
+    since = "0.2.0",
+    note = "v2 `CommandDispatcher::dispatch_v2()` + `with_default_handlers()` 조합으로 대체됨. v0.3.0에서 제거 예정."
+)]
 pub struct EventAwareMindService<
     R: MindRepository,
     A: Appraiser,
@@ -211,6 +219,7 @@ impl<R: MindRepository, A: Appraiser, S: StimulusProcessor>
                     &npc_id,
                     EventPayload::BeatTransitioned {
                         npc_id: npc_id.clone(),
+                        partner_id: partner_id.clone(),
                         from_focus_id: before_focus_id,
                         to_focus_id: to_focus_id.clone(),
                     },

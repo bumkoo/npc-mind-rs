@@ -1,8 +1,16 @@
-//! Pipeline — 순차 에이전트 체인
+//! Pipeline — 순차 에이전트 체인 (v1, **deprecated**)
+//!
+//! **B5.1 (v0.2.0):** 이 모듈 전체는 `dispatch_v2()`의 transactional handler chain으로
+//! 대체됨 (§5.1). v0.3.0에서 제거 예정. 마이그레이션 가이드: `CommandDispatcher::dispatch_v2`
+//! + `with_default_handlers()` 조합 참조.
+//!
+//! ---
 //!
 //! 파이프라인 내부의 단계들은 순차 실행되며,
 //! 앞 단계의 출력이 뒤 단계의 입력 컨텍스트에 반영됩니다.
 //! 파이프라인 외부의 이벤트 소비자(Tier 2)는 비동기로 독립 실행됩니다.
+
+#![allow(deprecated)]
 
 use crate::domain::emotion::Scene;
 use crate::domain::event::EventPayload;
@@ -15,10 +23,18 @@ use super::mind_service::MindServiceError;
 ///
 /// `PipelineState`를 읽고 수정하며, `HandlerOutput`을 반환합니다.
 /// `FnOnce` — 각 단계는 커맨드별 데이터를 캡처하여 한 번만 실행.
+#[deprecated(
+    since = "0.2.0",
+    note = "v1 Pipeline은 v2 dispatch_v2의 transactional handler chain으로 대체됨. v0.3.0에서 제거 예정."
+)]
 pub type PipelineStage =
     Box<dyn FnOnce(&mut PipelineState) -> Result<HandlerOutput, MindServiceError> + Send>;
 
 /// 파이프라인 실행 중 상태 — 단계 간 전파
+#[deprecated(
+    since = "0.2.0",
+    note = "v1 PipelineState는 v2 HandlerShared로 대체됨. v0.3.0에서 제거 예정."
+)]
 pub struct PipelineState {
     /// 현재 컨텍스트 (각 단계의 결과로 갱신됨)
     pub context: HandlerContext,
@@ -96,6 +112,10 @@ impl PipelineState {
 ///
 /// let result = dispatcher.execute_pipeline(pipeline, &cmd)?;
 /// ```
+#[deprecated(
+    since = "0.2.0",
+    note = "v1 Pipeline은 dispatch_v2()의 transactional handler chain으로 대체됨. v0.3.0에서 제거 예정."
+)]
 pub struct Pipeline {
     stages: Vec<PipelineStage>,
 }

@@ -1,4 +1,5 @@
 pub mod command;
+pub mod director;
 pub mod dto;
 pub mod event_bus;
 pub mod event_service;

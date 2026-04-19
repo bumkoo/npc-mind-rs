@@ -160,6 +160,7 @@ impl MemoryAgent {
                 npc_id,
                 from_focus_id,
                 to_focus_id,
+                partner_id: _,
             } => {
                 self.index_beat_transition(event, npc_id, from_focus_id, to_focus_id);
             }

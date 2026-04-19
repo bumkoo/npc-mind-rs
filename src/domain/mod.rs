@@ -1,6 +1,8 @@
+pub mod aggregate;
 pub mod emotion;
 pub mod event;
 pub mod guide;
+pub mod scene_id;
 pub mod memory;
 pub mod pad;
 pub mod pad_anchors;

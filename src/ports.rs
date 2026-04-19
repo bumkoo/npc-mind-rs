@@ -8,6 +8,7 @@ use crate::domain::guide::ActingGuide;
 use crate::domain::pad::{CachedPadEmbeddings, Pad, PadAnchorSet, UtteranceEmbedding};
 use crate::domain::personality::{DimensionAverages, Npc};
 use crate::domain::relationship::Relationship;
+use crate::domain::scene_id::SceneId;
 
 // ---------------------------------------------------------------------------
 // 성격 프로필 포트
@@ -206,12 +207,24 @@ pub trait EmotionStore {
 ///
 /// Scene 시작 시 Focus 목록을 등록하고, 대화 진행 중 활성 Focus를 관리합니다.
 pub trait SceneStore {
-    /// 현재 활성 Scene 정보를 조회합니다.
+    /// 현재 활성 Scene 정보를 조회합니다 (단일 Scene 레거시 경로).
     fn get_scene(&self) -> Option<Scene>;
     /// Scene 정보를 저장합니다 (생성 또는 갱신).
     fn save_scene(&mut self, scene: Scene);
     /// Scene 정보를 삭제합니다 (대화 종료 시).
     fn clear_scene(&mut self);
+
+    /// B4 Session 3: 다중 Scene 환경에서 특정 Scene 조회.
+    ///
+    /// 기본 구현은 `get_scene()`이 일치하는 scene_id를 반환할 때만 Some. 단일 Scene
+    /// 저장소는 이 기본 구현으로 충분. 다중 Scene 저장소(`InMemoryRepository`)는
+    /// 오버라이드하여 HashMap 조회를 수행 — multi-scene 환경에서 **올바른** Scene을
+    /// 반환함을 보장하도록 `StimulusAgent` 등이 이 메서드를 사용.
+    fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
+        self.get_scene().filter(|s| {
+            s.npc_id() == scene_id.npc_id && s.partner_id() == scene_id.partner_id
+        })
+    }
 }
 
 /// 편의 super-trait — 3개 포트를 모두 구현하면 자동으로 MindRepository

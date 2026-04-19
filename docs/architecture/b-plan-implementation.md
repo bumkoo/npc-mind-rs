@@ -1,9 +1,34 @@
 # B안 구축 방안 — 다중 Scene 동시 실행 지원
 
 **작성일:** 2026-04-19
-**상태:** 실행 계획 (In Progress)
+**최종 갱신:** 2026-04-20 (B5.1 완료 시점)
+**상태:** B0~B5.1 ✅ 완료 · B5.2~B5.4 진행 예정
 **선행 문서:** [`unified-event-protocol-analysis.md`](unified-event-protocol-analysis.md) (개념 1~8 분석)
 **관련:** [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) (현재 아키텍처)
+
+## 진행 현황 요약 (2026-04-20)
+
+| Stage | 상태 | 핵심 결과물 |
+|---|---|---|
+| B0 | ✅ 완료 | `EventHandler` trait · `HandlerShared` · `AggregateKey` · `priority` 상수 |
+| B1 | ✅ 완료 | 4 Agent + StimulusAgent 신규 · `AppraiseRequested`/`StimulusApplyRequested` variant · `HandlerTestHarness` |
+| B2 | ✅ 완료 | `{Emotion,Relationship,Scene}ProjectionHandler` Inline wrapper |
+| B3 | ✅ 완료 | `dispatch_v2()` BFS loop · `with_default_handlers()` · v1/v2 parallel run |
+| B4 S1 | ✅ 완료 | 6 Command 전부 v2 지원 · SceneAgent 신규 · 4 추가 *Requested variant · HandlerShared clear 시그널 |
+| B4 S2 | ✅ 완료 | `Director` facade · `SceneId` composite key · `InMemoryRepository` multi-scene HashMap |
+| B4 S3 Option A | ✅ 완료 | `BeatTransitioned.partner_id` · `SceneStore::get_scene_by_id` default method · multi-scene 정확성 회귀 가드 |
+| B4 S3 Option B-Mini | ✅ 완료 | Mind Studio `/api/v2/*` 7 엔드포인트 · Director 통합 shadow path |
+| B5.1 | ✅ 완료 | v1 API `#[deprecated(since="0.2.0")]` 마킹 · 내부·테스트 `#[allow(deprecated)]` |
+| B5.2 | ⏳ 대기 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
+| B5.3 | ⏳ 대기 | v1 모듈·타입 삭제 (`Pipeline`/`Projection` trait/`EventAwareMindService`/v1 dispatch/v1 Agent handle_*) |
+| B5.4 | ⏳ 대기 | `shadow_v2` 플래그 제거 (v2만 존재) |
+
+**원래 §9.1 이연 결정 이력**:
+- Command에 `scene_id` 필드 도입은 B4에서 도입 대신 **커맨드의 (npc_id, partner_id)를 SceneId로 활용**하는 실용적 접근 채택. `Command::aggregate_key()`가 동일 목적 달성.
+
+**B-Plan 설계 대비 변경**:
+- `ProjectionRegistry`가 `Vec<Arc<dyn EventHandler>>`로 **storage 전환**하는 작업(§8 B2 항목 2)은 **B3에서 자연스럽게 해소** — Dispatcher의 `inline_handlers: Vec<Arc<dyn EventHandler>>`가 그 역할. 기존 ProjectionRegistry는 B5.3에서 통째로 제거 예정.
+- B4 S3에서 async dispatch_v2 / 실제 tokio SceneTask는 **아직 미구현** — Director는 sync façade. 필요 시점(LLM 호출 지연이 병렬화 이득을 낳을 때) 별도 세션에서 추진.
 
 ---
 
@@ -649,102 +674,114 @@ impl<R: MindRepository> MultiSceneTestHarness<R> {
 
 ## 8. 이행 로드맵 — Stage B0 ~ B5
 
-### Stage B0 — 새 타입 정의 (선행 준비)
+### Stage B0 — 새 타입 정의 (선행 준비) ✅ 완료
 
 **목표:** 새 API의 뼈대 타입을 도입하되 어디서도 사용하지 않음.
 
 **작업:**
-- [ ] `src/application/command/handler_v2.rs` 생성
+- [x] `src/application/command/handler_v2.rs` 생성
   - `EventHandler` trait, `DeliveryMode`, `HandlerInterest`
-  - `HandlerContext`, `HandlerShared`, `HandlerResult`, `HandlerError`
-- [ ] `src/application/command/priority.rs` 생성
+  - `EventHandlerContext`, `HandlerShared`, `HandlerResult`, `HandlerError`
+- [x] `src/application/command/priority.rs` 생성
   - `transactional`, `inline` 모듈 + 불변 조건 테스트
-- [ ] `AggregateKey` enum + `DomainEvent::aggregate_key()` + `Command::aggregate_key()`
-- [ ] `cargo test` 전부 통과
+- [x] `AggregateKey` enum + `DomainEvent::aggregate_key()` + `Command::aggregate_key()`
+- [x] `cargo test` 전부 통과
 
-**Acceptance:** 컴파일 OK, 기존 테스트 영향 없음.
+**Acceptance:** ✅ 컴파일 OK, 기존 테스트 영향 없음.
 
-**롤백:** 새 파일들 삭제.
+**실제 변경**: `AggregateKey`는 plan의 `application::command::aggregate_key`가 아닌 `domain::aggregate`에 배치 (도메인 계층 역방향 import 방지).
 
-### Stage B1 — 기존 Agent가 EventHandler 추가 구현
+### Stage B1 — 기존 Agent가 EventHandler 추가 구현 ✅ 완료
 
 **목표:** EmotionAgent, StimulusAgent(신규 분리), GuideAgent, RelationshipAgent가 새 트레이트 구현.
 
 **작업:**
-- [ ] 각 Agent의 기존 로직을 private 함수로 추출
-- [ ] `impl EventHandler for EmotionAgent` 등 추가 (기존 `CommandHandler` 유지)
-- [ ] 각 Agent에 대한 L1 단위 테스트 작성 (`HandlerTestHarness`)
-- [ ] 현재 `apply_stimulus`의 Beat 전환 로직을 `StimulusAgent`로 분리 + BeatTransitioned follow_up 발행 검증
+- [x] 각 Agent의 기존 로직을 v1 메서드로 유지, v2 `impl EventHandler`는 병렬 구현
+- [x] `impl EventHandler for EmotionAgent` / `StimulusAgent` / `GuideAgent` / `RelationshipAgent`
+- [x] 각 Agent에 대한 L1 단위 테스트 작성 (`HandlerTestHarness`)
+- [x] 현재 `apply_stimulus`의 Beat 전환 로직을 `StimulusAgent`로 분리 + BeatTransitioned follow_up 발행 검증
+- [x] `EventPayload::AppraiseRequested` · `StimulusApplyRequested` variant 추가 (v2 커맨드 진입용)
 
-**Acceptance:** 
-- 모든 Agent가 새 트레이트를 구현
-- L1 테스트 각 Agent당 최소 3개 (정상, 엣지, 에러)
-- 기존 통합 테스트 영향 없음
+**Acceptance:** ✅ 모든 Agent가 새 트레이트 구현 + L1 12 테스트 통과 + 기존 통합 테스트 무영향.
 
-### Stage B2 — Projection을 EventHandler로 포팅
+### Stage B2 — Projection을 EventHandler로 포팅 ✅ 완료
 
 **목표:** EmotionProjection, RelationshipProjection, SceneProjection이 Inline mode의 EventHandler로 동작.
 
 **작업:**
-- [ ] 기존 `Projection` trait 구현을 `EventHandler` with `DeliveryMode::Inline` 구현으로 랩핑 또는 재작성
-- [ ] ProjectionRegistry는 내부적으로 `Vec<Arc<dyn EventHandler>>`로 전환
+- [x] Wrapper 방식 채택 — `EmotionProjectionHandler` / `RelationshipProjectionHandler` / `SceneProjectionHandler`가 `Arc<Mutex<T>>`로 기존 Projection을 감싸 `impl EventHandler`
+- [x] 9 L1 테스트 추가 (3 × 3)
+- [x] ProjectionRegistry storage 전환은 B3의 Dispatcher `inline_handlers`로 이관 (B5.3에서 완전 제거)
 
-**Acceptance:** 쿼리 일관성 관련 기존 테스트 전수 통과.
+**Acceptance:** ✅ 쿼리 일관성 기존 테스트 전수 통과.
 
-### Stage B3 — Dispatcher에 shadow v2 경로 추가
+### Stage B3 — Dispatcher에 shadow v2 경로 추가 ✅ 완료
 
 **목표:** `dispatch_v2()` 구현. flag로 v1/v2 선택.
 
 **작업:**
-- [ ] `dispatch_v2()` = §5.1의 실행 루프
-- [ ] `CommandDispatcher`에 `shadow_v2: bool` 플래그 (기본값 false)
-- [ ] **Parallel run 테스트 스위트** 작성:
-  - 7종 Command 각각
-  - Beat 전환이 발생하는 ApplyStimulus
-  - follow_up 체인
-  - 에러 케이스
-  - 각 Command가 v1/v2에서 **동일한 이벤트 시퀀스**를 만드는지 검증
-- [ ] `#[cfg(test)]`로 v1/v2 parallel 실행 헬퍼 제공
+- [x] `dispatch_v2()` = §5.1의 실행 루프 (BFS + MAX_CASCADE_DEPTH=4 + MAX_EVENTS_PER_COMMAND=20)
+- [x] `CommandDispatcher`에 `shadow_v2: bool` 플래그 (기본값 false, observable effect는 B4 Director 통합 시점으로 유예)
+- [x] `with_default_handlers()` — 기본 5 transactional + 3 inline 일괄 등록
+- [x] `register_transactional(h)` / `register_inline(h)` — priority 기준 자동 정렬
+- [x] v1/v2 parallel run 테스트 — 결과 이벤트 필터링(초기 *Requested + 자동 GuideGenerated 제외) 후 kind 시퀀스 동등성 검증
+- [x] `apply_shared_to_repository` — transactional phase 종료 후 `ctx.shared`의 save/clear를 repo에 반영 (plan §5.1 외 보완 단계)
 
-**Acceptance:** Parallel run 테스트 100% 통과.
-
-**롤백:** `shadow_v2 = false` 기본값 유지.
+**Acceptance:** ✅ Parallel run 테스트 통과, 전체 기존 테스트 무영향.
 
 ### Stage B4 — Director + SceneTask 도입 & v2 기본값 전환
 
-**목표:** 다중 Scene 실행을 코드로 지원. `shadow_v2 = true` 기본값으로.
+**Session 1 ✅ 완료** — v2 경로 완성 (6 커맨드)
+- [x] 4 추가 *Requested variant: `GuideRequested`, `RelationshipUpdateRequested`, `DialogueEndRequested`, `SceneStartRequested`(prebuilt_scene 포함)
+- [x] GuideAgent/RelationshipAgent 확장 (interest + shared→repo fallback)
+- [x] `SceneAgent` 신규 (priority::SCENE_START = 5, Scene 빌드 + 초기 focus appraise)
+- [x] `HandlerShared` destructive signals: `clear_emotion_for` / `clear_scene`
+- [x] dispatch_v2가 6 Command 전부 지원
 
-**작업:**
-- [ ] `src/application/director/mod.rs` — `Director` 구현
-- [ ] `src/application/director/scene_task.rs` — `SceneTask` 구현
-- [ ] 기존 Mind Studio 엔트리를 Director 경유로 변경 (단일 Scene도 Director가 1개 Scene 관리)
-- [ ] `shadow_v2: true` 기본값
-- [ ] Mind Studio UI에서 "활성 Scene 목록" 엔드포인트 추가 (필수 아님, 디버그용)
-- [ ] 다중 Scene 엔드투엔드 테스트:
-  - 두 Scene 동시 시작
-  - 각 Scene에 독립 커맨드 송신
-  - 각 Scene의 이벤트 순서 보존 검증
-  - 한 Scene 종료가 다른 Scene에 영향 없음
+**Session 2 ✅ 완료** — Director + multi-scene facade
+- [x] `SceneId { npc_id, partner_id }` composite key 도메인 타입
+- [x] `InMemoryRepository` 내부 refactor: `scene: Option<Scene>` → `scenes: HashMap<SceneId, Scene>` + `last_scene_id` 트래커
+- [x] `get_scene_by_id` · `list_scene_ids` · `clear_scene_by_id` inherent 메서드
+- [x] `src/application/director/mod.rs` — `Director` 구현 (start_scene/end_scene/dispatch_to/active_scenes)
+- [x] 다중 Scene E2E 테스트 11개 (lifecycle/mismatch/격리)
 
-**Acceptance:**
-- 기존 통합 테스트 전수 통과 (v2 경로로)
-- 다중 Scene 엔드투엔드 테스트 통과
-- Mind Studio에서 여러 Scene 시나리오 로드·전환 가능
+**Session 3 Option A ✅ 완료** — multi-scene 정확성
+- [x] `BeatTransitioned` payload에 `partner_id` 필드 추가 → AggregateKey::Scene 승격
+- [x] `SceneStore::get_scene_by_id` default method trait 확장 (backward compat)
+- [x] `StimulusAgent` Beat 분기가 `ctx.repo.get_scene_by_id(&scene_id)` 사용 → multi-scene 오동작 수정
+- [x] `RelationshipAgent::handle_beat_transition`의 `ctx.repo.get_scene()` fallback 제거
+- [x] 회귀 가드 테스트 `beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b`
+
+**Session 3 Option B-Mini ✅ 완료** — Mind Studio Director 통합 (shadow)
+- [x] `AppState.director_v2: Arc<Mutex<Director<InMemoryRepository>>>` 필드 (v1 AppState와 분리된 월드)
+- [x] `/api/v2/scenes` 시리즈 7 엔드포인트
+- [x] `AppError::Director(DirectorError)` / `V2Dispatch(DispatchV2Error)` 강타입 + variant별 HTTP 매핑 (404/400/409/500)
+- [x] 7 integration 테스트
+
+**Session 4+ ⏳ 이연**
+- [ ] async dispatch_v2 + 실제 tokio SceneTask (mpsc+broadcast) — 필요 시점에 별도 세션
+- [ ] Mind Studio v1 AppState · v2 Director Repository 통합 (Option B-Medium)
+- [ ] `shadow_v2: true` 기본값 전환 (Director가 default가 되는 시점)
+
+**Acceptance (Session 3까지 기준):** ✅
+- 기존 통합 테스트 전수 통과 (v1/v2 양 경로)
+- 다중 Scene E2E 테스트 통과
+- Mind Studio v2 shadow 엔드포인트에서 다중 Scene 조작 가능
 
 ### Stage B5 — 구 API deprecated & 제거
 
 **목표:** v1 경로 완전 제거.
 
 **작업 (단계별 PR):**
-- B5.1: `execute_pipeline`, `register_projection` 등에 `#[deprecated]`
-- B5.2: 내부 호출처를 모두 `DispatcherBuilder.register()` / Director 경유로 교체
-- B5.3: `Pipeline`, `PipelineState`, 기존 `CommandHandler` trait, `dispatch_v1` 삭제
-- B5.4: `shadow_v2` 플래그 제거 (v2만 존재)
+- **B5.1 ✅ 완료**: `Pipeline`/`PipelineState`/`PipelineStage`, `Projection` trait/`ProjectionRegistry`, `CommandDispatcher::dispatch/execute_pipeline/register_projection/with_projections/projections()`, `handler::HandlerContext`/`HandlerOutput`, Agent v1 메서드 (`handle_appraise`/`handle_stimulus`/`handle_generate`/`handle_update`/`handle_end_dialogue`), `EventAwareMindService` 전체에 `#[deprecated(since = "0.2.0", note = "v0.3.0에서 제거 예정")]` 마킹. 내부 호출자 · 테스트 파일 상단에 `#![allow(deprecated)]` 추가. `cargo check` warning 0건.
+- **B5.2 ⏳ 대기**: 내부 호출자(DialogueAgent, Mind Studio scenario handlers 등) v2 경로로 마이그레이션
+- **B5.3 ⏳ 대기**: `Pipeline`, `PipelineState`, v1 `Projection` trait, v1 `dispatch`, `EventAwareMindService`, `handler` (v1) 모듈 통째로 삭제
+- **B5.4 ⏳ 대기**: `shadow_v2` 플래그 제거 (v2만 존재)
 
-**Acceptance:**
+**Acceptance (B5 최종):**
 - 코드베이스에 `Pipeline` 구조체 참조 0건
 - `cargo clippy -- -D warnings` 통과
-- 라이브러리 버전 bump (breaking change)
+- 라이브러리 버전 0.3.0 bump (breaking change)
 
 ---
 

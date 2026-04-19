@@ -92,6 +92,7 @@ pub mod relationship;
 pub mod object;
 pub mod scenario;
 pub mod events;
+pub mod v2_scenes;
 #[cfg(feature = "chat")]
 pub mod chat;
 #[cfg(feature = "chat")]
@@ -128,6 +129,27 @@ pub enum AppError {
     NotFound(String),
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+    /// B4 Session 3 Option B-Mini: v2 Director lifecycle 에러 (강타입 보존).
+    /// variant별로 HTTP 상태 코드 분기: SceneNotActive → 404, SceneMismatch → 400,
+    /// SceneAlreadyActive → 409.
+    #[error(transparent)]
+    Director(npc_mind::application::director::DirectorError),
+    /// v2 dispatch 에러 (강타입 보존).
+    /// UnsupportedCommand/InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
+    /// HandlerFailed는 500 (server invariant 위반).
+    #[error(transparent)]
+    V2Dispatch(npc_mind::application::command::dispatcher::DispatchV2Error),
+}
+
+impl From<npc_mind::application::director::DirectorError> for AppError {
+    fn from(e: npc_mind::application::director::DirectorError) -> Self {
+        use npc_mind::application::director::DirectorError as D;
+        // `Dispatch` variant만 v2Dispatch로 분리, 나머지는 Director에서 HTTP 매핑.
+        match e {
+            D::Dispatch(de) => AppError::V2Dispatch(de),
+            other => AppError::Director(other),
+        }
+    }
 }
 
 #[cfg(feature = "chat")]
@@ -139,6 +161,9 @@ impl From<npc_mind::ports::ConversationError> for AppError {
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
+        use npc_mind::application::command::dispatcher::DispatchV2Error as Dv2;
+        use npc_mind::application::director::DirectorError as Derr;
+
         let (status, message) = match self {
             AppError::Service(ref e) => match e {
                 MindServiceError::NpcNotFound(_) | MindServiceError::RelationshipNotFound(_, _) => {
@@ -152,6 +177,25 @@ impl IntoResponse for AppError {
             AppError::NotFound(ref msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::NotImplemented(ref msg) => (StatusCode::NOT_IMPLEMENTED, msg.clone()),
             AppError::Internal(ref msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
+            // B4 Session 3 Option B-Mini: Director lifecycle variant 별 매핑
+            AppError::Director(ref e) => match e {
+                Derr::SceneAlreadyActive(_) => (StatusCode::CONFLICT, e.to_string()),
+                Derr::SceneNotActive(_) => (StatusCode::NOT_FOUND, e.to_string()),
+                Derr::SceneMismatch(_, _, _) => (StatusCode::BAD_REQUEST, e.to_string()),
+                // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
+                Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+            },
+            // v2 dispatch: 클라이언트 입력 오류(400) vs 서버 invariant 위반(500) 분기
+            AppError::V2Dispatch(ref e) => match e {
+                Dv2::UnsupportedCommand(_) | Dv2::InvalidSituation(_) => {
+                    (StatusCode::BAD_REQUEST, e.to_string())
+                }
+                Dv2::CascadeTooDeep { .. }
+                | Dv2::EventBudgetExceeded
+                | Dv2::HandlerFailed { .. } => {
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                }
+            },
         };
 
         let body = Json(serde_json::json!({

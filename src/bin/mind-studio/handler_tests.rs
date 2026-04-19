@@ -1697,3 +1697,331 @@ async fn no_receivers_does_not_panic() {
     state.emit(crate::events::StateEvent::NpcChanged);
     state.emit(crate::events::StateEvent::ScenarioLoaded);
 }
+
+// ===========================================================================
+// B4 Session 3 Option B-Mini: v2 Director 통합 엔드포인트
+// ===========================================================================
+
+/// v2 API는 자체 Repository를 씀 — NPC/Relationship을 POST로 등록 후 Scene 시작.
+/// 테스트 전용 헬퍼 — 무백·교룡 NPC + 중립 관계 등록 요청 바디 생성
+fn npc_json_muback() -> serde_json::Value {
+    serde_json::json!({
+        "id": "mu_baek",
+        "name": "무백",
+        "description": "정의로운 검객",
+        "personality": {
+            "honesty_humility": { "sincerity": 0.8, "fairness": 0.7, "greed_avoidance": 0.6, "modesty": 0.5 },
+            "emotionality": { "fearfulness": -0.6, "anxiety": -0.4, "dependence": -0.7, "sentimentality": 0.2 },
+            "extraversion": { "social_self_esteem": 0.5, "social_boldness": 0.5, "sociability": 0.5, "liveliness": 0.5 },
+            "agreeableness": { "forgiveness": 0.6, "gentleness": 0.7, "flexibility": 0.2, "patience": 0.8 },
+            "conscientiousness": { "organization": 0.4, "diligence": 0.8, "perfectionism": 0.6, "prudence": 0.7 },
+            "openness": { "aesthetic_appreciation": 0.3, "inquisitiveness": 0.4, "creativity": 0.3, "unconventionality": 0.2 }
+        }
+    })
+}
+
+fn npc_json_gyoryong() -> serde_json::Value {
+    serde_json::json!({
+        "id": "gyo_ryong",
+        "name": "교룡",
+        "description": "야심적인 검객",
+        "personality": {
+            "honesty_humility": { "sincerity": -0.4, "fairness": -0.5, "greed_avoidance": -0.6, "modesty": -0.7 },
+            "emotionality": { "fearfulness": 0.8, "anxiety": 0.7, "dependence": 0.5, "sentimentality": 0.6 },
+            "extraversion": { "social_self_esteem": 0.7, "social_boldness": 0.8, "sociability": 0.0, "liveliness": 0.6 },
+            "agreeableness": { "forgiveness": -0.6, "gentleness": -0.5, "flexibility": -0.4, "patience": -0.7 },
+            "conscientiousness": { "organization": -0.5, "diligence": -0.3, "perfectionism": -0.4, "prudence": -0.6 },
+            "openness": { "aesthetic_appreciation": 0.6, "inquisitiveness": 0.8, "creativity": 0.7, "unconventionality": 0.9 }
+        }
+    })
+}
+
+fn rel_json_neutral(owner: &str, target: &str) -> serde_json::Value {
+    serde_json::json!({
+        "owner_id": owner,
+        "target_id": target,
+        "closeness": 0.0,
+        "trust": 0.0,
+        "power": 0.0,
+    })
+}
+
+#[tokio::test]
+async fn v2_empty_director_lists_no_active_scenes() {
+    let app = test_app();
+    let resp = app
+        .oneshot(Request::builder().uri("/api/v2/scenes").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["scenes"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn v2_seed_npcs_and_start_scene_returns_scene_id() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    // 1. NPC 2명 등록
+    for npc in [npc_json_muback(), npc_json_gyoryong()] {
+        let resp = app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+    // 2. 중립 관계 등록
+    let resp = app
+        .clone()
+        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // 3. Scene 시작 (Initial focus 1개)
+    let start_body = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "significance": 0.5,
+        "focuses": [{
+            "id": "initial",
+            "description": "첫 만남",
+            "trigger": null,
+            "event": {
+                "description": "마주침",
+                "desirability_for_self": 0.2,
+                "other": null,
+                "prospect": null
+            },
+            "action": null,
+            "object": null,
+            "test_script": []
+        }]
+    });
+    let resp = app
+        .clone()
+        .oneshot(json_post("/api/v2/scenes/start", start_body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert_eq!(body["scene_id"]["npc_id"], "mu_baek");
+    assert_eq!(body["scene_id"]["partner_id"], "gyo_ryong");
+    assert!(body["event_count"].as_u64().unwrap() > 0);
+
+    // 4. GET /api/v2/scenes 에서 활성 Scene 확인
+    let resp = app
+        .clone()
+        .oneshot(Request::builder().uri("/api/v2/scenes").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let body = body_json(resp).await;
+    assert_eq!(body["scenes"].as_array().unwrap().len(), 1);
+    assert_eq!(body["scenes"][0]["npc_id"], "mu_baek");
+}
+
+#[tokio::test]
+async fn v2_dispatch_appraise_to_active_scene_emits_events() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    // seed + start scene
+    for npc in [npc_json_muback(), npc_json_gyoryong()] {
+        app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
+    }
+    app.clone()
+        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/v2/scenes/start",
+            serde_json::json!({
+                "npc_id": "mu_baek",
+                "partner_id": "gyo_ryong",
+                "focuses": [{
+                    "id": "initial",
+                    "description": "첫 만남",
+                    "trigger": null,
+                    "event": { "description": "x", "desirability_for_self": 0.1, "other": null, "prospect": null },
+                    "action": null,
+                    "object": null,
+                    "test_script": []
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+
+    // Appraise 커맨드 dispatch
+    let dispatch_body = serde_json::json!({
+        "scene_id": { "npc_id": "mu_baek", "partner_id": "gyo_ryong" },
+        "command": "appraise",
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "situation": {
+            "description": "스트레스 상황",
+            "event": { "description": "y", "desirability_for_self": -0.3, "other": null, "prospect": null },
+            "action": null,
+            "object": null
+        }
+    });
+    let resp = app
+        .clone()
+        .oneshot(json_post("/api/v2/scenes/dispatch", dispatch_body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = body_json(resp).await;
+    assert!(body["event_count"].as_u64().unwrap() >= 3); // AppraiseRequested + EmotionAppraised + GuideGenerated
+    let kinds = body["event_kinds"].as_array().unwrap();
+    assert!(kinds.iter().any(|k| k == "AppraiseRequested"));
+    assert!(kinds.iter().any(|k| k == "EmotionAppraised"));
+}
+
+#[tokio::test]
+async fn v2_end_scene_removes_from_active_list() {
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    for npc in [npc_json_muback(), npc_json_gyoryong()] {
+        app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
+    }
+    app.clone()
+        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/v2/scenes/start",
+            serde_json::json!({
+                "npc_id": "mu_baek",
+                "partner_id": "gyo_ryong",
+                "focuses": [{
+                    "id": "initial",
+                    "description": "x",
+                    "trigger": null,
+                    "event": { "description": "y", "desirability_for_self": 0.1, "other": null, "prospect": null },
+                    "action": null,
+                    "object": null,
+                    "test_script": []
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+
+    // DELETE 경유 end
+    let resp = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/v2/scenes/mu_baek/gyo_ryong")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    // active list 비었는지 확인
+    let resp = app
+        .clone()
+        .oneshot(Request::builder().uri("/api/v2/scenes").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let body = body_json(resp).await;
+    assert_eq!(body["scenes"].as_array().unwrap().len(), 0);
+}
+
+#[tokio::test]
+async fn v2_dispatch_to_inactive_scene_returns_not_found() {
+    // B4 Session 3 code review I3: SceneNotActive → 404 (이전: 409)
+    let app = test_app();
+    let body = serde_json::json!({
+        "scene_id": { "npc_id": "ghost", "partner_id": "nobody" },
+        "command": "appraise",
+        "npc_id": "ghost",
+        "partner_id": "nobody",
+        "situation": null
+    });
+    let resp = app
+        .oneshot(json_post("/api/v2/scenes/dispatch", body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn v2_start_scene_duplicate_returns_conflict() {
+    // SceneAlreadyActive → 409 CONFLICT
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    for npc in [npc_json_muback(), npc_json_gyoryong()] {
+        app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
+    }
+    app.clone()
+        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
+        .await
+        .unwrap();
+    let start_body = serde_json::json!({
+        "npc_id": "mu_baek",
+        "partner_id": "gyo_ryong",
+        "focuses": [{
+            "id": "initial", "description": "x", "trigger": null,
+            "event": { "description": "y", "desirability_for_self": 0.1, "other": null, "prospect": null },
+            "action": null, "object": null, "test_script": []
+        }]
+    });
+    // 첫 시도 — OK
+    let resp = app.clone().oneshot(json_post("/api/v2/scenes/start", start_body.clone())).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    // 같은 scene_id 재시도 → 409
+    let resp = app.clone().oneshot(json_post("/api/v2/scenes/start", start_body)).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn v2_dispatch_scene_mismatch_returns_bad_request() {
+    // SceneMismatch → 400 BAD_REQUEST
+    // scene_id=(mu_baek, gyo_ryong)인 활성 Scene에 command.npc/partner=(mu_baek, su_ryeon) 송신
+    let state = test_state();
+    let app = crate::build_api_router(state.clone());
+
+    for npc in [npc_json_muback(), npc_json_gyoryong()] {
+        app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
+    }
+    app.clone()
+        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
+        .await
+        .unwrap();
+    app.clone()
+        .oneshot(json_post(
+            "/api/v2/scenes/start",
+            serde_json::json!({
+                "npc_id": "mu_baek",
+                "partner_id": "gyo_ryong",
+                "focuses": [{
+                    "id": "initial", "description": "x", "trigger": null,
+                    "event": { "description": "y", "desirability_for_self": 0.1, "other": null, "prospect": null },
+                    "action": null, "object": null, "test_script": []
+                }]
+            }),
+        ))
+        .await
+        .unwrap();
+
+    // scene_id와 command.npc/partner 불일치
+    let body = serde_json::json!({
+        "scene_id": { "npc_id": "mu_baek", "partner_id": "gyo_ryong" },
+        "command": "appraise",
+        "npc_id": "mu_baek",
+        "partner_id": "su_ryeon",  // Scene의 partner와 다름
+        "situation": null
+    });
+    let resp = app
+        .oneshot(json_post("/api/v2/scenes/dispatch", body))
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}

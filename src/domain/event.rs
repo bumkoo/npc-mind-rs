@@ -6,8 +6,40 @@
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::aggregate::AggregateKey;
+use super::emotion::{Scene, Situation};
+
 /// 이벤트 고유 식별자
 pub type EventId = u64;
+
+/// 이벤트 종류 태그 — `EventPayload`의 각 variant와 1:1 대응
+///
+/// `HandlerInterest::Kinds`에서 타입 안전 필터링용.
+/// `payload_type()`은 문자열 기반 로깅 호환을 위해 별도로 유지한다.
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum EventKind {
+    /// B1: Appraise 커맨드의 초기 이벤트 — EmotionAgent의 `EventHandler` 진입 트리거
+    AppraiseRequested,
+    EmotionAppraised,
+    /// B1: ApplyStimulus 커맨드의 초기 이벤트 — StimulusAgent의 `EventHandler` 진입 트리거
+    StimulusApplyRequested,
+    StimulusApplied,
+    BeatTransitioned,
+    /// B4.1: StartScene 커맨드의 초기 이벤트 — SceneAgent 진입 트리거
+    SceneStartRequested,
+    SceneStarted,
+    SceneEnded,
+    RelationshipUpdated,
+    /// B4.1: UpdateRelationship 커맨드의 초기 이벤트 — RelationshipAgent 진입
+    RelationshipUpdateRequested,
+    /// B4.1: EndDialogue 커맨드의 초기 이벤트 — RelationshipAgent 진입 (3 follow-ups 발행)
+    DialogueEndRequested,
+    /// B4.1: GenerateGuide 커맨드의 초기 이벤트 — GuideAgent 진입
+    GuideRequested,
+    GuideGenerated,
+    DialogueTurnCompleted,
+    EmotionCleared,
+}
 
 /// 도메인 이벤트 — 모든 상태 변경의 불변 기록
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +71,68 @@ pub struct EventMetadata {
 /// Phase 2에서 감정 스냅샷 등 상세 데이터를 추가합니다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EventPayload {
+    /// B1: Appraise 요청 (Command → 초기 이벤트)
+    ///
+    /// B3 `dispatch_v2()`에서 `Command::Appraise`가 이 이벤트로 변환되어
+    /// EmotionAgent의 `EventHandler::handle()` 진입점 역할을 한다.
+    /// B1 단계에서는 변환 경로가 없으므로 L1 단위 테스트에서만 수동 생성.
+    AppraiseRequested {
+        npc_id: String,
+        partner_id: String,
+        /// 이미 해석된 도메인 상황 (SituationService 등이 SituationInput → Situation 변환 후 주입)
+        situation: Situation,
+    },
+
+    /// B1: ApplyStimulus 요청 (Command → 초기 이벤트)
+    ///
+    /// B3 `dispatch_v2()`에서 `Command::ApplyStimulus`가 이 이벤트로 변환되어
+    /// StimulusAgent의 `EventHandler::handle()` 진입점 역할을 한다.
+    StimulusApplyRequested {
+        npc_id: String,
+        partner_id: String,
+        pad: (f32, f32, f32),
+        situation_description: Option<String>,
+    },
+
+    /// B4.1: GenerateGuide 커맨드 → GuideAgent 진입
+    GuideRequested {
+        npc_id: String,
+        partner_id: String,
+        situation_description: Option<String>,
+    },
+
+    /// B4.1: UpdateRelationship 커맨드 → RelationshipAgent 진입
+    RelationshipUpdateRequested {
+        npc_id: String,
+        partner_id: String,
+        significance: Option<f32>,
+    },
+
+    /// B4.1: EndDialogue 커맨드 → RelationshipAgent 진입 (3 follow-ups: RelationshipUpdated
+    /// + EmotionCleared + SceneEnded). v1 `RelationshipAgent::handle_end_dialogue` 등가.
+    DialogueEndRequested {
+        npc_id: String,
+        partner_id: String,
+        significance: Option<f32>,
+    },
+
+    /// B4.1: StartScene 커맨드 → SceneAgent 진입
+    ///
+    /// Dispatcher가 `SituationService`로 `SceneFocusInput` DTO를 resolved `SceneFocus` 도메인
+    /// 객체로 변환한 뒤 `Scene::with_significance`로 빌드된 Scene을 `prebuilt_scene`에 담아
+    /// 전달. SceneAgent가 Scene 등록 + 초기 Focus appraise를 수행하고 `SceneStarted` +
+    /// (옵션) `EmotionAppraised`를 follow-up으로 발행. focuses는 `prebuilt_scene.focuses()`
+    /// 로 접근하며 별도 필드 중복 제거(B4.1 리뷰 M5).
+    SceneStartRequested {
+        npc_id: String,
+        partner_id: String,
+        significance: Option<f32>,
+        /// 이미 확정된 초기 focus (내부적으로 `scene.initial_focus()`와 동일 — 탐색 단축용)
+        initial_focus_id: Option<String>,
+        /// 사전 구성된 Scene. focuses는 여기의 `.focuses()`로 접근.
+        prebuilt_scene: Scene,
+    },
+
     /// 초기 상황 평가 완료 (appraise)
     EmotionAppraised {
         npc_id: String,
@@ -68,8 +162,15 @@ pub enum EventPayload {
     },
 
     /// Beat 전환 발생
+    ///
+    /// B4 Session 3 (Option A): `partner_id` 필드 추가. 다중 Scene 환경에서
+    /// `RelationshipAgent`가 이 이벤트에 반응할 때 올바른 Scene의 관계를 갱신할 수 있도록
+    /// payload에서 직접 읽는다. 기존에는 `ctx.repo.get_scene()` fallback으로 추론했는데,
+    /// `InMemoryRepository.last_scene_id`가 다른 Scene을 가리킬 때 **잘못된 관계를 갱신**
+    /// 하는 multi-scene 오동작이 있었음.
     BeatTransitioned {
         npc_id: String,
+        partner_id: String,
         from_focus_id: Option<String>,
         to_focus_id: String,
     },
@@ -152,15 +253,96 @@ impl DomainEvent {
     /// 페이로드 타입명 반환 (로깅/필터링용)
     pub fn payload_type(&self) -> &'static str {
         match &self.payload {
+            EventPayload::AppraiseRequested { .. } => "AppraiseRequested",
             EventPayload::EmotionAppraised { .. } => "EmotionAppraised",
+            EventPayload::StimulusApplyRequested { .. } => "StimulusApplyRequested",
             EventPayload::StimulusApplied { .. } => "StimulusApplied",
             EventPayload::BeatTransitioned { .. } => "BeatTransitioned",
+            EventPayload::SceneStartRequested { .. } => "SceneStartRequested",
             EventPayload::SceneStarted { .. } => "SceneStarted",
             EventPayload::SceneEnded { .. } => "SceneEnded",
             EventPayload::RelationshipUpdated { .. } => "RelationshipUpdated",
+            EventPayload::RelationshipUpdateRequested { .. } => "RelationshipUpdateRequested",
+            EventPayload::DialogueEndRequested { .. } => "DialogueEndRequested",
+            EventPayload::GuideRequested { .. } => "GuideRequested",
             EventPayload::GuideGenerated { .. } => "GuideGenerated",
             EventPayload::DialogueTurnCompleted { .. } => "DialogueTurnCompleted",
             EventPayload::EmotionCleared { .. } => "EmotionCleared",
+        }
+    }
+
+    /// 페이로드 종류 태그 반환 (타입 안전 필터링용)
+    pub fn kind(&self) -> EventKind {
+        match &self.payload {
+            EventPayload::AppraiseRequested { .. } => EventKind::AppraiseRequested,
+            EventPayload::EmotionAppraised { .. } => EventKind::EmotionAppraised,
+            EventPayload::StimulusApplyRequested { .. } => EventKind::StimulusApplyRequested,
+            EventPayload::StimulusApplied { .. } => EventKind::StimulusApplied,
+            EventPayload::BeatTransitioned { .. } => EventKind::BeatTransitioned,
+            EventPayload::SceneStartRequested { .. } => EventKind::SceneStartRequested,
+            EventPayload::SceneStarted { .. } => EventKind::SceneStarted,
+            EventPayload::SceneEnded { .. } => EventKind::SceneEnded,
+            EventPayload::RelationshipUpdated { .. } => EventKind::RelationshipUpdated,
+            EventPayload::RelationshipUpdateRequested { .. } => {
+                EventKind::RelationshipUpdateRequested
+            }
+            EventPayload::DialogueEndRequested { .. } => EventKind::DialogueEndRequested,
+            EventPayload::GuideRequested { .. } => EventKind::GuideRequested,
+            EventPayload::GuideGenerated { .. } => EventKind::GuideGenerated,
+            EventPayload::DialogueTurnCompleted { .. } => EventKind::DialogueTurnCompleted,
+            EventPayload::EmotionCleared { .. } => EventKind::EmotionCleared,
+        }
+    }
+
+    /// 이벤트가 속한 aggregate 식별자 반환
+    ///
+    /// B안(다중 Scene) 이행 후 SceneTask가 자기 aggregate의 이벤트만 순차 처리할 때 사용.
+    ///
+    /// **B4 Migration Note (plan §9.1):** `EventPayload`에 `scene_id` 필드가 추가되면
+    /// `EmotionAppraised` · `StimulusApplied` · `BeatTransitioned` · `GuideGenerated` ·
+    /// `DialogueTurnCompleted` 계열을 `AggregateKey::Npc` → `AggregateKey::Scene`로
+    /// 승격해야 한다. 현재는 `(npc_id, partner_id)`로 Scene을 식별할 수 없어
+    /// `SceneStarted` / `SceneEnded`만 `Scene` 키를 반환한다.
+    pub fn aggregate_key(&self) -> AggregateKey {
+        match &self.payload {
+            EventPayload::SceneStartRequested {
+                npc_id, partner_id, ..
+            }
+            | EventPayload::SceneStarted {
+                npc_id, partner_id, ..
+            }
+            | EventPayload::SceneEnded { npc_id, partner_id }
+            | EventPayload::DialogueEndRequested {
+                npc_id, partner_id, ..
+            }
+            | EventPayload::BeatTransitioned {
+                npc_id, partner_id, ..
+            } => AggregateKey::Scene {
+                npc_id: npc_id.clone(),
+                partner_id: partner_id.clone(),
+            },
+            EventPayload::RelationshipUpdated {
+                owner_id,
+                target_id,
+                ..
+            } => AggregateKey::Relationship {
+                owner_id: owner_id.clone(),
+                target_id: target_id.clone(),
+            },
+            EventPayload::RelationshipUpdateRequested {
+                npc_id, partner_id, ..
+            } => AggregateKey::Relationship {
+                owner_id: npc_id.clone(),
+                target_id: partner_id.clone(),
+            },
+            EventPayload::AppraiseRequested { npc_id, .. }
+            | EventPayload::EmotionAppraised { npc_id, .. }
+            | EventPayload::StimulusApplyRequested { npc_id, .. }
+            | EventPayload::StimulusApplied { npc_id, .. }
+            | EventPayload::GuideRequested { npc_id, .. }
+            | EventPayload::GuideGenerated { npc_id, .. }
+            | EventPayload::DialogueTurnCompleted { npc_id, .. }
+            | EventPayload::EmotionCleared { npc_id } => AggregateKey::Npc(npc_id.clone()),
         }
     }
 }
@@ -170,4 +352,209 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::emotion::{EventFocus, Situation};
+
+    fn make_event(payload: EventPayload) -> DomainEvent {
+        DomainEvent::new(1, "test".into(), 1, payload)
+    }
+
+    fn trivial_situation() -> Situation {
+        Situation::new(
+            "test situation",
+            Some(EventFocus {
+                description: "test event".into(),
+                desirability_for_self: 0.0,
+                desirability_for_other: None,
+                prospect: None,
+            }),
+            None,
+            None,
+        )
+        .expect("Situation with event focus must be valid")
+    }
+
+    #[test]
+    fn kind_matches_payload_type_for_all_variants() {
+        let cases: Vec<(EventPayload, EventKind, &'static str)> = vec![
+            (
+                EventPayload::AppraiseRequested {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    situation: trivial_situation(),
+                },
+                EventKind::AppraiseRequested,
+                "AppraiseRequested",
+            ),
+            (
+                EventPayload::StimulusApplyRequested {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    pad: (0.0, 0.0, 0.0),
+                    situation_description: None,
+                },
+                EventKind::StimulusApplyRequested,
+                "StimulusApplyRequested",
+            ),
+            (
+                EventPayload::EmotionAppraised {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    situation_description: None,
+                    dominant: None,
+                    mood: 0.0,
+                    emotion_snapshot: vec![],
+                },
+                EventKind::EmotionAppraised,
+                "EmotionAppraised",
+            ),
+            (
+                EventPayload::StimulusApplied {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    pad: (0.0, 0.0, 0.0),
+                    mood_before: 0.0,
+                    mood_after: 0.0,
+                    beat_changed: false,
+                    emotion_snapshot: vec![],
+                },
+                EventKind::StimulusApplied,
+                "StimulusApplied",
+            ),
+            (
+                EventPayload::BeatTransitioned {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    from_focus_id: None,
+                    to_focus_id: "f".into(),
+                },
+                EventKind::BeatTransitioned,
+                "BeatTransitioned",
+            ),
+            (
+                EventPayload::SceneStarted {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    focus_count: 0,
+                    initial_focus_id: None,
+                },
+                EventKind::SceneStarted,
+                "SceneStarted",
+            ),
+            (
+                EventPayload::SceneEnded {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                },
+                EventKind::SceneEnded,
+                "SceneEnded",
+            ),
+            (
+                EventPayload::RelationshipUpdated {
+                    owner_id: "a".into(),
+                    target_id: "b".into(),
+                    before_closeness: 0.0,
+                    before_trust: 0.0,
+                    before_power: 0.0,
+                    after_closeness: 0.0,
+                    after_trust: 0.0,
+                    after_power: 0.0,
+                },
+                EventKind::RelationshipUpdated,
+                "RelationshipUpdated",
+            ),
+            (
+                EventPayload::GuideGenerated {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                },
+                EventKind::GuideGenerated,
+                "GuideGenerated",
+            ),
+            (
+                EventPayload::DialogueTurnCompleted {
+                    npc_id: "a".into(),
+                    partner_id: "b".into(),
+                    speaker: "user".into(),
+                    utterance: "hi".into(),
+                    emotion_snapshot: vec![],
+                },
+                EventKind::DialogueTurnCompleted,
+                "DialogueTurnCompleted",
+            ),
+            (
+                EventPayload::EmotionCleared { npc_id: "a".into() },
+                EventKind::EmotionCleared,
+                "EmotionCleared",
+            ),
+        ];
+
+        for (payload, expected_kind, expected_name) in cases {
+            let ev = make_event(payload);
+            assert_eq!(ev.kind(), expected_kind, "kind mismatch for {expected_name}");
+            assert_eq!(
+                ev.payload_type(),
+                expected_name,
+                "payload_type mismatch for {expected_name}"
+            );
+        }
+    }
+
+    #[test]
+    fn aggregate_key_routes_scene_lifecycle_to_scene() {
+        let started = make_event(EventPayload::SceneStarted {
+            npc_id: "muback".into(),
+            partner_id: "gyoryong".into(),
+            focus_count: 0,
+            initial_focus_id: None,
+        });
+        let ended = make_event(EventPayload::SceneEnded {
+            npc_id: "muback".into(),
+            partner_id: "gyoryong".into(),
+        });
+        let expected = AggregateKey::Scene {
+            npc_id: "muback".into(),
+            partner_id: "gyoryong".into(),
+        };
+        assert_eq!(started.aggregate_key(), expected);
+        assert_eq!(ended.aggregate_key(), expected);
+    }
+
+    #[test]
+    fn aggregate_key_routes_relationship_to_relationship() {
+        let ev = make_event(EventPayload::RelationshipUpdated {
+            owner_id: "a".into(),
+            target_id: "b".into(),
+            before_closeness: 0.0,
+            before_trust: 0.0,
+            before_power: 0.0,
+            after_closeness: 0.0,
+            after_trust: 0.0,
+            after_power: 0.0,
+        });
+        assert_eq!(
+            ev.aggregate_key(),
+            AggregateKey::Relationship {
+                owner_id: "a".into(),
+                target_id: "b".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn aggregate_key_routes_emotion_like_to_npc() {
+        let ev = make_event(EventPayload::EmotionAppraised {
+            npc_id: "muback".into(),
+            partner_id: "gyoryong".into(),
+            situation_description: None,
+            dominant: None,
+            mood: 0.0,
+            emotion_snapshot: vec![],
+        });
+        assert_eq!(ev.aggregate_key(), AggregateKey::Npc("muback".into()));
+    }
 }

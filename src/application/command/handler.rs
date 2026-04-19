@@ -1,4 +1,12 @@
-//! CommandHandler — Agent가 구현하는 핸들러 인터페이스
+#![allow(deprecated)]
+
+//! CommandHandler — Agent가 구현하는 핸들러 인터페이스 (v1, **deprecated**)
+//!
+//! **B5.1 (v0.2.0):** 이 모듈의 `HandlerContext` / `HandlerOutput`는 v2
+//! `EventHandlerContext` (with `HandlerShared` / follow-up events)로 대체됨.
+//! `handler_v2` 모듈 참조. v0.3.0에서 제거 예정.
+//!
+//! 참고: `emotion_snapshot` 헬퍼는 v2 핸들러도 사용하므로 **deprecated 아님**.
 
 use crate::domain::emotion::{EmotionState, Scene};
 use crate::domain::event::EventPayload;
@@ -11,6 +19,10 @@ use super::types::CommandResult;
 ///
 /// Dispatcher가 repository에서 clone하여 구성합니다.
 /// Agent는 이 데이터만 읽고, 결과를 `HandlerOutput`으로 반환합니다.
+#[deprecated(
+    since = "0.2.0",
+    note = "v2 `EventHandlerContext`(+ `HandlerShared`)로 대체됨. v0.3.0에서 제거 예정."
+)]
 #[derive(Debug, Clone)]
 pub struct HandlerContext {
     pub npc: Option<Npc>,
@@ -24,6 +36,10 @@ pub struct HandlerContext {
 ///
 /// Dispatcher가 `new_emotion_state` / `new_relationship`을 repository에 write-back하고,
 /// `events`를 EventStore/EventBus로 발행합니다.
+#[deprecated(
+    since = "0.2.0",
+    note = "v2 `HandlerResult { follow_up_events }` + `ctx.shared` write-back으로 대체됨. v0.3.0에서 제거 예정."
+)]
 pub struct HandlerOutput {
     /// 도메인 결과
     pub result: CommandResult,

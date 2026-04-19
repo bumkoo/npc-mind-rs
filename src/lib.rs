@@ -30,14 +30,18 @@ pub use presentation::formatter::LocaleFormatter;
 
 // --- Event Sourcing (Phase 1) ---
 pub use application::event_bus::EventBus;
+// B5.1 (v0.2.0): deprecated v1 API — 호환성 유지 위해 재-export. v0.3.0 제거 예정.
+#[allow(deprecated)]
 pub use application::event_service::EventAwareMindService;
 pub use application::event_store::{EventStore, InMemoryEventStore};
+#[allow(deprecated)]
 pub use application::projection::{
     EmotionProjection, Projection, ProjectionRegistry, RelationshipProjection, SceneProjection,
 };
 pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 
 // --- CQRS Command/Agent (Phase 2) ---
+#[allow(deprecated)]
 pub use application::command::{
     Command, CommandDispatcher, CommandResult, EmotionAgent, GuideAgent, HandlerContext,
     HandlerOutput, RelationshipAgent,
@@ -52,7 +56,8 @@ pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
 #[cfg(feature = "embed")]
 pub use application::memory_agent::MemoryAgent;
 
-// --- Pipeline ---
+// --- Pipeline (B5.1 deprecated, v0.3.0 제거 예정) ---
+#[allow(deprecated)]
 pub use application::pipeline::{Pipeline, PipelineStage, PipelineState};
 
 #[cfg(feature = "chat")]

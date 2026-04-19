@@ -137,7 +137,22 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/load", post(handlers::scenario::load_state))
         .route("/api/load-result", post(handlers::scenario::load_result))
         // 실시간 상태 변경 이벤트 스트림
-        .route("/api/events", get(handlers::events::sse_events));
+        .route("/api/events", get(handlers::events::sse_events))
+        // B4 Session 3 Option B-Mini: v2 dispatch shadow path (Director 경유)
+        // 기존 v1 경로(/api/scene, /api/appraise 등)와 분리된 별도 Repository
+        .route("/api/v2/scenes", get(handlers::v2_scenes::list_active_scenes))
+        .route("/api/v2/scenes/start", post(handlers::v2_scenes::start_scene))
+        .route("/api/v2/scenes/dispatch", post(handlers::v2_scenes::dispatch_to_scene))
+        .route(
+            "/api/v2/scenes/{npc_id}/{partner_id}",
+            delete(handlers::v2_scenes::end_scene),
+        )
+        .route("/api/v2/npcs", post(handlers::v2_scenes::upsert_npc_v2))
+        .route(
+            "/api/v2/relationships",
+            post(handlers::v2_scenes::upsert_relationship_v2),
+        )
+        .route("/api/v2/scene-ids", get(handlers::v2_scenes::list_all_scene_ids));
 
     // chat feature 활성 시 대화 테스트 + LLM 모니터링 엔드포인트 추가
     #[cfg(feature = "chat")]

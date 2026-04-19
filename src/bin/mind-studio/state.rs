@@ -7,8 +7,13 @@ use tokio::sync::{Mutex, RwLock};
 
 use crate::events::StateEvent;
 use crate::trace_collector::AppraisalCollector;
+use npc_mind::application::command::dispatcher::CommandDispatcher;
+use npc_mind::application::director::Director;
+use npc_mind::application::event_bus::EventBus;
+use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
+use npc_mind::InMemoryRepository;
 #[cfg(feature = "listener_perspective")]
 use npc_mind::domain::listener_perspective::ListenerPerspectiveConverter;
 use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
@@ -49,6 +54,18 @@ pub struct AppState {
     #[cfg(not(feature = "chat"))]
     #[allow(dead_code)]
     pub chat: Option<()>,
+
+    /// B4 Session 3 Option B-Mini: v2 dispatch 경로 shadow Director.
+    ///
+    /// 기존 `AppState.inner` (v1 경로)와 **완전히 분리된** Repository를 소유한다.
+    /// `POST /api/v2/scenes/*` 엔드포인트가 이 Director를 통해 다중 Scene lifecycle을
+    /// 제공. Mind Studio UI는 여전히 v1 경로를 사용하며, v2는 외부 호출자(Claude API
+    /// 등) 전용 proof-of-concept 노출.
+    ///
+    /// NPC/Relationship은 Director 내부 Repository에 별도 등록해야 동작 — 이를 위해
+    /// `POST /api/v2/npcs` / `POST /api/v2/relationships` 헬퍼 엔드포인트 제공 또는
+    /// Director.sync_from_app_state (Session 4+) 로 스냅샷 동기화 가능.
+    pub director_v2: Arc<Mutex<Director<InMemoryRepository>>>,
 }
 
 impl AppState {
@@ -57,6 +74,16 @@ impl AppState {
         analyzer: Option<impl UtteranceAnalyzer + Send + 'static>,
     ) -> Self {
         let (event_tx, _) = tokio::sync::broadcast::channel(64);
+
+        // Director v2 초기화 — 빈 Repository로 시작 (v1 AppState.inner와 분리)
+        let director_v2 = {
+            let repo = InMemoryRepository::new();
+            let store = Arc::new(InMemoryEventStore::new());
+            let bus = Arc::new(EventBus::new());
+            let dispatcher = CommandDispatcher::new(repo, store, bus).with_default_handlers();
+            Arc::new(Mutex::new(Director::new(dispatcher)))
+        };
+
         Self {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
@@ -74,6 +101,7 @@ impl AppState {
             #[cfg(feature = "chat")]
             llm_monitor: None,
             mcp_server: None,
+            director_v2,
         }
     }
 

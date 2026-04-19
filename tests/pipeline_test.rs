@@ -1,4 +1,8 @@
 //! Pipeline + EventBus broadcast 테스트
+//!
+//! B5.1: v1 Pipeline 기준. v0.3.0에서 본 파일도 삭제 예정.
+
+#![allow(deprecated)]
 
 mod common;
 

@@ -25,6 +25,7 @@ use crate::application::dto::SceneFocusInput;
 use crate::domain::emotion::{EmotionState, Scene, SceneFocus};
 use crate::domain::personality::{Npc, NpcBuilder, Score};
 use crate::domain::relationship::{Relationship, RelationshipBuilder};
+use crate::domain::scene_id::SceneId;
 use crate::ports::{EmotionStore, NpcWorld, SceneStore};
 
 // ---------------------------------------------------------------------------
@@ -240,7 +241,13 @@ pub struct InMemoryRepository {
     relationships: HashMap<String, Relationship>,
     objects: HashMap<String, String>,
     emotions: HashMap<String, EmotionState>,
-    scene: Option<Scene>,
+    /// B4 Session 2: 다중 Scene 지원을 위해 `Option<Scene>` → `HashMap<SceneId, Scene>` 전환.
+    /// `SceneStore::get_scene()` (단수)는 `last_scene_id`가 가리키는 Scene을 반환하여
+    /// 단일 Scene 기존 테스트를 보존.
+    scenes: HashMap<SceneId, Scene>,
+    /// 마지막으로 `save_scene`/`save_scene_for` 호출된 Scene의 id.
+    /// `SceneStore::get_scene()` 호출 시 반환할 "현재 Scene"을 결정.
+    last_scene_id: Option<SceneId>,
     // 메타데이터
     scenario_name: String,
     scenario_description: String,
@@ -255,11 +262,40 @@ impl InMemoryRepository {
             relationships: HashMap::new(),
             objects: HashMap::new(),
             emotions: HashMap::new(),
-            scene: None,
+            scenes: HashMap::new(),
+            last_scene_id: None,
             scenario_name: String::new(),
             scenario_description: String::new(),
             turn_history: Vec::new(),
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // B4 Session 2: 다중 Scene 접근 (inherent 메서드 — SceneStore trait은 미변경)
+    // -----------------------------------------------------------------------
+
+    /// SceneId로 특정 Scene 조회
+    pub fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
+        self.scenes.get(scene_id).cloned()
+    }
+
+    /// 현재 활성 Scene 목록 (등록된 모든 Scene의 id)
+    pub fn list_scene_ids(&self) -> Vec<SceneId> {
+        self.scenes.keys().cloned().collect()
+    }
+
+    /// 특정 Scene 제거. `last_scene_id`가 이 Scene이었다면 다른 Scene으로 이동 또는 None.
+    pub fn clear_scene_by_id(&mut self, scene_id: &SceneId) {
+        self.scenes.remove(scene_id);
+        if self.last_scene_id.as_ref() == Some(scene_id) {
+            self.last_scene_id = self.scenes.keys().next().cloned();
+        }
+    }
+
+    /// 주어진 Scene을 명시적으로 저장 (동일한 Scene id면 교체).
+    /// `SceneStore::save_scene`와 동일 동작 — 명시적 호출 편의용.
+    pub fn save_scene_for(&mut self, scene: Scene) {
+        self.save_scene(scene);
     }
 
     /// JSON 문자열에서 로드합니다 (Mind Studio scenario.json 호환).
@@ -351,7 +387,7 @@ impl InMemoryRepository {
             scene.set_active_focus(id);
         }
 
-        self.scene = Some(scene);
+        self.save_scene(scene);
         Ok(())
     }
 
@@ -450,16 +486,34 @@ impl EmotionStore for InMemoryRepository {
 }
 
 impl SceneStore for InMemoryRepository {
+    /// 마지막으로 저장된 Scene 반환 (단일 Scene 테스트 호환용).
+    /// 다중 Scene 환경에서 특정 Scene이 필요하면 `get_scene_by_id` 사용.
     fn get_scene(&self) -> Option<Scene> {
-        self.scene.clone()
+        self.last_scene_id
+            .as_ref()
+            .and_then(|id| self.scenes.get(id).cloned())
     }
 
+    /// Scene을 `(npc_id, partner_id)` 키로 저장. 동일 키 Scene이 있으면 교체.
+    /// `last_scene_id`를 이 Scene으로 갱신 — `get_scene()` 단수 조회의 기본 대상.
     fn save_scene(&mut self, scene: Scene) {
-        self.scene = Some(scene);
+        let id = SceneId::from(&scene);
+        self.scenes.insert(id.clone(), scene);
+        self.last_scene_id = Some(id);
     }
 
+    /// 모든 Scene을 제거 — 단일 Scene 의미론 유지 (`get_scene()` 이후 None).
+    /// 특정 Scene만 제거하려면 `clear_scene_by_id` 사용.
     fn clear_scene(&mut self) {
-        self.scene = None;
+        self.scenes.clear();
+        self.last_scene_id = None;
+    }
+
+    /// B4 Session 3: 다중 Scene 직접 조회 — `last_scene_id`를 거치지 않고 HashMap에서
+    /// scene_id 키로 바로 lookup. `StimulusAgent`/`RelationshipAgent`가 올바른 Scene을
+    /// 식별하는 데 필수.
+    fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
+        self.scenes.get(scene_id).cloned()
     }
 }
 

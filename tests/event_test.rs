@@ -1,6 +1,10 @@
 //! EventAwareMindService 통합 테스트
 //!
 //! 기존 TestContext를 재사용하여 이벤트 발행 · 저장 · Projection을 검증합니다.
+//!
+//! B5.1: v1 EventAwareMindService 기준. v0.3.0에서 본 파일도 삭제 예정.
+
+#![allow(deprecated)]
 
 mod common;
 
