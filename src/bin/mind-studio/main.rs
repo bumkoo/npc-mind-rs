@@ -43,6 +43,16 @@ async fn main() {
     let analyzer = init_analyzer();
     let mut state = AppState::new(collector, analyzer);
 
+    // listener_perspective feature 활성 시 EmbeddedConverter 초기화 (옵셔널 주입)
+    // 모델/패턴 파일 로드 실패해도 Mind Studio는 동작 — 단지 변환이 비활성화됨
+    #[cfg(all(feature = "embed", feature = "listener_perspective"))]
+    {
+        if let Some(converter) = init_listener_perspective_converter() {
+            state = state.with_converter(std::sync::Arc::new(converter));
+            tracing::info!("Listener-perspective Converter 초기화 완료");
+        }
+    }
+
     // chat feature 활성 시 RigChatAdapter 초기화 (MCP 서버보다 먼저 — clone 시 chat 포함)
     // 모델명은 dialogue_start 시점에 /v1/models에서 자동 감지한다.
     #[cfg(feature = "chat")]
@@ -172,4 +182,57 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
 #[cfg(not(feature = "embed"))]
 fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     None
+}
+
+/// listener_perspective + embed feature 활성 시 EmbeddedConverter 초기화
+///
+/// 데이터 파일 경로는 `NPC_MIND_LP_DATA_DIR` 환경변수 또는 default `data/listener_perspective`.
+/// 임베딩 모델은 `NPC_MIND_MODEL_DIR` 재사용 (PadAnalyzer와 동일).
+/// 초기화 실패 시 `None`을 반환하여 Mind Studio는 변환 없이 정상 동작한다.
+#[cfg(all(feature = "embed", feature = "listener_perspective"))]
+fn init_listener_perspective_converter()
+-> Option<npc_mind::domain::listener_perspective::EmbeddedConverter> {
+    use npc_mind::adapter::ort_embedder::OrtEmbedder;
+    use npc_mind::domain::listener_perspective::EmbeddedConverter;
+
+    let model_dir =
+        std::env::var("NPC_MIND_MODEL_DIR").unwrap_or_else(|_| "../models/bge-m3".to_string());
+    let model_path = std::path::Path::new(&model_dir).join("model_quantized.onnx");
+    let tokenizer_path = std::path::Path::new(&model_dir).join("tokenizer.json");
+
+    let data_dir = std::env::var("NPC_MIND_LP_DATA_DIR")
+        .unwrap_or_else(|_| "data/listener_perspective".to_string());
+    let data_root = std::path::Path::new(&data_dir);
+
+    let mut embedder = match OrtEmbedder::new(&model_path, &tokenizer_path) {
+        Ok(e) => e,
+        Err(e) => {
+            tracing::warn!(
+                "Listener-perspective Converter 초기화 스킵 — embedder 실패: {:?}",
+                e
+            );
+            return None;
+        }
+    };
+
+    let result = EmbeddedConverter::from_paths(
+        &mut embedder,
+        data_root.join("prefilter/patterns.toml"),
+        data_root.join("prototypes/sign_keep.toml"),
+        data_root.join("prototypes/sign_invert.toml"),
+        data_root.join("prototypes/magnitude_weak.toml"),
+        data_root.join("prototypes/magnitude_normal.toml"),
+        data_root.join("prototypes/magnitude_strong.toml"),
+    );
+
+    match result {
+        Ok(c) => Some(c),
+        Err(e) => {
+            tracing::warn!(
+                "Listener-perspective Converter 초기화 스킵 — 패턴/프로토타입 로드 실패: {:?}",
+                e
+            );
+            None
+        }
+    }
 }

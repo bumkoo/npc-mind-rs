@@ -369,6 +369,11 @@ impl StudioService {
     }
 
     /// 수동 PAD 입력 또는 임베딩 분석기를 통해 PAD 값을 해석합니다.
+    ///
+    /// listener_perspective Converter가 주입되어 있고 analyzer 임베딩이 가용하면
+    /// 화자 PAD를 청자 PAD로 변환한 결과를 반환합니다 (Phase 7 Step 5).
+    /// pad_hint 경로는 임베딩이 없으므로 변환 미발동 — 사용자 입력 PAD를 그대로 사용합니다.
+    /// 변환 실패 시 화자 PAD fallback (silent failure 방지를 위해 warn 로그).
     #[cfg(feature = "chat")]
     async fn resolve_pad(
         state: &AppState,
@@ -378,21 +383,70 @@ impl StudioService {
             tracing::debug!("대화 턴: 수동 PAD 입력 사용 (P: {:.2}, A: {:.2}, D: {:.2})", pad_input.pleasure, pad_input.arousal, pad_input.dominance);
             return Some((pad_input.pleasure, pad_input.arousal, pad_input.dominance));
         }
-        if let Some(ref analyzer) = state.analyzer {
-            let mut analyzer = analyzer.lock().await;
-            tracing::debug!("대화 턴: 임베딩 분석 시작 (텍스트: \"{}\")", req.utterance);
-            match analyzer.analyze(&req.utterance) {
-                Ok(p) => {
-                    tracing::debug!("대화 턴: 임베딩 분석 성공 (P: {:.3}, A: {:.2}, D: {:.2})", p.pleasure, p.arousal, p.dominance);
-                    return Some((p.pleasure, p.arousal, p.dominance));
-                }
-                Err(e) => {
-                    tracing::error!("대화 턴: 임베딩 분석 실패: {:?}", e);
-                }
+        let analyzer = state.analyzer.as_ref()?;
+        let mut analyzer = analyzer.lock().await;
+        tracing::debug!("대화 턴: 임베딩 분석 시작 (텍스트: \"{}\")", req.utterance);
+        let (speaker_pad, embedding) = match analyzer.analyze_with_embedding(&req.utterance) {
+            Ok(pair) => pair,
+            Err(e) => {
+                tracing::error!("대화 턴: 임베딩 분석 실패: {:?}", e);
+                return None;
+            }
+        };
+        tracing::debug!(
+            "대화 턴: 화자 PAD (P: {:.3}, A: {:.2}, D: {:.2})",
+            speaker_pad.pleasure,
+            speaker_pad.arousal,
+            speaker_pad.dominance
+        );
+        let final_pad = Self::convert_to_listener_pad(state, &req.utterance, speaker_pad, embedding.as_deref());
+        Some((final_pad.pleasure, final_pad.arousal, final_pad.dominance))
+    }
+
+    /// 화자 PAD → 청자 관점 PAD 변환 (Phase 7).
+    /// converter 미주입 또는 임베딩 부재 시 화자 PAD를 그대로 반환.
+    #[cfg(all(feature = "chat", feature = "listener_perspective"))]
+    fn convert_to_listener_pad(
+        state: &AppState,
+        utterance: &str,
+        speaker_pad: npc_mind::domain::pad::Pad,
+        embedding: Option<&[f32]>,
+    ) -> npc_mind::domain::pad::Pad {
+        let (Some(converter), Some(emb)) = (state.converter.as_ref(), embedding) else {
+            return speaker_pad;
+        };
+        match converter.convert(utterance, &speaker_pad, emb) {
+            Ok(result) => {
+                tracing::debug!(
+                    "대화 턴: listener PAD 변환 (P: {:.3}, A: {:.2}, D: {:.2}, sign={:?}, magnitude={:?})",
+                    result.listener_pad.pleasure,
+                    result.listener_pad.arousal,
+                    result.listener_pad.dominance,
+                    result.meta.sign,
+                    result.meta.magnitude
+                );
+                result.listener_pad
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = ?e,
+                    utterance = utterance,
+                    "listener-perspective conversion failed; falling back to speaker PAD"
+                );
+                speaker_pad
             }
         }
-        tracing::debug!("대화 턴: PAD 입력 없음 (분석기 미작동)");
-        None
+    }
+
+    /// listener_perspective feature off 빌드 — 화자 PAD를 그대로 반환.
+    #[cfg(all(feature = "chat", not(feature = "listener_perspective")))]
+    fn convert_to_listener_pad(
+        _state: &AppState,
+        _utterance: &str,
+        speaker_pad: npc_mind::domain::pad::Pad,
+        _embedding: Option<&[f32]>,
+    ) -> npc_mind::domain::pad::Pad {
+        speaker_pad
     }
 
     /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다.

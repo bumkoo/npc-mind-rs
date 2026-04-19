@@ -9,6 +9,8 @@ use crate::events::StateEvent;
 use crate::trace_collector::AppraisalCollector;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
+#[cfg(feature = "listener_perspective")]
+use npc_mind::domain::listener_perspective::ListenerPerspectiveConverter;
 use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
 
 /// 서버 공유 상태
@@ -18,6 +20,11 @@ pub struct AppState {
     pub collector: AppraisalCollector,
     /// 대사 → PAD 분석기 (embed feature 활성 시에만 Some)
     pub analyzer: Option<Arc<Mutex<dyn UtteranceAnalyzer + Send>>>,
+    /// 화자 PAD → 청자 PAD 변환기 (Phase 7, listener_perspective feature)
+    /// 주입 시 `resolve_pad`가 analyzer 임베딩을 재사용해 변환을 적용한다.
+    /// 변환 실패는 화자 PAD fallback (silent failure 방지를 위해 warn 로그).
+    #[cfg(feature = "listener_perspective")]
+    pub converter: Option<Arc<dyn ListenerPerspectiveConverter>>,
     /// 연기 가이드 포맷터 (런타임 교체 가능 — set_prompt_override로 TOML 오버라이드 적용)
     pub formatter: Arc<RwLock<Arc<dyn npc_mind::ports::GuideFormatter>>>,
     /// 현재 적용 중인 TOML 오버라이드 (None이면 기본 빌트인)
@@ -54,6 +61,8 @@ impl AppState {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
             analyzer: analyzer.map(|a| Arc::new(Mutex::new(a)) as Arc<Mutex<dyn UtteranceAnalyzer + Send>>),
+            #[cfg(feature = "listener_perspective")]
+            converter: None,
             formatter: Arc::new(RwLock::new(Arc::new(npc_mind::presentation::korean::KoreanFormatter::new()) as Arc<dyn npc_mind::ports::GuideFormatter>)),
             locale_overrides: Arc::new(RwLock::new(None)),
             event_tx,
@@ -104,6 +113,13 @@ impl AppState {
     #[cfg(feature = "chat")]
     pub fn with_llm_monitor(mut self, monitor: Arc<dyn npc_mind::ports::LlamaServerMonitor>) -> Self {
         self.llm_monitor = Some(monitor);
+        self
+    }
+
+    /// 청자 관점 PAD 변환기를 설정한다 (Phase 7, listener_perspective feature).
+    #[cfg(feature = "listener_perspective")]
+    pub fn with_converter(mut self, converter: Arc<dyn ListenerPerspectiveConverter>) -> Self {
+        self.converter = Some(converter);
         self
     }
 }
