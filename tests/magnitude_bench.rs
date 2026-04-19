@@ -19,11 +19,11 @@
 //!
 //! 설계: docs/emotion/sign-classifier-design.md §3.1, §3.5
 
-#![cfg(feature = "embed")]
+#![cfg(all(feature = "embed", feature = "listener_perspective"))]
 
 mod common;
 
-use common::prefilter::Prefilter;
+use npc_mind::domain::listener_perspective::Prefilter;
 use npc_mind::adapter::file_anchor_source::{AnchorFormat, FileAnchorSource};
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::domain::pad::{Pad, PadAnalyzer};
@@ -459,15 +459,18 @@ fn magnitude_변환식_벤치마크() {
             Some(hit) => {
                 prefilter_hits += 1;
                 // D1=C: hit.p_s_default로 P_L 계산, bin 재검증
+                use npc_mind::domain::listener_perspective::{
+                    Magnitude as DomainMagnitude, Sign as DomainSign,
+                };
                 let sign = match hit.sign {
-                    common::prefilter::Sign::Keep => Sign::Keep,
-                    common::prefilter::Sign::Invert => Sign::Invert,
+                    DomainSign::Keep => Sign::Keep,
+                    DomainSign::Invert => Sign::Invert,
                 };
                 // hit.magnitude의 coef 적용 (hit가 주장하는 강도에 따른 계산)
                 let hit_mag = match hit.magnitude {
-                    common::prefilter::Magnitude::Weak => Magnitude::Weak,
-                    common::prefilter::Magnitude::Normal => Magnitude::Normal,
-                    common::prefilter::Magnitude::Strong => Magnitude::Strong,
+                    DomainMagnitude::Weak => Magnitude::Weak,
+                    DomainMagnitude::Normal => Magnitude::Normal,
+                    DomainMagnitude::Strong => Magnitude::Strong,
                 };
                 let p_l = transform_pleasure(hit.p_s_default, sign, hit_mag);
                 let predicted = bin_magnitude(p_l);

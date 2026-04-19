@@ -11,12 +11,10 @@
 //!
 //! 실행: `cargo test --features embed --test sparse_spike -- --nocapture`
 
-#![cfg(feature = "embed")]
-
-mod common;
+#![cfg(all(feature = "embed", feature = "listener_perspective"))]
 
 use bge_m3_onnx_rust::{BgeM3Embedder, sparse_dot_product};
-use common::prefilter::Prefilter;
+use npc_mind::domain::listener_perspective::Prefilter;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;

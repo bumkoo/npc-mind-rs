@@ -2,9 +2,9 @@
 //!
 //! 실행: `cargo test --test prefilter_unit -- --nocapture`
 
-mod common;
+#![cfg(feature = "listener_perspective")]
 
-use common::prefilter::{Magnitude, Prefilter, Sign};
+use npc_mind::domain::listener_perspective::{Magnitude, Prefilter, Sign};
 
 const PATTERNS_PATH: &str = "data/listener_perspective/prefilter/patterns.toml";
 
