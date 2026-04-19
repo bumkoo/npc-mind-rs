@@ -5,7 +5,8 @@ edition = "2024"
 description = "NPC Psychological Engine: HEXACO personality → OCC emotion → LLM guide"
 
 [features]
-default = []
+# Phase 7 Step 5: listener_perspective는 default-on. 회귀 감시 88% baseline 유지.
+default = ["listener_perspective"]
 embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy"]
 chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
