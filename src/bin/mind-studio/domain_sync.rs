@@ -155,7 +155,7 @@ pub fn build_ephemeral_dispatcher(
 // ---------------------------------------------------------------------------
 
 use crate::handlers::AppError;
-use npc_mind::application::command::dispatcher::{DispatchV2Output, DispatchV2Error};
+use npc_mind::application::command::dispatcher::{DispatchV2Error, DispatchV2Output};
 use npc_mind::application::command::Command;
 use npc_mind::application::dto::{
     build_appraise_result, build_emotion_fields, AfterDialogueResponse, AppraiseRequest,
@@ -165,12 +165,6 @@ use npc_mind::application::dto::{
 use npc_mind::domain::event::{EventKind, EventPayload};
 use npc_mind::domain::guide::ActingGuide;
 use npc_mind::domain::relationship::Relationship;
-
-/// DispatchV2Error → AppError 변환 (임시 — handlers/mod.rs에 From impl 있으면 그걸 사용)
-fn map_dispatch_err(e: DispatchV2Error) -> AppError {
-    // AppError::V2Dispatch가 이미 존재하므로 재사용
-    AppError::V2Dispatch(e)
-}
 
 /// `Command::Appraise` dispatch — Mind Studio `perform_appraise` 등에서 사용.
 ///
@@ -187,7 +181,7 @@ pub async fn dispatch_appraise(
         partner_id: req.partner_id.clone(),
         situation: req.situation,
     };
-    let output = dispatcher.dispatch_v2(cmd).await.map_err(map_dispatch_err)?;
+    let output = dispatcher.dispatch_v2(cmd).await?;
 
     let result = build_appraise_result_from_output(&output, &req.npc_id, &req.partner_id, &dispatcher)?;
 
@@ -214,7 +208,7 @@ pub async fn dispatch_stimulus(
         dominance: req.dominance,
         situation_description: req.situation_description,
     };
-    let output = dispatcher.dispatch_v2(cmd).await.map_err(map_dispatch_err)?;
+    let output = dispatcher.dispatch_v2(cmd).await?;
 
     let result = build_stimulus_result_from_output(
         &output,
@@ -245,9 +239,9 @@ pub async fn dispatch_end_dialogue(
         partner_id: req.partner_id.clone(),
         significance: req.significance,
     };
-    let output = dispatcher.dispatch_v2(cmd).await.map_err(map_dispatch_err)?;
+    let output = dispatcher.dispatch_v2(cmd).await?;
 
-    let response = build_after_dialogue_from_output(&output)?;
+    let response = build_after_dialogue_from_output(&output, &req.npc_id, &req.partner_id)?;
 
     {
         let guard = dispatcher.repository_guard();
@@ -269,11 +263,13 @@ pub async fn dispatch_generate_guide(
         partner_id: req.partner_id.clone(),
         situation_description: req.situation_description,
     };
-    let output = dispatcher.dispatch_v2(cmd).await.map_err(map_dispatch_err)?;
+    let output = dispatcher.dispatch_v2(cmd).await?;
 
-    let guide = output.shared.guide.clone().ok_or(AppError::from(
-        DispatchV2Error::InvalidSituation("GuideAgent 실행 결과 없음".into()),
-    ))?;
+    let guide = output.shared.guide.clone().ok_or_else(|| {
+        AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
+            "GuideAgent 실행 결과 없음".into(),
+        ))
+    })?;
 
     {
         let guard = dispatcher.repository_guard();
@@ -296,7 +292,7 @@ pub async fn dispatch_start_scene(
         significance: req.significance,
         focuses: req.focuses.clone(),
     };
-    let output = dispatcher.dispatch_v2(cmd).await.map_err(map_dispatch_err)?;
+    let output = dispatcher.dispatch_v2(cmd).await?;
 
     // active_focus_id / focus_count는 dispatch_v2 후 repo의 Scene에서 조회
     let (focus_count, active_focus_id) = {
@@ -426,38 +422,51 @@ fn build_stimulus_result_from_output(
     })
 }
 
+/// EndDialogue 결과 events에서 **본 요청에 해당하는** RelationshipUpdated를 선택해 response 구성.
+///
+/// RelationshipAgent가 여러 관계를 업데이트하는 경우(현재 spec에선 1건이지만 확장 가능)
+/// 본 요청의 (npc_id, partner_id)와 payload의 owner/target 쌍이 일치하는 이벤트만 선택.
+/// 양방향 일치 허용 — Relationship 저장 방향은 구현 세부이므로 owner↔target 순서를 교체해도 매치.
 fn build_after_dialogue_from_output(
     output: &DispatchV2Output,
+    npc_id: &str,
+    partner_id: &str,
 ) -> Result<AfterDialogueResponse, AppError> {
     output
         .events
         .iter()
         .find_map(|e| match &e.payload {
             EventPayload::RelationshipUpdated {
+                owner_id,
+                target_id,
                 before_closeness,
                 before_trust,
                 before_power,
                 after_closeness,
                 after_trust,
                 after_power,
-                ..
-            } => Some(AfterDialogueResponse {
-                before: RelationshipValues {
-                    closeness: *before_closeness,
-                    trust: *before_trust,
-                    power: *before_power,
-                },
-                after: RelationshipValues {
-                    closeness: *after_closeness,
-                    trust: *after_trust,
-                    power: *after_power,
-                },
-            }),
+            } if (owner_id == npc_id && target_id == partner_id)
+                || (owner_id == partner_id && target_id == npc_id) =>
+            {
+                Some(AfterDialogueResponse {
+                    before: RelationshipValues {
+                        closeness: *before_closeness,
+                        trust: *before_trust,
+                        power: *before_power,
+                    },
+                    after: RelationshipValues {
+                        closeness: *after_closeness,
+                        trust: *after_trust,
+                        power: *after_power,
+                    },
+                })
+            }
             _ => None,
         })
         .ok_or_else(|| {
-            AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
-                "RelationshipUpdated 이벤트 부재".into(),
-            ))
+            AppError::V2Dispatch(DispatchV2Error::InvalidSituation(format!(
+                "RelationshipUpdated 이벤트 부재 ({}↔{})",
+                npc_id, partner_id
+            )))
         })
 }
