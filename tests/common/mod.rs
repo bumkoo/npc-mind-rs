@@ -259,3 +259,88 @@ pub fn make_소호() -> Npc {
         })
         .build()
 }
+
+// ---------------------------------------------------------------------------
+// B4 Session 4 — EventBus 관찰 헬퍼
+// ---------------------------------------------------------------------------
+
+use futures::{Stream, StreamExt};
+use npc_mind::application::event_bus::EventBus;
+use npc_mind::domain::event::{DomainEvent, EventKind};
+use std::sync::Arc;
+use std::time::Duration;
+
+/// Director/SceneTask 테스트의 기본 타임아웃 — 느린 CI runner도 포용.
+pub const SCENE_TASK_TEST_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// EventBus 구독을 **즉시** 시작하고 특정 `EventKind`가 도착할 때까지 기다리는 future를 반환.
+///
+/// ## 호출 패턴 (중요)
+/// broadcast 채널은 과거 이벤트를 replay하지 않으므로, **trigger 전에** 이 함수를 호출하여
+/// subscribe를 먼저 등록해야 한다. 반환된 future를 **저장해 둔 뒤** trigger를 호출하고
+/// 그 future에 `.await`한다:
+///
+/// ```ignore
+/// let waiter = expect_event(bus, EventKind::SceneStarted, SCENE_TASK_TEST_TIMEOUT);
+/// director.start_scene(...).await.unwrap();
+/// waiter.await;  // trigger 전에 subscribe 된 receiver가 이벤트를 받음
+/// ```
+///
+/// `pub fn`으로 설계된 것이 핵심: 본문 첫 줄 `bus.subscribe()`는 함수 호출 시점에
+/// 동기적으로 실행되며, 그 뒤의 `async move`가 실제 await 로직을 감싼다.
+/// `async fn`으로 만들면 subscribe도 `.await` 시점에야 실행되어 이벤트를 놓친다.
+pub fn expect_event(
+    bus: &EventBus,
+    kind: EventKind,
+    timeout: Duration,
+) -> impl std::future::Future<Output = Arc<DomainEvent>> {
+    let mut rx = Box::pin(bus.subscribe()) as std::pin::Pin<Box<dyn Stream<Item = Arc<DomainEvent>> + Send>>;
+    async move {
+        let fut = async {
+            while let Some(event) = rx.next().await {
+                if event.kind() == kind {
+                    return event;
+                }
+            }
+            panic!("EventBus stream closed before matching event kind: {:?}", kind);
+        };
+        tokio::time::timeout(timeout, fut)
+            .await
+            .unwrap_or_else(|_| panic!("timeout waiting for event kind: {:?}", kind))
+    }
+}
+
+/// 여러 `EventKind` 전부를 **임의 순서로** 관찰할 때까지 기다리는 future를 반환.
+///
+/// `expect_event`와 동일한 subscribe-먼저 패턴. 관찰 순서는 상관없고 전부 도달하면 반환.
+/// 어느 하나라도 `timeout` 안에 못 보면 panic.
+pub fn expect_events(
+    bus: &EventBus,
+    kinds: &[EventKind],
+    timeout: Duration,
+) -> impl std::future::Future<Output = Vec<Arc<DomainEvent>>> {
+    let mut rx = Box::pin(bus.subscribe()) as std::pin::Pin<Box<dyn Stream<Item = Arc<DomainEvent>> + Send>>;
+    let expected: std::collections::HashSet<_> = kinds.iter().cloned().collect();
+    let kinds_owned: Vec<EventKind> = kinds.to_vec();
+    async move {
+        let fut = async {
+            let mut collected: Vec<Arc<DomainEvent>> = Vec::new();
+            let mut remaining = expected;
+            while let Some(event) = rx.next().await {
+                if remaining.remove(&event.kind()) {
+                    collected.push(event);
+                    if remaining.is_empty() {
+                        return collected;
+                    }
+                }
+            }
+            panic!(
+                "EventBus stream closed before all expected kinds arrived (missing: {:?})",
+                remaining
+            );
+        };
+        tokio::time::timeout(timeout, fut)
+            .await
+            .unwrap_or_else(|_| panic!("timeout waiting for events: {:?}", kinds_owned))
+    }
+}

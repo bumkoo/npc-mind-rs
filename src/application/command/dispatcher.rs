@@ -15,6 +15,21 @@
 //! v2는 현재 **Appraise, ApplyStimulus만 지원** (다른 4종 커맨드는 B4+에서 `*Requested`
 //! 이벤트 variant 추가와 함께 이관). `shadow_v2` 플래그는 B4 Director가 참조할 수 있도록
 //! 보존하지만 B3에서는 `dispatch()` 경로 분기에 사용하지 않는다(v1/v2 결과 타입 비호환).
+//!
+//! ## B4 Session 4 — Repository 공유 모델
+//!
+//! `repository: Arc<Mutex<R>>`로 감싸 `dispatch_v2(&self)`가 가능하도록 interior mutability.
+//! SceneTask가 `Arc<CommandDispatcher<R>>`를 공유하여 Scene 간 repo 동시 접근을 직렬화한다.
+//!
+//! **Lock 보유 범위 (축소판 A의 의도된 대가):** `dispatch_v2` 본문은 진입 시 Mutex를
+//! 한 번 잡아 transactional + inline phase 전체에 보유한다. Fanout(broadcast::send) 직전
+//! drop. 결과:
+//! - 한 Scene 내부 커맨드는 자연스럽게 순차 처리.
+//! - **Scene 간에도 dispatch_v2가 Mutex 기준으로 serialize**되므로, b-plan §3이 약속한
+//!   "Scene별 진짜 병렬"은 이 세션 범위에선 달성되지 않는다. LLM I/O 같은 bottleneck은
+//!   DialogueAgent가 SceneTask 경계 **밖**에서 await하므로 여전히 병렬 유지.
+//! - 진짜 CPU 병렬성은 MindRepository trait을 `&self` 시그니처로 전환(B5.3 이후)한 뒤
+//!   per-aggregate 세분화 락 또는 Scene 소유권 분할로 달성 예정.
 
 use crate::domain::aggregate::AggregateKey;
 use crate::domain::event::{DomainEvent, EventPayload};
@@ -40,7 +55,8 @@ use super::projection_handlers::{
 use super::types::{Command, CommandResult};
 
 use std::collections::VecDeque;
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 
 // ---------------------------------------------------------------------------
 // dispatch_v2 안전 한계
@@ -100,7 +116,10 @@ pub enum DispatchV2Error {
 /// MindService의 대체 진입점. Agent에게 도메인 로직을 위임하고,
 /// 결과를 repository에 write-back + EventStore/EventBus로 발행합니다.
 pub struct CommandDispatcher<R: MindRepository> {
-    repository: R,
+    /// B4 Session 4: 내부 `Arc<Mutex<R>>`로 공유 소유. `&self` dispatch_v2 경로가
+    /// 가능하도록 repository mutation을 interior mutability로 가림. SceneTask가
+    /// `Arc<CommandDispatcher<R>>`를 공유할 수 있는 전제.
+    repository: Arc<Mutex<R>>,
     emotion_agent: EmotionAgent,
     guide_agent: GuideAgent,
     rel_agent: RelationshipAgent,
@@ -108,7 +127,8 @@ pub struct CommandDispatcher<R: MindRepository> {
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
     projections: Arc<RwLock<ProjectionRegistry>>,
-    correlation_id: Option<u64>,
+    /// B4 Session 4: `&mut self` 제거를 위해 AtomicU64로 전환. 0 = None.
+    correlation_id: Arc<AtomicU64>,
     // --- B3 v2 경로 ---
     /// Transactional mode EventHandler들 (priority 오름차순 정렬)
     transactional_handlers: Vec<Arc<dyn EventHandler>>,
@@ -126,7 +146,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
-            repository,
+            repository: Arc::new(Mutex::new(repository)),
             emotion_agent: EmotionAgent::new(),
             guide_agent: GuideAgent::new(),
             rel_agent: RelationshipAgent::new(),
@@ -134,7 +154,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
             event_store,
             event_bus,
             projections: Arc::new(RwLock::new(ProjectionRegistry::new())),
-            correlation_id: None,
+            correlation_id: Arc::new(AtomicU64::new(0)),
             transactional_handlers: Vec::new(),
             inline_handlers: Vec::new(),
             shadow_v2: false,
@@ -235,8 +255,16 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self.projections.write().unwrap().add(projection);
     }
 
-    pub fn set_correlation_id(&mut self, id: u64) {
-        self.correlation_id = Some(id);
+    /// B4 Session 4: `&self` + AtomicU64로 전환 (SceneTask 공유 호환).
+    /// `id == 0`은 "correlation id 없음"으로 해석됨 (DomainEvent 직렬화 시 0은 생략).
+    pub fn set_correlation_id(&self, id: u64) {
+        self.correlation_id.store(id, Ordering::Relaxed);
+    }
+
+    /// 현재 correlation id (0 = 없음)
+    fn current_correlation_id(&self) -> Option<u64> {
+        let v = self.correlation_id.load(Ordering::Relaxed);
+        if v == 0 { None } else { Some(v) }
     }
 
     pub fn event_store(&self) -> &Arc<dyn EventStore> {
@@ -257,12 +285,15 @@ impl<R: MindRepository> CommandDispatcher<R> {
         &self.projections
     }
 
-    pub fn repository(&self) -> &R {
-        &self.repository
+    /// Repository Arc 공유 참조 — SceneTask 등에서 공유 소유가 필요할 때.
+    pub fn repository_arc(&self) -> Arc<Mutex<R>> {
+        Arc::clone(&self.repository)
     }
 
-    pub fn repository_mut(&mut self) -> &mut R {
-        &mut self.repository
+    /// Repository mutable guard — `add_npc`/`save_relationship` 등 `&mut self` 메서드 호출용.
+    /// 반환된 MutexGuard는 `DerefMut<Target = R>`을 제공한다.
+    pub fn repository_guard(&self) -> MutexGuard<'_, R> {
+        self.repository.lock().expect("repository mutex poisoned")
     }
 
     /// Command 디스패치 — Agent 라우팅 + side-effect + event 발행 — **v1, deprecated**
@@ -274,7 +305,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         note = "v2 `dispatch_v2()` + `with_default_handlers()` 로 대체. v0.3.0에서 제거 예정."
     )]
     #[allow(deprecated)]
-    pub fn dispatch(&mut self, cmd: Command) -> Result<CommandResult, MindServiceError> {
+    pub fn dispatch(&self, cmd: Command) -> Result<CommandResult, MindServiceError> {
         let ctx = self.build_context(&cmd)?;
 
         let output = match &cmd {
@@ -351,15 +382,14 @@ impl<R: MindRepository> CommandDispatcher<R> {
         let npc_id = cmd.npc_id();
         let partner_id = cmd.partner_id();
 
-        let npc = self.repository.get_npc(npc_id);
-        let relationship = self
-            .repository
+        let repo = self.repository.lock().expect("repository mutex poisoned");
+        let npc = repo.get_npc(npc_id);
+        let relationship = repo
             .get_relationship(npc_id, partner_id)
-            .or_else(|| self.repository.get_relationship(partner_id, npc_id));
-        let emotion_state = self.repository.get_emotion_state(npc_id);
-        let scene = self.repository.get_scene();
-        let partner_name = self
-            .repository
+            .or_else(|| repo.get_relationship(partner_id, npc_id));
+        let emotion_state = repo.get_emotion_state(npc_id);
+        let scene = repo.get_scene();
+        let partner_name = repo
             .get_npc(partner_id)
             .map(|n| n.name().to_string())
             .unwrap_or_else(|| partner_id.to_string());
@@ -373,22 +403,22 @@ impl<R: MindRepository> CommandDispatcher<R> {
         })
     }
 
-    fn apply_side_effects(&mut self, output: &HandlerOutput) {
+    fn apply_side_effects(&self, output: &HandlerOutput) {
+        let mut repo = self.repository.lock().expect("repository mutex poisoned");
         if let Some((npc_id, state)) = &output.new_emotion_state {
-            self.repository.save_emotion_state(npc_id, state.clone());
+            repo.save_emotion_state(npc_id, state.clone());
         }
         if let Some((owner_id, target_id, rel)) = &output.new_relationship {
-            self.repository
-                .save_relationship(owner_id, target_id, rel.clone());
+            repo.save_relationship(owner_id, target_id, rel.clone());
         }
         if let Some(npc_id) = &output.clear_emotion {
-            self.repository.clear_emotion_state(npc_id);
+            repo.clear_emotion_state(npc_id);
         }
         if output.clear_scene {
-            self.repository.clear_scene();
+            repo.clear_scene();
         }
         if let Some(scene) = &output.save_scene {
-            self.repository.save_scene(scene.clone());
+            repo.save_scene(scene.clone());
         }
     }
 
@@ -397,7 +427,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
             let id = self.event_store.next_id();
             let seq = self.event_store.next_sequence(aggregate_id);
             let mut event = DomainEvent::new(id, aggregate_id.to_string(), seq, payload.clone());
-            if let Some(cid) = self.correlation_id {
+            if let Some(cid) = self.current_correlation_id() {
                 event = event.with_correlation(cid);
             }
             self.event_store.append(&[event.clone()]);
@@ -421,7 +451,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
     )]
     #[allow(deprecated)]
     pub fn execute_pipeline(
-        &mut self,
+        &self,
         pipeline: Pipeline,
         cmd: &Command,
     ) -> Result<CommandResult, MindServiceError> {
@@ -431,20 +461,23 @@ impl<R: MindRepository> CommandDispatcher<R> {
         let final_state = pipeline.execute(initial)?;
 
         // Side-effects 적용
-        if let Some((npc_id, state)) = &final_state.new_emotion_state {
-            self.repository.save_emotion_state(npc_id, state.clone());
-        }
-        if let Some((owner, target, rel)) = &final_state.new_relationship {
-            self.repository.save_relationship(owner, target, rel.clone());
-        }
-        if let Some(npc_id) = &final_state.clear_emotion {
-            self.repository.clear_emotion_state(npc_id);
-        }
-        if final_state.clear_scene {
-            self.repository.clear_scene();
-        }
-        if let Some(scene) = &final_state.save_scene {
-            self.repository.save_scene(scene.clone());
+        {
+            let mut repo = self.repository.lock().expect("repository mutex poisoned");
+            if let Some((npc_id, state)) = &final_state.new_emotion_state {
+                repo.save_emotion_state(npc_id, state.clone());
+            }
+            if let Some((owner, target, rel)) = &final_state.new_relationship {
+                repo.save_relationship(owner, target, rel.clone());
+            }
+            if let Some(npc_id) = &final_state.clear_emotion {
+                repo.clear_emotion_state(npc_id);
+            }
+            if final_state.clear_scene {
+                repo.clear_scene();
+            }
+            if let Some(scene) = &final_state.save_scene {
+                repo.save_scene(scene.clone());
+            }
         }
 
         // 이벤트 발행
@@ -457,23 +490,28 @@ impl<R: MindRepository> CommandDispatcher<R> {
     }
 
     // -----------------------------------------------------------------------
-    // B3 — dispatch_v2 (§5.1 실행 루프)
+    // dispatch_v2 (§5.1 실행 루프)
+    //   - B3: BFS cascade + 초기 2 커맨드 지원
+    //   - B4 S1: 6 커맨드 전부 지원 (SceneAgent 신규 + 4 *Requested variant)
+    //   - B4 S4: `&mut self` → `async fn(&self)` 전환, 내부 Arc<Mutex<R>>로 공유
     // -----------------------------------------------------------------------
 
-    /// v2 경로 dispatch — B1 EventHandler 체인을 사용
+    /// v2 경로 dispatch — EventHandler 체인 실행 + 결과 이벤트 persist & fanout.
     ///
-    /// Appraise, ApplyStimulus 커맨드만 지원. 다른 커맨드는
-    /// `DispatchV2Error::UnsupportedCommand`. B4+에서 scene_id 필드 추가 및
-    /// `*Requested` variant 추가와 함께 모든 커맨드 지원 예정.
+    /// **지원 커맨드 (B4 S1부터 6종 전부):** Appraise / ApplyStimulus / GenerateGuide /
+    /// UpdateRelationship / EndDialogue / StartScene. 각각 대응하는 `*Requested` 초기
+    /// 이벤트를 생성하고 transactional handler chain을 통해 실제 결과 이벤트를 발행한다.
     ///
     /// **이벤트 흐름**:
-    /// 1. Command → 초기 이벤트 (`AppraiseRequested` / `StimulusApplyRequested`)
+    /// 1. Command → 초기 이벤트 (6종 `*Requested` variant 중 하나)
     /// 2. Transactional phase: BFS 큐로 handler chain 실행, staging_buffer 적재
     ///    (에러 시 전체 abort → staging_buffer 폐기, event_store 미변경)
-    /// 3. Commit phase: staging_buffer의 각 이벤트에 실ID·sequence 할당 후 event_store.append
-    /// 4. Inline phase: Projection handler 동기 호출 (에러는 로그만)
-    /// 5. Fanout phase: event_bus.publish (broadcast 구독자)
-    pub fn dispatch_v2(&mut self, cmd: Command) -> Result<DispatchV2Output, DispatchV2Error>
+    /// 3. Repo write-back: `HandlerShared`의 emotion_state / relationship / scene /
+    ///    clear_* 시그널을 repository에 반영
+    /// 4. Commit phase: staging_buffer의 각 이벤트에 실ID·sequence 할당 후 event_store.append
+    /// 5. Inline phase: Projection handler 동기 호출 (에러는 로그만)
+    /// 6. Fanout phase: event_bus.publish (broadcast 구독자)
+    pub async fn dispatch_v2(&self, cmd: Command) -> Result<DispatchV2Output, DispatchV2Error>
     where
         R: Send + Sync,
     {
@@ -482,6 +520,12 @@ impl<R: MindRepository> CommandDispatcher<R> {
         let aggregate_key = initial_event.aggregate_key();
 
         // 2. Transactional phase
+        //
+        // B4 Session 4: Repository 접근은 `Arc<Mutex<R>>`로 공유되므로, dispatch_v2 전체 기간 동안
+        // 단일 guard를 잡아 handler들에게 `&dyn MindRepository`로 전달한다. 본문 내부에 `.await`가
+        // 없으므로 sync Mutex 보유가 안전(Send 제약 위반 없음).
+        let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
+
         let mut shared = HandlerShared::default();
         let mut prior_events: Vec<DomainEvent> = Vec::new();
         let mut event_queue: VecDeque<(u32, DomainEvent)> = VecDeque::new();
@@ -511,7 +555,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 };
 
                 let mut ctx = EventHandlerContext {
-                    repo: &self.repository as &(dyn MindRepository + Send + Sync),
+                    repo: &*repo_guard as &(dyn MindRepository + Send + Sync),
                     event_store: &*self.event_store,
                     shared: &mut shared,
                     prior_events: &prior_events,
@@ -549,7 +593,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         // v2는 handler들이 `ctx.shared`에만 쓰므로, transactional phase 성공 후 Dispatcher가
         // 공유 상태를 repo에 반영한다. B2 Projection handler는 읽기 뷰(projection의 HashMap)만
         // 갱신하며 domain state(MindRepository)는 건드리지 않으므로 이 단계가 필요.
-        self.apply_shared_to_repository(&aggregate_key, &shared);
+        Self::apply_shared_to_repository(&mut *repo_guard, &aggregate_key, &shared);
 
         // 4. Commit phase — 실 ID/sequence 할당 후 event_store.append
         let committed = self.commit_staging_buffer(&aggregate_key, staging_buffer);
@@ -564,7 +608,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     continue;
                 }
                 let mut ctx = EventHandlerContext {
-                    repo: &self.repository as &(dyn MindRepository + Send + Sync),
+                    repo: &*repo_guard as &(dyn MindRepository + Send + Sync),
                     event_store: &*self.event_store,
                     shared: &mut shared,
                     prior_events: &prior_events,
@@ -575,6 +619,9 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 }
             }
         }
+
+        // Lock 해제 — Fanout은 broadcast::Sender이므로 lock 보유 불필요
+        drop(repo_guard);
 
         // 6. Fanout phase
         for event in &committed {
@@ -675,14 +722,16 @@ impl<R: MindRepository> CommandDispatcher<R> {
             } => {
                 use crate::domain::emotion::Scene;
                 // SceneFocusInput(DTO) → SceneFocus(domain) 변환
+                let repo_guard = self.repository.lock().expect("repository mutex poisoned");
                 let domain_focuses: Vec<_> = focuses
                     .iter()
                     .map(|f| {
                         self.situation_service
-                            .to_scene_focus(&self.repository, f, npc_id, partner_id)
+                            .to_scene_focus(&*repo_guard, f, npc_id, partner_id)
                             .map_err(|e| DispatchV2Error::InvalidSituation(e.to_string()))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
+                drop(repo_guard);
 
                 let sig = significance.unwrap_or(0.5);
                 let prebuilt_scene = Scene::with_significance(
@@ -721,11 +770,16 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 .to_domain(None, None, None, npc_id)
                 .map_err(|e| DispatchV2Error::InvalidSituation(e.to_string())),
             None => {
-                let scene = self.repository.get_scene().ok_or_else(|| {
-                    DispatchV2Error::InvalidSituation(
-                        "situation이 생략되었으나 활성 Scene이 없습니다.".into(),
-                    )
-                })?;
+                let scene = self
+                    .repository
+                    .lock()
+                    .expect("repository mutex poisoned")
+                    .get_scene()
+                    .ok_or_else(|| {
+                        DispatchV2Error::InvalidSituation(
+                            "situation이 생략되었으나 활성 Scene이 없습니다.".into(),
+                        )
+                    })?;
                 let focus = scene
                     .active_focus_id()
                     .and_then(|id| scene.focuses().iter().find(|f| f.id == id).cloned())
@@ -750,24 +804,27 @@ impl<R: MindRepository> CommandDispatcher<R> {
     ///
     /// B4.1: destructive 시그널(`clear_emotion_for`, `clear_scene`)도 처리. Save가 Clear보다
     /// **먼저** 실행되어 동일 커맨드에서 save + clear가 양립할 때 최종 상태가 cleared가 되도록.
-    fn apply_shared_to_repository(&mut self, aggregate_key: &AggregateKey, shared: &HandlerShared) {
+    fn apply_shared_to_repository(
+        repo: &mut R,
+        aggregate_key: &AggregateKey,
+        shared: &HandlerShared,
+    ) {
         if let Some(state) = &shared.emotion_state {
             let npc_id = aggregate_key.npc_id_hint();
-            self.repository.save_emotion_state(npc_id, state.clone());
+            repo.save_emotion_state(npc_id, state.clone());
         }
         if let Some(rel) = &shared.relationship {
-            self.repository
-                .save_relationship(rel.owner_id(), rel.target_id(), rel.clone());
+            repo.save_relationship(rel.owner_id(), rel.target_id(), rel.clone());
         }
         if let Some(scene) = &shared.scene {
-            self.repository.save_scene(scene.clone());
+            repo.save_scene(scene.clone());
         }
         // Destructive 시그널은 save 후 적용 — DialogueEnd 등에서 "update 후 clear" 시나리오.
         if let Some(npc_id) = &shared.clear_emotion_for {
-            self.repository.clear_emotion_state(npc_id);
+            repo.clear_emotion_state(npc_id);
         }
         if shared.clear_scene {
-            self.repository.clear_scene();
+            repo.clear_scene();
         }
     }
 
@@ -783,7 +840,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
             let id = self.event_store.next_id();
             let seq = self.event_store.next_sequence(&aggregate_id);
             let mut e = DomainEvent::new(id, aggregate_id.clone(), seq, event.payload);
-            if let Some(cid) = self.correlation_id {
+            if let Some(cid) = self.current_correlation_id() {
                 e = e.with_correlation(cid);
             }
             self.event_store.append(&[e.clone()]);
@@ -804,13 +861,15 @@ impl<R: MindRepository> CommandDispatcher<R> {
         use crate::domain::emotion::Scene;
 
         // Focus 변환
+        let repo_guard = self.repository.lock().expect("repository mutex poisoned");
         let domain_focuses: Vec<_> = focuses
             .iter()
             .map(|f| {
                 self.situation_service
-                    .to_scene_focus(&self.repository, f, npc_id, partner_id)
+                    .to_scene_focus(&*repo_guard, f, npc_id, partner_id)
             })
             .collect::<Result<Vec<_>, _>>()?;
+        drop(repo_guard);
 
         let focus_count = domain_focuses.len();
         let sig = significance.unwrap_or(0.5);

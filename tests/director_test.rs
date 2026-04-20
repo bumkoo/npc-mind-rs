@@ -8,10 +8,11 @@
 
 mod common;
 
-use common::{make_무백, make_교룡, make_수련, TestContext};
+use common::{make_무백, make_교룡, make_수련, expect_event, expect_events, TestContext, SCENE_TASK_TEST_TIMEOUT};
+use futures::future::BoxFuture;
 use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::command::types::Command;
-use npc_mind::application::director::{Director, DirectorError};
+use npc_mind::application::director::{Director, DirectorError, Spawner};
 use npc_mind::application::dto::{EventInput, SceneFocusInput, SituationInput};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
@@ -22,6 +23,19 @@ use npc_mind::InMemoryRepository;
 use npc_mind::EventStore;
 
 use std::sync::Arc;
+use std::time::Duration;
+use tokio::time::sleep;
+
+fn test_spawner() -> Arc<dyn Spawner> {
+    Arc::new(|fut: BoxFuture<'static, ()>| {
+        tokio::spawn(fut);
+    })
+}
+
+/// Scene task가 큐의 커맨드를 처리하도록 잠시 대기.
+/// Fire-and-forget API라 반환값에 이벤트가 포함되지 않으므로
+/// 후속 assertion 전에 short sleep이 필요.
+const TASK_SETTLE: Duration = Duration::from_millis(100);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -42,7 +56,7 @@ fn three_npc_director() -> Director<InMemoryRepository> {
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
     let dispatcher = CommandDispatcher::new(repo, store, bus).with_default_handlers();
-    Director::new(dispatcher)
+    Director::new(dispatcher, test_spawner())
 }
 
 fn simple_initial_focus(id: &str) -> SceneFocusInput {
@@ -84,43 +98,49 @@ fn appraise_for(scene_id: &SceneId) -> Command {
 // 1. Scene lifecycle
 // ---------------------------------------------------------------------------
 
-#[test]
-fn director_new_has_no_active_scenes() {
+#[tokio::test]
+async fn director_new_has_no_active_scenes() {
     let ctx = TestContext::new();
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
     let dispatcher = CommandDispatcher::new(ctx.repo, store, bus).with_default_handlers();
-    let director = Director::new(dispatcher);
-    assert!(director.active_scenes().is_empty());
+    let director = Director::new(dispatcher, test_spawner());
+    assert!(director.active_scenes().await.is_empty());
 }
 
-#[test]
-fn start_scene_registers_scene_and_emits_lifecycle_events() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn start_scene_registers_scene_and_emits_lifecycle_events() {
+    let director = three_npc_director();
 
-    let (scene_id, out) = director
+    // Trigger **전에** subscribe 등록 (broadcast는 replay 없음).
+    use npc_mind::domain::event::EventKind;
+    let events_waiter = expect_events(
+        director.dispatcher().event_bus(),
+        &[EventKind::SceneStarted, EventKind::EmotionAppraised],
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+
+    let scene_id = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             Some(0.5),
             vec![simple_initial_focus("initial")],
         )
+        .await
         .expect("start_scene must succeed");
 
     assert_eq!(scene_id, SceneId::new("mu_baek", "gyo_ryong"));
-    assert!(director.is_active(&scene_id));
-    assert_eq!(director.active_scenes().len(), 1);
+    assert!(director.is_active(&scene_id).await);
+    assert_eq!(director.active_scenes().await.len(), 1);
 
-    // SceneStarted가 발행되었고, 초기 focus가 있어 EmotionAppraised + GuideGenerated도 cascade
-    let kinds: Vec<_> = out.events.iter().map(|e| e.kind()).collect();
-    use npc_mind::domain::event::EventKind;
-    assert!(kinds.contains(&EventKind::SceneStarted));
-    assert!(kinds.contains(&EventKind::EmotionAppraised));
+    // Fire-and-forget: EventBus timeout 기반 대기 → sleep보다 견고.
+    events_waiter.await;
 }
 
-#[test]
-fn start_scene_rejects_duplicate_activation() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn start_scene_rejects_duplicate_activation() {
+    let director = three_npc_director();
 
     director
         .start_scene(
@@ -129,6 +149,7 @@ fn start_scene_rejects_duplicate_activation() {
             None,
             vec![simple_initial_focus("initial")],
         )
+        .await
         .expect("first start ok");
 
     let err = director
@@ -138,36 +159,40 @@ fn start_scene_rejects_duplicate_activation() {
             None,
             vec![simple_initial_focus("initial")],
         )
+        .await
         .expect_err("duplicate must fail");
     assert!(matches!(err, DirectorError::SceneAlreadyActive(_)));
 }
 
-#[test]
-fn end_scene_removes_from_active_list() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn end_scene_removes_from_active_list() {
+    let director = three_npc_director();
 
-    let (scene_id, _) = director
+    let scene_id = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             None,
             vec![simple_initial_focus("initial")],
         )
+        .await
         .unwrap();
 
     director
         .end_scene(&scene_id, Some(0.5))
+        .await
         .expect("end must succeed");
-    assert!(!director.is_active(&scene_id));
-    assert!(director.active_scenes().is_empty());
+    assert!(!director.is_active(&scene_id).await);
+    assert!(director.active_scenes().await.is_empty());
 }
 
-#[test]
-fn end_scene_on_unknown_scene_returns_error() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn end_scene_on_unknown_scene_returns_error() {
+    let director = three_npc_director();
     let phantom = SceneId::new("ghost", "nobody");
     let err = director
         .end_scene(&phantom, None)
+        .await
         .expect_err("unknown scene must fail");
     assert!(matches!(err, DirectorError::SceneNotActive(_)));
 }
@@ -176,44 +201,52 @@ fn end_scene_on_unknown_scene_returns_error() {
 // 2. dispatch_to 검증
 // ---------------------------------------------------------------------------
 
-#[test]
-fn dispatch_to_routes_to_correct_scene() {
-    let mut director = three_npc_director();
-    let (scene_id, _) = director
+#[tokio::test]
+async fn dispatch_to_routes_to_correct_scene() {
+    let director = three_npc_director();
+    let scene_id = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             None,
             vec![simple_initial_focus("initial")],
         )
+        .await
         .unwrap();
 
-    let out = director
+    director
         .dispatch_to(&scene_id, appraise_for(&scene_id))
+        .await
         .expect("ok");
-    assert!(!out.events.is_empty());
+
+    // Fire-and-forget: Scene task 처리 대기 → event_store에 Appraise 계열 이벤트가 기록됨
+    sleep(TASK_SETTLE).await;
+    let events = director.dispatcher().event_store().get_all_events();
+    assert!(!events.is_empty(), "dispatch_to 이후 이벤트가 기록되어야 함");
 }
 
-#[test]
-fn dispatch_to_inactive_scene_returns_error() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn dispatch_to_inactive_scene_returns_error() {
+    let director = three_npc_director();
     let phantom = SceneId::new("ghost", "nobody");
     let err = director
         .dispatch_to(&phantom, appraise_for(&phantom))
+        .await
         .expect_err("must fail");
     assert!(matches!(err, DirectorError::SceneNotActive(_)));
 }
 
-#[test]
-fn dispatch_to_rejects_command_targeting_different_scene() {
-    let mut director = three_npc_director();
-    let (scene_id, _) = director
+#[tokio::test]
+async fn dispatch_to_rejects_command_targeting_different_scene() {
+    let director = three_npc_director();
+    let scene_id = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             None,
             vec![simple_initial_focus("initial")],
         )
+        .await
         .unwrap();
 
     // scene_id는 mu_baek↔gyo_ryong인데 커맨드는 mu_baek↔su_ryeon
@@ -234,6 +267,7 @@ fn dispatch_to_rejects_command_targeting_different_scene() {
     };
     let err = director
         .dispatch_to(&scene_id, wrong_cmd)
+        .await
         .expect_err("must fail mismatch");
     assert!(matches!(err, DirectorError::SceneMismatch(_, _, _)));
 }
@@ -242,36 +276,43 @@ fn dispatch_to_rejects_command_targeting_different_scene() {
 // 3. 다중 Scene 동시 활성 + 이벤트 격리
 // ---------------------------------------------------------------------------
 
-#[test]
-fn two_scenes_coexist_and_events_are_aggregate_separated() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn two_scenes_coexist_and_events_are_aggregate_separated() {
+    let director = three_npc_director();
 
-    let (scene_a, _) = director
+    let scene_a = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             None,
             vec![simple_initial_focus("a_initial")],
         )
+        .await
         .unwrap();
-    let (scene_b, _) = director
+    let scene_b = director
         .start_scene(
             "mu_baek",
             "su_ryeon",
             None,
             vec![simple_initial_focus("b_initial")],
         )
+        .await
         .unwrap();
 
-    assert_eq!(director.active_scenes().len(), 2);
+    assert_eq!(director.active_scenes().await.len(), 2);
 
     // 각 Scene에 appraise 커맨드 송신
     director
         .dispatch_to(&scene_a, appraise_for(&scene_a))
+        .await
         .unwrap();
     director
         .dispatch_to(&scene_b, appraise_for(&scene_b))
+        .await
         .unwrap();
+
+    // Fire-and-forget: Scene task가 커맨드들을 처리할 시간 필요
+    sleep(TASK_SETTLE).await;
 
     // 이벤트 스토어에서 각 Scene의 이벤트가 aggregate_key::Scene으로 구분되는지 확인
     let events = director.dispatcher().event_store().get_all_events();
@@ -307,36 +348,39 @@ fn two_scenes_coexist_and_events_are_aggregate_separated() {
     );
 }
 
-#[test]
-fn ending_one_scene_leaves_other_active() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn ending_one_scene_leaves_other_active() {
+    let director = three_npc_director();
 
-    let (scene_a, _) = director
+    let scene_a = director
         .start_scene(
             "mu_baek",
             "gyo_ryong",
             None,
             vec![simple_initial_focus("a_initial")],
         )
+        .await
         .unwrap();
-    let (scene_b, _) = director
+    let scene_b = director
         .start_scene(
             "mu_baek",
             "su_ryeon",
             None,
             vec![simple_initial_focus("b_initial")],
         )
+        .await
         .unwrap();
 
-    director.end_scene(&scene_a, None).unwrap();
+    director.end_scene(&scene_a, None).await.unwrap();
 
-    assert!(!director.is_active(&scene_a));
-    assert!(director.is_active(&scene_b), "scene_b는 영향 없이 유지");
-    assert_eq!(director.active_scenes().len(), 1);
+    assert!(!director.is_active(&scene_a).await);
+    assert!(director.is_active(&scene_b).await, "scene_b는 영향 없이 유지");
+    assert_eq!(director.active_scenes().await.len(), 1);
 
     // scene_b에 계속 커맨드 송신 가능
     director
         .dispatch_to(&scene_b, appraise_for(&scene_b))
+        .await
         .expect("scene_b는 독립적으로 동작");
 }
 
@@ -350,8 +394,8 @@ fn ending_one_scene_leaves_other_active() {
 /// 4. 이전 (Session 2) 구현에서는 RelationshipAgent가 `ctx.repo.get_scene()` →
 ///    last_scene_id가 가리키는 **Scene B의 partner_id(su_ryeon)** 를 읽어 잘못된 관계 갱신
 /// 5. 이번 수정 후에는 event.partner_id(gyo_ryong)을 직접 읽어 올바른 관계를 갱신
-#[test]
-fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
+#[tokio::test]
+async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
     use npc_mind::domain::emotion::{
         ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, SceneFocus,
     };
@@ -445,7 +489,7 @@ fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
     // Scene A에 대해 appraise + stimulus 순서로 dispatch → Beat 전환 유발
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let mut dispatcher = CommandDispatcher::new(repo, store.clone(), bus).with_default_handlers();
+    let dispatcher = CommandDispatcher::new(repo, store.clone(), bus).with_default_handlers();
 
     // seed emotion_state for mu_baek (via appraise-like command against Scene A partner)
     dispatcher
@@ -464,6 +508,7 @@ fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
                 object: None,
             }),
         })
+        .await
         .expect("seed appraise");
 
     // stimulus → Beat 전환 유도. Scene A의 "a_next"가 Hate Absent 조건이라 반드시 트리거.
@@ -476,6 +521,7 @@ fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
             dominance: 0.0,
             situation_description: None,
         })
+        .await
         .expect("stimulus triggering beat");
 
     // BeatTransitioned 이벤트를 event_store에서 찾아 partner_id 검증
@@ -513,9 +559,9 @@ fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
     );
 }
 
-#[test]
-fn repository_holds_both_scenes_by_id() {
-    let mut director = three_npc_director();
+#[tokio::test]
+async fn repository_holds_both_scenes_by_id() {
+    let director = three_npc_director();
 
     director
         .start_scene(
@@ -524,6 +570,7 @@ fn repository_holds_both_scenes_by_id() {
             None,
             vec![simple_initial_focus("a_initial")],
         )
+        .await
         .unwrap();
     director
         .start_scene(
@@ -532,9 +579,13 @@ fn repository_holds_both_scenes_by_id() {
             None,
             vec![simple_initial_focus("b_initial")],
         )
+        .await
         .unwrap();
 
-    let repo = director.dispatcher().repository();
+    // Fire-and-forget: Scene tasks가 StartScene 커맨드를 처리해야 repo.scenes에 저장됨
+    sleep(TASK_SETTLE).await;
+
+    let repo = director.dispatcher().repository_guard();
     let ids = repo.list_scene_ids();
     assert_eq!(ids.len(), 2, "InMemoryRepository.scenes HashMap에 2 Scene 보존");
 
@@ -546,4 +597,103 @@ fn repository_holds_both_scenes_by_id() {
         .expect("scene_b");
     assert_eq!(scene_a.partner_id(), "gyo_ryong");
     assert_eq!(scene_b.partner_id(), "su_ryeon");
+}
+
+// ---------------------------------------------------------------------------
+// B4 Session 4 후속 — SceneTask 종료 + concurrent start_scene race
+// ---------------------------------------------------------------------------
+
+/// Sender drop → receiver None → SceneTask 루프가 자연 종료되는지 검증.
+///
+/// `end_scene`은 EndDialogue 송신 후 senders map에서 sender를 제거하고 drop한다.
+/// 이때 SceneTask receiver가 None을 받고 루프를 탈출한다. 탈출은 broadcast에서
+/// 관찰할 수 없으므로, 이 테스트는 "종료 후 같은 SceneId로 재시작"이 가능함을 통해
+/// 간접 검증한다.
+#[tokio::test]
+async fn scene_task_terminates_after_end_scene_and_allows_restart() {
+    use npc_mind::domain::event::EventKind;
+
+    let director = three_npc_director();
+    let scene_id = SceneId::new("mu_baek", "gyo_ryong");
+
+    // 1. start → end
+    let ended_waiter = expect_event(
+        director.dispatcher().event_bus(),
+        EventKind::SceneEnded,
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+    director
+        .start_scene(
+            "mu_baek",
+            "gyo_ryong",
+            None,
+            vec![simple_initial_focus("initial")],
+        )
+        .await
+        .unwrap();
+    director.end_scene(&scene_id, Some(0.5)).await.unwrap();
+    ended_waiter.await;
+
+    // 2. 종료된 scene이 active 목록에서 제거되었는지
+    assert!(!director.is_active(&scene_id).await);
+
+    // 3. 같은 SceneId로 재시작이 허용되는지 (SceneTask 정상 종료 → 이전 sender가 map에 없음)
+    let restart_waiter = expect_event(
+        director.dispatcher().event_bus(),
+        EventKind::SceneStarted,
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+    director
+        .start_scene(
+            "mu_baek",
+            "gyo_ryong",
+            None,
+            vec![simple_initial_focus("restart_initial")],
+        )
+        .await
+        .expect("종료 후 같은 SceneId 재시작 허용되어야 함");
+    restart_waiter.await;
+}
+
+/// 동시 `start_scene` 호출이 같은 scene_id로 진입하는 race condition 회귀 가드.
+///
+/// B4 Session 4 초기 구현은 `read() → check → write()` 분리된 TOCTOU 버그가 있었다.
+/// 현재는 `write()` lock을 critical section 전체에 유지하여 하나만 성공하고
+/// 나머지는 `SceneAlreadyActive`를 받는다.
+#[tokio::test]
+async fn concurrent_start_scene_with_same_id_elects_single_winner() {
+    let director = Arc::new(three_npc_director());
+
+    // 동시 5회 start_scene 호출 (같은 scene_id)
+    let mut handles = Vec::new();
+    for i in 0..5 {
+        let dir = Arc::clone(&director);
+        handles.push(tokio::spawn(async move {
+            dir.start_scene(
+                "mu_baek",
+                "gyo_ryong",
+                None,
+                vec![simple_initial_focus(&format!("attempt_{}", i))],
+            )
+            .await
+        }));
+    }
+
+    let results: Vec<_> = futures::future::join_all(handles).await;
+    let ok_count = results.iter().filter(|r| matches!(r, Ok(Ok(_)))).count();
+    let already_active_count = results
+        .iter()
+        .filter(|r| matches!(r, Ok(Err(DirectorError::SceneAlreadyActive(_)))))
+        .count();
+
+    assert_eq!(
+        ok_count, 1,
+        "정확히 1개 호출만 성공해야 함 (TOCTOU 회귀 방지)"
+    );
+    assert_eq!(
+        already_active_count, 4,
+        "나머지 4개는 SceneAlreadyActive로 거부되어야 함"
+    );
+
+    assert_eq!(director.active_scenes().await.len(), 1);
 }

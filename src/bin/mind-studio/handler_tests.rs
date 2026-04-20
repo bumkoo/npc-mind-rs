@@ -1805,7 +1805,8 @@ async fn v2_seed_npcs_and_start_scene_returns_scene_id() {
     let body = body_json(resp).await;
     assert_eq!(body["scene_id"]["npc_id"], "mu_baek");
     assert_eq!(body["scene_id"]["partner_id"], "gyo_ryong");
-    assert!(body["event_count"].as_u64().unwrap() > 0);
+    // B4 Session 4: start_scene은 fire-and-forget — SceneId만 돌려준다.
+    // 초기 이벤트 발행 관찰은 event_bus().subscribe() 경로에서 수행.
 
     // 4. GET /api/v2/scenes 에서 활성 Scene 확인
     let resp = app
@@ -1871,10 +1872,16 @@ async fn v2_dispatch_appraise_to_active_scene_emits_events() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_json(resp).await;
-    assert!(body["event_count"].as_u64().unwrap() >= 3); // AppraiseRequested + EmotionAppraised + GuideGenerated
-    let kinds = body["event_kinds"].as_array().unwrap();
-    assert!(kinds.iter().any(|k| k == "AppraiseRequested"));
-    assert!(kinds.iter().any(|k| k == "EmotionAppraised"));
+    // B4 Session 4: fire-and-forget — ack만 확인하고 실제 이벤트 발행은 EventStore에서 관찰.
+    assert_eq!(body["ok"], serde_json::Value::Bool(true));
+
+    // SceneTask가 StartScene + Appraise 커맨드를 처리할 시간 확보
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    let events = state.director_v2.dispatcher().event_store().get_all_events();
+    let kinds: Vec<String> = events.iter().map(|e| format!("{:?}", e.kind())).collect();
+    assert!(kinds.iter().any(|k| k == "AppraiseRequested"), "got kinds: {:?}", kinds);
+    assert!(kinds.iter().any(|k| k == "EmotionAppraised"), "got kinds: {:?}", kinds);
 }
 
 #[tokio::test]

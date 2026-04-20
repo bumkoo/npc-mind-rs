@@ -182,6 +182,8 @@ impl IntoResponse for AppError {
                 Derr::SceneAlreadyActive(_) => (StatusCode::CONFLICT, e.to_string()),
                 Derr::SceneNotActive(_) => (StatusCode::NOT_FOUND, e.to_string()),
                 Derr::SceneMismatch(_, _, _) => (StatusCode::BAD_REQUEST, e.to_string()),
+                // SceneChannelClosed: SceneTask receiver가 drop된 비정상 상태 — 서버 invariant 위반.
+                Derr::SceneChannelClosed(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
                 // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
                 Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             },
