@@ -73,6 +73,12 @@ pub struct AppState {
     /// 내부 `Arc<Mutex<InMemoryRepository>>`를 소유하며, UI CRUD 시
     /// `AppState::rebuild_repo_from_inner()`로 repo를 재구성한다. Dispatch 시점에는
     /// 이미 fresh한 상태이므로 request마다 snapshot_to_repo를 수행하지 않는다.
+    ///
+    /// **알려진 한계**: 내부 `InMemoryEventStore`가 프로세스 수명 동안 모든 이벤트를
+    /// 누적한다. 이전 ephemeral dispatcher 패턴은 request마다 store를 drop했으나
+    /// 공유 dispatcher는 그렇지 않다. Mind Studio는 dev tool이고 주기적으로 재시작
+    /// 되므로 실용상 문제없음 — 장기 실행 시 메모리 사용량 증가와 `next_sequence`
+    /// O(N) scan 부하가 누적됨을 염두에 둘 것. Phase 8+ persistent store 도입 시 해소.
     pub shared_dispatcher: Arc<CommandDispatcher<InMemoryRepository>>,
 }
 
@@ -143,6 +149,9 @@ impl AppState {
         }
         for rel in inner.relationships.values() {
             repo.add_relationship(rel.to_relationship());
+        }
+        for obj in inner.objects.values() {
+            repo.add_object(obj.id.clone(), obj.description.clone());
         }
         for (id, state) in &inner.emotions {
             repo.save_emotion_state(id, state.clone());
