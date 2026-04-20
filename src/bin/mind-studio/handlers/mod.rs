@@ -138,7 +138,7 @@ pub enum AppError {
     /// UnsupportedCommand/InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
-    V2Dispatch(npc_mind::application::command::dispatcher::DispatchV2Error),
+    V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
 }
 
 impl From<npc_mind::application::director::DirectorError> for AppError {
@@ -187,14 +187,39 @@ impl IntoResponse for AppError {
                 // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
                 Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             },
-            // v2 dispatch: 클라이언트 입력 오류(400) vs 서버 invariant 위반(500) 분기
+            // v2 dispatch: 클라이언트 입력 오류(400/404) vs 서버 invariant 위반(500) 분기
             AppError::V2Dispatch(ref e) => match e {
-                Dv2::UnsupportedCommand(_) | Dv2::InvalidSituation(_) => {
-                    (StatusCode::BAD_REQUEST, e.to_string())
+                Dv2::UnsupportedCommand(_) => (StatusCode::BAD_REQUEST, e.to_string()),
+                // InvalidSituation의 메시지에 "not found"가 섞여있으면 404, 그 외 400.
+                Dv2::InvalidSituation(msg) => {
+                    if msg.to_lowercase().contains("not found") {
+                        (StatusCode::NOT_FOUND, e.to_string())
+                    } else {
+                        (StatusCode::BAD_REQUEST, e.to_string())
+                    }
                 }
-                Dv2::CascadeTooDeep { .. }
-                | Dv2::EventBudgetExceeded
-                | Dv2::HandlerFailed { .. } => {
+                // HandlerFailed의 source가 Precondition이면 client-side 원인.
+                // v1 MindServiceError 계약 호환 유지:
+                //   - Npc/Relationship not found → 404 (리소스 부재)
+                //   - Emotion state not found → 400 (상태 순서 오류, appraise 선행 누락)
+                //   - 그 외 → 400
+                Dv2::HandlerFailed { source, .. } => {
+                    use npc_mind::application::command::handler_v2::HandlerError;
+                    match source {
+                        HandlerError::Precondition(msg) => {
+                            let lower = msg.to_lowercase();
+                            if lower.contains("emotion state") {
+                                (StatusCode::BAD_REQUEST, e.to_string())
+                            } else if lower.contains("not found") {
+                                (StatusCode::NOT_FOUND, e.to_string())
+                            } else {
+                                (StatusCode::BAD_REQUEST, e.to_string())
+                            }
+                        }
+                        _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                    }
+                }
+                Dv2::CascadeTooDeep { .. } | Dv2::EventBudgetExceeded => {
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 }
             },

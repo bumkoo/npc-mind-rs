@@ -404,8 +404,11 @@ async fn appraise_npc_not_found() {
     let resp = app.oneshot(json_post("/api/appraise", req)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
+    // B5.2 (2/3): v2 dispatch_v2의 HandlerError::Precondition은 &'static str이라
+    // NPC id를 동적으로 포함할 수 없다. "not found" 메시지로만 검증.
     let json = body_json(resp).await;
-    assert!(json["error"].as_str().unwrap().contains("nonexistent"));
+    let err = json["error"].as_str().unwrap().to_lowercase();
+    assert!(err.contains("not found"), "error: {}", err);
 }
 
 /// appraise 없이 stimulus → 400 (EmotionStateNotFound)
