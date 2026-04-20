@@ -1349,7 +1349,7 @@ async fn mcp_tool_call_logic() {
         let mut inner = state.inner.write().await;
         let profile: NpcProfile = serde_json::from_value(mu_baek_profile()).unwrap();
         inner.npcs.insert(profile.id.clone(), profile);
-        
+
         // 관계 등록 (mu_baek -> player)
         inner.relationships.insert("mu_baek:player".into(), RelationshipData {
             owner_id: "mu_baek".into(),
@@ -1359,6 +1359,8 @@ async fn mcp_tool_call_logic() {
             power: 0.0,
         });
     }
+    // B5.2 (3/3): inner 직접 조작 후 공유 repo 재구성 필요 (REST CRUD 경로가 아니므로)
+    state.rebuild_repo_from_inner().await;
 
     // 1. list_npcs 도구 테스트 (JSON 구조 사용)
     let mcp = state.mcp_server.as_ref().unwrap();
@@ -1409,6 +1411,7 @@ async fn test_studio_analysis_pipeline_integrity() {
         // appraise 상태 생성
         inner.emotions.insert("mu_baek".into(), npc_mind::domain::emotion::EmotionState::default());
     }
+    state.rebuild_repo_from_inner().await;
 
     #[cfg(feature = "chat")]
     {

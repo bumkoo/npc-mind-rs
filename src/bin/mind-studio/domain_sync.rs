@@ -1,69 +1,54 @@
-//! StateInner ↔ InMemoryRepository 양방향 동기화 유틸리티 (B5.2 2/3)
+//! StateInner ↔ shared CommandDispatcher 동기화 유틸리티 (B5.2 3/3)
 //!
-//! Mind Studio의 v1 handler들이 v2 `dispatch_v2` 경로로 전환되면서,
-//! `AppStateRepository<'a>` (lifetime-bound) 대신 owned `InMemoryRepository`가 필요해졌다.
-//! 각 request마다 `StateInner` (UI 소스) → `InMemoryRepository` (도메인 작업용)로
-//! snapshot을 만들고, dispatch 이후 역으로 동기화한다.
+//! Mind Studio의 REST/MCP handler가 `AppState.shared_dispatcher`를 통해
+//! v2 경로로 커맨드를 처리하는 고수준 wrapper 모음.
 //!
-//! ## 흐름
+//! ## 계약
+//!
+//! - **전제**: 호출 전에 공유 repo는 이미 fresh 상태. UI CRUD / scenario load
+//!   경로가 `AppState::rebuild_repo_from_inner()`를 호출해 유지한다.
+//! - **공유 dispatcher**: `state.shared_dispatcher.dispatch_v2(cmd).await`로
+//!   dispatch. request 간 dispatcher·repo·EventStore·EventBus를 재사용하므로
+//!   snapshot_to_repo/ephemeral dispatcher 없음.
+//! - **사후 동기화**: dispatch 결과가 repo의 관계/감정/Scene을 변경했으므로
+//!   `sync_from_repo(&repo, inner)`로 UI 뷰에 전파한다.
+//!
 //! ```text
-//! lock inner
-//!   → snapshot_to_repo(&inner)    // read path
-//!   → build CommandDispatcher + dispatch_v2
-//!   → sync_from_repo(&repo, &mut inner)  // write path
-//! unlock inner
+//! (UI write) → rebuild_repo_from_inner → shared_repo 최신
+//! (dispatch)  → state.shared_dispatcher.dispatch_v2 → shared_repo 변이
+//!   → sync_from_repo(&shared_repo, inner) → UI 레이어 반영
 //! ```
-//!
-//! ## 성능 메모
-//! 매 request마다 npcs/relationships/emotions 전체를 clone. 일반 Mind Studio UI
-//! 요청량(분당 수십 회) 기준 무시 가능. 병목이 되면 AppState 통합(B5.2 3/3)으로 해소.
 
-use crate::state::{StateInner, RelationshipData};
-use npc_mind::domain::emotion::Scene;
+use crate::state::{AppState, RelationshipData, StateInner};
 use npc_mind::ports::{EmotionStore, NpcWorld, SceneStore};
 use npc_mind::InMemoryRepository;
 
-/// `StateInner`를 읽어 도메인 작업용 `InMemoryRepository` snapshot을 만든다.
+use crate::handlers::AppError;
+use npc_mind::application::command::dispatcher::{DispatchV2Error, DispatchV2Output};
+use npc_mind::application::command::Command;
+use npc_mind::application::dto::{
+    build_appraise_result, build_emotion_fields, AfterDialogueResponse, AppraiseRequest,
+    AppraiseResult, GuideRequest, GuideResult, PadOutput, RelationshipValues, SceneRequest,
+    SceneResult, StimulusRequest, StimulusResult,
+};
+use npc_mind::domain::event::{EventKind, EventPayload};
+use npc_mind::domain::guide::ActingGuide;
+use npc_mind::domain::relationship::Relationship;
+
+// ---------------------------------------------------------------------------
+// sync_from_repo — dispatch 이후 repo → StateInner 반영
+// ---------------------------------------------------------------------------
+
+/// `dispatch_v2` 이후 수정된 공유 repo 상태를 `StateInner`로 반영.
 ///
-/// 포함: NPCs, Relationships, Emotions, Scene (scene_npc_id/partner_id/focuses/active).
-/// 제외: turn_history, test_report, UI 메타 필드 등 도메인 로직이 쓰지 않는 필드.
-pub fn snapshot_to_repo(inner: &StateInner) -> InMemoryRepository {
-    let mut repo = InMemoryRepository::new();
-
-    for profile in inner.npcs.values() {
-        repo.add_npc(profile.to_npc());
-    }
-    for rel in inner.relationships.values() {
-        repo.add_relationship(rel.to_relationship());
-    }
-    for (npc_id, state) in &inner.emotions {
-        repo.save_emotion_state(npc_id, state.clone());
-    }
-    if let (Some(npc_id), Some(partner_id)) = (
-        inner.scene_npc_id.as_ref(),
-        inner.scene_partner_id.as_ref(),
-    ) {
-        let mut scene = Scene::new(
-            npc_id.clone(),
-            partner_id.clone(),
-            inner.scene_focuses.clone(),
-        );
-        if let Some(ref id) = inner.active_focus_id {
-            scene.set_active_focus(id.clone());
-        }
-        repo.save_scene(scene);
-    }
-
-    repo
-}
-
-/// `dispatch_v2` 이후 수정된 `InMemoryRepository` 상태를 `StateInner`로 역반영.
+/// 동기화 대상:
+/// - Relationships (갱신된 closeness/trust/power)
+/// - Emotions (전수 교체)
+/// - Scene (active_focus 등)
 ///
-/// 동기화 대상: Relationships (수정된 값), Emotions, Scene (active focus).
-/// NPC 프로필은 dispatch_v2 내부에서 변경되지 않으므로 sync 대상 아님.
+/// NPC 프로필은 dispatch가 변경하지 않으므로 대상 아님.
 pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
     // Relationships — dispatcher가 save_relationship으로 갱신했을 수 있음.
-    // 기존 inner.relationships의 key는 유지하면서 값을 도메인 기준으로 갱신.
     let existing_keys: Vec<(String, String, String)> = inner
         .relationships
         .iter()
@@ -84,10 +69,8 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
         }
     }
 
-    // Emotions — v2 write-back 결과를 그대로 반영.
-    // repo.list_scene_ids와 달리 EmotionStore trait에는 list가 없으므로,
-    // 기존 inner.emotions에 등록된 NPC + dispatch에서 새로 등장한 NPC 둘 다 커버.
-    // → inner.emotions 전수 갱신 (존재하면 repo 값, 없으면 삭제 = 기존 맵 초기화 불필요).
+    // Emotions — dispatch write-back 결과를 전수 반영.
+    // 기존 inner.emotions 엔트리 + npcs 전수 스캔(신규 NPC 감정도 포함).
     let existing_ids: Vec<String> = inner.emotions.keys().cloned().collect();
     for id in existing_ids {
         match repo.get_emotion_state(&id) {
@@ -99,7 +82,6 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
             }
         }
     }
-    // 신규 NPC 감정은 npcs 집합 전수 스캔
     let npc_ids: Vec<String> = inner.npcs.keys().cloned().collect();
     for id in npc_ids {
         if !inner.emotions.contains_key(&id) {
@@ -109,7 +91,7 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
         }
     }
 
-    // Scene — last_scene_id가 가리키는 현재 Scene 기준으로 UI 필드 동기화.
+    // Scene — last_scene_id가 가리키는 현재 Scene을 UI 필드로 펼쳐 저장.
     match repo.get_scene() {
         Some(scene) => {
             inner.scene_npc_id = Some(scene.npc_id().to_string());
@@ -126,80 +108,43 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
     }
 }
 
-/// 1회용 v2 CommandDispatcher — snapshot된 repo + 기본 핸들러 등록.
-///
-/// 각 handler 호출마다 사용되며, 호출 끝나면 drop. EventStore/EventBus도 ephemeral.
-/// UI는 handler의 반환값을 통해 결과를 받으므로 broadcast subscriber가 없어도 문제없음.
-pub fn build_ephemeral_dispatcher(
-    repo: InMemoryRepository,
-) -> npc_mind::application::command::CommandDispatcher<InMemoryRepository> {
-    use npc_mind::application::command::CommandDispatcher;
-    use npc_mind::application::event_bus::EventBus;
-    use npc_mind::application::event_store::{EventStore, InMemoryEventStore};
-    use std::sync::Arc;
-
-    let store: Arc<dyn EventStore> = Arc::new(InMemoryEventStore::new());
-    let bus = Arc::new(EventBus::new());
-    CommandDispatcher::new(repo, store, bus).with_default_handlers()
-}
-
 // ---------------------------------------------------------------------------
-// Dispatch Helpers — 각 Mind Studio handler 경로가 호출하는 고수준 wrapper
+// Dispatch Helpers — Mind Studio handler 경로가 호출하는 고수준 wrapper
 //
 // 공통 패턴:
-//   1. snapshot_to_repo (read)
-//   2. build ephemeral dispatcher
-//   3. dispatch_v2(cmd).await
-//   4. HandlerShared + events에서 UI DTO 재구성
-//   5. sync_from_repo (write)
+//   1. state.shared_dispatcher.dispatch_v2(cmd).await
+//   2. HandlerShared + events에서 UI DTO 재구성
+//   3. sync_from_repo (공유 repo → inner)
 // ---------------------------------------------------------------------------
 
-use crate::handlers::AppError;
-use npc_mind::application::command::dispatcher::{DispatchV2Error, DispatchV2Output};
-use npc_mind::application::command::Command;
-use npc_mind::application::dto::{
-    build_appraise_result, build_emotion_fields, AfterDialogueResponse, AppraiseRequest,
-    AppraiseResult, GuideRequest, GuideResult, PadOutput, RelationshipValues, SceneRequest,
-    SceneResult, StimulusRequest, StimulusResult,
-};
-use npc_mind::domain::event::{EventKind, EventPayload};
-use npc_mind::domain::guide::ActingGuide;
-use npc_mind::domain::relationship::Relationship;
-
-/// `Command::Appraise` dispatch — Mind Studio `perform_appraise` 등에서 사용.
-///
-/// 반환: 포맷팅 전 `AppraiseResult`. 호출자가 `result.format(formatter)`로 response 구성.
+/// `Command::Appraise` dispatch.
 pub async fn dispatch_appraise(
+    state: &AppState,
     inner: &mut StateInner,
     req: AppraiseRequest,
 ) -> Result<AppraiseResult, AppError> {
-    let repo = snapshot_to_repo(inner);
-    let dispatcher = build_ephemeral_dispatcher(repo);
-
     let cmd = Command::Appraise {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         situation: req.situation,
     };
-    let output = dispatcher.dispatch_v2(cmd).await?;
+    let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
-    let result = build_appraise_result_from_output(&output, &req.npc_id, &req.partner_id, &dispatcher)?;
+    let result = build_appraise_result_from_output(&output, &req.npc_id, &req.partner_id, state)?;
 
     {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         sync_from_repo(&*guard, inner);
     }
     Ok(result)
 }
 
-/// `Command::ApplyStimulus` dispatch — Mind Studio `perform_stimulus`에서 사용.
+/// `Command::ApplyStimulus` dispatch.
 pub async fn dispatch_stimulus(
+    state: &AppState,
     inner: &mut StateInner,
     req: StimulusRequest,
 ) -> Result<StimulusResult, AppError> {
-    let repo = snapshot_to_repo(inner);
-    let dispatcher = build_ephemeral_dispatcher(repo);
-
     let cmd = Command::ApplyStimulus {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
@@ -208,62 +153,52 @@ pub async fn dispatch_stimulus(
         dominance: req.dominance,
         situation_description: req.situation_description,
     };
-    let output = dispatcher.dispatch_v2(cmd).await?;
+    let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
-    let result = build_stimulus_result_from_output(
-        &output,
-        (req.pleasure, req.arousal, req.dominance),
-        &dispatcher,
-    )?;
+    let result =
+        build_stimulus_result_from_output(&output, (req.pleasure, req.arousal, req.dominance), state)?;
 
     {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         sync_from_repo(&*guard, inner);
     }
     Ok(result)
 }
 
-/// `Command::EndDialogue` dispatch — `perform_after_dialogue`에서 사용.
-///
-/// v2의 EndDialogue는 관계 갱신 + 감정 clear + Scene clear를 모두 포함.
-/// v1 `after_dialogue`와 동등한 side-effect 조합.
+/// `Command::EndDialogue` dispatch — 관계 갱신 + 감정 clear + Scene clear.
 pub async fn dispatch_end_dialogue(
+    state: &AppState,
     inner: &mut StateInner,
     req: npc_mind::application::dto::AfterDialogueRequest,
 ) -> Result<AfterDialogueResponse, AppError> {
-    let repo = snapshot_to_repo(inner);
-    let dispatcher = build_ephemeral_dispatcher(repo);
-
     let cmd = Command::EndDialogue {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         significance: req.significance,
     };
-    let output = dispatcher.dispatch_v2(cmd).await?;
+    let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
     let response = build_after_dialogue_from_output(&output, &req.npc_id, &req.partner_id)?;
 
     {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         sync_from_repo(&*guard, inner);
     }
     Ok(response)
 }
 
-/// `Command::GenerateGuide` dispatch — `generate_guide` endpoint에서 사용.
+/// `Command::GenerateGuide` dispatch.
 pub async fn dispatch_generate_guide(
+    state: &AppState,
     inner: &mut StateInner,
     req: GuideRequest,
 ) -> Result<GuideResult, AppError> {
-    let repo = snapshot_to_repo(inner);
-    let dispatcher = build_ephemeral_dispatcher(repo);
-
     let cmd = Command::GenerateGuide {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         situation_description: req.situation_description,
     };
-    let output = dispatcher.dispatch_v2(cmd).await?;
+    let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
     let guide = output.shared.guide.clone().ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
@@ -272,31 +207,28 @@ pub async fn dispatch_generate_guide(
     })?;
 
     {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         sync_from_repo(&*guard, inner);
     }
     Ok(GuideResult { guide })
 }
 
-/// `Command::StartScene` dispatch — `perform_start_scene` 등에서 사용.
+/// `Command::StartScene` dispatch.
 pub async fn dispatch_start_scene(
+    state: &AppState,
     inner: &mut StateInner,
     req: SceneRequest,
 ) -> Result<SceneResult, AppError> {
-    let repo = snapshot_to_repo(inner);
-    let dispatcher = build_ephemeral_dispatcher(repo);
-
     let cmd = Command::StartScene {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         significance: req.significance,
         focuses: req.focuses.clone(),
     };
-    let output = dispatcher.dispatch_v2(cmd).await?;
+    let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
-    // active_focus_id / focus_count는 dispatch_v2 후 repo의 Scene에서 조회
     let (focus_count, active_focus_id) = {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         let scene = guard.get_scene();
         (
             scene.as_ref().map(|s| s.focuses().len()).unwrap_or(0),
@@ -304,20 +236,19 @@ pub async fn dispatch_start_scene(
         )
     };
 
-    // initial_appraise: output.events에 EmotionAppraised가 있으면 구성
     let initial_appraise = if output.shared.emotion_state.is_some() {
         Some(build_appraise_result_from_output(
             &output,
             &req.npc_id,
             &req.partner_id,
-            &dispatcher,
+            state,
         )?)
     } else {
         None
     };
 
     {
-        let guard = dispatcher.repository_guard();
+        let guard = state.shared_dispatcher.repository_guard();
         sync_from_repo(&*guard, inner);
     }
 
@@ -336,15 +267,15 @@ fn build_appraise_result_from_output(
     output: &DispatchV2Output,
     npc_id: &str,
     partner_id: &str,
-    dispatcher: &npc_mind::application::command::CommandDispatcher<InMemoryRepository>,
+    state: &AppState,
 ) -> Result<AppraiseResult, AppError> {
-    let state = output.shared.emotion_state.as_ref().ok_or_else(|| {
+    let emotion_state = output.shared.emotion_state.as_ref().ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
             "EmotionState 재구성 실패 (with_default_handlers 호출 여부 확인)".into(),
         ))
     })?;
 
-    let guard = dispatcher.repository_guard();
+    let guard = state.shared_dispatcher.repository_guard();
     let npc = guard.get_npc(npc_id).ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(format!(
             "NPC {} not found",
@@ -371,7 +302,7 @@ fn build_appraise_result_from_output(
 
     Ok(build_appraise_result(
         &npc,
-        state,
+        emotion_state,
         situation_desc,
         effective_rel,
         &partner_name,
@@ -382,9 +313,9 @@ fn build_appraise_result_from_output(
 fn build_stimulus_result_from_output(
     output: &DispatchV2Output,
     input_pad: (f32, f32, f32),
-    dispatcher: &npc_mind::application::command::CommandDispatcher<InMemoryRepository>,
+    state: &AppState,
 ) -> Result<StimulusResult, AppError> {
-    let state = output.shared.emotion_state.as_ref().ok_or_else(|| {
+    let emotion_state = output.shared.emotion_state.as_ref().ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
             "EmotionState 재구성 실패".into(),
         ))
@@ -395,13 +326,14 @@ fn build_stimulus_result_from_output(
         ))
     })?;
 
-    let (emotions, dominant, mood) = build_emotion_fields(state);
+    let (emotions, dominant, mood) = build_emotion_fields(emotion_state);
     let beat_changed = output
         .events
         .iter()
         .any(|e| matches!(e.kind(), EventKind::BeatTransitioned));
 
-    let active_focus_id = dispatcher
+    let active_focus_id = state
+        .shared_dispatcher
         .repository_guard()
         .get_scene()
         .and_then(|s| s.active_focus_id().map(|id| id.to_string()));
@@ -422,11 +354,7 @@ fn build_stimulus_result_from_output(
     })
 }
 
-/// EndDialogue 결과 events에서 **본 요청에 해당하는** RelationshipUpdated를 선택해 response 구성.
-///
-/// RelationshipAgent가 여러 관계를 업데이트하는 경우(현재 spec에선 1건이지만 확장 가능)
-/// 본 요청의 (npc_id, partner_id)와 payload의 owner/target 쌍이 일치하는 이벤트만 선택.
-/// 양방향 일치 허용 — Relationship 저장 방향은 구현 세부이므로 owner↔target 순서를 교체해도 매치.
+/// EndDialogue 결과 events에서 본 요청에 해당하는 RelationshipUpdated를 선택.
 fn build_after_dialogue_from_output(
     output: &DispatchV2Output,
     npc_id: &str,
