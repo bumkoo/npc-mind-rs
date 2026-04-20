@@ -43,7 +43,7 @@ impl StudioService {
 
             // trace 수집기 초기화 (이전 호출 잔여 entries 제거)
             collector.take_entries();
-            let mut result = crate::domain_sync::dispatch_appraise(&mut *inner, req.clone()).await?;
+            let mut result = crate::domain_sync::dispatch_appraise(state, &mut *inner, req.clone()).await?;
             // dispatch 중 수집된 tracing 이벤트를 trace로 첨부
             result.trace = collector.take_entries();
 
@@ -78,7 +78,7 @@ impl StudioService {
             let collector = state.collector.clone();
 
             collector.take_entries();
-            let mut result = crate::domain_sync::dispatch_stimulus(&mut *inner, req.clone()).await?;
+            let mut result = crate::domain_sync::dispatch_stimulus(state, &mut *inner, req.clone()).await?;
             result.trace = collector.take_entries();
 
             let fmt = state.formatter.read().await;
@@ -111,7 +111,7 @@ impl StudioService {
             let mut inner = state.inner.write().await;
 
             let response =
-                crate::domain_sync::dispatch_end_dialogue(&mut *inner, req.clone()).await?;
+                crate::domain_sync::dispatch_end_dialogue(state, &mut *inner, req.clone()).await?;
 
             // 턴 기록 통합 저장
             Self::record_turn(
@@ -215,23 +215,29 @@ impl StudioService {
         })
     }
 
-    /// 시나리오 데이터를 상태에 주입 및 초기화 (B5.2 2/3: v2 dispatch_start_scene 경유)
+    /// 시나리오 데이터를 상태에 주입 및 초기화 (B5.2 3/3: shared_dispatcher 경유)
     ///
-    /// SceneFocusInput을 처리하고 initial focus에 대해 dispatch_v2(Command::StartScene)
-    /// 을 실행하여 emotion_state를 설정한다. 반환값은 사용하지 않는다 (UI는 별도 appraise
-    /// 호출로 결과를 얻음).
-    pub async fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
+    /// **호출 순서 계약**: 이 함수는 `state.inner`가 **이미 시나리오 데이터로 교체된 뒤**,
+    /// 그리고 `state.rebuild_repo_from_inner()`가 호출되어 공유 repo가 fresh한 상태일 때
+    /// 호출되어야 한다. SceneFocusInput을 처리하고 initial focus에 대해
+    /// `dispatch_v2(Command::StartScene)`을 실행하여 emotion_state·scene을 세팅한다.
+    pub async fn load_scene_into_state(state: &AppState, scene_req: &SceneRequest) {
+        let mut inner = state.inner.write().await;
         // v2 start_scene dispatch (initial focus appraise + scene save + emotion_state 세팅).
         // 실패해도 시나리오 로드 자체는 성공해야 하므로 에러는 로그만.
-        if let Err(e) =
-            crate::domain_sync::dispatch_start_scene(loaded, scene_req.clone()).await
+        if let Err(e) = crate::domain_sync::dispatch_start_scene(
+            state,
+            &mut *inner,
+            scene_req.clone(),
+        )
+        .await
         {
             tracing::warn!("load_scene_into_state: start_scene dispatch 실패 — {}", e);
         }
 
         let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
         if let Some(fi) = initial_input {
-            loaded.current_situation = Some(serde_json::Value::Object(Self::build_situation_map(
+            inner.current_situation = Some(serde_json::Value::Object(Self::build_situation_map(
                 fi,
                 &scene_req.npc_id,
                 &scene_req.partner_id,
@@ -301,7 +307,7 @@ impl StudioService {
             .map(|f| f.id.clone());
 
         collector.take_entries();
-        let mut result = crate::domain_sync::dispatch_appraise(&mut *inner, req.appraise.clone()).await?;
+        let mut result = crate::domain_sync::dispatch_appraise(state, &mut *inner, req.appraise.clone()).await?;
         result.trace = collector.take_entries();
 
         let fmt = state.formatter.read().await;
@@ -430,6 +436,7 @@ impl StudioService {
     /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다 (B5.2 2/3: v2 dispatch_v2).
     #[cfg(feature = "chat")]
     async fn apply_stimulus_with_pad(
+        state: &AppState,
         inner: &mut StateInner,
         collector: &crate::trace_collector::AppraisalCollector,
         formatter: &dyn npc_mind::ports::GuideFormatter,
@@ -445,7 +452,7 @@ impl StudioService {
             situation_description: req.situation_description.clone(),
         };
         collector.take_entries();
-        let mut result = crate::domain_sync::dispatch_stimulus(inner, stim_req).await?;
+        let mut result = crate::domain_sync::dispatch_stimulus(state, inner, stim_req).await?;
         result.trace = collector.take_entries();
         Ok(result.format(formatter))
     }
@@ -465,7 +472,7 @@ impl StudioService {
         let fmt = state.formatter.read().await;
         let (stim_resp, changed) = if let Some(pad) = pad {
             let resp = Self::apply_stimulus_with_pad(
-                &mut *inner, &state.collector, &**fmt, req, pad,
+                state, &mut *inner, &state.collector, &**fmt, req, pad,
             ).await?;
             let changed = resp.beat_changed;
             if changed {

@@ -89,7 +89,7 @@ pub async fn scene(
         let mut inner = state.inner.write().await;
         let collector = state.collector.clone();
         collector.take_entries();
-        let mut result = crate::domain_sync::dispatch_start_scene(&mut *inner, req.clone()).await?;
+        let mut result = crate::domain_sync::dispatch_start_scene(&state, &mut *inner, req.clone()).await?;
         // initial_appraise의 trace만 우선 채움 (v1에서도 최종 response 단계만 trace 채움)
         if let Some(ref mut initial) = result.initial_appraise {
             initial.trace = collector.take_entries();
@@ -143,7 +143,7 @@ pub async fn guide(
                 req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
             }
         }
-        let result = crate::domain_sync::dispatch_generate_guide(&mut *inner, req).await?;
+        let result = crate::domain_sync::dispatch_generate_guide(&state, &mut *inner, req).await?;
         let fmt = state.formatter.read().await;
         result.format(&**fmt)
     };
@@ -190,14 +190,18 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
     loaded.turn_history.clear();
     loaded.loaded_path = Some(resolved);
-    if let Some(ref scene_val) = loaded.scene {
-        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
-            StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
-        }
-    }
+    let scene_cfg = loaded.scene.clone();
     {
         let mut inner = state.inner.write().await;
         *inner = loaded;
+    }
+    // B5.2 (3/3): 먼저 inner에 시나리오를 붙이고, 공유 repo를 fresh하게 만든 뒤
+    // dispatch_v2(StartScene) 계열 호출을 실행한다.
+    state.rebuild_repo_from_inner().await;
+    if let Some(scene_val) = scene_cfg {
+        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
+            StudioService::load_scene_into_state(&state, &scene_req).await;
+        }
     }
     state.emit(StateEvent::ScenarioLoaded);
     Ok(StatusCode::OK)
@@ -208,15 +212,17 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     let resolved = resolve_data_path(&req.path);
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
     loaded.loaded_path = Some(resolved);
-    if let Some(ref scene_val) = loaded.scene {
-        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val.clone()) {
-            StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
-        }
-    }
+    let scene_cfg = loaded.scene.clone();
     let history = loaded.turn_history.clone();
     {
         let mut inner = state.inner.write().await;
         *inner = loaded;
+    }
+    state.rebuild_repo_from_inner().await;
+    if let Some(scene_val) = scene_cfg {
+        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
+            StudioService::load_scene_into_state(&state, &scene_req).await;
+        }
     }
     state.emit(StateEvent::ResultLoaded);
     Ok(Json(super::LoadResultResponse { turn_history: history }))

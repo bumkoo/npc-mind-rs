@@ -359,6 +359,7 @@ impl MindMcpService {
                     inner.npcs.insert(npc.id.clone(), npc);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -369,6 +370,7 @@ impl MindMcpService {
                     inner.npcs.remove(id);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -384,6 +386,7 @@ impl MindMcpService {
                     inner.relationships.insert(rel.key(), rel);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -395,6 +398,7 @@ impl MindMcpService {
                     inner.relationships.remove(&format!("{}:{}", owner, target));
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -410,6 +414,8 @@ impl MindMcpService {
                     inner.objects.insert(obj.id.clone(), obj);
                     inner.scenario_modified = true;
                 }
+                // Objects는 InMemoryRepository에도 object_description으로 저장되므로 rebuild 필요.
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -420,6 +426,7 @@ impl MindMcpService {
                     inner.objects.remove(id);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -455,7 +462,7 @@ impl MindMcpService {
                             req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
                         }
                     }
-                    let result = crate::domain_sync::dispatch_generate_guide(&mut *inner, req)
+                    let result = crate::domain_sync::dispatch_generate_guide(&self.state, &mut *inner, req)
                         .await
                         .map_err(|e| e.to_string())?;
                     let fmt = self.state.formatter.read().await;
@@ -548,17 +555,19 @@ impl MindMcpService {
                 let resolved = Self::resolve_data_path(path);
                 let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| e.to_string())?;
                 loaded.loaded_path = Some(resolved.clone());
-                // Scene 자동 복원: scene 필드가 있으면 런타임 상태에 반영
-                let mut scene_restored = false;
-                if let Some(ref scene_val) = loaded.scene {
-                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
-                        StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
-                        scene_restored = true;
-                    }
-                }
+                let scene_cfg = loaded.scene.clone();
                 {
                     let mut inner = self.state.inner.write().await;
                     *inner = loaded;
+                }
+                // B5.2 (3/3): 먼저 inner·공유 repo를 갱신한 뒤 StartScene dispatch.
+                self.state.rebuild_repo_from_inner().await;
+                let mut scene_restored = false;
+                if let Some(scene_val) = scene_cfg {
+                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
+                        StudioService::load_scene_into_state(&self.state, &scene_req).await;
+                        scene_restored = true;
+                    }
                 }
                 self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "scene_restored": scene_restored }))
@@ -576,7 +585,7 @@ impl MindMcpService {
                     let mut inner = self.state.inner.write().await;
                     let collector = self.state.collector.clone();
                     collector.take_entries();
-                    let mut result = crate::domain_sync::dispatch_start_scene(&mut *inner, req)
+                    let mut result = crate::domain_sync::dispatch_start_scene(&self.state, &mut *inner, req)
                         .await
                         .map_err(|e| e.to_string())?;
                     if let Some(ref mut initial) = result.initial_appraise {
@@ -622,16 +631,17 @@ impl MindMcpService {
                 let resolved = Self::resolve_data_path(path);
                 let mut loaded = crate::state::StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| e.to_string())?;
                 loaded.loaded_path = Some(resolved.clone());
-                // Scene 복원
-                if let Some(ref scene_val) = loaded.scene {
-                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
-                        StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
-                    }
-                }
+                let scene_cfg = loaded.scene.clone();
                 let history_count = loaded.turn_history.len();
                 {
                     let mut inner = self.state.inner.write().await;
                     *inner = loaded;
+                }
+                self.state.rebuild_repo_from_inner().await;
+                if let Some(scene_val) = scene_cfg {
+                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
+                        StudioService::load_scene_into_state(&self.state, &scene_req).await;
+                    }
                 }
                 self.state.emit(StateEvent::ResultLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "turn_count": history_count }))
@@ -780,14 +790,16 @@ impl MindMcpService {
 
                 // 서버 상태에도 로드
                 state_inner.loaded_path = Some(resolved_path.clone());
-                if let Some(scene_req) = validated_scene_req {
-                    StudioService::load_scene_into_state(&mut state_inner, &scene_req).await;
-                }
                 let npc_count = state_inner.npcs.len();
                 let rel_count = state_inner.relationships.len();
                 {
                     let mut inner = self.state.inner.write().await;
                     *inner = state_inner;
+                }
+                // inner 부착 후 repo 갱신 → StartScene dispatch
+                self.state.rebuild_repo_from_inner().await;
+                if let Some(scene_req) = validated_scene_req {
+                    StudioService::load_scene_into_state(&self.state, &scene_req).await;
                 }
                 self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({
