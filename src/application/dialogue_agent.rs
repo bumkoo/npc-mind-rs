@@ -47,7 +47,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::application::command::dispatcher::DispatchV2Error;
+use crate::application::command::dispatcher::{DispatchV2Error, DispatchV2Output};
 use crate::application::command::{Command, CommandDispatcher};
 use crate::application::command::handler::emotion_snapshot;
 use crate::application::dto::{
@@ -334,8 +334,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
                 situation_description,
             };
             let output = self.dispatcher.dispatch_v2(stim_cmd).await?;
-            let stim_result =
-                self.build_stimulus_from_v2(&output, &meta.npc_id, &meta.partner_id, pad)?;
+            let stim_result = self.build_stimulus_from_v2(&output, pad)?;
             let changed = stim_result.beat_changed;
 
             // ④ Beat 전환 시 system_prompt 갱신
@@ -491,7 +490,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     /// `dispatch_v2(Command::Appraise)` 결과 → `AppraiseResult`
     fn build_appraise_from_v2(
         &self,
-        output: &crate::application::command::dispatcher::DispatchV2Output,
+        output: &DispatchV2Output,
         npc_id: &str,
         partner_id: &str,
     ) -> Result<AppraiseResult, DialogueAgentError> {
@@ -527,27 +526,26 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     /// `dispatch_v2(Command::ApplyStimulus)` 결과 → `StimulusResult`
     ///
     /// beat_changed는 `output.events`에 `BeatTransitioned`가 있는지로 판정 (v2 진실).
+    /// EmotionState는 EmotionAgent가, ActingGuide는 GuideAgent가 `shared`에 설정한다.
+    /// 둘 중 하나가 None이면 `ResultReconstruction` 에러 — 보통 dispatcher에
+    /// `with_default_handlers()`가 호출되지 않은 경우다.
     fn build_stimulus_from_v2(
         &self,
-        output: &crate::application::command::dispatcher::DispatchV2Output,
-        npc_id: &str,
-        partner_id: &str,
+        output: &DispatchV2Output,
         input_pad: Pad,
     ) -> Result<StimulusResult, DialogueAgentError> {
         let state = output
             .shared
             .emotion_state
             .as_ref()
-            .ok_or(DialogueAgentError::ResultReconstruction("EmotionState"))?;
-        let guide = output
-            .shared
-            .guide
-            .as_ref()
-            .cloned()
-            .ok_or(DialogueAgentError::ResultReconstruction("ActingGuide"))?;
-
-        let (_, partner_name, rel) = self.fetch_npc_partner_rel(npc_id, partner_id)?;
-        let _ = (partner_name, rel); // reserved for future richer mapping
+            .ok_or(DialogueAgentError::ResultReconstruction(
+                "EmotionState (EmotionAgent/StimulusAgent 등록 확인 필요)",
+            ))?;
+        let guide = output.shared.guide.as_ref().cloned().ok_or(
+            DialogueAgentError::ResultReconstruction(
+                "ActingGuide (GuideAgent 등록 확인 — with_default_handlers() 호출했는지)",
+            ),
+        )?;
 
         let (emotions, dominant, mood) = build_emotion_fields(state);
         let beat_changed = output
@@ -583,7 +581,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     /// `RelationshipUpdated` 이벤트의 before/after 6필드로 스냅샷 재구성.
     fn build_end_dialogue_from_v2(
         &self,
-        output: &crate::application::command::dispatcher::DispatchV2Output,
+        output: &DispatchV2Output,
     ) -> Result<AfterDialogueResponse, DialogueAgentError> {
         output
             .events

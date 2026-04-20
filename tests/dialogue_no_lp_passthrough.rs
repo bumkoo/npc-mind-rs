@@ -68,11 +68,7 @@ fn betrayal_situation() -> SituationInput {
 #[tokio::test]
 async fn dialogue_agent_passes_speaker_pad_through_when_lp_off() {
     let ctx = TestContext::new();
-    let store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
-    let store_dyn: Arc<dyn EventStore> = store.clone();
-    let bus = Arc::new(EventBus::new());
-    // B5.2: DialogueAgent는 내부적으로 dispatch_v2를 호출 → v2 기본 핸들러 체인 필요.
-    let dispatcher = CommandDispatcher::new(ctx.repo, store_dyn, bus).with_default_handlers();
+    let (dispatcher, store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 
     let toml = builtin_toml("ko").expect("ko locale");
     let formatter: Arc<dyn GuideFormatter> =
