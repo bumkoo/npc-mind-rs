@@ -197,7 +197,7 @@ impl IntoResponse for AppError {
                         (StatusCode::BAD_REQUEST, e.to_string())
                     }
                 }
-                // HandlerFailed의 source variant로 HTTP 상태 코드 분기 (B5.3 후속 A):
+                // HandlerFailed의 source variant별 HTTP 매핑:
                 //   - NpcNotFound / RelationshipNotFound → 404 (리소스 부재)
                 //   - EmotionStateNotFound → 400 (워크플로우 순서 오류: appraise 선행 누락)
                 //   - InvalidInput → 400 (DTO 검증 실패)

@@ -106,8 +106,8 @@ impl RelationshipAgent {
             .repo
             .get_relationship(npc_id, partner_id)
             .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner: npc_id.to_string(),
-                target: partner_id.to_string(),
+                owner_id: npc_id.to_string(),
+                target_id: partner_id.to_string(),
             })?;
         let emotion = ctx
             .shared
@@ -167,8 +167,8 @@ impl RelationshipAgent {
             .repo
             .get_relationship(npc_id, partner_id)
             .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner: npc_id.to_string(),
-                target: partner_id.to_string(),
+                owner_id: npc_id.to_string(),
+                target_id: partner_id.to_string(),
             })?;
         let emotion = ctx
             .shared
@@ -394,8 +394,8 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::RelationshipNotFound { ref owner, ref target }
-                if owner == "alice" && target == "bob"
+            HandlerError::RelationshipNotFound { ref owner_id, ref target_id }
+                if owner_id == "alice" && target_id == "bob"
         ));
     }
 }

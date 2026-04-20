@@ -183,8 +183,8 @@ pub enum HandlerError {
     NpcNotFound(String),
 
     /// 관계가 등록되지 않음 — 404 mapping
-    #[error("relationship not found: {owner}↔{target}")]
-    RelationshipNotFound { owner: String, target: String },
+    #[error("relationship not found: {owner_id}↔{target_id}")]
+    RelationshipNotFound { owner_id: String, target_id: String },
 
     /// 감정 상태가 없음 (appraise 선행 누락 등) — 400 mapping (워크플로우 순서 오류)
     #[error("emotion state not found for npc '{0}'")]
@@ -365,8 +365,8 @@ mod tests {
         let e = HandlerError::NpcNotFound("alice".into());
         assert_eq!(e.to_string(), "npc not found: alice");
         let e = HandlerError::RelationshipNotFound {
-            owner: "alice".into(),
-            target: "bob".into(),
+            owner_id: "alice".into(),
+            target_id: "bob".into(),
         };
         assert_eq!(e.to_string(), "relationship not found: alice↔bob");
         let e = HandlerError::EmotionStateNotFound("alice".into());

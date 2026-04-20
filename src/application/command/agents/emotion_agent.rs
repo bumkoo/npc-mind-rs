@@ -65,8 +65,8 @@ impl EventHandler for EmotionAgent {
             .repo
             .get_relationship(npc_id, partner_id)
             .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner: npc_id.clone(),
-                target: partner_id.clone(),
+                owner_id: npc_id.clone(),
+                target_id: partner_id.clone(),
             })?;
 
         let emotion_state =
