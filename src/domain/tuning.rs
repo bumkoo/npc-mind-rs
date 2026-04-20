@@ -144,3 +144,18 @@ pub const LLM_TOP_P_MIN: f32 = 0.8;
 
 /// Top P 최대값
 pub const LLM_TOP_P_MAX: f32 = 1.0;
+
+// ============================================================================
+// Director / SceneTask (B4 Session 4)
+// ============================================================================
+
+/// SceneTask mpsc 채널 capacity.
+///
+/// Scene 당 한 task가 커맨드를 순차 소비한다. caller가 `dispatch_to`로 송신한 커맨드는
+/// 이 버퍼에 적재된다. 버퍼가 꽉 차면 `dispatch_to`의 `send().await`가 backpressure로
+/// 대기한다.
+///
+/// 현재 값(32)은 "플레이어가 연속으로 커맨드를 폭주 입력해도 짧은 시간 동안 SceneTask가
+/// 처리해 공간이 생기는" 경험값. 원격 LLM 호출이 수초간 지연되는 상황에서 backpressure가
+/// 발생할 수 있으며, 이 경우 caller가 backpressure를 포용하거나 용량을 늘려 조정한다.
+pub const SCENE_TASK_CHANNEL_CAPACITY: usize = 32;

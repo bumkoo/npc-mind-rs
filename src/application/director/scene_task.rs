@@ -21,18 +21,18 @@ use tokio::sync::mpsc;
 use crate::application::command::dispatcher::CommandDispatcher;
 use crate::application::command::types::Command;
 use crate::domain::scene_id::SceneId;
+use crate::domain::tuning::SCENE_TASK_CHANNEL_CAPACITY;
 use crate::ports::MindRepository;
 
 use super::spawner::Spawner;
-
-/// SceneTask mpsc 채널 capacity (32 커맨드 backlog).
-pub(super) const SCENE_CHANNEL_CAPACITY: usize = 32;
 
 /// Scene task를 caller 런타임에서 spawn하고 command sender를 반환.
 ///
 /// 반환된 `mpsc::Sender<Command>`를 Director가 보관하고, 모든 dispatch_to 호출은
 /// 이 sender로 forward된다. Sender가 drop되는 순간 task는 다음 recv()에서 None을 받고
 /// 종료한다.
+///
+/// 채널 capacity는 `crate::domain::tuning::SCENE_TASK_CHANNEL_CAPACITY`.
 pub(super) fn spawn_scene_task<R>(
     scene_id: SceneId,
     dispatcher: Arc<CommandDispatcher<R>>,
@@ -41,7 +41,7 @@ pub(super) fn spawn_scene_task<R>(
 where
     R: MindRepository + Send + Sync + 'static,
 {
-    let (tx, mut rx) = mpsc::channel::<Command>(SCENE_CHANNEL_CAPACITY);
+    let (tx, mut rx) = mpsc::channel::<Command>(SCENE_TASK_CHANNEL_CAPACITY);
     let scene_id_for_log = scene_id.clone();
 
     spawner.spawn(Box::pin(async move {

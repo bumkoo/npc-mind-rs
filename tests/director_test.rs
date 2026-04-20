@@ -8,7 +8,7 @@
 
 mod common;
 
-use common::{make_무백, make_교룡, make_수련, TestContext};
+use common::{make_무백, make_교룡, make_수련, expect_event, expect_events, TestContext, SCENE_TASK_TEST_TIMEOUT};
 use futures::future::BoxFuture;
 use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::command::types::Command;
@@ -112,6 +112,14 @@ async fn director_new_has_no_active_scenes() {
 async fn start_scene_registers_scene_and_emits_lifecycle_events() {
     let director = three_npc_director();
 
+    // Trigger **전에** subscribe 등록 (broadcast는 replay 없음).
+    use npc_mind::domain::event::EventKind;
+    let events_waiter = expect_events(
+        director.dispatcher().event_bus(),
+        &[EventKind::SceneStarted, EventKind::EmotionAppraised],
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+
     let scene_id = director
         .start_scene(
             "mu_baek",
@@ -126,14 +134,8 @@ async fn start_scene_registers_scene_and_emits_lifecycle_events() {
     assert!(director.is_active(&scene_id).await);
     assert_eq!(director.active_scenes().await.len(), 1);
 
-    // Fire-and-forget: Scene task가 초기 StartScene 커맨드를 처리할 시간 필요.
-    // 처리 후 event_store에 SceneStarted/EmotionAppraised/GuideGenerated 이벤트가 쌓인다.
-    sleep(TASK_SETTLE).await;
-    let events = director.dispatcher().event_store().get_all_events();
-    let kinds: Vec<_> = events.iter().map(|e| e.kind()).collect();
-    use npc_mind::domain::event::EventKind;
-    assert!(kinds.contains(&EventKind::SceneStarted));
-    assert!(kinds.contains(&EventKind::EmotionAppraised));
+    // Fire-and-forget: EventBus timeout 기반 대기 → sleep보다 견고.
+    events_waiter.await;
 }
 
 #[tokio::test]
@@ -595,4 +597,103 @@ async fn repository_holds_both_scenes_by_id() {
         .expect("scene_b");
     assert_eq!(scene_a.partner_id(), "gyo_ryong");
     assert_eq!(scene_b.partner_id(), "su_ryeon");
+}
+
+// ---------------------------------------------------------------------------
+// B4 Session 4 후속 — SceneTask 종료 + concurrent start_scene race
+// ---------------------------------------------------------------------------
+
+/// Sender drop → receiver None → SceneTask 루프가 자연 종료되는지 검증.
+///
+/// `end_scene`은 EndDialogue 송신 후 senders map에서 sender를 제거하고 drop한다.
+/// 이때 SceneTask receiver가 None을 받고 루프를 탈출한다. 탈출은 broadcast에서
+/// 관찰할 수 없으므로, 이 테스트는 "종료 후 같은 SceneId로 재시작"이 가능함을 통해
+/// 간접 검증한다.
+#[tokio::test]
+async fn scene_task_terminates_after_end_scene_and_allows_restart() {
+    use npc_mind::domain::event::EventKind;
+
+    let director = three_npc_director();
+    let scene_id = SceneId::new("mu_baek", "gyo_ryong");
+
+    // 1. start → end
+    let ended_waiter = expect_event(
+        director.dispatcher().event_bus(),
+        EventKind::SceneEnded,
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+    director
+        .start_scene(
+            "mu_baek",
+            "gyo_ryong",
+            None,
+            vec![simple_initial_focus("initial")],
+        )
+        .await
+        .unwrap();
+    director.end_scene(&scene_id, Some(0.5)).await.unwrap();
+    ended_waiter.await;
+
+    // 2. 종료된 scene이 active 목록에서 제거되었는지
+    assert!(!director.is_active(&scene_id).await);
+
+    // 3. 같은 SceneId로 재시작이 허용되는지 (SceneTask 정상 종료 → 이전 sender가 map에 없음)
+    let restart_waiter = expect_event(
+        director.dispatcher().event_bus(),
+        EventKind::SceneStarted,
+        SCENE_TASK_TEST_TIMEOUT,
+    );
+    director
+        .start_scene(
+            "mu_baek",
+            "gyo_ryong",
+            None,
+            vec![simple_initial_focus("restart_initial")],
+        )
+        .await
+        .expect("종료 후 같은 SceneId 재시작 허용되어야 함");
+    restart_waiter.await;
+}
+
+/// 동시 `start_scene` 호출이 같은 scene_id로 진입하는 race condition 회귀 가드.
+///
+/// B4 Session 4 초기 구현은 `read() → check → write()` 분리된 TOCTOU 버그가 있었다.
+/// 현재는 `write()` lock을 critical section 전체에 유지하여 하나만 성공하고
+/// 나머지는 `SceneAlreadyActive`를 받는다.
+#[tokio::test]
+async fn concurrent_start_scene_with_same_id_elects_single_winner() {
+    let director = Arc::new(three_npc_director());
+
+    // 동시 5회 start_scene 호출 (같은 scene_id)
+    let mut handles = Vec::new();
+    for i in 0..5 {
+        let dir = Arc::clone(&director);
+        handles.push(tokio::spawn(async move {
+            dir.start_scene(
+                "mu_baek",
+                "gyo_ryong",
+                None,
+                vec![simple_initial_focus(&format!("attempt_{}", i))],
+            )
+            .await
+        }));
+    }
+
+    let results: Vec<_> = futures::future::join_all(handles).await;
+    let ok_count = results.iter().filter(|r| matches!(r, Ok(Ok(_)))).count();
+    let already_active_count = results
+        .iter()
+        .filter(|r| matches!(r, Ok(Err(DirectorError::SceneAlreadyActive(_)))))
+        .count();
+
+    assert_eq!(
+        ok_count, 1,
+        "정확히 1개 호출만 성공해야 함 (TOCTOU 회귀 방지)"
+    );
+    assert_eq!(
+        already_active_count, 4,
+        "나머지 4개는 SceneAlreadyActive로 거부되어야 함"
+    );
+
+    assert_eq!(director.active_scenes().await.len(), 1);
 }

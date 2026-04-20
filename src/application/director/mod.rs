@@ -102,6 +102,13 @@ impl<R: MindRepository + Send + Sync + 'static> Director<R> {
     ///
     /// 동일 (npc_id, partner_id) Scene이 이미 활성이면 `SceneAlreadyActive` 반환.
     /// 실제 SceneStarted/EmotionAppraised 이벤트는 EventBus subscriber가 관찰.
+    ///
+    /// ## Atomicity
+    /// senders `write()` lock을 진입 시 확보하고, 존재 검사 + spawn + insert를
+    /// 한 critical section 안에서 수행한다. `write()` guard를 `StartScene` send 동안에도
+    /// 보유하지만, mpsc::channel capacity가 양수이므로 첫 send는 channel buffer에 즉시 적재되어
+    /// await이 즉시 반환 (SceneTask receiver 미준비로 인한 blocking 없음). 이로써
+    /// 동시 start_scene 호출이 같은 scene_id로 진입해도 하나만 성공한다.
     pub async fn start_scene(
         &self,
         npc_id: impl Into<String>,
@@ -113,11 +120,9 @@ impl<R: MindRepository + Send + Sync + 'static> Director<R> {
         let partner_id = partner_id.into();
         let scene_id = SceneId::new(&npc_id, &partner_id);
 
-        {
-            let senders = self.senders.read().await;
-            if senders.contains_key(&scene_id) {
-                return Err(DirectorError::SceneAlreadyActive(scene_id));
-            }
+        let mut senders = self.senders.write().await;
+        if senders.contains_key(&scene_id) {
+            return Err(DirectorError::SceneAlreadyActive(scene_id));
         }
 
         let tx = spawn_scene_task(scene_id.clone(), Arc::clone(&self.dispatcher), &self.spawner);
@@ -130,7 +135,7 @@ impl<R: MindRepository + Send + Sync + 'static> Director<R> {
         .await
         .map_err(|_| DirectorError::SceneChannelClosed(scene_id.clone()))?;
 
-        self.senders.write().await.insert(scene_id.clone(), tx);
+        senders.insert(scene_id.clone(), tx);
         Ok(scene_id)
     }
 

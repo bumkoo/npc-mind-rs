@@ -15,6 +15,21 @@
 //! v2는 현재 **Appraise, ApplyStimulus만 지원** (다른 4종 커맨드는 B4+에서 `*Requested`
 //! 이벤트 variant 추가와 함께 이관). `shadow_v2` 플래그는 B4 Director가 참조할 수 있도록
 //! 보존하지만 B3에서는 `dispatch()` 경로 분기에 사용하지 않는다(v1/v2 결과 타입 비호환).
+//!
+//! ## B4 Session 4 — Repository 공유 모델
+//!
+//! `repository: Arc<Mutex<R>>`로 감싸 `dispatch_v2(&self)`가 가능하도록 interior mutability.
+//! SceneTask가 `Arc<CommandDispatcher<R>>`를 공유하여 Scene 간 repo 동시 접근을 직렬화한다.
+//!
+//! **Lock 보유 범위 (축소판 A의 의도된 대가):** `dispatch_v2` 본문은 진입 시 Mutex를
+//! 한 번 잡아 transactional + inline phase 전체에 보유한다. Fanout(broadcast::send) 직전
+//! drop. 결과:
+//! - 한 Scene 내부 커맨드는 자연스럽게 순차 처리.
+//! - **Scene 간에도 dispatch_v2가 Mutex 기준으로 serialize**되므로, b-plan §3이 약속한
+//!   "Scene별 진짜 병렬"은 이 세션 범위에선 달성되지 않는다. LLM I/O 같은 bottleneck은
+//!   DialogueAgent가 SceneTask 경계 **밖**에서 await하므로 여전히 병렬 유지.
+//! - 진짜 CPU 병렬성은 MindRepository trait을 `&self` 시그니처로 전환(B5.3 이후)한 뒤
+//!   per-aggregate 세분화 락 또는 Scene 소유권 분할로 달성 예정.
 
 use crate::domain::aggregate::AggregateKey;
 use crate::domain::event::{DomainEvent, EventPayload};
