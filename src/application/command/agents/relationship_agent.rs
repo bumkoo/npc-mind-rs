@@ -1,135 +1,22 @@
-//! RelAgent — 관계 갱신 전담
+//! RelationshipAgent — 관계 갱신 전담 (v2)
 //!
-//! B5.1: v1 `handle_update`/`handle_end_dialogue`는 deprecated. v2 `impl EventHandler` 사용.
+//! `BeatTransitioned` / `DialogueEndRequested` / `RelationshipUpdateRequested` 이벤트에
+//! 반응하여 관계를 갱신한다. `ctx.shared.emotion_state`(StimulusAgent가 merge 후 설정한
+//! post-merge 감정)를 입력으로 받는다.
 
-#![allow(deprecated)]
-
-use crate::application::command::handler::{HandlerContext, HandlerOutput};
-use crate::application::command::types::CommandResult;
-use crate::application::mind_service::MindServiceError;
-use crate::application::relationship_service::RelationshipService;
-use crate::application::dto::AfterDialogueRequest;
-use crate::domain::event::EventPayload;
+use crate::application::command::handler_v2::{
+    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+};
+use crate::application::command::priority;
+use crate::domain::event::{DomainEvent, EventKind, EventPayload};
+use crate::domain::tuning::BEAT_DEFAULT_SIGNIFICANCE;
 
 /// 관계 갱신 에이전트
-pub struct RelationshipAgent {
-    service: RelationshipService,
-}
+pub struct RelationshipAgent;
 
 impl RelationshipAgent {
     pub fn new() -> Self {
-        Self {
-            service: RelationshipService::new(),
-        }
-    }
-
-    /// UpdateRelationship Command 처리 (Beat 종료) — **v1, deprecated**
-    #[deprecated(
-        since = "0.2.0",
-        note = "v2 `impl EventHandler for RelationshipAgent` (RelationshipUpdateRequested 수신) 사용. v0.3.0에서 제거 예정."
-    )]
-    #[allow(deprecated)]
-    pub fn handle_update(
-        &self,
-        npc_id: &str,
-        partner_id: &str,
-        significance: &Option<f32>,
-        ctx: &HandlerContext,
-    ) -> Result<HandlerOutput, MindServiceError> {
-        let rel = ctx.relationship.as_ref().ok_or_else(|| {
-            MindServiceError::RelationshipNotFound(npc_id.into(), partner_id.into())
-        })?;
-        let emotion = ctx
-            .emotion_state
-            .as_ref()
-            .ok_or(MindServiceError::EmotionStateNotFound)?;
-
-        let req = AfterDialogueRequest {
-            npc_id: npc_id.to_string(),
-            partner_id: partner_id.to_string(),
-            significance: *significance,
-        };
-        let (new_rel, response) = self.service.update_relationship(rel, emotion, &req);
-
-        let event = EventPayload::RelationshipUpdated {
-            owner_id: npc_id.to_string(),
-            target_id: partner_id.to_string(),
-            before_closeness: response.before.closeness,
-            before_trust: response.before.trust,
-            before_power: response.before.power,
-            after_closeness: response.after.closeness,
-            after_trust: response.after.trust,
-            after_power: response.after.power,
-        };
-
-        Ok(HandlerOutput {
-            result: CommandResult::RelationshipUpdated(response),
-            events: vec![event],
-            new_emotion_state: None,
-            new_relationship: Some((npc_id.to_string(), partner_id.to_string(), new_rel)),
-            clear_emotion: None,
-            clear_scene: false,
-            save_scene: None,
-        })
-    }
-
-    /// EndDialogue Command 처리 (관계 갱신 + 감정 초기화 + Scene 정리) — **v1, deprecated**
-    #[deprecated(
-        since = "0.2.0",
-        note = "v2 `impl EventHandler for RelationshipAgent` (DialogueEndRequested 수신, 3 follow-ups 발행) 사용. v0.3.0에서 제거 예정."
-    )]
-    #[allow(deprecated)]
-    pub fn handle_end_dialogue(
-        &self,
-        npc_id: &str,
-        partner_id: &str,
-        significance: &Option<f32>,
-        ctx: &HandlerContext,
-    ) -> Result<HandlerOutput, MindServiceError> {
-        let rel = ctx.relationship.as_ref().ok_or_else(|| {
-            MindServiceError::RelationshipNotFound(npc_id.into(), partner_id.into())
-        })?;
-        let emotion = ctx
-            .emotion_state
-            .as_ref()
-            .ok_or(MindServiceError::EmotionStateNotFound)?;
-
-        let req = AfterDialogueRequest {
-            npc_id: npc_id.to_string(),
-            partner_id: partner_id.to_string(),
-            significance: *significance,
-        };
-        let (new_rel, response) = self.service.update_relationship(rel, emotion, &req);
-
-        let rel_event = EventPayload::RelationshipUpdated {
-            owner_id: npc_id.to_string(),
-            target_id: partner_id.to_string(),
-            before_closeness: response.before.closeness,
-            before_trust: response.before.trust,
-            before_power: response.before.power,
-            after_closeness: response.after.closeness,
-            after_trust: response.after.trust,
-            after_power: response.after.power,
-        };
-
-        let clear_event = EventPayload::EmotionCleared {
-            npc_id: npc_id.to_string(),
-        };
-
-        let scene_event = EventPayload::SceneEnded {
-            npc_id: npc_id.to_string(),
-            partner_id: partner_id.to_string(),
-        };
-
-        Ok(HandlerOutput {
-            result: CommandResult::DialogueEnded(response),
-            events: vec![rel_event, clear_event, scene_event],
-            new_relationship: Some((npc_id.to_string(), partner_id.to_string(), new_rel)),
-            new_emotion_state: None,
-            clear_emotion: Some(npc_id.to_string()),
-            clear_scene: true,
-            save_scene: None,
-        })
+        Self
     }
 }
 
@@ -138,33 +25,6 @@ impl Default for RelationshipAgent {
         Self::new()
     }
 }
-
-// ===========================================================================
-// B1 — EventHandler impl (v2 진입점)
-// ===========================================================================
-//
-// v2에서는 `SceneEnded` / `BeatTransitioned` 이벤트에 **자동 반응**하여
-// 관계를 갱신한다. v1의 `handle_update` / `handle_end_dialogue`는
-// Dispatcher가 여전히 사용(EndDialogue/UpdateRelationship 커맨드 경로).
-//
-// SceneEnded: final 관계 갱신(significance=기본값, 실제 값은 B3+에서 Command payload로 주입).
-// BeatTransitioned: Beat-level 관계 갱신(BEAT_DEFAULT_SIGNIFICANCE).
-//
-// **v1/v2 의미론 차이 (의도):** v1의 `EmotionAgent.handle_beat_transition`은 관계 갱신 시
-// **pre-merge 감정(`stimulated`)** 을 썼다. v2는 `ctx.shared.emotion_state`(StimulusAgent가
-// merge 후 설정한 **post-merge 감정**)을 입력으로 받는다. Beat 전환 후의 최종 감정 상태를
-// 반영하는 것이 의미상 자연스러우므로 채택된 개선. B3 parallel run에서는 closeness/trust/power
-// 수치가 살짝 달라질 수 있으므로 expected diff로 처리 필요.
-//
-// B-Plan §6.2는 `follow_up: no`로 표기되지만, RelationshipUpdated는 하류에서 필요한
-// 터미널 이벤트이므로 follow_up으로 발행한다(cascade하지 않아도 event_store에는 기록).
-
-use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
-};
-use crate::application::command::priority;
-use crate::domain::event::{DomainEvent, EventKind};
-use crate::domain::tuning::BEAT_DEFAULT_SIGNIFICANCE;
 
 impl EventHandler for RelationshipAgent {
     fn name(&self) -> &'static str {
@@ -245,13 +105,16 @@ impl RelationshipAgent {
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner_id: npc_id.to_string(),
+                target_id: partner_id.to_string(),
+            })?;
         let emotion = ctx
             .shared
             .emotion_state
             .clone()
             .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or(HandlerError::Precondition("emotion state not found"))?;
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
 
         let updated = relationship.after_dialogue(&emotion, significance);
         let (bc, bt, bp) = (
@@ -303,13 +166,16 @@ impl RelationshipAgent {
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner_id: npc_id.to_string(),
+                target_id: partner_id.to_string(),
+            })?;
         let emotion = ctx
             .shared
             .emotion_state
             .clone()
             .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or(HandlerError::Precondition("emotion state not found"))?;
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
 
         let updated = relationship.after_dialogue(&emotion, sig);
         let (bc, bt, bp) = (
@@ -528,7 +394,8 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::Precondition("relationship not found")
+            HandlerError::RelationshipNotFound { ref owner_id, ref target_id }
+                if owner_id == "alice" && target_id == "bob"
         ));
     }
 }

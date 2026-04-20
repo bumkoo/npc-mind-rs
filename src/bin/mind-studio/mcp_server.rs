@@ -455,8 +455,9 @@ impl MindMcpService {
                             req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
                         }
                     }
-                    let service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-                    let result = service.generate_guide(req).map_err(|e| e.to_string())?;
+                    let result = crate::domain_sync::dispatch_generate_guide(&mut *inner, req)
+                        .await
+                        .map_err(|e| e.to_string())?;
                     let fmt = self.state.formatter.read().await;
                     result.format(&**fmt)
                 };
@@ -551,7 +552,7 @@ impl MindMcpService {
                 let mut scene_restored = false;
                 if let Some(ref scene_val) = loaded.scene {
                     if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
-                        StudioService::load_scene_into_state(&mut loaded, &scene_req);
+                        StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
                         scene_restored = true;
                     }
                 }
@@ -574,8 +575,15 @@ impl MindMcpService {
                 let response = {
                     let mut inner = self.state.inner.write().await;
                     let collector = self.state.collector.clone();
-                    let mut service = npc_mind::application::mind_service::MindService::new(crate::repository::AppStateRepository { inner: &mut *inner });
-                    let result = service.start_scene(req, || { collector.take_entries(); }, || collector.take_entries()).map_err(|e| e.to_string())?;
+                    collector.take_entries();
+                    let mut result = crate::domain_sync::dispatch_start_scene(&mut *inner, req)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    if let Some(ref mut initial) = result.initial_appraise {
+                        initial.trace = collector.take_entries();
+                    } else {
+                        let _ = collector.take_entries();
+                    }
                     let fmt = self.state.formatter.read().await;
                     result.format(&**fmt)
                 };
@@ -586,8 +594,19 @@ impl MindMcpService {
             "get_scene_info" => {
                 let inner = self.state.inner.read().await;
                 let repo = crate::repository::ReadOnlyAppStateRepo { inner: &*inner };
-                let service = npc_mind::application::mind_service::MindService::new(repo);
-                let mut info = service.scene_info();
+                use npc_mind::ports::SceneStore;
+                let mut info = match repo.get_scene() {
+                    Some(scene) => npc_mind::application::scene_service::SceneService::new().build_scene_info(&scene),
+                    None => npc_mind::application::dto::SceneInfoResult {
+                        has_scene: false,
+                        npc_id: None,
+                        partner_id: None,
+                        active_focus_id: None,
+                        significance: None,
+                        focuses: vec![],
+                        script_cursor: None,
+                    },
+                };
                 // 스크립트 커서 주입
                 if info.has_scene {
                     info.script_cursor = Some(inner.script_cursor);
@@ -606,7 +625,7 @@ impl MindMcpService {
                 // Scene 복원
                 if let Some(ref scene_val) = loaded.scene {
                     if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val.clone()) {
-                        StudioService::load_scene_into_state(&mut loaded, &scene_req);
+                        StudioService::load_scene_into_state(&mut loaded, &scene_req).await;
                     }
                 }
                 let history_count = loaded.turn_history.len();
@@ -762,7 +781,7 @@ impl MindMcpService {
                 // 서버 상태에도 로드
                 state_inner.loaded_path = Some(resolved_path.clone());
                 if let Some(scene_req) = validated_scene_req {
-                    StudioService::load_scene_into_state(&mut state_inner, &scene_req);
+                    StudioService::load_scene_into_state(&mut state_inner, &scene_req).await;
                 }
                 let npc_count = state_inner.npcs.len();
                 let rel_count = state_inner.relationships.len();

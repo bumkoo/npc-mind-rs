@@ -404,8 +404,12 @@ async fn appraise_npc_not_found() {
     let resp = app.oneshot(json_post("/api/appraise", req)).await.unwrap();
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 
+    // HandlerError variants가 npc_id를 owned String으로 보존하므로 요청된 NPC id가
+    // 에러 메시지에 포함되어야 함 — 다중 NPC 환경에서 디버깅에 필수.
     let json = body_json(resp).await;
-    assert!(json["error"].as_str().unwrap().contains("nonexistent"));
+    let err = json["error"].as_str().unwrap();
+    assert!(err.to_lowercase().contains("not found"), "error: {}", err);
+    assert!(err.contains("nonexistent"), "error should include npc_id: {}", err);
 }
 
 /// appraise 없이 stimulus → 400 (EmotionStateNotFound)

@@ -18,6 +18,7 @@ mod mcp_server;
 mod repository;
 mod state;
 mod studio_service;
+mod domain_sync;
 mod trace_collector;
 
 #[cfg(test)]

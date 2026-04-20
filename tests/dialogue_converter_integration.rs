@@ -16,11 +16,9 @@ use common::mock_chat::MockConversationPort;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::dto::{
     ActionInput, EventInput, SituationInput,
 };
-use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::EventPayload;
 use npc_mind::domain::listener_perspective::{
@@ -141,10 +139,7 @@ fn make_agent_base() -> (
     Arc<InMemoryEventStore>,
 ) {
     let ctx = TestContext::new();
-    let store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
-    let store_dyn: Arc<dyn EventStore> = store.clone();
-    let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(ctx.repo, store_dyn, bus);
+    let (dispatcher, store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 
     let toml = builtin_toml("ko").expect("ko locale");
     let formatter: Arc<dyn GuideFormatter> =

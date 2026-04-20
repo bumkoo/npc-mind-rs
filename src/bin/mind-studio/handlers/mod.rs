@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use npc_mind::application::mind_service::MindServiceError;
+use npc_mind::application::error::MindServiceError;
 
 use serde::{Deserialize, Serialize};
 use crate::state::TurnRecord;
@@ -135,10 +135,10 @@ pub enum AppError {
     #[error(transparent)]
     Director(npc_mind::application::director::DirectorError),
     /// v2 dispatch 에러 (강타입 보존).
-    /// UnsupportedCommand/InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
+    /// InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
-    V2Dispatch(npc_mind::application::command::dispatcher::DispatchV2Error),
+    V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
 }
 
 impl From<npc_mind::application::director::DirectorError> for AppError {
@@ -187,14 +187,37 @@ impl IntoResponse for AppError {
                 // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
                 Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
             },
-            // v2 dispatch: 클라이언트 입력 오류(400) vs 서버 invariant 위반(500) 분기
+            // v2 dispatch: 클라이언트 입력 오류(400/404) vs 서버 invariant 위반(500) 분기
             AppError::V2Dispatch(ref e) => match e {
-                Dv2::UnsupportedCommand(_) | Dv2::InvalidSituation(_) => {
-                    (StatusCode::BAD_REQUEST, e.to_string())
+                // InvalidSituation의 메시지에 "not found"가 섞여있으면 404, 그 외 400.
+                Dv2::InvalidSituation(msg) => {
+                    if msg.to_lowercase().contains("not found") {
+                        (StatusCode::NOT_FOUND, e.to_string())
+                    } else {
+                        (StatusCode::BAD_REQUEST, e.to_string())
+                    }
                 }
-                Dv2::CascadeTooDeep { .. }
-                | Dv2::EventBudgetExceeded
-                | Dv2::HandlerFailed { .. } => {
+                // HandlerFailed의 source variant별 HTTP 매핑:
+                //   - NpcNotFound / RelationshipNotFound → 404 (리소스 부재)
+                //   - EmotionStateNotFound → 400 (워크플로우 순서 오류: appraise 선행 누락)
+                //   - InvalidInput → 400 (DTO 검증 실패)
+                //   - Infrastructure / Repository → 500 (서버 invariant 위반)
+                Dv2::HandlerFailed { source, .. } => {
+                    use npc_mind::application::command::handler_v2::HandlerError;
+                    match source {
+                        HandlerError::NpcNotFound(_)
+                        | HandlerError::RelationshipNotFound { .. } => {
+                            (StatusCode::NOT_FOUND, e.to_string())
+                        }
+                        HandlerError::EmotionStateNotFound(_) | HandlerError::InvalidInput(_) => {
+                            (StatusCode::BAD_REQUEST, e.to_string())
+                        }
+                        HandlerError::Infrastructure(_) | HandlerError::Repository(_) => {
+                            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                        }
+                    }
+                }
+                Dv2::CascadeTooDeep { .. } | Dv2::EventBudgetExceeded => {
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 }
             },

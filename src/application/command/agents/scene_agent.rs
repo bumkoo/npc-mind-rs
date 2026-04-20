@@ -9,7 +9,6 @@
 //!
 //! 가이드 생성은 이 agent 책임 밖 — GuideAgent가 `EmotionAppraised`에 반응해 자동 생성.
 
-use crate::application::command::handler::emotion_snapshot;
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
 };
@@ -77,11 +76,14 @@ impl EventHandler for SceneAgent {
         let npc = ctx
             .repo
             .get_npc(npc_id)
-            .ok_or(HandlerError::Precondition("npc not found"))?;
+            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner_id: npc_id.clone(),
+                target_id: partner_id.clone(),
+            })?;
 
         // 초기 Focus가 있으면 appraise
         let (active_focus_id, emotion_state) = if let Some(initial) =
@@ -91,7 +93,9 @@ impl EventHandler for SceneAgent {
         {
             let situation = initial
                 .to_situation()
-                .map_err(|_| HandlerError::Precondition("initial focus to_situation failed"))?;
+                .map_err(|e| HandlerError::InvalidInput(
+                    format!("initial focus to_situation failed: {e}"),
+                ))?;
             let state = self.appraiser.appraise(
                 npc.personality(),
                 &situation,
@@ -129,7 +133,7 @@ impl EventHandler for SceneAgent {
                 .dominant()
                 .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()));
             let mood = state.overall_valence();
-            let snapshot = emotion_snapshot(&state);
+            let snapshot = state.snapshot();
             // situation_description은 Focus의 to_situation의 description에서 유도됨.
             // SceneStartRequested payload엔 명시 없으므로 None으로 둔다 — v1 handle_start_scene과 동일.
             let emotion_event = DomainEvent::new(
@@ -272,7 +276,7 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::Precondition("npc not found")
+            HandlerError::NpcNotFound(ref id) if id == "ghost"
         ));
     }
 }

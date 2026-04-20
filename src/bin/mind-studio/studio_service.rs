@@ -6,10 +6,7 @@ use npc_mind::application::dto::*;
 use npc_mind::application::dialogue_test_service::{
     ChatStartRequest, ChatStartResponse, ChatTurnRequest, ChatTurnResponse, ChatEndRequest, ChatEndResponse,
 };
-use npc_mind::application::mind_service::MindService;
-use npc_mind::application::situation_service::SituationService;
 use crate::handlers::AppError;
-use crate::repository::AppStateRepository;
 use serde::Serialize;
 
 /// Mind Studio 전용 비즈니스 로직 서비스
@@ -35,7 +32,7 @@ impl StudioService {
         });
     }
 
-    /// 상황 평가 및 프롬프트 생성 로직
+    /// 상황 평가 및 프롬프트 생성 로직 (B5.2 2/3: v2 dispatch_v2 경유)
     pub async fn perform_appraise(
         state: &AppState,
         req: AppraiseRequest,
@@ -44,15 +41,11 @@ impl StudioService {
             let mut inner = state.inner.write().await;
             let collector = state.collector.clone();
 
-            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-
-            let result = service.appraise(
-                req.clone(),
-                || {
-                    collector.take_entries();
-                },
-                || collector.take_entries(),
-            )?;
+            // trace 수집기 초기화 (이전 호출 잔여 entries 제거)
+            collector.take_entries();
+            let mut result = crate::domain_sync::dispatch_appraise(&mut *inner, req.clone()).await?;
+            // dispatch 중 수집된 tracing 이벤트를 trace로 첨부
+            result.trace = collector.take_entries();
 
             let fmt = state.formatter.read().await;
             let response = result.format(&**fmt);
@@ -75,7 +68,7 @@ impl StudioService {
         Ok(response)
     }
 
-    /// PAD 자극 적용 로직
+    /// PAD 자극 적용 로직 (B5.2 2/3: v2 dispatch_v2 경유)
     pub async fn perform_stimulus(
         state: &AppState,
         req: StimulusRequest,
@@ -84,15 +77,9 @@ impl StudioService {
             let mut inner = state.inner.write().await;
             let collector = state.collector.clone();
 
-            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
-            let result = service.apply_stimulus(
-                req.clone(),
-                || {
-                    collector.take_entries();
-                },
-                || collector.take_entries(),
-            )?;
-            drop(service);
+            collector.take_entries();
+            let mut result = crate::domain_sync::dispatch_stimulus(&mut *inner, req.clone()).await?;
+            result.trace = collector.take_entries();
 
             let fmt = state.formatter.read().await;
             let response = result.format(&**fmt);
@@ -115,16 +102,16 @@ impl StudioService {
         Ok(response)
     }
 
-    /// 대화 종료 후 관계 갱신 로직
+    /// 대화 종료 후 관계 갱신 로직 (B5.2 2/3: v2 dispatch_v2 경유)
     pub async fn perform_after_dialogue(
         state: &AppState,
         req: AfterDialogueRequest,
     ) -> Result<AfterDialogueResponse, AppError> {
         let response = {
             let mut inner = state.inner.write().await;
-            let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
 
-            let response = service.after_dialogue(req.clone())?;
+            let response =
+                crate::domain_sync::dispatch_end_dialogue(&mut *inner, req.clone()).await?;
 
             // 턴 기록 통합 저장
             Self::record_turn(
@@ -228,30 +215,19 @@ impl StudioService {
         })
     }
 
-    /// 시나리오 데이터를 상태에 주입 및 초기화
-    pub fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
-        let repo = AppStateRepository { inner: loaded };
-        let focuses: Vec<npc_mind::domain::emotion::SceneFocus> = scene_req
-            .focuses
-            .iter()
-            .filter_map(|f| {
-                let ctx = SituationService::resolve_focus_context(
-                    &repo, f, &scene_req.npc_id, &scene_req.partner_id,
-                );
-                f.to_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, &scene_req.npc_id).ok()
-            })
-            .collect();
-        drop(repo);
-
-        let significance = scene_req.significance.unwrap_or(0.5);
-        let mut service = MindService::new(AppStateRepository { inner: loaded });
-        let _ = service.load_scene_focuses(
-            focuses,
-            scene_req.npc_id.clone(),
-            scene_req.partner_id.clone(),
-            significance,
-        );
-        drop(service);
+    /// 시나리오 데이터를 상태에 주입 및 초기화 (B5.2 2/3: v2 dispatch_start_scene 경유)
+    ///
+    /// SceneFocusInput을 처리하고 initial focus에 대해 dispatch_v2(Command::StartScene)
+    /// 을 실행하여 emotion_state를 설정한다. 반환값은 사용하지 않는다 (UI는 별도 appraise
+    /// 호출로 결과를 얻음).
+    pub async fn load_scene_into_state(loaded: &mut StateInner, scene_req: &SceneRequest) {
+        // v2 start_scene dispatch (initial focus appraise + scene save + emotion_state 세팅).
+        // 실패해도 시나리오 로드 자체는 성공해야 하므로 에러는 로그만.
+        if let Err(e) =
+            crate::domain_sync::dispatch_start_scene(loaded, scene_req.clone()).await
+        {
+            tracing::warn!("load_scene_into_state: start_scene dispatch 실패 — {}", e);
+        }
 
         let initial_input = scene_req.focuses.iter().find(|f| f.trigger.is_none());
         if let Some(fi) = initial_input {
@@ -315,11 +291,19 @@ impl StudioService {
         let npc_profile = inner.npcs.get(&req.appraise.npc_id).ok_or_else(|| AppError::Internal(format!("NPC {}를 찾을 수 없습니다", req.appraise.npc_id)))?;
         let (temp, top_p) = npc_profile.derive_llm_parameters();
 
-        let mut service = MindService::new(AppStateRepository { inner: &mut *inner });
         // 이전 세션의 Beat 전환으로 인한 stale active_focus_id 초기화
         // (같은 시나리오로 여러 번 dialogue_start를 호출할 때 Beat 버그 방지)
-        service.reset_scene_to_initial_focus();
-        let result = service.appraise(req.appraise.clone(), || { collector.take_entries(); }, || collector.take_entries())?;
+        // StateInner의 scene focus 구조를 initial focus로 직접 리셋.
+        inner.active_focus_id = inner
+            .scene_focuses
+            .iter()
+            .find(|f| matches!(f.trigger, npc_mind::domain::emotion::FocusTrigger::Initial))
+            .map(|f| f.id.clone());
+
+        collector.take_entries();
+        let mut result = crate::domain_sync::dispatch_appraise(&mut *inner, req.appraise.clone()).await?;
+        result.trace = collector.take_entries();
+
         let fmt = state.formatter.read().await;
         let response = result.format(&**fmt);
         
@@ -443,9 +427,9 @@ impl StudioService {
         }
     }
 
-    /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다.
+    /// PAD 값으로 stimulus를 적용하고 포맷된 응답을 반환합니다 (B5.2 2/3: v2 dispatch_v2).
     #[cfg(feature = "chat")]
-    fn apply_stimulus_with_pad(
+    async fn apply_stimulus_with_pad(
         inner: &mut StateInner,
         collector: &crate::trace_collector::AppraisalCollector,
         formatter: &dyn npc_mind::ports::GuideFormatter,
@@ -460,8 +444,9 @@ impl StudioService {
             dominance: pad.2,
             situation_description: req.situation_description.clone(),
         };
-        let mut service = MindService::new(AppStateRepository { inner });
-        let result = service.apply_stimulus(stim_req, || { collector.take_entries(); }, || collector.take_entries())?;
+        collector.take_entries();
+        let mut result = crate::domain_sync::dispatch_stimulus(inner, stim_req).await?;
+        result.trace = collector.take_entries();
         Ok(result.format(formatter))
     }
 
@@ -481,7 +466,7 @@ impl StudioService {
         let (stim_resp, changed) = if let Some(pad) = pad {
             let resp = Self::apply_stimulus_with_pad(
                 &mut *inner, &state.collector, &**fmt, req, pad,
-            )?;
+            ).await?;
             let changed = resp.beat_changed;
             if changed {
                 chat_port.update_system_prompt(&req.session_id, &resp.prompt)

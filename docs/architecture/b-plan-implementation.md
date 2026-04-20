@@ -26,7 +26,9 @@
 | B4 S3 Option B-Mini | ✅ 완료 | Mind Studio `/api/v2/*` 7 엔드포인트 · Director 통합 shadow path |
 | B4 S4 (축소판 A) | ✅ 완료 | async `dispatch_v2(&self)` · `Arc<Mutex<R>>` · `Spawner` trait · `SceneTask` mpsc 루프 · Director 전면 async 재작성 · tests cutover |
 | B5.1 | ✅ 완료 | v1 API `#[deprecated(since="0.2.0")]` 마킹 · 내부·테스트 `#[allow(deprecated)]` |
-| B5.2 | ⏳ 대기 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
+| B5.2 (1/3) | ✅ 완료 | `DialogueAgent` v2 `dispatch_v2` 마이그레이션 — 3개 dispatch 호출 전환 + DispatchV2Output→DTO 재구성 헬퍼 + emit_dialogue_turn deprecated projections() 호출 제거 + `#![allow(deprecated)]` 해제 |
+| B5.2 (2/3) | ✅ 완료 | Mind Studio 핸들러 v2 마이그레이션 — `domain_sync` 모듈(StateInner↔InMemoryRepository snapshot + 5개 dispatch helper) 신설. `studio_service.rs`/`handlers/scenario.rs`/`mcp_server.rs` 15개 호출 지점 전환. `AppError::V2Dispatch` HTTP 매핑 확장 (Precondition → 400/404 분기). `pub(crate)` build helpers → `pub`. |
+| B5.2 (3/3) | ⏳ 대기 | Mind Studio AppState v1·v2 Repository 통합 (Option B-Medium) — 현재는 per-request snapshot 패턴 사용 중, 통합 시 snapshot 오버헤드 제거 |
 | B5.3 | ⏳ 대기 | v1 모듈·타입 삭제 (`Pipeline`/`Projection` trait/`EventAwareMindService`/v1 dispatch/v1 Agent handle_*) |
 | B5.4 | ⏳ 대기 | `shadow_v2` 플래그 제거 (v2만 존재) |
 
@@ -814,8 +816,11 @@ impl<R: MindRepository> MultiSceneTestHarness<R> {
 
 **작업 (단계별 PR):**
 - **B5.1 ✅ 완료**: `Pipeline`/`PipelineState`/`PipelineStage`, `Projection` trait/`ProjectionRegistry`, `CommandDispatcher::dispatch/execute_pipeline/register_projection/with_projections/projections()`, `handler::HandlerContext`/`HandlerOutput`, Agent v1 메서드 (`handle_appraise`/`handle_stimulus`/`handle_generate`/`handle_update`/`handle_end_dialogue`), `EventAwareMindService` 전체에 `#[deprecated(since = "0.2.0", note = "v0.3.0에서 제거 예정")]` 마킹. 내부 호출자 · 테스트 파일 상단에 `#![allow(deprecated)]` 추가. `cargo check` warning 0건.
-- **B5.2 ⏳ 대기**: 내부 호출자(DialogueAgent, Mind Studio scenario handlers 등) v2 경로로 마이그레이션
-- **B5.3 ⏳ 대기**: `Pipeline`, `PipelineState`, v1 `Projection` trait, v1 `dispatch`, `EventAwareMindService`, `handler` (v1) 모듈 통째로 삭제
+- **B5.2 ✅ (1/3, 2/3) 완료 · (3/3) 대기**:
+  - (1/3) DialogueAgent v2 `dispatch_v2` 마이그레이션 ✅
+  - (2/3) Mind Studio 핸들러 v2 마이그레이션 (`domain_sync` 모듈 + per-request snapshot) ✅
+  - (3/3) AppState v1·v2 Repository 통합 (Option B-Medium) — snapshot 오버헤드 해소 ⏳
+- **B5.3 ⏳ 대기**: `Pipeline`, `PipelineState`, v1 `Projection` trait, v1 `dispatch`, `EventAwareMindService`, `handler` (v1) 모듈 통째로 삭제. 아울러 Mind Studio의 `AppStateRepository<'a>` (이제 미사용) + `MindService::scene_info()` 간접 호출 경로 + `emotion_snapshot` v1 import 정리. `DialogueAgentError::Command(MindServiceError)` dead variant 제거. `HandlerError::Precondition(&'static str)`을 enum 세분화하여 `AppError` HTTP 매핑의 문자열 의존 제거.
 - **B5.4 ⏳ 대기**: `shadow_v2` 플래그 제거 (v2만 존재)
 
 **Acceptance (B5 최종):**

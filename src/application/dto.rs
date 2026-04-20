@@ -1,4 +1,4 @@
-use super::mind_service::MindServiceError;
+use super::error::MindServiceError;
 use crate::domain::emotion::{
     ActionFocus, ConditionThreshold, DesirabilityForOther, EmotionCondition, EmotionState,
     EmotionType, EventFocus, FocusTrigger, ObjectFocus, Prospect, ProspectResult,
@@ -340,7 +340,7 @@ impl CanFormat for SceneResult {
 // ---------------------------------------------------------------------------
 
 /// EmotionState에서 공통 응답 필드를 추출합니다.
-pub(crate) fn build_emotion_fields(
+pub fn build_emotion_fields(
     state: &EmotionState,
 ) -> (Vec<EmotionOutput>, Option<EmotionOutput>, f32) {
     let emotions: Vec<EmotionOutput> = state
@@ -354,7 +354,7 @@ pub(crate) fn build_emotion_fields(
 }
 
 /// NPC + EmotionState + 관계 → AppraiseResult 생성 헬퍼
-pub(crate) fn build_appraise_result(
+pub fn build_appraise_result(
     npc: &Npc,
     state: &EmotionState,
     situation_desc: Option<String>,

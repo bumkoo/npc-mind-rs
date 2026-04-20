@@ -13,7 +13,6 @@ mod common;
 use common::mock_chat::{ChatCall, MockConversationPort};
 use common::TestContext;
 
-use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::command::types::Command;
 use npc_mind::application::dto::{
     ActionInput, ConditionInput, EventInput, SceneFocusInput, SituationInput,
@@ -58,10 +57,7 @@ fn setup() -> (
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
 ) {
     let ctx = TestContext::new();
-    let store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
-    let store_dyn: Arc<dyn EventStore> = store.clone();
-    let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(ctx.repo, store_dyn, bus);
+    let (dispatcher, store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 
     let toml = builtin_toml("ko").expect("ko locale");
     let formatter: Arc<dyn GuideFormatter> =
@@ -99,13 +95,16 @@ async fn start_session_emits_emotion_appraised_and_starts_llm() {
         "프롬프트가 포맷팅되어야 함"
     );
 
-    // EventStore: EmotionAppraised 1건
+    // EventStore: v2 dispatch_v2(Appraise)는 정확히 다음 3건을 순서대로 발행:
+    //   AppraiseRequested → EmotionAppraised → GuideGenerated
+    // (회귀 시 누락/추가 이벤트를 잡기 위해 정확한 시퀀스 검증)
     let events = store.get_all_events();
-    assert_eq!(events.len(), 1);
-    assert!(matches!(
-        events[0].payload,
-        EventPayload::EmotionAppraised { .. }
-    ));
+    let kinds: Vec<_> = events.iter().map(|e| e.payload_type()).collect();
+    assert_eq!(
+        kinds,
+        vec!["AppraiseRequested", "EmotionAppraised", "GuideGenerated"],
+        "v2 Appraise dispatch는 3 이벤트를 정해진 순서로 발행해야 함"
+    );
 
     // ConversationPort: StartSession 1회
     let calls = calls.lock().unwrap();
@@ -156,15 +155,24 @@ async fn turn_emits_events_in_correct_order() {
     assert_eq!(outcome.npc_response, "mock response");
     assert!(outcome.stimulus.is_some());
 
-    // 전체 이벤트: EmotionAppraised → DialogueTurnCompleted(user)
-    //   → StimulusApplied (+ BeatTransitioned/RelationshipUpdated 가능) → DialogueTurnCompleted(assistant)
+    // 전체 이벤트: v2 dispatch_v2는
+    //   start_session: AppraiseRequested → EmotionAppraised → GuideGenerated
+    //   turn:          DialogueTurnCompleted(user) → StimulusApplyRequested → StimulusApplied
+    //                  (+ BeatTransitioned/RelationshipUpdated 가능) → DialogueTurnCompleted(assistant)
     let events = store.get_all_events();
+    let kinds: Vec<_> = events.iter().map(|e| e.payload_type()).collect();
 
-    // 첫 이벤트는 EmotionAppraised (start_session)
-    assert!(matches!(
-        events[0].payload,
-        EventPayload::EmotionAppraised { .. }
-    ));
+    // start_session은 정확히 3 이벤트 (전위)
+    assert_eq!(
+        &kinds[0..3],
+        &["AppraiseRequested", "EmotionAppraised", "GuideGenerated"],
+        "start_session prefix"
+    );
+
+    // turn 단계의 핵심 이벤트들이 (Beat 전환 가능성 있어 정확 시퀀스 X) 포함되어야 함
+    assert!(kinds.contains(&"StimulusApplyRequested"));
+    assert!(kinds.contains(&"StimulusApplied"));
+    assert!(kinds.iter().filter(|k| **k == "DialogueTurnCompleted").count() == 2);
 
     // user DialogueTurnCompleted가 StimulusApplied보다 먼저 나와야 함
     let user_turn_idx = events.iter().position(|e| {
@@ -476,7 +484,7 @@ async fn beat_transition_calls_update_system_prompt() {
             },
         ],
     };
-    agent.dispatcher_mut().dispatch(scene_cmd).unwrap();
+    agent.dispatcher().dispatch_v2(scene_cmd).await.unwrap();
 
     // LLM 세션 시작 (Scene의 active focus로 자동 appraise)
     agent
@@ -556,7 +564,8 @@ async fn dialogue_turn_events_are_published_to_event_bus() {
     // 구독을 먼저 시작하여 이후 publish된 이벤트를 모두 수신
     let mut stream = Box::pin(bus.subscribe());
 
-    let dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus.clone());
+    let store_dyn: Arc<dyn EventStore> = store.clone();
+    let dispatcher = common::v2_dispatcher(ctx.repo, store_dyn, bus.clone());
     let toml = builtin_toml("ko").unwrap();
     let formatter: Arc<dyn GuideFormatter> = Arc::new(LocaleFormatter::from_toml(toml).unwrap());
     let mut agent = DialogueAgent::new(dispatcher, MockConversationPort::new(), formatter);

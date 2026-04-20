@@ -174,18 +174,31 @@ pub struct HandlerResult {
 
 /// 핸들러 실행 에러
 ///
-/// B0에서는 최소 2 variants만 정의한다. B1에서 실제 핸들러 구현 시
-/// repository 계층의 에러 타입이 명시화되면 `Repository`를 강타입으로 교체.
-///
-/// **B0 설계 제약:** `MindServiceError`를 wrap하거나 `From` 브릿지를 도입하지 않는다.
-/// B5 deprecation 경로가 꼬이는 것을 막기 위함.
+/// 각 variant는 HTTP 매핑 의미(404/400/500)를 타입으로 표현한다.
+/// Mind Studio `AppError::V2Dispatch` 매핑이 문자열 매칭 대신 variant 매칭으로 분기.
 #[derive(Debug, Error)]
 pub enum HandlerError {
-    /// 핸들러 진입 조건 미충족 (입력 검증 실패 등)
-    #[error("precondition failed: {0}")]
-    Precondition(&'static str),
+    /// NPC를 저장소에서 찾지 못함 — 404 mapping
+    #[error("npc not found: {0}")]
+    NpcNotFound(String),
 
-    /// 저장소 접근 실패 — B1에서 강타입으로 교체 예정
+    /// 관계가 등록되지 않음 — 404 mapping
+    #[error("relationship not found: {owner_id}↔{target_id}")]
+    RelationshipNotFound { owner_id: String, target_id: String },
+
+    /// 감정 상태가 없음 (appraise 선행 누락 등) — 400 mapping (워크플로우 순서 오류)
+    #[error("emotion state not found for npc '{0}'")]
+    EmotionStateNotFound(String),
+
+    /// DTO → 도메인 변환 실패 등 입력 검증 오류 — 400 mapping
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
+
+    /// Projection mutex poison 등 인프라/invariant 위반 — 500 mapping
+    #[error("infrastructure error: {0}")]
+    Infrastructure(&'static str),
+
+    /// 저장소 쓰기/읽기 실패 — 500 mapping
     #[error("repository error: {0}")]
     Repository(String),
 }
@@ -349,8 +362,19 @@ mod tests {
 
     #[test]
     fn handler_error_display_is_readable() {
-        let e = HandlerError::Precondition("missing npc");
-        assert_eq!(e.to_string(), "precondition failed: missing npc");
+        let e = HandlerError::NpcNotFound("alice".into());
+        assert_eq!(e.to_string(), "npc not found: alice");
+        let e = HandlerError::RelationshipNotFound {
+            owner_id: "alice".into(),
+            target_id: "bob".into(),
+        };
+        assert_eq!(e.to_string(), "relationship not found: alice↔bob");
+        let e = HandlerError::EmotionStateNotFound("alice".into());
+        assert_eq!(e.to_string(), "emotion state not found for npc 'alice'");
+        let e = HandlerError::InvalidInput("bad focus".into());
+        assert_eq!(e.to_string(), "invalid input: bad focus");
+        let e = HandlerError::Infrastructure("mutex poisoned");
+        assert_eq!(e.to_string(), "infrastructure error: mutex poisoned");
         let e = HandlerError::Repository("save failed".into());
         assert_eq!(e.to_string(), "repository error: save failed");
     }

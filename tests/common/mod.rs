@@ -10,7 +10,6 @@ pub mod in_memory_store;
 pub mod mock_chat;
 
 use npc_mind::InMemoryRepository;
-use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::emotion::{
     ActionFocus, EmotionState, EmotionType, EventFocus, RelationshipModifiers, Situation,
 };
@@ -107,10 +106,6 @@ impl TestContext {
             mu_baek,
             gyo_ryong,
         }
-    }
-
-    pub fn service(&mut self) -> MindService<&mut InMemoryRepository> {
-        MindService::new(&mut self.repo)
     }
 }
 
@@ -343,4 +338,40 @@ pub fn expect_events(
             .await
             .unwrap_or_else(|_| panic!("timeout waiting for events: {:?}", kinds_owned))
     }
+}
+
+// ---------------------------------------------------------------------------
+// B5.2 — v2 dispatcher 빌더
+// ---------------------------------------------------------------------------
+
+use npc_mind::application::command::CommandDispatcher;
+use npc_mind::application::event_store::{EventStore, InMemoryEventStore};
+
+/// `with_default_handlers()`가 적용된 v2 CommandDispatcher 생성.
+///
+/// DialogueAgent / Director / 기타 v2 dispatch_v2를 호출하는 컴포넌트의 테스트 setup에서 사용.
+/// `EventStore`/`EventBus`는 외부에서 만들어 전달 — 테스트가 직접 구독하거나 store에서 조회하기 위함.
+pub fn v2_dispatcher(
+    repo: InMemoryRepository,
+    store: Arc<dyn EventStore>,
+    bus: Arc<EventBus>,
+) -> CommandDispatcher<InMemoryRepository> {
+    CommandDispatcher::new(repo, store, bus).with_default_handlers()
+}
+
+/// 기본 InMemoryEventStore + EventBus + v2 핸들러 등록 dispatcher 일괄 생성.
+///
+/// store/bus 참조도 필요한 경우 반환된 튜플에서 받아 쓴다.
+pub fn v2_dispatcher_with_defaults(
+    repo: InMemoryRepository,
+) -> (
+    CommandDispatcher<InMemoryRepository>,
+    Arc<InMemoryEventStore>,
+    Arc<EventBus>,
+) {
+    let store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
+    let store_dyn: Arc<dyn EventStore> = store.clone();
+    let bus = Arc::new(EventBus::new());
+    let dispatcher = v2_dispatcher(repo, store_dyn, bus.clone());
+    (dispatcher, store, bus)
 }
