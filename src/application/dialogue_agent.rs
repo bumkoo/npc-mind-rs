@@ -1,9 +1,7 @@
 //! DialogueAgent — LLM 대사 생성 + EventBus 통합 오케스트레이터 (Phase 4)
 //!
-//! **B5.1 (v0.2.0) Note:** `CommandDispatcher::dispatch` (v1)와 `projections()`를 내부적으로
-//! 호출한다. v1이 deprecated이지만 v2 path (`dispatch_v2`)로의 마이그레이션은 B5.2에서
-//! 진행. 그 전까지 `#![allow(deprecated)]`로 warning 억제.
-#![allow(deprecated)]
+//! **B5.2 (1/3):** 내부 dispatch 호출을 v2 경로(`dispatch_v2().await`)로 완전 이관.
+//! 외부 API(start_session/turn/end_session) 시그니처는 변경 없음.
 //!
 //! `CommandDispatcher`를 통해 상태 변경 Command를 발행하고,
 //! `ConversationPort`로 LLM 다턴 대화를 진행하며,
@@ -17,48 +15,53 @@
 //!
 //! ```text
 //! start_session(session_id, npc, partner, situation)
-//!   → Command::Appraise dispatch (EmotionAppraised 이벤트)
+//!   → Command::Appraise dispatch_v2 (EmotionAppraised/GuideGenerated 이벤트)
 //!   → guide 프롬프트 포맷팅 → ConversationPort::start_session
 //!
 //! turn(session_id, user_utterance, pad_hint?)
 //!   → DialogueTurnCompleted(user) 이벤트 발행
-//!   → Command::ApplyStimulus dispatch (StimulusApplied / BeatTransitioned / RelationshipUpdated)
-//!   → Beat 전환 시 system_prompt 갱신
+//!   → Command::ApplyStimulus dispatch_v2 (StimulusApplied / BeatTransitioned / RelationshipUpdated)
+//!   → Beat 전환 시 (events에 BeatTransitioned 존재) system_prompt 갱신
 //!   → ConversationPort::send_message → NPC 응답
 //!   → DialogueTurnCompleted(assistant) 이벤트 발행
 //!
 //! end_session(session_id, significance?)
 //!   → ConversationPort::end_session → 대화 이력
-//!   → significance가 있으면 Command::EndDialogue dispatch
+//!   → significance가 있으면 Command::EndDialogue dispatch_v2
 //!     (RelationshipUpdated / EmotionCleared / SceneEnded 이벤트 발행)
 //! ```
 //!
 //! # DialogueTurnCompleted 이벤트 직접 발행
 //!
 //! 현재 Command enum에는 대화 턴 기록 전용 variant가 없으므로,
-//! DialogueAgent는 `CommandDispatcher::event_store()` / `event_bus()` /
-//! `projections()`를 통해 dispatcher와 동일한 발행 경로를 재사용한다.
-//! 순서: append → L1 projection apply_all → broadcast publish.
+//! DialogueAgent는 `CommandDispatcher::event_store()` / `event_bus()`를 통해
+//! dispatcher와 동일한 발행 경로를 재사용한다. 순서: append → broadcast publish.
+//! (v2 inline handler들은 DialogueTurnCompleted에 관심 없으므로 생략됨.)
 //!
 //! # 동시성
 //!
-//! `CommandDispatcher::dispatch`는 `&mut self`이므로 DialogueAgent도
-//! `&mut self` 메서드로 설계된다. 동일 session에 대한 동시 턴은 허용하지 않는다.
-//! 서로 다른 세션을 병렬 실행하려면 별도 DialogueAgent 인스턴스를 생성한다.
+//! `CommandDispatcher::dispatch_v2`는 `&self`이지만 DialogueAgent는 `sessions` HashMap
+//! 접근 때문에 `&mut self` 메서드를 유지한다. 동일 session에 대한 동시 턴은 허용하지
+//! 않는다. 서로 다른 세션을 병렬 실행하려면 별도 DialogueAgent 인스턴스를 생성한다.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use crate::application::command::{Command, CommandDispatcher, CommandResult};
+use crate::application::command::dispatcher::DispatchV2Error;
+use crate::application::command::{Command, CommandDispatcher};
 use crate::application::command::handler::emotion_snapshot;
 use crate::application::dto::{
-    AppraiseResponse, CanFormat, SituationInput, StimulusResponse,
+    build_appraise_result, build_emotion_fields, AppraiseResponse, AppraiseResult,
+    AfterDialogueResponse, CanFormat, PadOutput, RelationshipValues, SituationInput,
+    StimulusResponse, StimulusResult,
 };
 use crate::application::mind_service::MindServiceError;
-use crate::domain::event::{DomainEvent, EventPayload};
+use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 #[cfg(feature = "listener_perspective")]
 use crate::domain::listener_perspective::ListenerPerspectiveConverter;
 use crate::domain::pad::{Pad, UtteranceEmbedding};
+use crate::domain::personality::Npc;
+use crate::domain::relationship::Relationship;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, GuideFormatter, LlamaTimings,
     MindRepository, UtteranceAnalyzer,
@@ -104,14 +107,17 @@ pub struct DialogueEndOutcome {
 pub enum DialogueAgentError {
     #[error("CommandDispatcher 에러: {0}")]
     Command(#[from] MindServiceError),
+    #[error("CommandDispatcher v2 에러: {0}")]
+    DispatchV2(#[from] DispatchV2Error),
     #[error("ConversationPort 에러: {0}")]
     Conversation(#[from] ConversationError),
     #[error("PAD 분석 실패: {0}")]
     Analysis(String),
     #[error("세션을 찾을 수 없습니다: {0}")]
     SessionNotFound(String),
-    #[error("예상하지 못한 CommandResult: {0}")]
-    UnexpectedResult(&'static str),
+    /// v2 dispatch 이후 기대 이벤트/상태 재구성 실패 (HandlerShared에 필수 필드 부재 등)
+    #[error("dispatch_v2 결과에서 {0}을(를) 재구성할 수 없습니다")]
+    ResultReconstruction(&'static str),
 }
 
 // ---------------------------------------------------------------------------
@@ -132,7 +138,7 @@ struct SessionMeta {
 ///
 /// - `R`: 도메인 저장소 (MindRepository)
 /// - `C`: LLM 어댑터 (ConversationPort). `RigChatAdapter` 또는 테스트용 mock.
-pub struct DialogueAgent<R: MindRepository, C: ConversationPort> {
+pub struct DialogueAgent<R: MindRepository + Send + Sync + 'static, C: ConversationPort> {
     dispatcher: CommandDispatcher<R>,
     chat: C,
     formatter: Arc<dyn GuideFormatter>,
@@ -143,8 +149,14 @@ pub struct DialogueAgent<R: MindRepository, C: ConversationPort> {
     sessions: HashMap<String, SessionMeta>,
 }
 
-impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
-    /// 기본 생성자
+impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAgent<R, C> {
+    /// 기본 생성자.
+    ///
+    /// **전제**: 전달받는 `dispatcher`는 `.with_default_handlers()`가 호출된 상태여야 한다.
+    /// DialogueAgent는 내부적으로 `dispatcher.dispatch_v2(Command::Appraise / ApplyStimulus /
+    /// EndDialogue)`를 호출하며, 결과를 `HandlerShared` 기반으로 재구성한다. 기본 핸들러(Emotion /
+    /// Stimulus / Guide / Relationship / Scene Agent + 3 inline projection)가 등록되어 있지
+    /// 않으면 `DialogueAgentError::ResultReconstruction`이 반환된다.
     pub fn new(
         dispatcher: CommandDispatcher<R>,
         chat: C,
@@ -184,14 +196,10 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
         self
     }
 
-    /// 내부 CommandDispatcher에 대한 참조
+    /// 내부 CommandDispatcher에 대한 참조. dispatch_v2는 `&self`로 호출 가능하므로
+    /// 이 참조만으로 외부에서 추가 커맨드를 발행하거나 broadcast 구독이 가능하다.
     pub fn dispatcher(&self) -> &CommandDispatcher<R> {
         &self.dispatcher
-    }
-
-    /// 내부 CommandDispatcher에 대한 가변 참조
-    pub fn dispatcher_mut(&mut self) -> &mut CommandDispatcher<R> {
-        &mut self.dispatcher
     }
 
     /// 활성 세션 수 (테스트/진단용)
@@ -226,11 +234,8 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             situation,
         };
 
-        let result = self.dispatcher.dispatch(cmd)?;
-        let appraise_result = match result {
-            CommandResult::Appraised(r) => r,
-            _ => return Err(DialogueAgentError::UnexpectedResult("Appraise")),
-        };
+        let output = self.dispatcher.dispatch_v2(cmd).await?;
+        let appraise_result = self.build_appraise_from_v2(&output, npc_id, partner_id)?;
 
         // format()은 내부에서 format_prompt를 한 번 호출하므로, 결과의 prompt를
         // 그대로 재사용하여 동일 가이드를 중복 포맷팅하지 않는다.
@@ -328,11 +333,9 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
                 dominance: pad.dominance,
                 situation_description,
             };
-            let result = self.dispatcher.dispatch(stim_cmd)?;
-            let stim_result = match result {
-                CommandResult::StimulusApplied(r) => r,
-                _ => return Err(DialogueAgentError::UnexpectedResult("ApplyStimulus")),
-            };
+            let output = self.dispatcher.dispatch_v2(stim_cmd).await?;
+            let stim_result =
+                self.build_stimulus_from_v2(&output, &meta.npc_id, &meta.partner_id, pad)?;
             let changed = stim_result.beat_changed;
 
             // ④ Beat 전환 시 system_prompt 갱신
@@ -387,11 +390,8 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
                 partner_id: meta.partner_id.clone(),
                 significance: Some(sig),
             };
-            let result = self.dispatcher.dispatch(cmd)?;
-            match result {
-                CommandResult::DialogueEnded(resp) => Some(resp),
-                _ => return Err(DialogueAgentError::UnexpectedResult("EndDialogue")),
-            }
+            let output = self.dispatcher.dispatch_v2(cmd).await?;
+            Some(self.build_end_dialogue_from_v2(&output)?)
         } else {
             None
         };
@@ -459,17 +459,14 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             emotion_snapshot,
         };
 
+        // v2 경로: event_store.append + event_bus.publish만. v2 inline handler들은
+        // DialogueTurnCompleted에 관심 없으므로 projections().apply_all는 no-op였으며 제거.
         let store = self.dispatcher.event_store();
         let bus = self.dispatcher.event_bus();
         let id = store.next_id();
         let seq = store.next_sequence(&meta.npc_id);
         let event = DomainEvent::new(id, meta.npc_id.clone(), seq, payload);
         store.append(&[event.clone()]);
-        self.dispatcher
-            .projections()
-            .write()
-            .unwrap()
-            .apply_all(&event);
         bus.publish(&event);
     }
 
@@ -482,5 +479,162 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
             .map(|s| emotion_snapshot(&s))
             .unwrap_or_default()
     }
+
+    // -----------------------------------------------------------------------
+    // v2 mapping helpers — DispatchV2Output → v1 DTO 재구성
+    //
+    // dispatch_v2는 HandlerShared + 이벤트 목록을 반환하므로, DialogueAgent의 기존
+    // 반환 DTO (AppraiseResult / StimulusResult / AfterDialogueResponse)를
+    // 만들려면 여기서 재조립한다. NPC/Partner 이름과 Relationship은 repo에서 조회.
+    // -----------------------------------------------------------------------
+
+    /// `dispatch_v2(Command::Appraise)` 결과 → `AppraiseResult`
+    fn build_appraise_from_v2(
+        &self,
+        output: &crate::application::command::dispatcher::DispatchV2Output,
+        npc_id: &str,
+        partner_id: &str,
+    ) -> Result<AppraiseResult, DialogueAgentError> {
+        let state = output
+            .shared
+            .emotion_state
+            .as_ref()
+            .ok_or(DialogueAgentError::ResultReconstruction("EmotionState"))?;
+
+        let (npc, partner_name, rel) = self.fetch_npc_partner_rel(npc_id, partner_id)?;
+
+        // 이벤트에서 situation_description 추출 (EmotionAppraised payload)
+        let situation_desc = output.events.iter().find_map(|e| match &e.payload {
+            EventPayload::EmotionAppraised {
+                situation_description, ..
+            } => situation_description.clone(),
+            _ => None,
+        });
+
+        // relationship은 shared 우선, 없으면 repo fallback
+        let effective_rel = output.shared.relationship.as_ref().or(rel.as_ref());
+
+        Ok(build_appraise_result(
+            &npc,
+            state,
+            situation_desc,
+            effective_rel,
+            &partner_name,
+            vec![],
+        ))
+    }
+
+    /// `dispatch_v2(Command::ApplyStimulus)` 결과 → `StimulusResult`
+    ///
+    /// beat_changed는 `output.events`에 `BeatTransitioned`가 있는지로 판정 (v2 진실).
+    fn build_stimulus_from_v2(
+        &self,
+        output: &crate::application::command::dispatcher::DispatchV2Output,
+        npc_id: &str,
+        partner_id: &str,
+        input_pad: Pad,
+    ) -> Result<StimulusResult, DialogueAgentError> {
+        let state = output
+            .shared
+            .emotion_state
+            .as_ref()
+            .ok_or(DialogueAgentError::ResultReconstruction("EmotionState"))?;
+        let guide = output
+            .shared
+            .guide
+            .as_ref()
+            .cloned()
+            .ok_or(DialogueAgentError::ResultReconstruction("ActingGuide"))?;
+
+        let (_, partner_name, rel) = self.fetch_npc_partner_rel(npc_id, partner_id)?;
+        let _ = (partner_name, rel); // reserved for future richer mapping
+
+        let (emotions, dominant, mood) = build_emotion_fields(state);
+        let beat_changed = output
+            .events
+            .iter()
+            .any(|e| matches!(e.kind(), EventKind::BeatTransitioned));
+
+        // active_focus_id: repo의 현재 Scene에서 조회 (dispatch_v2 write-back 후 상태 반영됨)
+        let active_focus_id = self
+            .dispatcher
+            .repository_guard()
+            .get_scene()
+            .and_then(|s| s.active_focus_id().map(|id| id.to_string()));
+
+        Ok(StimulusResult {
+            emotions,
+            dominant,
+            mood,
+            guide,
+            trace: vec![],
+            beat_changed,
+            active_focus_id,
+            input_pad: Some(PadOutput {
+                pleasure: input_pad.pleasure,
+                arousal: input_pad.arousal,
+                dominance: input_pad.dominance,
+            }),
+        })
+    }
+
+    /// `dispatch_v2(Command::EndDialogue)` 결과 → `AfterDialogueResponse`
+    ///
+    /// `RelationshipUpdated` 이벤트의 before/after 6필드로 스냅샷 재구성.
+    fn build_end_dialogue_from_v2(
+        &self,
+        output: &crate::application::command::dispatcher::DispatchV2Output,
+    ) -> Result<AfterDialogueResponse, DialogueAgentError> {
+        output
+            .events
+            .iter()
+            .find_map(|e| match &e.payload {
+                EventPayload::RelationshipUpdated {
+                    before_closeness,
+                    before_trust,
+                    before_power,
+                    after_closeness,
+                    after_trust,
+                    after_power,
+                    ..
+                } => Some(AfterDialogueResponse {
+                    before: RelationshipValues {
+                        closeness: *before_closeness,
+                        trust: *before_trust,
+                        power: *before_power,
+                    },
+                    after: RelationshipValues {
+                        closeness: *after_closeness,
+                        trust: *after_trust,
+                        power: *after_power,
+                    },
+                }),
+                _ => None,
+            })
+            .ok_or(DialogueAgentError::ResultReconstruction(
+                "RelationshipUpdated event",
+            ))
+    }
+
+    /// NPC + Partner NPC (→ name) + 관계를 repo에서 한 번에 조회.
+    fn fetch_npc_partner_rel(
+        &self,
+        npc_id: &str,
+        partner_id: &str,
+    ) -> Result<(Npc, String, Option<Relationship>), DialogueAgentError> {
+        let guard = self.dispatcher.repository_guard();
+        let npc = guard
+            .get_npc(npc_id)
+            .ok_or(DialogueAgentError::ResultReconstruction("Npc"))?;
+        let partner_name = guard
+            .get_npc(partner_id)
+            .map(|p| p.name().to_string())
+            .unwrap_or_else(|| partner_id.to_string());
+        let rel = guard
+            .get_relationship(npc_id, partner_id)
+            .or_else(|| guard.get_relationship(partner_id, npc_id));
+        Ok((npc, partner_name, rel))
+    }
 }
+
 

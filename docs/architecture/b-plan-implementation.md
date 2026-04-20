@@ -26,7 +26,9 @@
 | B4 S3 Option B-Mini | ✅ 완료 | Mind Studio `/api/v2/*` 7 엔드포인트 · Director 통합 shadow path |
 | B4 S4 (축소판 A) | ✅ 완료 | async `dispatch_v2(&self)` · `Arc<Mutex<R>>` · `Spawner` trait · `SceneTask` mpsc 루프 · Director 전면 async 재작성 · tests cutover |
 | B5.1 | ✅ 완료 | v1 API `#[deprecated(since="0.2.0")]` 마킹 · 내부·테스트 `#[allow(deprecated)]` |
-| B5.2 | ⏳ 대기 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
+| B5.2 (1/3) | ✅ 완료 | `DialogueAgent` v2 `dispatch_v2` 마이그레이션 — 3개 dispatch 호출 전환 + DispatchV2Output→DTO 재구성 헬퍼 + emit_dialogue_turn deprecated projections() 호출 제거 + `#![allow(deprecated)]` 해제 |
+| B5.2 (2/3) | ⏳ 대기 | Mind Studio 핸들러(`studio_service.rs`/`handlers/scenario.rs`/`mcp_server.rs`) v1 `MindService::new` → v2 경로 마이그레이션 |
+| B5.2 (3/3) | ⏳ 대기 | Mind Studio AppState v1·v2 Repository 통합 (Option B-Medium) |
 | B5.3 | ⏳ 대기 | v1 모듈·타입 삭제 (`Pipeline`/`Projection` trait/`EventAwareMindService`/v1 dispatch/v1 Agent handle_*) |
 | B5.4 | ⏳ 대기 | `shadow_v2` 플래그 제거 (v2만 존재) |
 

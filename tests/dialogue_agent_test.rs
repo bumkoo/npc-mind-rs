@@ -61,7 +61,8 @@ fn setup() -> (
     let store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     let store_dyn: Arc<dyn EventStore> = store.clone();
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(ctx.repo, store_dyn, bus);
+    // B5.2: DialogueAgent는 내부에서 dispatch_v2를 호출하므로 v2 기본 핸들러 체인이 필요.
+    let dispatcher = CommandDispatcher::new(ctx.repo, store_dyn, bus).with_default_handlers();
 
     let toml = builtin_toml("ko").expect("ko locale");
     let formatter: Arc<dyn GuideFormatter> =
@@ -99,13 +100,12 @@ async fn start_session_emits_emotion_appraised_and_starts_llm() {
         "프롬프트가 포맷팅되어야 함"
     );
 
-    // EventStore: EmotionAppraised 1건
+    // EventStore: v2 dispatch_v2(Appraise)는 AppraiseRequested → EmotionAppraised → GuideGenerated 발행.
+    // EmotionAppraised 이벤트가 포함되어 있어야 함.
     let events = store.get_all_events();
-    assert_eq!(events.len(), 1);
-    assert!(matches!(
-        events[0].payload,
-        EventPayload::EmotionAppraised { .. }
-    ));
+    assert!(events
+        .iter()
+        .any(|e| matches!(e.payload, EventPayload::EmotionAppraised { .. })));
 
     // ConversationPort: StartSession 1회
     let calls = calls.lock().unwrap();
@@ -156,15 +156,20 @@ async fn turn_emits_events_in_correct_order() {
     assert_eq!(outcome.npc_response, "mock response");
     assert!(outcome.stimulus.is_some());
 
-    // 전체 이벤트: EmotionAppraised → DialogueTurnCompleted(user)
-    //   → StimulusApplied (+ BeatTransitioned/RelationshipUpdated 가능) → DialogueTurnCompleted(assistant)
+    // 전체 이벤트: v2 dispatch_v2는 AppraiseRequested → EmotionAppraised → GuideGenerated
+    //   → DialogueTurnCompleted(user) → StimulusApplyRequested → StimulusApplied
+    //   (+ BeatTransitioned/RelationshipUpdated 가능) → DialogueTurnCompleted(assistant)
     let events = store.get_all_events();
 
-    // 첫 이벤트는 EmotionAppraised (start_session)
+    // 첫 이벤트는 AppraiseRequested (v2 진입 이벤트)
     assert!(matches!(
         events[0].payload,
-        EventPayload::EmotionAppraised { .. }
+        EventPayload::AppraiseRequested { .. }
     ));
+    // EmotionAppraised도 존재
+    assert!(events
+        .iter()
+        .any(|e| matches!(e.payload, EventPayload::EmotionAppraised { .. })));
 
     // user DialogueTurnCompleted가 StimulusApplied보다 먼저 나와야 함
     let user_turn_idx = events.iter().position(|e| {
@@ -476,7 +481,7 @@ async fn beat_transition_calls_update_system_prompt() {
             },
         ],
     };
-    agent.dispatcher_mut().dispatch(scene_cmd).unwrap();
+    agent.dispatcher().dispatch_v2(scene_cmd).await.unwrap();
 
     // LLM 세션 시작 (Scene의 active focus로 자동 appraise)
     agent
@@ -556,7 +561,8 @@ async fn dialogue_turn_events_are_published_to_event_bus() {
     // 구독을 먼저 시작하여 이후 publish된 이벤트를 모두 수신
     let mut stream = Box::pin(bus.subscribe());
 
-    let dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus.clone());
+    let dispatcher =
+        CommandDispatcher::new(ctx.repo, store.clone(), bus.clone()).with_default_handlers();
     let toml = builtin_toml("ko").unwrap();
     let formatter: Arc<dyn GuideFormatter> = Arc::new(LocaleFormatter::from_toml(toml).unwrap());
     let mut agent = DialogueAgent::new(dispatcher, MockConversationPort::new(), formatter);
