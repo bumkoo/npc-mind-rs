@@ -490,22 +490,27 @@ impl<R: MindRepository> CommandDispatcher<R> {
     }
 
     // -----------------------------------------------------------------------
-    // B3 — dispatch_v2 (§5.1 실행 루프)
+    // dispatch_v2 (§5.1 실행 루프)
+    //   - B3: BFS cascade + 초기 2 커맨드 지원
+    //   - B4 S1: 6 커맨드 전부 지원 (SceneAgent 신규 + 4 *Requested variant)
+    //   - B4 S4: `&mut self` → `async fn(&self)` 전환, 내부 Arc<Mutex<R>>로 공유
     // -----------------------------------------------------------------------
 
-    /// v2 경로 dispatch — B1 EventHandler 체인을 사용
+    /// v2 경로 dispatch — EventHandler 체인 실행 + 결과 이벤트 persist & fanout.
     ///
-    /// Appraise, ApplyStimulus 커맨드만 지원. 다른 커맨드는
-    /// `DispatchV2Error::UnsupportedCommand`. B4+에서 scene_id 필드 추가 및
-    /// `*Requested` variant 추가와 함께 모든 커맨드 지원 예정.
+    /// **지원 커맨드 (B4 S1부터 6종 전부):** Appraise / ApplyStimulus / GenerateGuide /
+    /// UpdateRelationship / EndDialogue / StartScene. 각각 대응하는 `*Requested` 초기
+    /// 이벤트를 생성하고 transactional handler chain을 통해 실제 결과 이벤트를 발행한다.
     ///
     /// **이벤트 흐름**:
-    /// 1. Command → 초기 이벤트 (`AppraiseRequested` / `StimulusApplyRequested`)
+    /// 1. Command → 초기 이벤트 (6종 `*Requested` variant 중 하나)
     /// 2. Transactional phase: BFS 큐로 handler chain 실행, staging_buffer 적재
     ///    (에러 시 전체 abort → staging_buffer 폐기, event_store 미변경)
-    /// 3. Commit phase: staging_buffer의 각 이벤트에 실ID·sequence 할당 후 event_store.append
-    /// 4. Inline phase: Projection handler 동기 호출 (에러는 로그만)
-    /// 5. Fanout phase: event_bus.publish (broadcast 구독자)
+    /// 3. Repo write-back: `HandlerShared`의 emotion_state / relationship / scene /
+    ///    clear_* 시그널을 repository에 반영
+    /// 4. Commit phase: staging_buffer의 각 이벤트에 실ID·sequence 할당 후 event_store.append
+    /// 5. Inline phase: Projection handler 동기 호출 (에러는 로그만)
+    /// 6. Fanout phase: event_bus.publish (broadcast 구독자)
     pub async fn dispatch_v2(&self, cmd: Command) -> Result<DispatchV2Output, DispatchV2Error>
     where
         R: Send + Sync,

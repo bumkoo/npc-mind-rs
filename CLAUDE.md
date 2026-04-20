@@ -130,10 +130,11 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 **`CommandDispatcher<R>`** — CQRS Command 오케스트레이터 (`application/command/dispatcher.rs`)
 - `::new(repo, event_store, event_bus)` — 기본 생성
 - **v2 (권장)**: `.with_default_handlers()` — EmotionAgent/StimulusAgent/GuideAgent/RelationshipAgent/SceneAgent + 3 Projection wrapper 자동 등록
-- **v2 (권장)**: `dispatch_v2(cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 6 Command 전부 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene). BFS 큐 cascade + HandlerShared write-back + inline projections + Fanout
+- **v2 (권장)**: `async fn dispatch_v2(&self, cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 6 Command 전부 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene). BFS 큐 cascade + HandlerShared write-back + inline projections + Fanout. B4 Session 4부터 `&self`(Arc<Mutex<R>> 내부 공유).
 - **v2 안전 한계**: `MAX_CASCADE_DEPTH = 4`, `MAX_EVENTS_PER_COMMAND = 20`
 - **v1 (deprecated)**: `dispatch(cmd)` / `execute_pipeline(pipeline, cmd)` / `.with_projections()` / `.register_projection()` / `.projections()` — v0.3.0 제거 예정
-- `event_store()`/`event_bus()`/`repository()` 훅으로 내부 의존성 노출
+- `event_store()` / `event_bus()` — 내부 의존성 노출
+- `repository_guard() -> MutexGuard<R>` — NPC/관계 등록 같은 `&mut self` 메서드 호출용. `repository_arc() -> Arc<Mutex<R>>` — 공유 소유가 필요한 드문 경우.
 - `.register_transactional(h)` / `.register_inline(h)` — 커스텀 EventHandler 등록
 
 **`Director<R>`** — 다중 Scene facade (`application/director/mod.rs`, B안 B4 Session 4 async 재작성)
