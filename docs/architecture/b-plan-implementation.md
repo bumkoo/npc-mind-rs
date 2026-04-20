@@ -1,8 +1,8 @@
 # B안 구축 방안 — 다중 Scene 동시 실행 지원
 
 **작성일:** 2026-04-19
-**최종 갱신:** 2026-04-19 (B4 Session 4 완료 시점)
-**상태:** B0~B5.1 ✅ 완료 · B4 Session 4 ✅ 완료(축소판 A) · B5.2~B5.4 진행 예정
+**최종 갱신:** 2026-04-20 (B5.3 완료 · 문서 정합성 정리)
+**상태:** B0~B5.3 ✅ 완료 · B5.4 불필요 (B5.3에서 `shadow_v2` 함께 제거)
 
 **⚠️ 문서 성격**: §1~§7은 **설계 단계 스냅샷**으로, 실제 구현과 세부 API가 다를 수 있습니다
 (SceneTask가 struct 대신 `spawn_scene_task` 함수로, Director 생성자 시그니처 등).
@@ -36,8 +36,9 @@
 - Command에 `scene_id` 필드 도입은 B4에서 도입 대신 **커맨드의 (npc_id, partner_id)를 SceneId로 활용**하는 실용적 접근 채택. `Command::aggregate_key()`가 동일 목적 달성.
 
 **B-Plan 설계 대비 변경**:
-- `ProjectionRegistry`가 `Vec<Arc<dyn EventHandler>>`로 **storage 전환**하는 작업(§8 B2 항목 2)은 **B3에서 자연스럽게 해소** — Dispatcher의 `inline_handlers: Vec<Arc<dyn EventHandler>>`가 그 역할. 기존 ProjectionRegistry는 B5.3에서 통째로 제거 예정.
-- B4 S3에서 async dispatch_v2 / 실제 tokio SceneTask는 **아직 미구현** — Director는 sync façade. 필요 시점(LLM 호출 지연이 병렬화 이득을 낳을 때) 별도 세션에서 추진.
+- `ProjectionRegistry`가 `Vec<Arc<dyn EventHandler>>`로 **storage 전환**하는 작업(§8 B2 항목 2)은 **B3에서 자연스럽게 해소** — Dispatcher의 `inline_handlers: Vec<Arc<dyn EventHandler>>`가 그 역할. 기존 ProjectionRegistry는 **B5.3에서 통째로 제거됨**.
+- B4 S3 시점에 sync façade였던 Director는 **B4 S4에서 async `dispatch_v2(&self)` + `Arc<Mutex<R>>` + `Spawner` + `spawn_scene_task` mpsc 루프로 전면 재작성 완료**. 런타임 중립(`tokio::spawn` 미호출) 유지.
+- B4 Session 4+에서 이연되었던 "Mind Studio AppState 통합"과 "`shadow_v2: true` 기본값 전환"은 각각 **B5.2(3/3) `shared_dispatcher` 도입**, **B5.3 `shadow_v2` 전면 제거**로 해소.
 
 ---
 
@@ -801,9 +802,9 @@ impl<R: MindRepository> MultiSceneTestHarness<R> {
 - [x] 테스트 cutover — `tests/dispatch_v2_test.rs` 15건, `tests/director_test.rs` 12건 전부 `#[tokio::test]` + `.await`. `tests/port_injection_test.rs`의 `dispatcher.repository_mut()` 호출은 `repository_guard()`로 교체.
 - [x] 런타임 정책 회귀 감시: `Cargo.toml`의 `tokio = { features = ["sync"] }` 그대로. 외부 라이브러리 사용자는 여전히 tokio runtime 불필요.
 
-**Session 4+ 잔여 ⏳ 이연**
-- [ ] Mind Studio v1 AppState · v2 Director Repository 통합 (Option B-Medium) — 별도 세션
-- [ ] `shadow_v2: true` 기본값 전환 (Director가 default가 되는 시점) — B5.2 이후
+**Session 4+ 잔여 ✅ 해소**
+- [x] Mind Studio v1 AppState · v2 Director Repository 통합 — B5.2(3/3)에서 `shared_dispatcher` + `rebuild_repo_from_inner()` 도입으로 해소. Option B-Medium 경로는 선택되지 않음(공유 dispatcher 방식이 snapshot 오버헤드를 더 깔끔히 제거).
+- [x] `shadow_v2` 플래그 전환 — B5.3에서 v1 제거와 함께 `shadow_v2` 필드 자체가 제거됨 → 불필요.
 
 **Acceptance (Session 3까지 기준):** ✅
 - 기존 통합 테스트 전수 통과 (v1/v2 양 경로)
@@ -816,17 +817,17 @@ impl<R: MindRepository> MultiSceneTestHarness<R> {
 
 **작업 (단계별 PR):**
 - **B5.1 ✅ 완료**: `Pipeline`/`PipelineState`/`PipelineStage`, `Projection` trait/`ProjectionRegistry`, `CommandDispatcher::dispatch/execute_pipeline/register_projection/with_projections/projections()`, `handler::HandlerContext`/`HandlerOutput`, Agent v1 메서드 (`handle_appraise`/`handle_stimulus`/`handle_generate`/`handle_update`/`handle_end_dialogue`), `EventAwareMindService` 전체에 `#[deprecated(since = "0.2.0", note = "v0.3.0에서 제거 예정")]` 마킹. 내부 호출자 · 테스트 파일 상단에 `#![allow(deprecated)]` 추가. `cargo check` warning 0건.
-- **B5.2 ✅ (1/3, 2/3) 완료 · (3/3) 대기**:
-  - (1/3) DialogueAgent v2 `dispatch_v2` 마이그레이션 ✅
-  - (2/3) Mind Studio 핸들러 v2 마이그레이션 (`domain_sync` 모듈 + per-request snapshot) ✅
-  - (3/3) AppState v1·v2 Repository 통합 (Option B-Medium) — snapshot 오버헤드 해소 ⏳
-- **B5.3 ⏳ 대기**: `Pipeline`, `PipelineState`, v1 `Projection` trait, v1 `dispatch`, `EventAwareMindService`, `handler` (v1) 모듈 통째로 삭제. 아울러 Mind Studio의 `AppStateRepository<'a>` (이제 미사용) + `MindService::scene_info()` 간접 호출 경로 + `emotion_snapshot` v1 import 정리. `DialogueAgentError::Command(MindServiceError)` dead variant 제거. `HandlerError::Precondition(&'static str)`을 enum 세분화하여 `AppError` HTTP 매핑의 문자열 의존 제거.
-- **B5.4 ⏳ 대기**: `shadow_v2` 플래그 제거 (v2만 존재)
+- **B5.2 ✅ 완료**:
+  - (1/3) DialogueAgent v2 `dispatch_v2` 마이그레이션
+  - (2/3) Mind Studio 핸들러 v2 마이그레이션 (`domain_sync` 모듈 — StateInner↔InMemoryRepository snapshot + 5 dispatch helper)
+  - (3/3) `AppState.shared_dispatcher` + `rebuild_repo_from_inner()` 도입 — per-request snapshot·ephemeral dispatcher 제거. UI CRUD/scenario load가 공유 repo를 갱신하고 dispatch는 재사용.
+- **B5.3 ✅ 완료**: `Pipeline`/`PipelineState`, v1 `Projection` trait/`ProjectionRegistry`, v1 `dispatch`/`execute_pipeline`, `EventAwareMindService`/`MindService`/`FormattedMindService`, v1 `handler` 모듈, v1 Agent `handle_*`, `AppStateRepository(mut)`, `DialogueTestService` struct, `shadow_v2` 플래그 전부 삭제. `emotion_snapshot` 헬퍼 → `EmotionState::snapshot()` 메서드, `MindServiceError` → `application::error` 모듈로 이관. v1 테스트 파일 8종(application/event/command/pipeline/locale/port_injection/repository/coverage_gap) + `dispatch_v2_test`의 v1 parallel 테스트 3종 삭제. Follow-up A: `HandlerError::Precondition` variant 세분화.
+- **B5.4 불필요**: `shadow_v2`는 B5.3에서 함께 제거되어 별도 단계 불필요.
 
 **Acceptance (B5 최종):**
-- 코드베이스에 `Pipeline` 구조체 참조 0건
-- `cargo clippy -- -D warnings` 통과
-- 라이브러리 버전 0.3.0 bump (breaking change)
+- [x] 코드베이스에 `Pipeline` 구조체 참조 0건
+- [x] `cargo clippy -- -D warnings` 통과 (B5.3 커밋 기준)
+- [x] 라이브러리 버전 0.3.0 bump (breaking change)
 
 ---
 
