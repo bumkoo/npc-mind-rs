@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use npc_mind::application::mind_service::MindServiceError;
+use npc_mind::application::error::MindServiceError;
 
 use serde::{Deserialize, Serialize};
 use crate::state::TurnRecord;

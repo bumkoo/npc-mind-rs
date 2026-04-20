@@ -10,7 +10,6 @@ pub mod in_memory_store;
 pub mod mock_chat;
 
 use npc_mind::InMemoryRepository;
-use npc_mind::application::mind_service::MindService;
 use npc_mind::domain::emotion::{
     ActionFocus, EmotionState, EmotionType, EventFocus, RelationshipModifiers, Situation,
 };
@@ -107,10 +106,6 @@ impl TestContext {
             mu_baek,
             gyo_ryong,
         }
-    }
-
-    pub fn service(&mut self) -> MindService<&mut InMemoryRepository> {
-        MindService::new(&mut self.repo)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::domain::emotion::{RelationshipModifiers, SceneFocus, Situation};
 use crate::ports::MindRepository;
 use super::dto::{HasFocusFields, SceneFocusInput, SituationInput};
-use super::mind_service::MindServiceError;
+use super::error::MindServiceError;
 
 /// DTO를 도메인 모델(Situation, SceneFocus)로 변환하는 서비스
 ///

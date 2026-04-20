@@ -34,7 +34,7 @@ use super::handler_v2::{
 };
 use super::priority;
 use crate::application::projection::{
-    EmotionProjection, Projection, RelationshipProjection, SceneProjection,
+    EmotionProjection, RelationshipProjection, SceneProjection,
 };
 use crate::domain::event::{DomainEvent, EventKind};
 

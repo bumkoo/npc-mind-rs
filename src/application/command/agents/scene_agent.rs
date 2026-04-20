@@ -9,7 +9,6 @@
 //!
 //! 가이드 생성은 이 agent 책임 밖 — GuideAgent가 `EmotionAppraised`에 반응해 자동 생성.
 
-use crate::application::command::handler::emotion_snapshot;
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
 };
@@ -129,7 +128,7 @@ impl EventHandler for SceneAgent {
                 .dominant()
                 .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()));
             let mood = state.overall_valence();
-            let snapshot = emotion_snapshot(&state);
+            let snapshot = state.snapshot();
             // situation_description은 Focus의 to_situation의 description에서 유도됨.
             // SceneStartRequested payload엔 명시 없으므로 None으로 둔다 — v1 handle_start_scene과 동일.
             let emotion_event = DomainEvent::new(

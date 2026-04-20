@@ -49,13 +49,11 @@ use std::sync::Arc;
 
 use crate::application::command::dispatcher::{DispatchV2Error, DispatchV2Output};
 use crate::application::command::{Command, CommandDispatcher};
-use crate::application::command::handler::emotion_snapshot;
 use crate::application::dto::{
     build_appraise_result, build_emotion_fields, AppraiseResponse, AppraiseResult,
     AfterDialogueResponse, CanFormat, PadOutput, RelationshipValues, SituationInput,
     StimulusResponse, StimulusResult,
 };
-use crate::application::mind_service::MindServiceError;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 #[cfg(feature = "listener_perspective")]
 use crate::domain::listener_perspective::ListenerPerspectiveConverter;
@@ -106,8 +104,6 @@ pub struct DialogueEndOutcome {
 #[derive(Debug, thiserror::Error)]
 pub enum DialogueAgentError {
     #[error("CommandDispatcher 에러: {0}")]
-    Command(#[from] MindServiceError),
-    #[error("CommandDispatcher v2 에러: {0}")]
     DispatchV2(#[from] DispatchV2Error),
     #[error("ConversationPort 에러: {0}")]
     Conversation(#[from] ConversationError),
@@ -475,7 +471,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         self.dispatcher
             .repository_guard()
             .get_emotion_state(npc_id)
-            .map(|s| emotion_snapshot(&s))
+            .map(|s| s.snapshot())
             .unwrap_or_default()
     }
 

@@ -1,4 +1,4 @@
-use super::mind_service::MindServiceError;
+use super::error::MindServiceError;
 use crate::domain::emotion::{
     ActionFocus, ConditionThreshold, DesirabilityForOther, EmotionCondition, EmotionState,
     EmotionType, EventFocus, FocusTrigger, ObjectFocus, Prospect, ProspectResult,

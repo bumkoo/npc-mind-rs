@@ -1,15 +1,12 @@
 pub mod command;
 pub mod director;
 pub mod dto;
+pub mod error;
+pub mod projection;
 pub mod event_bus;
-pub mod event_service;
 pub mod event_store;
-pub mod formatted_service;
 #[cfg(feature = "embed")]
 pub mod memory_agent;
-pub mod mind_service;
-pub mod pipeline;
-pub mod projection;
 pub mod relationship_service;
 pub mod scene_service;
 pub mod situation_service;

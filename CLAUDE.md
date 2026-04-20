@@ -2,9 +2,9 @@
 
 NPC Mind Engine — HEXACO 성격이 OCC 감정을 생성하고, LLM이 연기할 수 있도록 가이드를 출력하는 Rust 라이브러리.
 
-라이브러리 형태로 배포되며, **v2 경로**의 `Director`/`CommandDispatcher::dispatch_v2`가 **신규 권장 진입점**입니다.
-v1 경로의 `MindService`/`EventAwareMindService`/`CommandDispatcher::dispatch`는 v0.2.0에서 `#[deprecated]`,
-v0.3.0에서 제거 예정. 외부 사용자는 B안 §핵심 진입점 참조하여 v2로 마이그레이션을 권장합니다.
+라이브러리 형태로 배포되며, `Director`/`CommandDispatcher::dispatch_v2`가 유일한 진입점입니다.
+v0.3.0에서 v1 경로(`MindService`/`EventAwareMindService`/`Pipeline`/`CommandDispatcher::dispatch`/`shadow_v2`)는
+전부 제거되었습니다.
 
 ## 기술 스택
 - **Language:** Rust (Edition 2024)
@@ -340,10 +340,9 @@ relevance_score = `1.0 - cosine_distance`.
 
 | 단계 | 상태 | 내용 |
 |------|------|------|
-| Phase 1 | ✅ 완료 | EventBus, EventStore, EventAwareMindService(⚠️deprecated), Projections(⚠️trait deprecated) |
-| Phase 2 | ✅ 완료 | Command/CommandResult, EmotionAgent, GuideAgent, RelAgent, CommandDispatcher |
+| Phase 1 | ✅ 완료 | EventBus, EventStore, Projections (구조체만 남음) |
+| Phase 2 | ✅ 완료 | Command, EmotionAgent, GuideAgent, RelAgent, CommandDispatcher (v2 단일 경로) |
 | Phase 3 | ✅ 완료 | MemoryAgent, MemoryStore, SqliteMemoryStore, DialogueTurnCompleted |
-| Pipeline | ⚠️ deprecated | v0.2.0 deprecated, v0.3.0 제거 예정 (v2 dispatch_v2로 대체) |
 | EventBus v2 | ✅ 완료 | tokio::broadcast 단일화, runtime-agnostic Stream API, MemoryAgent replay 기반 at-least-once |
 | Phase 4 | ✅ 완료 | DialogueAgent — CommandDispatcher + ConversationPort 통합 오케스트레이터 (chat feature) |
 | **B안 B0** | ✅ 완료 | EventHandler trait · HandlerShared · AggregateKey · priority 상수 뼈대 |
@@ -356,9 +355,9 @@ relevance_score = `1.0 - cosine_distance`.
 | **B안 B4 S3 Option B-Mini** | ✅ 완료 | Mind Studio `/api/v2/*` shadow 엔드포인트 (7개) + Director 통합 + 7 integration 테스트 |
 | **B안 B4 S4 (축소판 A)** | ✅ 완료 | async `dispatch_v2(&self)` + `Arc<Mutex<R>>` 내부 공유 + `Spawner` trait + `SceneTask` mpsc 루프 + Director 전면 async 재작성 (fire-and-forget) + tests cutover. 런타임 중립 유지(`tokio::spawn` 미호출). |
 | **B안 B5.1** | ✅ 완료 | Pipeline/Projection trait/EventAwareMindService/HandlerContext·Output/v1 dispatch/v1 Agent handle_* 전부 `#[deprecated(since="0.2.0")]` 마킹, v0.3.0 제거 예정 |
-| B안 B5.2 | 다음 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
-| B안 B5.3 | 대기 | v1 모듈·타입 삭제 |
-| B안 B5.4 | 대기 | `shadow_v2` 플래그 제거 (v2만 존재) |
+| B안 B5.2 | ✅ 완료 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
+| **B안 B5.3** | ✅ 완료 | v1 모듈·타입 삭제 — Pipeline/Projection trait/EventAwareMindService/MindService/FormattedMindService/HandlerContext·Output/v1 Agent handle_*/AppStateRepository(mut)/DialogueTestService struct/v1 dispatch/shadow_v2 전부 제거. `emotion_snapshot` 헬퍼 → `EmotionState::snapshot()` 메서드로 이관. `MindServiceError` → `application::error` 모듈로 분리. v1 테스트 파일 8종(application/event/command/pipeline/locale/port_injection/repository/coverage_gap) 삭제 + dispatch_v2_test 안의 v1 parallel 테스트 3종 삭제. |
+| B안 B5.4 | 불필요 | B5.3에서 `shadow_v2` 이미 제거. |
 | Phase 5 | 미구현 | StoryAgent (서사 진행 판단) |
 | Phase 6 | 미구현 | Tool 시스템 (ToolRegistry) |
 | Phase 7 | 미구현 | WorldKnowledgeStore (세계관 정적 지식) |

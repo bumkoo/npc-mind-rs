@@ -341,6 +341,17 @@ impl EmotionState {
             .collect()
     }
 
+    /// 감정 상태를 (감정 타입명, 강도) 쌍 목록으로 스냅샷 변환.
+    ///
+    /// `DomainEvent::EmotionAppraised` / `StimulusApplied` payload의 `emotion_snapshot`
+    /// 필드 구성에 사용되며, 강도 0보다 큰 감정만 포함된다.
+    pub fn snapshot(&self) -> Vec<(String, f32)> {
+        self.emotions()
+            .iter()
+            .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()))
+            .collect()
+    }
+
     /// 감정 추가 (같은 유형이면 강도 합산, context는 최초 것 유지)
     pub fn add(&mut self, emotion: Emotion) {
         let idx = emotion.emotion_type().index();

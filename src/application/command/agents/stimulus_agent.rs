@@ -19,7 +19,6 @@
 //!
 //! 이로써 책임 분리가 명확해지며, B-Plan §6.2 우선순위 테이블에 정합한다.
 
-use crate::application::command::handler::emotion_snapshot;
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
 };
@@ -155,7 +154,7 @@ impl EventHandler for StimulusAgent {
                         mood_before,
                         mood_after: merged.overall_valence(),
                         beat_changed: true,
-                        emotion_snapshot: emotion_snapshot(&merged),
+                        emotion_snapshot: merged.snapshot(),
                     },
                 );
                 let beat_event = DomainEvent::new(
@@ -192,7 +191,7 @@ impl EventHandler for StimulusAgent {
                 mood_before,
                 mood_after,
                 beat_changed: false,
-                emotion_snapshot: emotion_snapshot(&stimulated),
+                emotion_snapshot: stimulated.snapshot(),
             },
         );
 
