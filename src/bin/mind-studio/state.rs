@@ -8,9 +8,10 @@ use tokio::sync::{Mutex, RwLock};
 use crate::events::StateEvent;
 use crate::trace_collector::AppraisalCollector;
 use npc_mind::application::command::dispatcher::CommandDispatcher;
-use npc_mind::application::director::Director;
+use npc_mind::application::director::{Director, Spawner};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
+use futures::future::BoxFuture;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
 use npc_mind::InMemoryRepository;
@@ -65,7 +66,7 @@ pub struct AppState {
     /// NPC/Relationship은 Director 내부 Repository에 별도 등록해야 동작 — 이를 위해
     /// `POST /api/v2/npcs` / `POST /api/v2/relationships` 헬퍼 엔드포인트 제공 또는
     /// Director.sync_from_app_state (Session 4+) 로 스냅샷 동기화 가능.
-    pub director_v2: Arc<Mutex<Director<InMemoryRepository>>>,
+    pub director_v2: Arc<Director<InMemoryRepository>>,
 }
 
 impl AppState {
@@ -76,12 +77,18 @@ impl AppState {
         let (event_tx, _) = tokio::sync::broadcast::channel(64);
 
         // Director v2 초기화 — 빈 Repository로 시작 (v1 AppState.inner와 분리)
+        //
+        // B4 Session 4: Director가 async가 되었으므로 Mutex 래퍼는 제거.
+        // Spawner는 Mind Studio가 tokio 런타임 위에서 돌아가므로 tokio::spawn 클로저.
         let director_v2 = {
             let repo = InMemoryRepository::new();
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
             let dispatcher = CommandDispatcher::new(repo, store, bus).with_default_handlers();
-            Arc::new(Mutex::new(Director::new(dispatcher)))
+            let spawner: Arc<dyn Spawner> = Arc::new(|fut: BoxFuture<'static, ()>| {
+                tokio::spawn(fut);
+            });
+            Arc::new(Director::new(dispatcher, spawner))
         };
 
         Self {

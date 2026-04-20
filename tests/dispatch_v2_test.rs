@@ -73,12 +73,12 @@ fn event_kinds(events: &[npc_mind::DomainEvent]) -> Vec<EventKind> {
 // 기본 동작: Appraise
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_appraise_emits_request_appraised_guide_sequence() {
+#[tokio::test]
+async fn v2_appraise_emits_request_appraised_guide_sequence() {
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
-    let out = dispatcher.dispatch_v2(appraise_cmd()).expect("must succeed");
+    let out = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
 
     // 기대 순서: AppraiseRequested → EmotionAppraised → GuideGenerated
     assert_eq!(
@@ -100,18 +100,19 @@ fn v2_appraise_emits_request_appraised_guide_sequence() {
 // 기본 동작: ApplyStimulus (Beat 전환 없음)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_stimulus_without_beat_emits_request_applied_guide() {
+#[tokio::test]
+async fn v2_stimulus_without_beat_emits_request_applied_guide() {
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
     // Scene 없이 stimulus만 — Beat 전환 없음
     // 먼저 Appraise로 emotion_state 주입
     dispatcher
         .dispatch_v2(appraise_cmd())
+        .await
         .expect("seed appraise");
 
-    let out = dispatcher.dispatch_v2(stimulus_cmd()).expect("must succeed");
+    let out = dispatcher.dispatch_v2(stimulus_cmd()).await.expect("must succeed");
 
     // StimulusApplyRequested → StimulusApplied → GuideGenerated
     let kinds = event_kinds(&out.events);
@@ -130,8 +131,8 @@ fn v2_stimulus_without_beat_emits_request_applied_guide() {
 // Beat 전환 cascade
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
+#[tokio::test]
+async fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
     use npc_mind::domain::emotion::{
         ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, Scene,
         SceneFocus,
@@ -182,14 +183,15 @@ fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
     };
     repo.save_scene(scene);
 
-    let mut dispatcher = make_dispatcher_v2(repo);
+    let dispatcher = make_dispatcher_v2(repo);
 
     // emotion_state seed
     dispatcher
         .dispatch_v2(appraise_cmd())
+        .await
         .expect("seed appraise");
 
-    let out = dispatcher.dispatch_v2(stimulus_cmd()).expect("must succeed");
+    let out = dispatcher.dispatch_v2(stimulus_cmd()).await.expect("must succeed");
 
     let kinds = event_kinds(&out.events);
     // 기대: StimulusApplyRequested, StimulusApplied(beat=true), GuideGenerated,
@@ -218,17 +220,17 @@ fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
 // Inline Projection 갱신 검증 (event_store → inline handler)
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_appraise_persists_events_to_event_store() {
+#[tokio::test]
+async fn v2_appraise_persists_events_to_event_store() {
     use npc_mind::EventStore;
 
     let ctx = TestContext::new();
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let mut dispatcher =
+    let dispatcher =
         CommandDispatcher::new(ctx.repo, store.clone(), bus).with_default_handlers();
 
-    dispatcher.dispatch_v2(appraise_cmd()).expect("ok");
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("ok");
 
     // event_store에 3 이벤트가 append됨
     let all = store.get_all_events();
@@ -252,8 +254,8 @@ fn v2_appraise_persists_events_to_event_store() {
 // 직접 강제할 mock handler를 등록해 검증
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_max_cascade_depth_is_enforced() {
+#[tokio::test]
+async fn v2_max_cascade_depth_is_enforced() {
     use npc_mind::application::command::handler_v2::{
         DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest,
         HandlerResult,
@@ -291,12 +293,13 @@ fn v2_max_cascade_depth_is_enforced() {
     let ctx = TestContext::new();
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let mut dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
+    let dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
         .with_default_handlers()
         .register_transactional(Arc::new(LoopingHandler));
 
     let err = dispatcher
         .dispatch_v2(appraise_cmd())
+        .await
         .expect_err("must hit cascade depth limit");
 
     match err {
@@ -318,15 +321,15 @@ fn v2_max_cascade_depth_is_enforced() {
 // `BeatTransitioned`·`SceneEnded` 등 "결과" 이벤트가 v1과 일치하는지 확인.
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v1_v2_parallel_appraise_produces_equivalent_result_events() {
+#[tokio::test]
+async fn v1_v2_parallel_appraise_produces_equivalent_result_events() {
     use npc_mind::EventStore;
 
     // v1 실행
     let ctx1 = TestContext::new();
     let store1 = Arc::new(InMemoryEventStore::new());
     let bus1 = Arc::new(EventBus::new());
-    let mut disp1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
+    let disp1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
     disp1.dispatch(appraise_cmd()).expect("v1 ok");
     let v1_events = store1.get_all_events();
 
@@ -334,9 +337,9 @@ fn v1_v2_parallel_appraise_produces_equivalent_result_events() {
     let ctx2 = TestContext::new();
     let store2 = Arc::new(InMemoryEventStore::new());
     let bus2 = Arc::new(EventBus::new());
-    let mut disp2 =
+    let disp2 =
         CommandDispatcher::new(ctx2.repo, store2.clone(), bus2).with_default_handlers();
-    disp2.dispatch_v2(appraise_cmd()).expect("v2 ok");
+    disp2.dispatch_v2(appraise_cmd()).await.expect("v2 ok");
     let v2_events = store2.get_all_events();
 
     // v1 결과 이벤트: EmotionAppraised 만
@@ -389,8 +392,8 @@ fn v2_shadow_flag_defaults_false_and_can_be_set() {
 /// C1 회귀 가드 — Beat 전환 후 **repo 측 Scene의 active_focus_id가 실제로 갱신**되는지.
 /// StimulusAgent가 `ctx.shared.scene`에 새 Scene을 넣지 않으면 Dispatcher write-back이
 /// 누락되어 다음 stimulus가 여전히 이전 focus를 보고 무한 Beat 재진입이 발생한다.
-#[test]
-fn v2_beat_transition_persists_new_active_focus_to_repo() {
+#[tokio::test]
+async fn v2_beat_transition_persists_new_active_focus_to_repo() {
     use npc_mind::domain::emotion::{
         ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, Scene,
         SceneFocus,
@@ -440,13 +443,13 @@ fn v2_beat_transition_persists_new_active_focus_to_repo() {
     };
     repo.save_scene(scene);
 
-    let mut dispatcher = make_dispatcher_v2(repo);
-    dispatcher.dispatch_v2(appraise_cmd()).expect("seed");
-    dispatcher.dispatch_v2(stimulus_cmd()).expect("beat stimulus");
+    let dispatcher = make_dispatcher_v2(repo);
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    dispatcher.dispatch_v2(stimulus_cmd()).await.expect("beat stimulus");
 
     // repo에서 Scene을 다시 조회 — active_focus_id가 "next"로 갱신돼야 함.
     let scene = dispatcher
-        .repository()
+        .repository_guard()
         .get_scene()
         .expect("scene still active");
     assert_eq!(
@@ -478,13 +481,13 @@ fn with_default_handlers_registers_expected_counts() {
 // B4.1 — 4 추가 커맨드 dispatch_v2 지원
 // ---------------------------------------------------------------------------
 
-#[test]
-fn v2_generate_guide_emits_requested_and_generated() {
+#[tokio::test]
+async fn v2_generate_guide_emits_requested_and_generated() {
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
     // seed: emotion_state가 repo에 있어야 GuideAgent fallback이 성공
-    dispatcher.dispatch_v2(appraise_cmd()).expect("seed");
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
 
     let out = dispatcher
         .dispatch_v2(Command::GenerateGuide {
@@ -492,6 +495,7 @@ fn v2_generate_guide_emits_requested_and_generated() {
             partner_id: "gyo_ryong".into(),
             situation_description: Some("test".into()),
         })
+        .await
         .expect("must succeed");
 
     let kinds = event_kinds(&out.events);
@@ -499,12 +503,12 @@ fn v2_generate_guide_emits_requested_and_generated() {
     assert!(out.shared.guide.is_some());
 }
 
-#[test]
-fn v2_update_relationship_emits_requested_and_updated() {
+#[tokio::test]
+async fn v2_update_relationship_emits_requested_and_updated() {
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
-    dispatcher.dispatch_v2(appraise_cmd()).expect("seed");
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
 
     let out = dispatcher
         .dispatch_v2(Command::UpdateRelationship {
@@ -512,6 +516,7 @@ fn v2_update_relationship_emits_requested_and_updated() {
             partner_id: "gyo_ryong".into(),
             significance: Some(0.7),
         })
+        .await
         .expect("must succeed");
 
     let kinds = event_kinds(&out.events);
@@ -525,29 +530,31 @@ fn v2_update_relationship_emits_requested_and_updated() {
     assert!(out.shared.relationship.is_some());
 }
 
-#[test]
-fn v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state() {
+#[tokio::test]
+async fn v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state() {
     use npc_mind::ports::{EmotionStore, NpcWorld, SceneStore};
 
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
     // seed: emotion_state + Scene 주입
-    dispatcher.dispatch_v2(appraise_cmd()).expect("seed");
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
     // sanity check: seed 후 repo에 emotion_state 존재
     assert!(
         dispatcher
-            .repository()
+            .repository_guard()
             .get_emotion_state("mu_baek")
             .is_some(),
         "seed 후 repo에 emotion_state 있어야 함"
     );
     // 관계 초기값 기록 (DialogueEnd 후 변경되는지 비교용)
-    let rel_before = dispatcher
-        .repository()
-        .get_relationship("mu_baek", "gyo_ryong")
-        .expect("seed 관계 존재");
-    let (bc_before, bt_before) = (rel_before.closeness().value(), rel_before.trust().value());
+    let (bc_before, bt_before) = {
+        let rel_before = dispatcher
+            .repository_guard()
+            .get_relationship("mu_baek", "gyo_ryong")
+            .expect("seed 관계 존재");
+        (rel_before.closeness().value(), rel_before.trust().value())
+    };
 
     let out = dispatcher
         .dispatch_v2(Command::EndDialogue {
@@ -555,6 +562,7 @@ fn v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state() {
             partner_id: "gyo_ryong".into(),
             significance: Some(0.9),
         })
+        .await
         .expect("must succeed");
 
     // DialogueEndRequested + RelationshipUpdated + EmotionCleared + SceneEnded
@@ -572,34 +580,36 @@ fn v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state() {
     // Clear 시그널이 commit 후 적용됐는지
     assert!(
         dispatcher
-            .repository()
+            .repository_guard()
             .get_emotion_state("mu_baek")
             .is_none(),
         "EmotionCleared → repo.clear_emotion_state 호출"
     );
     assert!(
-        dispatcher.repository().get_scene().is_none(),
+        dispatcher.repository_guard().get_scene().is_none(),
         "SceneEnded → repo.clear_scene 호출"
     );
 
     // B4.1 리뷰 m9: relationship save도 확인 — DialogueEnd의 after_dialogue 결과가 repo에 반영
-    let rel_after = dispatcher
-        .repository()
-        .get_relationship("mu_baek", "gyo_ryong")
-        .expect("clear 대상 아닌 관계는 유지");
-    let (bc_after, bt_after) = (rel_after.closeness().value(), rel_after.trust().value());
+    let (bc_after, bt_after) = {
+        let rel_after = dispatcher
+            .repository_guard()
+            .get_relationship("mu_baek", "gyo_ryong")
+            .expect("clear 대상 아닌 관계는 유지");
+        (rel_after.closeness().value(), rel_after.trust().value())
+    };
     assert!(
         (bc_after - bc_before).abs() > f32::EPSILON || (bt_after - bt_before).abs() > f32::EPSILON,
         "DialogueEnd는 관계를 갱신해야 함 (before: ({bc_before},{bt_before}), after: ({bc_after},{bt_after}))"
     );
 }
 
-#[test]
-fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
+#[tokio::test]
+async fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
     use npc_mind::application::dto::{EventInput, SceneFocusInput};
 
     let ctx = TestContext::new();
-    let mut dispatcher = make_dispatcher_v2(ctx.repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo);
 
     let out = dispatcher
         .dispatch_v2(Command::StartScene {
@@ -621,6 +631,7 @@ fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
                 test_script: vec![],
             }],
         })
+        .await
         .expect("must succeed");
 
     // 기대 체인:
@@ -662,15 +673,15 @@ fn compare_v1_v2_result_events(v1: Vec<EventKind>, v2: Vec<EventKind>) {
     assert_eq!(filtered, v1);
 }
 
-#[test]
-fn v1_v2_parallel_update_relationship_matches_result_events() {
+#[tokio::test]
+async fn v1_v2_parallel_update_relationship_matches_result_events() {
     use npc_mind::EventStore;
 
     // v1
     let ctx1 = TestContext::new();
     let store1 = Arc::new(InMemoryEventStore::new());
     let bus1 = Arc::new(EventBus::new());
-    let mut d1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
+    let d1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
     d1.dispatch(appraise_cmd()).unwrap();
     d1.dispatch(Command::UpdateRelationship {
         npc_id: "mu_baek".into(),
@@ -689,13 +700,14 @@ fn v1_v2_parallel_update_relationship_matches_result_events() {
     let ctx2 = TestContext::new();
     let store2 = Arc::new(InMemoryEventStore::new());
     let bus2 = Arc::new(EventBus::new());
-    let mut d2 = CommandDispatcher::new(ctx2.repo, store2.clone(), bus2).with_default_handlers();
-    d2.dispatch_v2(appraise_cmd()).unwrap();
+    let d2 = CommandDispatcher::new(ctx2.repo, store2.clone(), bus2).with_default_handlers();
+    d2.dispatch_v2(appraise_cmd()).await.unwrap();
     d2.dispatch_v2(Command::UpdateRelationship {
         npc_id: "mu_baek".into(),
         partner_id: "gyo_ryong".into(),
         significance: Some(0.5),
     })
+    .await
     .unwrap();
     let v2_kinds: Vec<_> = store2
         .get_all_events()
@@ -708,14 +720,14 @@ fn v1_v2_parallel_update_relationship_matches_result_events() {
     compare_v1_v2_result_events(v1_kinds, v2_kinds);
 }
 
-#[test]
-fn v1_v2_parallel_end_dialogue_matches_cleanup_events() {
+#[tokio::test]
+async fn v1_v2_parallel_end_dialogue_matches_cleanup_events() {
     use npc_mind::EventStore;
 
     let ctx1 = TestContext::new();
     let store1 = Arc::new(InMemoryEventStore::new());
     let bus1 = Arc::new(EventBus::new());
-    let mut d1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
+    let d1 = CommandDispatcher::new(ctx1.repo, store1.clone(), bus1);
     d1.dispatch(appraise_cmd()).unwrap();
     d1.dispatch(Command::EndDialogue {
         npc_id: "mu_baek".into(),
@@ -733,13 +745,14 @@ fn v1_v2_parallel_end_dialogue_matches_cleanup_events() {
     let ctx2 = TestContext::new();
     let store2 = Arc::new(InMemoryEventStore::new());
     let bus2 = Arc::new(EventBus::new());
-    let mut d2 = CommandDispatcher::new(ctx2.repo, store2.clone(), bus2).with_default_handlers();
-    d2.dispatch_v2(appraise_cmd()).unwrap();
+    let d2 = CommandDispatcher::new(ctx2.repo, store2.clone(), bus2).with_default_handlers();
+    d2.dispatch_v2(appraise_cmd()).await.unwrap();
     d2.dispatch_v2(Command::EndDialogue {
         npc_id: "mu_baek".into(),
         partner_id: "gyo_ryong".into(),
         significance: Some(0.8),
     })
+    .await
     .unwrap();
     let v2_kinds: Vec<_> = store2
         .get_all_events()

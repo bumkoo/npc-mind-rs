@@ -239,7 +239,7 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
         // NPC 성격 기반 생성 파라미터 유도 (옵션)
         let generation_config = self
             .dispatcher
-            .repository()
+            .repository_guard()
             .get_npc(npc_id)
             .map(|npc| {
                 let mut cfg = crate::ports::LlmModelInfo::default();
@@ -477,7 +477,7 @@ impl<R: MindRepository, C: ConversationPort> DialogueAgent<R, C> {
     /// 저장소에 감정 상태가 없으면 빈 Vec 반환.
     fn current_emotion_snapshot(&self, npc_id: &str) -> Vec<(String, f32)> {
         self.dispatcher
-            .repository()
+            .repository_guard()
             .get_emotion_state(npc_id)
             .map(|s| emotion_snapshot(&s))
             .unwrap_or_default()

@@ -66,7 +66,13 @@ pub struct StartSceneRequest {
 #[derive(Serialize)]
 pub struct StartSceneResponse {
     pub scene_id: SceneIdDto,
-    pub event_count: usize,
+}
+
+/// Fire-and-forget 커맨드 전송 응답. B4 Session 4부터 Director는 커맨드를 SceneTask mpsc로
+/// forward하고 즉시 반환한다. 발행 이벤트 관찰은 `event_bus().subscribe()`로 caller가 수행.
+#[derive(Serialize)]
+pub struct AckResponse {
+    pub ok: bool,
 }
 
 #[derive(Deserialize)]
@@ -157,12 +163,6 @@ pub struct DispatchToSceneRequest {
     pub command: DispatchCommandBody,
 }
 
-#[derive(Serialize)]
-pub struct DispatchResponse {
-    pub event_count: usize,
-    pub event_kinds: Vec<String>,
-}
-
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -171,66 +171,52 @@ pub struct DispatchResponse {
 pub async fn list_active_scenes(
     State(state): State<AppState>,
 ) -> Json<ActiveScenesResponse> {
-    let director = state.director_v2.lock().await;
-    let scenes: Vec<SceneIdDto> = director
+    let scenes: Vec<SceneIdDto> = state
+        .director_v2
         .active_scenes()
+        .await
         .into_iter()
         .map(SceneIdDto::from)
         .collect();
     Json(ActiveScenesResponse { scenes })
 }
 
-/// POST /api/v2/scenes/start — Scene 시작
+/// POST /api/v2/scenes/start — Scene 시작 (fire-and-forget)
+///
+/// B4 Session 4: Director가 SceneTask를 spawn하고 즉시 `SceneId`만 반환한다.
+/// 초기 `SceneStarted`/`EmotionAppraised` 이벤트 관찰은 `event_bus().subscribe()` 필요.
 pub async fn start_scene(
     State(state): State<AppState>,
     Json(req): Json<StartSceneRequest>,
 ) -> Result<Json<StartSceneResponse>, AppError> {
-    let mut director = state.director_v2.lock().await;
-    let (scene_id, out) =
-        director.start_scene(req.npc_id, req.partner_id, req.significance, req.focuses)?;
+    let scene_id = state
+        .director_v2
+        .start_scene(req.npc_id, req.partner_id, req.significance, req.focuses)
+        .await?;
     Ok(Json(StartSceneResponse {
         scene_id: scene_id.into(),
-        event_count: out.events.len(),
     }))
 }
 
-/// POST /api/v2/scenes/dispatch — 특정 Scene에 커맨드 송신
+/// POST /api/v2/scenes/dispatch — 특정 Scene에 커맨드 송신 (fire-and-forget)
 pub async fn dispatch_to_scene(
     State(state): State<AppState>,
     Json(req): Json<DispatchToSceneRequest>,
-) -> Result<Json<DispatchResponse>, AppError> {
+) -> Result<Json<AckResponse>, AppError> {
     let scene_id = SceneId::new(req.scene_id.npc_id, req.scene_id.partner_id);
     let cmd = req.command.into_command();
-    let mut director = state.director_v2.lock().await;
-    let out = director.dispatch_to(&scene_id, cmd)?;
-    let kinds = out
-        .events
-        .iter()
-        .map(|e| format!("{:?}", e.kind()))
-        .collect();
-    Ok(Json(DispatchResponse {
-        event_count: out.events.len(),
-        event_kinds: kinds,
-    }))
+    state.director_v2.dispatch_to(&scene_id, cmd).await?;
+    Ok(Json(AckResponse { ok: true }))
 }
 
-/// DELETE /api/v2/scenes/{npc_id}/{partner_id} — Scene 종료
+/// DELETE /api/v2/scenes/{npc_id}/{partner_id} — Scene 종료 (fire-and-forget)
 pub async fn end_scene(
     State(state): State<AppState>,
     Path((npc_id, partner_id)): Path<(String, String)>,
-) -> Result<Json<DispatchResponse>, AppError> {
+) -> Result<Json<AckResponse>, AppError> {
     let scene_id = SceneId::new(npc_id, partner_id);
-    let mut director = state.director_v2.lock().await;
-    let out = director.end_scene(&scene_id, None)?;
-    let kinds = out
-        .events
-        .iter()
-        .map(|e| format!("{:?}", e.kind()))
-        .collect();
-    Ok(Json(DispatchResponse {
-        event_count: out.events.len(),
-        event_kinds: kinds,
-    }))
+    state.director_v2.end_scene(&scene_id, None).await?;
+    Ok(Json(AckResponse { ok: true }))
 }
 
 /// POST /api/v2/npcs — Director 내부 Repository에 NPC 등록
@@ -240,10 +226,10 @@ pub async fn upsert_npc_v2(
     State(state): State<AppState>,
     Json(npc): Json<Npc>,
 ) -> StatusCode {
-    let mut director = state.director_v2.lock().await;
-    director
-        .dispatcher_mut()
-        .repository_mut()
+    state
+        .director_v2
+        .dispatcher()
+        .repository_guard()
         .add_npc(npc);
     StatusCode::OK
 }
@@ -255,10 +241,10 @@ pub async fn upsert_relationship_v2(
 ) -> StatusCode {
     let owner = rel.owner_id().to_string();
     let target = rel.target_id().to_string();
-    let mut director = state.director_v2.lock().await;
-    director
-        .dispatcher_mut()
-        .repository_mut()
+    state
+        .director_v2
+        .dispatcher()
+        .repository_guard()
         .save_relationship(&owner, &target, rel);
     StatusCode::OK
 }
@@ -267,10 +253,10 @@ pub async fn upsert_relationship_v2(
 pub async fn list_all_scene_ids(
     State(state): State<AppState>,
 ) -> Json<ActiveScenesResponse> {
-    let director = state.director_v2.lock().await;
-    let scenes: Vec<SceneIdDto> = director
+    let scenes: Vec<SceneIdDto> = state
+        .director_v2
         .dispatcher()
-        .repository()
+        .repository_guard()
         .list_scene_ids()
         .into_iter()
         .map(SceneIdDto::from)

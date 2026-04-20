@@ -1,8 +1,8 @@
 # B안 구축 방안 — 다중 Scene 동시 실행 지원
 
 **작성일:** 2026-04-19
-**최종 갱신:** 2026-04-20 (B5.1 완료 시점)
-**상태:** B0~B5.1 ✅ 완료 · B5.2~B5.4 진행 예정
+**최종 갱신:** 2026-04-19 (B4 Session 4 완료 시점)
+**상태:** B0~B5.1 ✅ 완료 · B4 Session 4 ✅ 완료(축소판 A) · B5.2~B5.4 진행 예정
 **선행 문서:** [`unified-event-protocol-analysis.md`](unified-event-protocol-analysis.md) (개념 1~8 분석)
 **관련:** [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) (현재 아키텍처)
 
@@ -18,6 +18,7 @@
 | B4 S2 | ✅ 완료 | `Director` facade · `SceneId` composite key · `InMemoryRepository` multi-scene HashMap |
 | B4 S3 Option A | ✅ 완료 | `BeatTransitioned.partner_id` · `SceneStore::get_scene_by_id` default method · multi-scene 정확성 회귀 가드 |
 | B4 S3 Option B-Mini | ✅ 완료 | Mind Studio `/api/v2/*` 7 엔드포인트 · Director 통합 shadow path |
+| B4 S4 (축소판 A) | ✅ 완료 | async `dispatch_v2(&self)` · `Arc<Mutex<R>>` · `Spawner` trait · `SceneTask` mpsc 루프 · Director 전면 async 재작성 · tests cutover |
 | B5.1 | ✅ 완료 | v1 API `#[deprecated(since="0.2.0")]` 마킹 · 내부·테스트 `#[allow(deprecated)]` |
 | B5.2 | ⏳ 대기 | 내부 호출자(DialogueAgent 등) v2 경로로 마이그레이션 |
 | B5.3 | ⏳ 대기 | v1 모듈·타입 삭제 (`Pipeline`/`Projection` trait/`EventAwareMindService`/v1 dispatch/v1 Agent handle_*) |
@@ -758,10 +759,20 @@ impl<R: MindRepository> MultiSceneTestHarness<R> {
 - [x] `AppError::Director(DirectorError)` / `V2Dispatch(DispatchV2Error)` 강타입 + variant별 HTTP 매핑 (404/400/409/500)
 - [x] 7 integration 테스트
 
-**Session 4+ ⏳ 이연**
-- [ ] async dispatch_v2 + 실제 tokio SceneTask (mpsc+broadcast) — 필요 시점에 별도 세션
-- [ ] Mind Studio v1 AppState · v2 Director Repository 통합 (Option B-Medium)
-- [ ] `shadow_v2: true` 기본값 전환 (Director가 default가 되는 시점)
+**Session 4 ✅ 완료 (축소판 A)** — async dispatch_v2 + SceneTask (runtime-agnostic)
+- [x] `CommandDispatcher::dispatch_v2` 시그니처 `&mut self → &self` + `async fn` 전환. 내부 `repository: Arc<Mutex<R>>`로 공유 소유.
+- [x] `correlation_id`를 `Option<u64> → Arc<AtomicU64>`로 전환 (Interior mutability).
+- [x] `CommandDispatcher::repository_mut()` / `repository()` 제거 → `repository_guard() -> MutexGuard<R>` 및 `repository_arc() -> Arc<Mutex<R>>`로 대체.
+- [x] `Spawner` trait (`src/application/director/spawner.rs`) — `Fn(BoxFuture<'static, ()>) + Send + Sync + 'static`의 blanket impl. 라이브러리 core가 `tokio::spawn`을 직접 호출하지 **않음** → `tokio/rt` 의존 불필요 (기존 `tokio/sync`만 유지).
+- [x] `spawn_scene_task()` (`src/application/director/scene_task.rs`) — Scene 당 mpsc::Receiver 루프. Sender drop 시 자연 종료. 에러는 `tracing::error!`, 결과는 EventBus broadcast.
+- [x] `Director` 전면 재작성 — `Arc<CommandDispatcher<R>>` + `Arc<dyn Spawner>` + `RwLock<HashMap<SceneId, mpsc::Sender<Command>>>`. 모든 공개 메서드 async화 (fire-and-forget). `DirectorError::SceneChannelClosed(SceneId)` variant 신규.
+- [x] Mind Studio `AppState.director_v2` 타입 `Arc<Mutex<Director<...>>>` → `Arc<Director<...>>` (Director 자체가 내부 동기화). `/api/v2/scenes` 핸들러들 fire-and-forget 응답(`AckResponse`, `StartSceneResponse`)으로 축소.
+- [x] 테스트 cutover — `tests/dispatch_v2_test.rs` 15건, `tests/director_test.rs` 12건 전부 `#[tokio::test]` + `.await`. `tests/port_injection_test.rs`의 `dispatcher.repository_mut()` 호출은 `repository_guard()`로 교체.
+- [x] 런타임 정책 회귀 감시: `Cargo.toml`의 `tokio = { features = ["sync"] }` 그대로. 외부 라이브러리 사용자는 여전히 tokio runtime 불필요.
+
+**Session 4+ 잔여 ⏳ 이연**
+- [ ] Mind Studio v1 AppState · v2 Director Repository 통합 (Option B-Medium) — 별도 세션
+- [ ] `shadow_v2: true` 기본값 전환 (Director가 default가 되는 시점) — B5.2 이후
 
 **Acceptance (Session 3까지 기준):** ✅
 - 기존 통합 테스트 전수 통과 (v1/v2 양 경로)
