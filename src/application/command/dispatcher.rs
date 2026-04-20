@@ -54,9 +54,6 @@ pub struct DispatchV2Output {
 /// v2 dispatch 에러
 #[derive(Debug, thiserror::Error)]
 pub enum DispatchV2Error {
-    #[error("unsupported command in v2: {0}")]
-    UnsupportedCommand(&'static str),
-
     #[error("invalid situation: {0}")]
     InvalidSituation(String),
 

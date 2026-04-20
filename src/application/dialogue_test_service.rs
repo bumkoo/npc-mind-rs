@@ -8,8 +8,7 @@ use crate::application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse,
     StimulusResponse,
 };
-use crate::application::error::MindServiceError;
-use crate::ports::{ConversationError, DialogueTurn, LlamaTimings};
+use crate::ports::{DialogueTurn, LlamaTimings};
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -78,19 +77,4 @@ pub struct ChatEndRequest {
 pub struct ChatEndResponse {
     pub dialogue_history: Vec<DialogueTurn>,
     pub after_dialogue: Option<AfterDialogueResponse>,
-}
-
-// ---------------------------------------------------------------------------
-// 에러
-// ---------------------------------------------------------------------------
-
-/// 대화 테스트 에러
-#[derive(Debug, thiserror::Error)]
-pub enum DialogueTestError {
-    #[error("Mind 서비스 에러: {0}")]
-    MindService(#[from] MindServiceError),
-    #[error("대화 에이전트 에러: {0}")]
-    Conversation(#[from] ConversationError),
-    #[error("PAD 분석 에러: {0}")]
-    Analysis(String),
 }

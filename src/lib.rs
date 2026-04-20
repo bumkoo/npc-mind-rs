@@ -56,7 +56,7 @@ pub use application::dialogue_agent::{
 #[cfg(feature = "chat")]
 pub use application::dialogue_test_service::{
     ChatEndRequest, ChatEndResponse, ChatStartRequest, ChatStartResponse, ChatTurnRequest,
-    ChatTurnResponse, DialogueTestError, PadInput,
+    ChatTurnResponse, PadInput,
 };
 #[cfg(feature = "chat")]
 pub use ports::{

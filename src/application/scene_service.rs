@@ -1,22 +1,15 @@
-use crate::domain::emotion::{EmotionState, Scene, SceneFocus};
+use crate::domain::emotion::Scene;
 use super::dto::{FocusInfoItem, SceneInfoResult};
 
-/// Scene 및 Beat 관리 전담 서비스
+/// Scene 정보 뷰 빌더
+///
+/// Mind Studio가 현재 활성 Scene 상태를 REST 응답용 DTO로 변환할 때 사용한다.
+/// trigger 평가는 도메인 `Scene::check_trigger`를 직접 호출하므로 이 서비스 책임 아님.
 pub struct SceneService;
 
 impl SceneService {
     pub fn new() -> Self {
         Self
-    }
-
-    /// 현재 감정 상태에 따라 Scene 트리거를 체크하고,
-    /// 충족되는 Focus가 있으면 해당 Focus를 반환합니다.
-    pub fn check_trigger(
-        &self,
-        scene: &Scene,
-        state: &EmotionState,
-    ) -> Option<SceneFocus> {
-        scene.check_trigger(state).cloned()
     }
 
     /// Scene 정보 요약 결과를 생성합니다.

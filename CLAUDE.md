@@ -213,9 +213,6 @@ B안(v2) 이행 완료. v1은 B5 단계별 deprecation 진행 중 (v0.3.0 제거
 │              │  Agent (30)  │                                │
 │              └──────────────┘                                │
 │  Inline: Emotion/Relationship/Scene ProjectionHandler        │
-├─ v1 경로 (deprecated, v0.3.0 제거) ────────────────────────┤
-│  MindService / EventAwareMindService / dispatch / Pipeline   │
-│  / Projection trait / HandlerContext/Output                  │
 ├─ DialogueAgent (Dispatcher + ConversationPort wrapper) [chat]┤
 │  start_session / turn / end_session async API               │
 │  Beat 전환 시 ConversationPort.update_system_prompt         │

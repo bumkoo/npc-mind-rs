@@ -16,11 +16,9 @@ use common::mock_chat::MockConversationPort;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::dto::{
     ActionInput, EventInput, SituationInput,
 };
-use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::EventPayload;
 use npc_mind::domain::listener_perspective::{

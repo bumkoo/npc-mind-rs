@@ -13,7 +13,6 @@ mod common;
 use common::mock_chat::{ChatCall, MockConversationPort};
 use common::TestContext;
 
-use npc_mind::application::command::dispatcher::CommandDispatcher;
 use npc_mind::application::command::types::Command;
 use npc_mind::application::dto::{
     ActionInput, ConditionInput, EventInput, SceneFocusInput, SituationInput,

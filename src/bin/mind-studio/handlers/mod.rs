@@ -135,7 +135,7 @@ pub enum AppError {
     #[error(transparent)]
     Director(npc_mind::application::director::DirectorError),
     /// v2 dispatch 에러 (강타입 보존).
-    /// UnsupportedCommand/InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
+    /// InvalidSituation은 400 (client), CascadeTooDeep/EventBudgetExceeded/
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
     V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
@@ -189,7 +189,6 @@ impl IntoResponse for AppError {
             },
             // v2 dispatch: 클라이언트 입력 오류(400/404) vs 서버 invariant 위반(500) 분기
             AppError::V2Dispatch(ref e) => match e {
-                Dv2::UnsupportedCommand(_) => (StatusCode::BAD_REQUEST, e.to_string()),
                 // InvalidSituation의 메시지에 "not found"가 섞여있으면 404, 그 외 400.
                 Dv2::InvalidSituation(msg) => {
                     if msg.to_lowercase().contains("not found") {

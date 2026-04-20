@@ -7,7 +7,6 @@ pub mod event_bus;
 pub mod event_store;
 #[cfg(feature = "embed")]
 pub mod memory_agent;
-pub mod relationship_service;
 pub mod scene_service;
 pub mod situation_service;
 
