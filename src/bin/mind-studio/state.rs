@@ -67,6 +67,13 @@ pub struct AppState {
     /// `POST /api/v2/npcs` / `POST /api/v2/relationships` 헬퍼 엔드포인트 제공 또는
     /// Director.sync_from_app_state (Session 4+) 로 스냅샷 동기화 가능.
     pub director_v2: Arc<Director<InMemoryRepository>>,
+
+    /// B5.2 (3/3): request 간 재사용되는 CommandDispatcher.
+    ///
+    /// 내부 `Arc<Mutex<InMemoryRepository>>`를 소유하며, UI CRUD 시
+    /// `AppState::rebuild_repo_from_inner()`로 repo를 재구성한다. Dispatch 시점에는
+    /// 이미 fresh한 상태이므로 request마다 snapshot_to_repo를 수행하지 않는다.
+    pub shared_dispatcher: Arc<CommandDispatcher<InMemoryRepository>>,
 }
 
 impl AppState {
@@ -91,6 +98,15 @@ impl AppState {
             Arc::new(Director::new(dispatcher, spawner))
         };
 
+        // B5.2 (3/3): 공유 CommandDispatcher — REST /api/* 경로가 재사용.
+        // shadow Director와는 별도의 repo/store/bus를 소유한다(책임 분리).
+        let shared_dispatcher = {
+            let repo = InMemoryRepository::new();
+            let store = Arc::new(InMemoryEventStore::new());
+            let bus = Arc::new(EventBus::new());
+            Arc::new(CommandDispatcher::new(repo, store, bus).with_default_handlers())
+        };
+
         Self {
             inner: Arc::new(RwLock::new(StateInner::default())),
             collector,
@@ -109,6 +125,41 @@ impl AppState {
             llm_monitor: None,
             mcp_server: None,
             director_v2,
+            shared_dispatcher,
+        }
+    }
+
+    /// B5.2 (3/3): StateInner의 도메인 데이터를 공유 repo로 재구성.
+    ///
+    /// UI CRUD·scenario load 직후 호출해 dispatch 경로가 보는 repo 상태를 최신화.
+    /// Reset+rebuild 방식 — NPC/관계/감정/Scene 전체를 한 번에 교체해 drift 불가능.
+    pub async fn rebuild_repo_from_inner(&self) {
+        use npc_mind::ports::{EmotionStore, SceneStore};
+        let inner = self.inner.read().await;
+        let mut repo = self.shared_dispatcher.repository_guard();
+        *repo = InMemoryRepository::new();
+        for profile in inner.npcs.values() {
+            repo.add_npc(profile.to_npc());
+        }
+        for rel in inner.relationships.values() {
+            repo.add_relationship(rel.to_relationship());
+        }
+        for (id, state) in &inner.emotions {
+            repo.save_emotion_state(id, state.clone());
+        }
+        if let (Some(n), Some(p)) = (
+            inner.scene_npc_id.as_ref(),
+            inner.scene_partner_id.as_ref(),
+        ) {
+            let mut scene = npc_mind::domain::emotion::Scene::new(
+                n.clone(),
+                p.clone(),
+                inner.scene_focuses.clone(),
+            );
+            if let Some(ref id) = inner.active_focus_id {
+                scene.set_active_focus(id.clone());
+            }
+            repo.save_scene(scene);
         }
     }
 

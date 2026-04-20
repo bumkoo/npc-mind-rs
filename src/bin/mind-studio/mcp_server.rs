@@ -359,6 +359,7 @@ impl MindMcpService {
                     inner.npcs.insert(npc.id.clone(), npc);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -369,6 +370,7 @@ impl MindMcpService {
                     inner.npcs.remove(id);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::NpcChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -384,6 +386,7 @@ impl MindMcpService {
                     inner.relationships.insert(rel.key(), rel);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -395,6 +398,7 @@ impl MindMcpService {
                     inner.relationships.remove(&format!("{}:{}", owner, target));
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::RelationshipChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -410,6 +414,8 @@ impl MindMcpService {
                     inner.objects.insert(obj.id.clone(), obj);
                     inner.scenario_modified = true;
                 }
+                // Objects는 InMemoryRepository에도 object_description으로 저장되므로 rebuild 필요.
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -420,6 +426,7 @@ impl MindMcpService {
                     inner.objects.remove(id);
                     inner.scenario_modified = true;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ObjectChanged);
                 Ok(serde_json::json!({ "status": "ok" }))
             }
@@ -560,6 +567,7 @@ impl MindMcpService {
                     let mut inner = self.state.inner.write().await;
                     *inner = loaded;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "scene_restored": scene_restored }))
             }
@@ -633,6 +641,7 @@ impl MindMcpService {
                     let mut inner = self.state.inner.write().await;
                     *inner = loaded;
                 }
+                self.state.rebuild_repo_from_inner().await;
                 self.state.emit(StateEvent::ResultLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "turn_count": history_count }))
             }

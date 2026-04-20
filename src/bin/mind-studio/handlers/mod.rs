@@ -28,6 +28,8 @@ macro_rules! impl_crud_handlers {
                 inner.$field.insert(item.id.clone(), item);
                 inner.scenario_modified = true;
             }
+            // B5.2 (3/3): UI write가 domain state를 바꾼 경우 공유 repo도 재구성.
+            state.rebuild_repo_from_inner().await;
             state.emit($event);
             axum::http::StatusCode::OK
         }
@@ -41,6 +43,7 @@ macro_rules! impl_crud_handlers {
                 inner.$field.remove(&id);
                 inner.scenario_modified = true;
             }
+            state.rebuild_repo_from_inner().await;
             state.emit($event);
             axum::http::StatusCode::OK
         }
@@ -67,6 +70,7 @@ macro_rules! impl_crud_handlers {
                 inner.$field.insert(key, rel);
                 inner.scenario_modified = true;
             }
+            state.rebuild_repo_from_inner().await;
             state.emit($event);
             axum::http::StatusCode::OK
         }
@@ -81,6 +85,7 @@ macro_rules! impl_crud_handlers {
                 inner.$field.remove(&key);
                 inner.scenario_modified = true;
             }
+            state.rebuild_repo_from_inner().await;
             state.emit($event);
             axum::http::StatusCode::OK
         }

@@ -199,6 +199,8 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
         let mut inner = state.inner.write().await;
         *inner = loaded;
     }
+    // B5.2 (3/3): 시나리오 교체 → 공유 repo 전체 재구성.
+    state.rebuild_repo_from_inner().await;
     state.emit(StateEvent::ScenarioLoaded);
     Ok(StatusCode::OK)
 }
@@ -218,6 +220,7 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
         let mut inner = state.inner.write().await;
         *inner = loaded;
     }
+    state.rebuild_repo_from_inner().await;
     state.emit(StateEvent::ResultLoaded);
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }
