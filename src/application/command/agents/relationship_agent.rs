@@ -105,13 +105,16 @@ impl RelationshipAgent {
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner: npc_id.to_string(),
+                target: partner_id.to_string(),
+            })?;
         let emotion = ctx
             .shared
             .emotion_state
             .clone()
             .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or(HandlerError::Precondition("emotion state not found"))?;
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
 
         let updated = relationship.after_dialogue(&emotion, significance);
         let (bc, bt, bp) = (
@@ -163,13 +166,16 @@ impl RelationshipAgent {
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner: npc_id.to_string(),
+                target: partner_id.to_string(),
+            })?;
         let emotion = ctx
             .shared
             .emotion_state
             .clone()
             .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or(HandlerError::Precondition("emotion state not found"))?;
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
 
         let updated = relationship.after_dialogue(&emotion, sig);
         let (bc, bt, bp) = (
@@ -388,7 +394,8 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::Precondition("relationship not found")
+            HandlerError::RelationshipNotFound { ref owner, ref target }
+                if owner == "alice" && target == "bob"
         ));
     }
 }

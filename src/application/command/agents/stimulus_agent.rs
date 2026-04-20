@@ -88,15 +88,18 @@ impl EventHandler for StimulusAgent {
         let npc = ctx
             .repo
             .get_npc(npc_id)
-            .ok_or(HandlerError::Precondition("npc not found"))?;
+            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner: npc_id.clone(),
+                target: partner_id.clone(),
+            })?;
         let current = ctx
             .repo
             .get_emotion_state(npc_id)
-            .ok_or(HandlerError::Precondition("emotion state not found"))?;
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.clone()))?;
 
         let pad_struct = Pad {
             pleasure: pad.0,
@@ -116,9 +119,9 @@ impl EventHandler for StimulusAgent {
         if let Some(scene) = ctx.repo.get_scene_by_id(&scene_id) {
             if let Some(focus) = scene.check_trigger(&stimulated).cloned() {
                 let from_focus_id = scene.active_focus_id().map(|s| s.to_string());
-                let situation = focus
-                    .to_situation()
-                    .map_err(|_| HandlerError::Precondition("focus to_situation failed"))?;
+                let situation = focus.to_situation().map_err(|e| {
+                    HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
+                })?;
 
                 // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipAgent)
                 let beat_rel = relationship.after_dialogue(&stimulated, BEAT_DEFAULT_SIGNIFICANCE);
@@ -361,7 +364,7 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::Precondition("emotion state not found")
+            HandlerError::EmotionStateNotFound(ref id) if id == "alice"
         ));
     }
 }

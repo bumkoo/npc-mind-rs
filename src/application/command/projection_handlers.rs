@@ -105,11 +105,11 @@ impl EventHandler for EmotionProjectionHandler {
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         // Mutex poison은 다른 스레드에서의 panic을 의미. Inline 모드 계약(에러는 로그만,
-        // 커맨드는 계속)을 존중해 Precondition으로 에스컬레이트하고 Dispatcher가 처리 위임.
+        // 커맨드는 계속)을 존중해 Infrastructure로 에스컬레이트하고 Dispatcher가 처리 위임.
         let mut proj = self
             .inner
             .lock()
-            .map_err(|_| HandlerError::Precondition("emotion projection mutex poisoned"))?;
+            .map_err(|_| HandlerError::Infrastructure("emotion projection mutex poisoned"))?;
         proj.apply(event);
         Ok(HandlerResult::default())
     }
@@ -167,11 +167,11 @@ impl EventHandler for RelationshipProjectionHandler {
         event: &DomainEvent,
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
-        // EmotionProjectionHandler와 동일: poison은 Precondition으로 에스컬레이트.
+        // EmotionProjectionHandler와 동일: poison은 Infrastructure로 에스컬레이트.
         let mut proj = self
             .inner
             .lock()
-            .map_err(|_| HandlerError::Precondition("relationship projection mutex poisoned"))?;
+            .map_err(|_| HandlerError::Infrastructure("relationship projection mutex poisoned"))?;
         proj.apply(event);
         Ok(HandlerResult::default())
     }
@@ -233,11 +233,11 @@ impl EventHandler for SceneProjectionHandler {
         event: &DomainEvent,
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
-        // EmotionProjectionHandler와 동일: poison은 Precondition으로 에스컬레이트.
+        // EmotionProjectionHandler와 동일: poison은 Infrastructure로 에스컬레이트.
         let mut proj = self
             .inner
             .lock()
-            .map_err(|_| HandlerError::Precondition("scene projection mutex poisoned"))?;
+            .map_err(|_| HandlerError::Infrastructure("scene projection mutex poisoned"))?;
         proj.apply(event);
         Ok(HandlerResult::default())
     }

@@ -197,25 +197,24 @@ impl IntoResponse for AppError {
                         (StatusCode::BAD_REQUEST, e.to_string())
                     }
                 }
-                // HandlerFailed의 source가 Precondition이면 client-side 원인.
-                // v1 MindServiceError 계약 호환 유지:
-                //   - Npc/Relationship not found → 404 (리소스 부재)
-                //   - Emotion state not found → 400 (상태 순서 오류, appraise 선행 누락)
-                //   - 그 외 → 400
+                // HandlerFailed의 source variant로 HTTP 상태 코드 분기 (B5.3 후속 A):
+                //   - NpcNotFound / RelationshipNotFound → 404 (리소스 부재)
+                //   - EmotionStateNotFound → 400 (워크플로우 순서 오류: appraise 선행 누락)
+                //   - InvalidInput → 400 (DTO 검증 실패)
+                //   - Infrastructure / Repository → 500 (서버 invariant 위반)
                 Dv2::HandlerFailed { source, .. } => {
                     use npc_mind::application::command::handler_v2::HandlerError;
                     match source {
-                        HandlerError::Precondition(msg) => {
-                            let lower = msg.to_lowercase();
-                            if lower.contains("emotion state") {
-                                (StatusCode::BAD_REQUEST, e.to_string())
-                            } else if lower.contains("not found") {
-                                (StatusCode::NOT_FOUND, e.to_string())
-                            } else {
-                                (StatusCode::BAD_REQUEST, e.to_string())
-                            }
+                        HandlerError::NpcNotFound(_)
+                        | HandlerError::RelationshipNotFound { .. } => {
+                            (StatusCode::NOT_FOUND, e.to_string())
                         }
-                        _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                        HandlerError::EmotionStateNotFound(_) | HandlerError::InvalidInput(_) => {
+                            (StatusCode::BAD_REQUEST, e.to_string())
+                        }
+                        HandlerError::Infrastructure(_) | HandlerError::Repository(_) => {
+                            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+                        }
                     }
                 }
                 Dv2::CascadeTooDeep { .. } | Dv2::EventBudgetExceeded => {

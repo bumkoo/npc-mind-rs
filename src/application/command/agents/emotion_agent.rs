@@ -60,11 +60,14 @@ impl EventHandler for EmotionAgent {
         let npc = ctx
             .repo
             .get_npc(npc_id)
-            .ok_or(HandlerError::Precondition("npc not found"))?;
+            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner: npc_id.clone(),
+                target: partner_id.clone(),
+            })?;
 
         let emotion_state =
             self.appraiser
@@ -188,6 +191,6 @@ mod handler_v2_tests {
         let event = make_request("ghost", "nobody", positive_situation());
         let err = harness.dispatch(&agent, event).expect_err("must fail without npc");
 
-        assert!(matches!(err, HandlerError::Precondition("npc not found")));
+        assert!(matches!(err, HandlerError::NpcNotFound(ref id) if id == "ghost"));
     }
 }

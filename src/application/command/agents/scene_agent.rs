@@ -76,11 +76,14 @@ impl EventHandler for SceneAgent {
         let npc = ctx
             .repo
             .get_npc(npc_id)
-            .ok_or(HandlerError::Precondition("npc not found"))?;
+            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)
-            .ok_or(HandlerError::Precondition("relationship not found"))?;
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner: npc_id.clone(),
+                target: partner_id.clone(),
+            })?;
 
         // 초기 Focus가 있으면 appraise
         let (active_focus_id, emotion_state) = if let Some(initial) =
@@ -90,7 +93,9 @@ impl EventHandler for SceneAgent {
         {
             let situation = initial
                 .to_situation()
-                .map_err(|_| HandlerError::Precondition("initial focus to_situation failed"))?;
+                .map_err(|e| HandlerError::InvalidInput(
+                    format!("initial focus to_situation failed: {e}"),
+                ))?;
             let state = self.appraiser.appraise(
                 npc.personality(),
                 &situation,
@@ -271,7 +276,7 @@ mod handler_v2_tests {
 
         assert!(matches!(
             err,
-            HandlerError::Precondition("npc not found")
+            HandlerError::NpcNotFound(ref id) if id == "ghost"
         ));
     }
 }

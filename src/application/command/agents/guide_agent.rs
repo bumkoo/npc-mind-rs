@@ -74,7 +74,7 @@ impl EventHandler for GuideAgent {
         let npc = ctx
             .repo
             .get_npc(npc_id)
-            .ok_or(HandlerError::Precondition("npc not found"))?;
+            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
         // B4.1: EmotionAppraised/StimulusApplied 경로는 shared.emotion_state에 이미 설정됨.
         //        GuideRequested(standalone) 경로는 shared가 비어있으므로 repo에서 조회.
         //        cloned로 소유권을 얻어 borrow 충돌 회피.
@@ -83,7 +83,7 @@ impl EventHandler for GuideAgent {
             None => ctx
                 .repo
                 .get_emotion_state(npc_id)
-                .ok_or(HandlerError::Precondition("emotion state not found"))?,
+                .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.clone()))?,
         };
         let relationship = ctx.shared.relationship.as_ref().cloned().or_else(|| {
             ctx.repo.get_relationship(npc_id, partner_id)
@@ -213,10 +213,10 @@ mod handler_v2_tests {
         let event = make_emotion_appraised("alice", "bob");
         let err = harness.dispatch(&agent, event).expect_err("must fail");
 
-        // B4.1: shared 비어있으면 repo fallback → repo에도 없으면 "emotion state not found"
+        // B4.1: shared 비어있으면 repo fallback → repo에도 없으면 EmotionStateNotFound
         assert!(matches!(
             err,
-            HandlerError::Precondition("emotion state not found")
+            HandlerError::EmotionStateNotFound(ref id) if id == "alice"
         ));
     }
 }
