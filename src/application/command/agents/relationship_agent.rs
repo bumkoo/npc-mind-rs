@@ -142,6 +142,7 @@ impl RelationshipAgent {
                 after_closeness: ac,
                 after_trust: at,
                 after_power: ap,
+                cause: crate::domain::event::RelationshipChangeCause::Unspecified,
             },
         );
         Ok(HandlerResult {
@@ -208,6 +209,7 @@ impl RelationshipAgent {
                 after_closeness: ac,
                 after_trust: at,
                 after_power: ap,
+                cause: crate::domain::event::RelationshipChangeCause::Unspecified,
             },
         );
         let clear_event = DomainEvent::new(

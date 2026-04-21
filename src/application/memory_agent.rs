@@ -178,7 +178,7 @@ impl MemoryAgent {
 
     fn index_dialogue(&self, event: &DomainEvent, npc_id: &str, utterance: &str, speaker: &str) {
         let content = format!("[{}] {}", speaker, utterance);
-        let entry = self.make_entry(npc_id, &content, event, MemoryType::Dialogue);
+        let entry = self.make_entry(npc_id, &content, event, MemoryType::DialogueTurn);
         let embedding = self.embed(&content);
         self.persist(entry, embedding, event.id);
     }
@@ -194,7 +194,7 @@ impl MemoryAgent {
             "{}와의 관계가 변화함 (변동폭: {:.2})",
             target_id, delta
         );
-        let entry = self.make_entry(owner_id, &content, event, MemoryType::Relationship);
+        let entry = self.make_entry(owner_id, &content, event, MemoryType::RelationshipChange);
         let embedding = self.embed(&content);
         self.persist(entry, embedding, event.id);
     }
@@ -215,7 +215,7 @@ impl MemoryAgent {
 
     fn index_scene_end(&self, event: &DomainEvent, npc_id: &str, partner_id: &str) {
         let content = format!("{}와의 대화가 종료됨", partner_id);
-        let entry = self.make_entry(npc_id, &content, event, MemoryType::SceneEnd);
+        let entry = self.make_entry(npc_id, &content, event, MemoryType::SceneSummary);
         let embedding = self.embed(&content);
         self.persist(entry, embedding, event.id);
     }
@@ -235,15 +235,15 @@ impl MemoryAgent {
         memory_type: MemoryType,
     ) -> MemoryEntry {
         let id = self.next_id();
-        MemoryEntry {
+        MemoryEntry::personal(
             id,
-            npc_id: npc_id.to_string(),
-            content: content.to_string(),
-            emotional_context: None,
-            timestamp_ms: event.timestamp_ms,
-            event_id: event.id,
+            npc_id,
+            content,
+            None,
+            event.timestamp_ms,
+            event.id,
             memory_type,
-        }
+        )
     }
 
     fn next_id(&self) -> String {

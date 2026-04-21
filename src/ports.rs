@@ -602,13 +602,49 @@ pub trait GuideFormatter: Send + Sync {
 // 기억 저장소 포트 (RAG)
 // ---------------------------------------------------------------------------
 
-use crate::domain::memory::{MemoryEntry, MemoryResult};
+use crate::domain::memory::{MemoryEntry, MemoryLayer, MemoryResult, MemoryScope, MemorySource};
+
+/// Scope 기반 검색 필터.
+///
+/// `NpcAllowed(npc_id)`은 Step A에서는 "Personal Scope with matching npc_id | World"로
+/// 근사 구현한다. Faction/Family 소속 Join은 Step C 이후 `NpcWorld` 조회를 받아 확장한다.
+#[derive(Debug, Clone)]
+pub enum MemoryScopeFilter {
+    Any,
+    Exact(MemoryScope),
+    /// 이 NPC가 접근 가능한 모든 scope.
+    NpcAllowed(String),
+}
+
+/// Ranker 이전 단계에서 `MemoryStore`에 넘길 질의 DTO.
+///
+/// Step A에서는 필드만 정의하고, `SqliteMemoryStore::search`가 SQL WHERE로 변환한다.
+/// Ranker 호출은 Step B `DialogueAgent.inject_memory_push`에서 연결한다.
+#[derive(Debug, Clone, Default)]
+pub struct MemoryQuery {
+    pub text: Option<String>,
+    pub embedding: Option<Vec<f32>>,
+    pub scope_filter: Option<MemoryScopeFilter>,
+    pub source_filter: Option<Vec<MemorySource>>,
+    pub layer_filter: Option<MemoryLayer>,
+    pub topic: Option<String>,
+    pub exclude_superseded: bool,
+    pub exclude_consolidated_source: bool,
+    pub min_retention: Option<f32>,
+    pub current_pad: Option<(f32, f32, f32)>,
+    pub limit: usize,
+}
 
 /// 기억 저장/검색 포트 — RAG 인덱스 추상화
 ///
 /// `&self`로 호출하여 `Arc<dyn MemoryStore>` 공유가 가능합니다.
 /// 내부 가변성(interior mutability)으로 동시성을 처리합니다.
+///
+/// **Step A 마이그레이션**: 기존 5개 메서드는 유지되며 Step B에서 `#[deprecated]` 처리 예정.
+/// 신규 7개 메서드(`search` 이하)는 기본 구현 없이 모든 구현체가 제공한다.
 pub trait MemoryStore: Send + Sync {
+    // ---- 기존 메서드 (호환 유지) ----
+
     /// 기억 인덱싱 (메타데이터 + 선택적 임베딩 벡터)
     fn index(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>) -> Result<(), MemoryError>;
 
@@ -637,6 +673,29 @@ pub trait MemoryStore: Send + Sync {
 
     /// 저장된 기억 수
     fn count(&self) -> usize;
+
+    // ---- Step A 신규 메서드 ----
+
+    /// Scope/Source/Layer/topic 등 다축 필터 기반 검색.
+    fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryResult>, MemoryError>;
+
+    /// ID로 단일 엔트리 조회.
+    fn get_by_id(&self, id: &str) -> Result<Option<MemoryEntry>, MemoryError>;
+
+    /// Topic의 최신 유효 엔트리(superseded 되지 않은 것). `created_seq DESC` 기준.
+    fn get_by_topic_latest(&self, topic: &str) -> Result<Option<MemoryEntry>, MemoryError>;
+
+    /// Topic의 Canonical(`Seeded + World scope`) 엔트리. Rumor 콘텐츠 해소용.
+    fn get_canonical_by_topic(&self, topic: &str) -> Result<Option<MemoryEntry>, MemoryError>;
+
+    /// `old_id`에 `superseded_by = new_id` 마킹.
+    fn mark_superseded(&self, old_id: &str, new_id: &str) -> Result<(), MemoryError>;
+
+    /// `a_ids` 각각에 `consolidated_into = b_id` 마킹 (Layer A → B 흡수).
+    fn mark_consolidated(&self, a_ids: &[String], b_id: &str) -> Result<(), MemoryError>;
+
+    /// 회상 발생 기록 — `last_recalled_at` / `recall_count` 갱신.
+    fn record_recall(&self, id: &str, now_ms: u64) -> Result<(), MemoryError>;
 }
 
 /// 기억 저장소 오류
