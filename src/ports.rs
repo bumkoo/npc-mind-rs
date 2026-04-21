@@ -649,6 +649,7 @@ pub trait MemoryStore: Send + Sync {
     fn index(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>) -> Result<(), MemoryError>;
 
     /// 의미 기반 검색 (벡터 유사도)
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { embedding: Some(..), .. })")]
     fn search_by_meaning(
         &self,
         query_embedding: &[f32],
@@ -657,6 +658,7 @@ pub trait MemoryStore: Send + Sync {
     ) -> Result<Vec<MemoryResult>, MemoryError>;
 
     /// 키워드 기반 검색 (텍스트 매칭)
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { text: Some(..), .. })")]
     fn search_by_keyword(
         &self,
         keyword: &str,
@@ -665,6 +667,7 @@ pub trait MemoryStore: Send + Sync {
     ) -> Result<Vec<MemoryResult>, MemoryError>;
 
     /// 최근 기억 조회 (시간순 내림차순)
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })")]
     fn get_recent(
         &self,
         npc_id: &str,
@@ -705,4 +708,20 @@ pub enum MemoryError {
     StorageError(String),
     #[error("임베딩 오류: {0}")]
     EmbeddingError(String),
+}
+
+/// 기억 프레이밍 포트 (Step B — LLM 프롬프트 주입용).
+///
+/// `MemoryEntry`를 Source별 라벨(예: `[겪음]`/`[목격]`/`[전해 들음]`/`[강호에 떠도는 소문]`)로
+/// 포맷해 "떠오르는 기억" 블록을 구성한다. `DialogueAgent.inject_memory_push`가
+/// `MemoryRanker` 결과를 이 포트로 프레이밍한다.
+pub trait MemoryFramer: Send + Sync {
+    /// 단일 엔트리를 source별 라벨로 포맷 (예: `"[겪음] content"`).
+    /// 미지원 locale 또는 섹션 누락 시 raw content를 그대로 반환한다.
+    fn frame(&self, entry: &MemoryEntry, locale: &str) -> String;
+
+    /// 엔트리 목록을 header/footer로 감싼 하나의 프롬프트 블록으로 포맷.
+    /// 빈 slice면 빈 문자열을 반환해 caller가 `format!("{block}{prompt}")` 형태로
+    /// prepend만 하면 no-op이 되도록 한다.
+    fn frame_block(&self, entries: &[MemoryEntry], locale: &str) -> String;
 }

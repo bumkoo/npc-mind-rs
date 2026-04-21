@@ -3,6 +3,8 @@
 //! `cargo test --features embed --test sqlite_memory_test`
 
 #![cfg(feature = "embed")]
+// Step B deprecated된 레거시 MemoryStore 메서드 호환성 검증을 계속 수행.
+#![allow(deprecated)]
 
 use npc_mind::adapter::sqlite_memory::SqliteMemoryStore;
 use npc_mind::domain::memory::{MemoryEntry, MemoryType};
