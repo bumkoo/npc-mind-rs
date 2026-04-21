@@ -1123,22 +1123,50 @@ pub enum StateEvent {
   - **`record_recall` 세션 내 dedup** → Step C/D 명시적 Command 경로 도입 시
   - 구 `MemoryStore` 메서드 완전 제거 → Step D 이후
 
-### Step C — Telling & Rumor Seeding
+### Step C — Telling & Rumor Seeding ✅ 완료 (C1·C2·C3 3 서브-PR)
 
 **범위**:
 - `Command::TellInformation`, `Command::SeedRumor`, `Command::SpreadRumor`.
 - `InformationAgent` (Mind), `RumorAgent` (Memory).
 - `Rumor` 애그리거트 + `RumorStore`.
 - Inline 핸들러: `TellingIngestionHandler`, `RumorDistributionHandler`.
-- 시나리오 JSON `initial_rumors` 섹션.
 - `InformationTold` 청자당 1 이벤트 패턴 (B5).
 
 **가치**: 무협 분위기의 "강호에 떠도는 소문" 연출 가능. NPC간 정보 격차 게임플레이.
 
-**DoD**:
-- `memory_telling_test`, `rumor_spread_test`, `rumor_canonical_resolution_test` green
-- 샘플 시나리오 `hearsay-chain.json` / `orphan-rumor.json` E2E 재현
-- Mind Studio에 활성 소문 목록 표시 + seed_content 뷰
+**DoD (달성)**:
+- `memory_telling_test` (12) / `rumor_spread_test` (8) / `rumor_canonical_resolution_test` (3) green
+- 단위 테스트 포함 총 40+ 테스트 green
+
+**범위 외 (본 Step에서 제외)**:
+- 시나리오 JSON `initial_rumors` 섹션 + `hearsay-chain.json`/`orphan-rumor.json` 샘플 → Step E 작가 도구와 묶기
+- Mind Studio 활성 소문 UI → Step E
+- Rumor.status(Fading/Faded) 전이 + `RumorDistorted`/`RumorFaded` 발행 → Step F
+- I-RU-5 크로스-store 완전 원자성(MemoryStore 포함) → Step F 재시도 큐
+- `RelationshipChangeCause::InformationTold` 분기 → Step D (`RelationshipMemoryHandler`)
+
+**구현 결과**:
+
+- **Step C1 — Foundation** (커밋 `bcb0581` + 사후 리뷰 `30d7f94`):
+  - `src/domain/rumor.rs` 신규 — `Rumor` 애그리거트 + 생성자 3종(`new`/`with_forecast_content`/`orphan`) + 불변식 I-RU-1~6 (hop 단조성·DAG 비순환·status 단방향·고아 seed 필수·content_version 참조 무결성) + `validate` / `from_parts(pub(crate))`.
+  - `RumorStore` trait (`ports.rs`) + `SqliteRumorStore` (`adapter/sqlite_rumor.rs`, embed).
+  - `AggregateKey::Memory(MemoryEntryId)`/`Rumor(RumorId)`/`World(WorldId)` variant 3종.
+  - `EventPayload` 11 신규 variant: `MemoryEntryCreated/Superseded/Consolidated`(3) · `RumorSeeded/Spread/Distorted/Faded`(4) · `TellInformationRequested`/`InformationTold`(2) · `SeedRumorRequested`/`SpreadRumorRequested`(2). `ListenerRole` enum(Direct/Overhearer).
+  - **사후 리뷰 수정 7건**: ① `MemoryEntryCreated.memory_type` 누락 필드 추가, ② `reach_overlaps.sig_ok` 수식 재설계 (`query >= rumor`), ③ `load_internal`의 `.ok()` 에러 삼킴 수정, ④ `validate()` DAG 순환 검출 활성화 (회피 분기 제거), ⑤ `add_hop` content_version 참조 무결성 검증, ⑥ `rumor_distortions` PRIMARY KEY를 `(rumor_id, id)` composite로 schema v3 마이그레이션, ⑦ `from_parts` 가시성 `pub(crate)` 축소. 17+ 단위 테스트.
+
+- **Step C2 — TellInformation 커맨드 경로** (커밋 `f410e74` + 사후 `ff3d032`):
+  - `TellInformationRequest { speaker, listeners, overhearers, claim, stated_confidence, origin_chain_in, topic }` DTO + `Command::TellInformation` variant.
+  - `InformationAgent` (Transactional, `priority::INFORMATION_TELLING = 35`) — `TellInformationRequested` 수신 후 listeners + overhearers 각자에게 `InformationTold` follow-up 발행 (B5 청자당 1 이벤트). Direct/Overhearer role 분기.
+  - `TellingIngestionHandler` (Inline, Memory) — `InformationTold` 구독해 각 청자의 `MemoryEntry(Personal + Heard/Rumor)` 생성. `confidence = stated_confidence × normalized_trust` (`normalized_trust = (trust.value()+1)/2`, 관계 부재 시 0.5). `origin_chain = [speaker, ...inherited]` → len=1 → Heard, len ≥ 2 → Rumor (`MemorySource::from_origin_chain`).
+  - `CommandDispatcher::with_memory(Arc<dyn MemoryStore>)` 빌더 추가.
+  - **사후 리뷰 수정 5건**: ① `commit_staging_buffer`가 커맨드 키로 모든 이벤트 aggregate_id를 덮어쓰던 버그 → 이벤트별 `payload.aggregate_key().npc_id_hint()` 보존 (§3.3 B5 라우팅 정상화), ② listeners ∩ overhearers 중복 제거, ③ MemoryEntry id 결정적 생성 (`mem-{event.id:012}-{listener}`), ④ `topic` 필드 DTO → 이벤트 → MemoryEntry 일관 전달 (Step D Canonical 연결 대비), ⑤ MAX_EVENTS_PER_COMMAND=20 경계 테스트 추가.
+
+- **Step C3 — SeedRumor/SpreadRumor 확산** (커밋 `d088470` + 사후 `8413857` + `5ebf37f`):
+  - `SeedRumorRequest { topic, seed_content, reach, origin }` + `SpreadRumorRequest { rumor_id, recipients, content_version }` DTO + 해당 `Command` variant 2종. `RumorReachInput`/`RumorOriginInput` serde tag 패턴.
+  - `RumorAgent` (Transactional, `priority::RUMOR_SPREAD = 40`) — Seed는 topic/seed 조합에 따라 `Rumor::new`/`with_forecast_content`/`orphan` 분기해 `RumorStore.save`, Spread는 `Rumor.add_hop` 단조성 강제 + 수신자 dedup 후 `RumorSpread` follow-up. 자체 `AtomicU64` counter로 `rumor-{n:012}` 결정적 id 생성.
+  - `RumorDistributionHandler` (Inline) — `RumorSpread` 구독해 각 수신자의 `MemoryEntry(source=Rumor)` 생성. 콘텐츠 해소 3-tier: `content_version`(Distortion) → topic Canonical (`MemoryStore::get_canonical_by_topic`) → `rumor.seed_content` → `"[내용 없음]"`. Confidence = `RUMOR_HOP_CONFIDENCE_DECAY^hop_index` (floor `RUMOR_MIN_CONFIDENCE`).
+  - `CommandDispatcher::with_rumor(memory_store, rumor_store)` 빌더 — `RumorAgent` + `RumorDistributionHandler` 일괄 등록.
+  - **사후 리뷰 수정 5건 + Step F 명기**: ① `rumor_id`가 `event.id=0`으로 충돌하던 버그 (전 SeedRumor가 같은 id로 귀결) → `RumorAgent` 자체 counter, ② 고아 Rumor들이 `"orphan"` 공용 event_store aggregate 버킷 공유하던 문제 → `SeedRumorRequested.pending_id` 필드 + dispatcher `command_seq: AtomicU64`로 커맨드별 고유 `pending-<id>`, ③ `InMemoryRumorStore` 테스트 헬퍼가 프로덕션 대비 느슨 → status 필터 추가, ④ dead Response export 제거, ⑤ 설계 §14 "원자적 commit" 문구를 "Rumor aggregate + RumorSpread 이벤트까지 원자, MemoryStore 쓰기는 Inline best-effort"로 재정의. `RumorDistorted`/`RumorFaded` 및 Fading/Faded spread 가드에 `TODO(step-f):` 명기.
 
 ### Step D — Consolidation & World Overlay
 

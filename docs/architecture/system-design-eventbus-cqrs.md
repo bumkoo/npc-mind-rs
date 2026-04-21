@@ -1,7 +1,7 @@
 # NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Agent 시스템 디자인
 
-> **Status**: In Progress (Phase 1-4 + Pipeline + EventBus v2 완료)  
-> **Date**: 2026-04-16 (최종 업데이트: 2026-04-17 — Phase 4 DialogueAgent 추가)  
+> **Status**: In Progress (Phase 1-4 + Pipeline + EventBus v2 + Memory Step A/B/C 완료)  
+> **Date**: 2026-04-16 (최종 업데이트: 2026-04-21 — Memory Step C (Telling & Rumor) 3 서브-PR 완료)  
 > **Scope**: 엔진 전체 리팩토링 — 현재 헥사고날 아키텍처를 이벤트 기반으로 전환  
 > **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 에이전트, 게임 히스토리 RAG
 >
@@ -15,7 +15,10 @@
 > | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파) |
 > | **EventBus v2** | ✅ 완료 | `tokio::sync::broadcast` 기반 단일화. `subscribe()` → `impl Stream<Arc<DomainEvent>>` (runtime-agnostic). L1 `ProjectionRegistry`(Dispatcher 내부, 동기 쓰기 경로)로 쿼리 일관성 보장. `TieredEventBus`/`StdThreadSink`/`TokioSink` 삭제. |
 > | **Phase 4** | ✅ 완료 | `DialogueAgent<R, C>` — `CommandDispatcher` + `ConversationPort` 통합 orchestrator (`src/application/dialogue_agent.rs`, chat feature). `start_session`/`turn`/`end_session` async API로 LLM 다턴 대화 + Event Sourcing 경로 일원화. `DialogueTurnCompleted` 이벤트(user/assistant)를 EventBus에 발행하여 MemoryAgent 자동 인덱싱 가능 |
-> | **Phase 5+** | 미구현 | StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
+> | **Memory Step A** | ✅ 완료 | `MemoryScope`/`Source`/`Provenance`/`Layer` VO, `MemoryEntry` 13 필드 확장, `MemoryRanker` 2단계, SQLite v2 마이그레이션, `MemoryStore` 7 신규 메서드. 행동 변화 없이 foundation만. |
+> | **Memory Step B** | ✅ 완료 | `MemoryFramer` trait + `LocaleMemoryFramer` + `DialogueAgent::with_memory` 프롬프트 주입. Source별 라벨로 "떠오르는 기억" 블록 prepend. |
+> | **Memory Step C** | ✅ 완료 | Step C1 (Rumor 도메인 foundation — `Rumor` 애그리거트 + `RumorStore` + `EventPayload` 11 신규 variant + `AggregateKey::Memory/Rumor/World`) + Step C2 (`Command::TellInformation` + `InformationAgent` Transactional priority 35 + `TellingIngestionHandler` Inline) + Step C3 (`Command::SeedRumor`/`SpreadRumor` + `RumorAgent` Transactional priority 40 + `RumorDistributionHandler` Inline). `CommandDispatcher::with_memory(store)` / `with_rumor(mem, rumor)` 빌더. 40+ 통합 테스트. |
+> | **Phase 5+** | 미구현 | Memory Step D (SceneConsolidation + WorldOverlay + RelationshipMemoryHandler cause-분기), Step E (Mind Studio 편집), Step F (Rumor status 전이 + Pull 경로 + 재시도 큐), StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
 >
 > ### 설계 문서와 구현의 차이
 >
@@ -553,12 +556,31 @@ while let Some(item) = stream.next().await {
 
 ### 7.1 에이전트 설계 원칙
 
-Phase 2~3 구현은 두 가지 에이전트 유형을 구분한다:
+Phase 2~3 + Memory Step C 구현은 두 가지 에이전트 유형을 구분한다:
 
-**Write-side Agent** (EmotionAgent / GuideAgent / RelationshipAgent)
-- `CommandDispatcher`가 Command enum으로 라우팅해 **직접 호출**
-- 순서 보장, borrow 충돌 회피, Pipeline 순차 체인 가능
-- Command 처리 중에는 단일 task — 동시 발행 없음
+**Write-side Agent** — `CommandDispatcher`가 Command enum으로 라우팅해 **직접 호출**하는
+Transactional `EventHandler`. 순서는 `priority` 상수(§6.5)로 보장되며, Command 처리 중에는
+단일 task — 동시 발행 없음.
+
+| Agent | Priority | 담당 이벤트 | 추가 시기 |
+|---|---|---|---|
+| `SceneAgent` | 5 | `SceneStartRequested` → `SceneStarted/EmotionAppraised` | B4.1 |
+| `EmotionAgent` | 10 | `AppraiseRequested` → `EmotionAppraised` | Phase 2 |
+| `StimulusAgent` | 15 | `StimulusApplyRequested` → `StimulusApplied`/`BeatTransitioned` | B1 |
+| `GuideAgent` | 20 | `EmotionAppraised`/`StimulusApplied`/`GuideRequested` → `GuideGenerated` | Phase 2 |
+| `RelationshipAgent` | 30 | `BeatTransitioned`/`RelationshipUpdateRequested`/`DialogueEndRequested` → `RelationshipUpdated` | Phase 2 |
+| **`InformationAgent`** | **35** | **`TellInformationRequested` → 청자별 `InformationTold`** | **Step C2** |
+| **`RumorAgent`** | **40** | **`Seed/SpreadRumorRequested` → `RumorSeeded`/`RumorSpread` + `RumorStore` 연동** | **Step C3** |
+
+**Inline Handler** — commit 후 동기 실행. 쿼리 일관성 프로젝션 + Memory 인덱싱에 사용.
+
+| Handler | 담당 이벤트 | 역할 | 추가 시기 |
+|---|---|---|---|
+| `EmotionProjectionHandler` | `EmotionAppraised`/`StimulusApplied`/`EmotionCleared` | EmotionProjection 갱신 | B2 |
+| `RelationshipProjectionHandler` | `RelationshipUpdated` | RelationshipProjection 갱신 | B2 |
+| `SceneProjectionHandler` | `SceneStarted`/`BeatTransitioned`/`SceneEnded` | SceneProjection 갱신 | B2 |
+| **`TellingIngestionHandler`** | **`InformationTold`** | **청자의 `MemoryEntry(Heard/Rumor)` 저장** | **Step C2** |
+| **`RumorDistributionHandler`** | **`RumorSpread`** | **수신자별 `MemoryEntry(Rumor)` 저장, Canonical 해소 3-tier** | **Step C3** |
 
 **Read-side / Reactive Agent** (MemoryAgent, 향후 StoryAgent/SummaryAgent)
 - `EventBus::subscribe()` Stream을 자기 async task에서 소비
