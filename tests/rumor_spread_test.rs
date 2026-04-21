@@ -223,6 +223,9 @@ async fn successive_spreads_increment_hop_and_decay_confidence() {
 
 #[tokio::test]
 async fn spread_unknown_rumor_fails() {
+    use npc_mind::application::command::dispatcher::DispatchV2Error;
+    use npc_mind::application::command::handler_v2::HandlerError;
+
     let (dispatcher, _, _, _) = build_dispatcher();
     let err = dispatcher
         .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
@@ -232,8 +235,21 @@ async fn spread_unknown_rumor_fails() {
         }))
         .await
         .expect_err("unknown rumor_id must fail");
-    let msg = format!("{err:?}");
-    assert!(msg.contains("InvalidInput") || msg.contains("ghost"), "{msg}");
+
+    // Variant match로 승격 (C3 리뷰 n2) — 문자열 매칭 리팩터 내성 강화.
+    match err {
+        DispatchV2Error::HandlerFailed {
+            handler,
+            source: HandlerError::InvalidInput(msg),
+        } => {
+            assert_eq!(handler, "RumorAgent");
+            assert!(
+                msg.contains("ghost"),
+                "error should mention missing rumor_id: {msg}"
+            );
+        }
+        other => panic!("expected HandlerFailed/InvalidInput, got {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -313,4 +329,51 @@ async fn seed_rumor_is_stored_under_rumor_id_aggregate() {
     let rumor = rumor_store.find_by_topic("topic-c").unwrap().pop().unwrap();
     let events = event_store.get_events(&rumor.id);
     assert!(events.iter().any(|e| e.kind() == EventKind::RumorSeeded));
+}
+
+#[tokio::test]
+async fn deep_hop_confidence_floors_at_min() {
+    // C3 리뷰 n3 — hop_index가 깊어지면 `decay^n`이 RUMOR_MIN_CONFIDENCE 하한에 걸린다.
+    // decay=0.8, min=0.1 → 0.8^N < 0.1이 되는 N은 11 이상 (0.8^10 ≈ 0.107, 0.8^11 ≈ 0.086).
+    let (dispatcher, _, memory_store, rumor_store) = build_dispatcher();
+
+    dispatcher
+        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+            topic: Some("deep-topic".into()),
+            seed_content: Some("본문".into()),
+            reach: RumorReachInput::default(),
+            origin: RumorOriginInput::Seeded,
+        }))
+        .await
+        .unwrap();
+    let rumor_id = rumor_store
+        .find_by_topic("deep-topic")
+        .unwrap()
+        .pop()
+        .unwrap()
+        .id;
+
+    // hop 0..=20까지 연속 spread. 각 홉에 유일 수신자 하나씩.
+    for hop in 0..=20_u32 {
+        let npc_id = format!("listener-{hop}");
+        dispatcher
+            .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+                rumor_id: rumor_id.clone(),
+                recipients: vec![npc_id],
+                content_version: None,
+            }))
+            .await
+            .unwrap();
+    }
+
+    // hop 0: 1.0, hop 20: clamp(0.8^20 ≈ 0.0115, 0.1) = 0.1
+    let hop0 = recipient_entries(&*memory_store, "listener-0").pop().unwrap();
+    let hop20 = recipient_entries(&*memory_store, "listener-20").pop().unwrap();
+    assert!((hop0.confidence - 1.0).abs() < 1e-6);
+    assert!(
+        (hop20.confidence - RUMOR_MIN_CONFIDENCE).abs() < 1e-6,
+        "hop 20 should floor at RUMOR_MIN_CONFIDENCE ({}), got {}",
+        RUMOR_MIN_CONFIDENCE,
+        hop20.confidence
+    );
 }

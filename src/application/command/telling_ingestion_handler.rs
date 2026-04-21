@@ -22,6 +22,7 @@ use std::sync::Arc;
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
 };
+use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::memory::{
     MemoryEntry, MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance,
@@ -57,9 +58,9 @@ impl EventHandler for TellingIngestionHandler {
     }
 
     fn mode(&self) -> DeliveryMode {
-        // Inline priority는 projection 이후여도 무방 — MemoryStore 인덱싱이 projection
-        // 쿼리 일관성에 영향을 주지 않으므로 가장 뒤(Scene projection 30보다 뒤)에 배치.
-        DeliveryMode::Inline { priority: 40 }
+        DeliveryMode::Inline {
+            priority: priority::inline::MEMORY_INGESTION,
+        }
     }
 
     fn handle(

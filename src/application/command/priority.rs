@@ -57,6 +57,11 @@ pub mod inline {
 
     /// Scene 프로젝션 (SceneStarted / BeatTransitioned / SceneEnded)
     pub const SCENE_PROJECTION: i32 = 30;
+
+    /// Memory 저장 계열 Inline 핸들러 — `TellingIngestionHandler` (Step C2),
+    /// `RumorDistributionHandler` (Step C3) 공용. Projection(30) 이후 실행되어
+    /// 쿼리 일관성 뷰가 먼저 업데이트된 뒤 기억 인덱싱이 일어난다.
+    pub const MEMORY_INGESTION: i32 = 40;
 }
 
 #[cfg(test)]
@@ -108,5 +113,11 @@ mod invariants {
     #[test]
     fn rumor_spread_runs_before_audit() {
         assert!(transactional::RUMOR_SPREAD < transactional::AUDIT);
+    }
+
+    #[test]
+    fn memory_ingestion_runs_after_scene_projection() {
+        // Projection 3종보다 뒤에서 실행되어야 쿼리 일관성 보장.
+        assert!(inline::MEMORY_INGESTION > inline::SCENE_PROJECTION);
     }
 }

@@ -127,6 +127,11 @@ impl RumorAgent {
         // Active라 가드 불필요. 리뷰 M4 참조.
 
         // 동일 수신자 중복 제거 — 같은 홉에서 같은 사람에게 두 번 저장되지 않도록.
+        //
+        // **빈 recipients 정책**: 수신자 0명이면 홉은 여전히 추가되고 `RumorSpread`
+        // 이벤트도 발행된다 (Inline `RumorDistributionHandler`는 반복 대상이 없어 no-op).
+        // "유령 홉" 형태이지만 `hop_index` 단조성을 유지하므로 허용 — caller가 원하지
+        // 않으면 dispatch 전에 검증하라.
         let mut seen = std::collections::HashSet::new();
         let recipients: Vec<String> = extra_recipients
             .iter()
@@ -189,6 +194,9 @@ impl EventHandler for RumorAgent {
     fn handle(
         &self,
         event: &DomainEvent,
+        // 의도적 미사용: RumorAgent는 자체 AtomicU64 카운터로 rumor_id를 생성하고
+        // RumorStore 외 repo/shared state를 참조하지 않는다. `prior_events`·
+        // `aggregate_key`도 현재 분기에 쓸 일 없음.
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         match &event.payload {

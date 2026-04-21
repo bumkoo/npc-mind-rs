@@ -22,6 +22,7 @@ use std::sync::Arc;
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
 };
+use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::memory::{
     MemoryEntry, MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance,
@@ -72,7 +73,12 @@ impl RumorDistributionHandler {
 
     fn confidence_for_hop(hop_index: u32) -> f32 {
         // 1.0 × decay^hop_index, 하한 clamp.
-        let raw = RUMOR_HOP_CONFIDENCE_DECAY.powi(hop_index as i32);
+        //
+        // u32 → i32 캐스트 방어: 이론적으로 `hop_index > i32::MAX`면 음수 지수로 변환되어
+        // `f32::powi`가 발산(1/x^|n|로 수렴)할 수 있다. 현실 hop이 수백 이상인 경우는
+        // `decay^N`이 이미 0에 수렴해 floor가 걸리므로 상한 128로 saturate해도 무해.
+        let capped = hop_index.min(128) as i32;
+        let raw = RUMOR_HOP_CONFIDENCE_DECAY.powi(capped);
         raw.max(RUMOR_MIN_CONFIDENCE)
     }
 }
@@ -87,14 +93,18 @@ impl EventHandler for RumorDistributionHandler {
     }
 
     fn mode(&self) -> DeliveryMode {
-        // TellingIngestionHandler(40)와 동일 우선순위 — 서로 다른 이벤트 kind이므로 실행 순서
-        // 의존성 없음. 별도 상수 도입은 리뷰 N1과 함께 추후 정리.
-        DeliveryMode::Inline { priority: 40 }
+        // `TellingIngestionHandler`와 같은 MEMORY_INGESTION 상수 공유 — 서로 다른
+        // EventKind를 소비하므로 실행 순서 의존성 없음.
+        DeliveryMode::Inline {
+            priority: priority::inline::MEMORY_INGESTION,
+        }
     }
 
     fn handle(
         &self,
         event: &DomainEvent,
+        // 의도적 미사용: 콘텐츠 해소·confidence 계산은 주입받은 MemoryStore/RumorStore만
+        // 사용. repo/shared state는 필요 없음.
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::RumorSpread {

@@ -874,6 +874,53 @@ pub enum RumorOriginInput {
     },
 }
 
+// DTO → 도메인 변환 — `CommandDispatcher::build_initial_event`가 인라인 match 중복
+// 없이 `req.reach.into()`/`req.origin.into()`로 변환할 수 있게 한다 (C3 리뷰 m2).
+
+impl From<RumorReachInput> for crate::domain::rumor::ReachPolicy {
+    fn from(r: RumorReachInput) -> Self {
+        Self {
+            regions: r.regions,
+            factions: r.factions,
+            npc_ids: r.npc_ids,
+            min_significance: r.min_significance,
+        }
+    }
+}
+
+impl From<&RumorReachInput> for crate::domain::rumor::ReachPolicy {
+    fn from(r: &RumorReachInput) -> Self {
+        Self {
+            regions: r.regions.clone(),
+            factions: r.factions.clone(),
+            npc_ids: r.npc_ids.clone(),
+            min_significance: r.min_significance,
+        }
+    }
+}
+
+impl From<RumorOriginInput> for crate::domain::rumor::RumorOrigin {
+    fn from(o: RumorOriginInput) -> Self {
+        match o {
+            RumorOriginInput::Seeded => Self::Seeded,
+            RumorOriginInput::FromWorldEvent { event_id } => Self::FromWorldEvent { event_id },
+            RumorOriginInput::Authored { by } => Self::Authored { by },
+        }
+    }
+}
+
+impl From<&RumorOriginInput> for crate::domain::rumor::RumorOrigin {
+    fn from(o: &RumorOriginInput) -> Self {
+        match o {
+            RumorOriginInput::Seeded => Self::Seeded,
+            RumorOriginInput::FromWorldEvent { event_id } => Self::FromWorldEvent {
+                event_id: *event_id,
+            },
+            RumorOriginInput::Authored { by } => Self::Authored { by: by.clone() },
+        }
+    }
+}
+
 /// `Command::SeedRumor` 응답. **현재 미사용** — `TellInformationResponse`와 동일 이유.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SeedRumorResponse {

@@ -83,11 +83,15 @@ impl Command {
         }
     }
 
-    /// 대화 상대 ID
+    /// 대화 상대 ID.
     ///
-    /// `TellInformation`은 복수 청자 기반 커맨드로 단일 partner 개념이 없다 — 빈
-    /// 문자열을 반환한다. 호출자(Director의 Scene 라우팅 등)는 TellInformation을
-    /// Scene 기반으로 라우팅하지 않으므로 실용적 충돌은 없다.
+    /// **주의**: `TellInformation`·`SeedRumor`·`SpreadRumor`는 "상대" 개념이 없는
+    /// Mind/Memory 컨텍스트 커맨드이므로 **빈 문자열을 반환**한다. 이 커맨드들은
+    /// `aggregate_key()`가 `Npc(speaker)` 또는 `Rumor(_)`를 돌려주므로
+    /// **Director가 Scene 기반으로 라우팅해서는 안 된다**. Director는 `Scene` 키 커맨드만
+    /// 자기 SceneTask에 전달하고, 그 외는 dispatcher를 직접 호출한다. 호출자가 빈
+    /// partner_id를 `SceneId::new(npc, "")`에 넣는 실수를 하면 유령 Scene과 매칭되므로
+    /// 주의.
     pub fn partner_id(&self) -> &str {
         match self {
             Command::Appraise { partner_id, .. }

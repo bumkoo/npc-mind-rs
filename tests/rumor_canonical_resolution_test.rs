@@ -215,3 +215,68 @@ async fn forecast_rumor_with_topic_but_no_canonical_uses_seed_content() {
     assert_eq!(entry.content, "조만간 큰 사건이 있다더라");
     assert_eq!(entry.topic.as_deref(), Some("future-event"));
 }
+
+#[tokio::test]
+async fn canonical_seeded_after_first_spread_affects_subsequent_hops() {
+    // C3 리뷰 n1 — §2.6 "Canonical 시딩 직후 링크 자동 가시화" 검증.
+    // 흐름:
+    //   1) forecast Rumor 생성 (topic=Some, Canonical 없음, seed_content 있음).
+    //   2) 첫 spread → listener-a는 seed_content 받음.
+    //   3) Canonical MemoryEntry 시딩.
+    //   4) 두 번째 spread → listener-b는 Canonical.content 받음.
+    // RumorDistributionHandler가 매 이벤트마다 `get_canonical_by_topic`을 조회하므로
+    // late-seeded Canonical이 이후 홉부터 자동 반영된다.
+    let (dispatcher, memory_store, rumor_store) = build(None);
+
+    dispatcher
+        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+            topic: Some("late-canon".into()),
+            seed_content: Some("들리는 바로는...".into()),
+            reach: RumorReachInput::default(),
+            origin: RumorOriginInput::Authored { by: None },
+        }))
+        .await
+        .unwrap();
+    let rumor_id = rumor_store
+        .find_by_topic("late-canon")
+        .unwrap()
+        .pop()
+        .unwrap()
+        .id;
+
+    // 첫 spread — Canonical 아직 없음
+    dispatcher
+        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+            rumor_id: rumor_id.clone(),
+            recipients: vec!["listener-a".into()],
+            content_version: None,
+        }))
+        .await
+        .unwrap();
+    let before = recipient_entry(&*memory_store, "listener-a");
+    assert_eq!(before.content, "들리는 바로는...");
+
+    // Canonical 늦은 시딩
+    (&*memory_store as &dyn MemoryStore)
+        .index(canonical_entry("late-canon", "공식 확정 본문"), None)
+        .unwrap();
+
+    // 두 번째 spread — Canonical이 있어야 하므로 공식 본문 사용
+    dispatcher
+        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+            rumor_id,
+            recipients: vec!["listener-b".into()],
+            content_version: None,
+        }))
+        .await
+        .unwrap();
+    let after = recipient_entry(&*memory_store, "listener-b");
+    assert_eq!(
+        after.content, "공식 확정 본문",
+        "late-seeded Canonical should take over from seed_content on subsequent hops"
+    );
+
+    // 기존 listener-a의 엔트리는 이미 저장된 상태라 변하지 않음 (불변성 원칙)
+    let still = recipient_entry(&*memory_store, "listener-a");
+    assert_eq!(still.content, "들리는 바로는...");
+}

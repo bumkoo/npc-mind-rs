@@ -424,22 +424,10 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 },
             )),
             Command::SeedRumor(req) => {
-                use crate::application::dto::RumorOriginInput;
-                let origin = match &req.origin {
-                    RumorOriginInput::Seeded => RumorOrigin::Seeded,
-                    RumorOriginInput::FromWorldEvent { event_id } => {
-                        RumorOrigin::FromWorldEvent {
-                            event_id: *event_id,
-                        }
-                    }
-                    RumorOriginInput::Authored { by } => RumorOrigin::Authored { by: by.clone() },
-                };
-                let reach = ReachPolicy {
-                    regions: req.reach.regions.clone(),
-                    factions: req.reach.factions.clone(),
-                    npc_ids: req.reach.npc_ids.clone(),
-                    min_significance: req.reach.min_significance,
-                };
+                // DTO→도메인 변환은 `impl From<&RumorOriginInput>` / `<&RumorReachInput>`
+                // 가 담당 (C3 리뷰 m2에서 인라인 match 제거).
+                let origin: RumorOrigin = (&req.origin).into();
+                let reach: ReachPolicy = (&req.reach).into();
                 // 고아 Rumor는 seed_content 필수 — DTO 단계에서 빠르게 reject.
                 if req.topic.is_none() && req.seed_content.is_none() {
                     return Err(DispatchV2Error::InvalidSituation(

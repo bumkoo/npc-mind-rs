@@ -48,6 +48,8 @@ impl EventHandler for InformationAgent {
     fn handle(
         &self,
         event: &DomainEvent,
+        // 의도적 미사용: InformationAgent는 순수 팬아웃이라 shared state/repo 조회 불필요.
+        // `prior_events`/`aggregate_key`도 현재 분기 로직에 쓸 일 없음.
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::TellInformationRequested {
@@ -69,6 +71,11 @@ impl EventHandler for InformationAgent {
         // listeners ∩ overhearers 중복 제거 — 같은 NPC가 양쪽에 있으면 Direct가 우선 (§8.5
         // "청자 1명당 MemoryEntry 1개"). 또한 한 쪽 내 중복(같은 ID 2회 포함)도 제거해
         // 이중 기억이 만들어지지 않게 한다.
+        //
+        // **빈 수신자 정책**: 두 벡터 모두 비어 있으면 아무 follow-up도 발행되지 않고 초기
+        // `TellInformationRequested` 이벤트만 commit된다. 이는 no-op 성공(caller의 필터
+        // 결과가 우연히 0명인 경우 방어)으로 의도된 동작이다. caller에서 "수신자 0명은
+        // 비정상"이라고 간주하고 싶으면 dispatch 전에 직접 검증할 것.
         let mut seen = std::collections::HashSet::new();
         let mut follow_ups = Vec::with_capacity(listeners.len() + overhearers.len());
         for listener in listeners {
