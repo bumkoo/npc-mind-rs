@@ -16,8 +16,10 @@ pub mod presentation;
 pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};
 pub use application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse, AppraiseResult,
-    GuideRequest, GuideResponse, GuideResult, SceneRequest, SceneResponse, StimulusRequest,
-    StimulusResponse, StimulusResult, TellInformationRequest, TellInformationResponse,
+    GuideRequest, GuideResponse, GuideResult, RumorOriginInput, RumorReachInput, SceneRequest,
+    SceneResponse, SeedRumorRequest, SeedRumorResponse, SpreadRumorRequest, SpreadRumorResponse,
+    StimulusRequest, StimulusResponse, StimulusResult, TellInformationRequest,
+    TellInformationResponse,
 };
 pub use ports::{
     AnchorLoadError, Appraiser, EmotionStore, GuideFormatter, MindRepository, NpcWorld,
@@ -34,8 +36,8 @@ pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 // --- CQRS Command / Agent (v2) ---
 pub use application::command::{
     Command, CommandDispatcher, EmotionAgent, EmotionProjectionHandler, GuideAgent,
-    InformationAgent, RelationshipAgent, RelationshipProjectionHandler, SceneProjectionHandler,
-    TellingIngestionHandler,
+    InformationAgent, RelationshipAgent, RelationshipProjectionHandler, RumorAgent,
+    RumorDistributionHandler, SceneProjectionHandler, TellingIngestionHandler,
 };
 
 // --- Memory / RAG ---

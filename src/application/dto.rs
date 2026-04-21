@@ -808,3 +808,81 @@ pub struct TellInformationResponse {
     /// 생성된 청자별 `MemoryEntry` id 목록 (청자 순서대로). MemoryStore가 미부착이면 empty.
     pub memory_entry_ids: Vec<String>,
 }
+
+// ---------------------------------------------------------------------------
+// SeedRumor / SpreadRumor (Step C3 — Memory 컨텍스트 명령)
+// ---------------------------------------------------------------------------
+
+/// `Command::SeedRumor` 요청 DTO.
+///
+/// 새 Rumor 애그리거트를 생성한다. `topic`이 있으면 "일반 소문"(Canonical MemoryEntry에
+/// 묶임) 또는 "예보된 사실"(seed_content도 함께 제공). `topic`이 없으면 고아 Rumor로
+/// seed_content 필수. `docs/memory/03-implementation-design.md` §2.6 Canonical 해소표 참조.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SeedRumorRequest {
+    /// Canonical 참조 키. None이면 고아 Rumor.
+    #[serde(default)]
+    pub topic: Option<String>,
+    /// 고아 Rumor 또는 예보된 사실일 때 본문. `topic=None`이면 필수.
+    #[serde(default)]
+    pub seed_content: Option<String>,
+    /// 도달 범위 제한 (regions/factions/npc_ids 교집합 + min_significance 하한).
+    pub reach: RumorReachInput,
+    /// 기원 — Seeded / FromWorldEvent / Authored.
+    pub origin: RumorOriginInput,
+}
+
+/// `Command::SpreadRumor` 요청 DTO.
+///
+/// 기존 Rumor 애그리거트에 새 홉을 추가해 N명의 수신자에게 전파한다.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpreadRumorRequest {
+    /// 확산할 Rumor id.
+    pub rumor_id: String,
+    /// 이번 홉의 수신자 목록. 각 수신자에게 `MemoryEntry(Rumor)`가 생성된다.
+    pub recipients: Vec<String>,
+    /// 이 홉이 참조할 변형(distortion) id. None이면 원본 content.
+    #[serde(default)]
+    pub content_version: Option<String>,
+}
+
+/// `ReachPolicy`에 매핑되는 DTO — 직렬화 전담.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RumorReachInput {
+    #[serde(default)]
+    pub regions: Vec<String>,
+    #[serde(default)]
+    pub factions: Vec<String>,
+    #[serde(default)]
+    pub npc_ids: Vec<String>,
+    #[serde(default)]
+    pub min_significance: f32,
+}
+
+/// `RumorOrigin`에 매핑되는 DTO.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RumorOriginInput {
+    Seeded,
+    FromWorldEvent { event_id: u64 },
+    Authored {
+        #[serde(default)]
+        by: Option<String>,
+    },
+}
+
+/// `Command::SeedRumor` 응답.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SeedRumorResponse {
+    /// 생성된 Rumor id — `rumor-{event_id:012}` 형식 (결정적).
+    pub rumor_id: String,
+}
+
+/// `Command::SpreadRumor` 응답.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpreadRumorResponse {
+    pub rumor_id: String,
+    pub hop_index: u32,
+    /// 수신자별 생성된 `MemoryEntry.id` — MemoryStore 미부착이면 empty.
+    pub memory_entry_ids: Vec<String>,
+}

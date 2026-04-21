@@ -16,7 +16,8 @@ use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
 use super::agents::{
-    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, SceneAgent, StimulusAgent,
+    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, SceneAgent,
+    StimulusAgent,
 };
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
@@ -24,9 +25,11 @@ use super::handler_v2::{
 use super::projection_handlers::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
+use super::rumor_distribution_handler::RumorDistributionHandler;
 use super::telling_ingestion_handler::TellingIngestionHandler;
 use super::types::Command;
-use crate::ports::MemoryStore;
+use crate::domain::rumor::{ReachPolicy, RumorOrigin};
+use crate::ports::{MemoryStore, RumorStore};
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -131,6 +134,30 @@ impl<R: MindRepository> CommandDispatcher<R> {
     /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
     pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
         self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+        self
+    }
+
+    /// 소문(Rumor) 서브시스템 연동 (Step C3~).
+    ///
+    /// 두 핸들러를 등록한다:
+    /// - **`RumorAgent`** (Transactional) — `Seed/SpreadRumorRequested` 처리,
+    ///   `Rumor` 애그리거트를 `RumorStore`에 저장하고 `RumorSeeded`/`RumorSpread`
+    ///   follow-up을 발행.
+    /// - **`RumorDistributionHandler`** (Inline) — `RumorSpread` 구독해 각 수신자에게
+    ///   `MemoryEntry(Rumor)`를 `MemoryStore`에 저장 (content 해소는 §2.6 규칙을 따름).
+    ///
+    /// `MemoryStore`와 `RumorStore` 둘 다 필요하다. 둘이 없는 환경에서는
+    /// `register_transactional`/`register_inline`으로 개별 등록 가능.
+    pub fn with_rumor(
+        mut self,
+        memory_store: Arc<dyn MemoryStore>,
+        rumor_store: Arc<dyn RumorStore>,
+    ) -> Self {
+        self = self.register_transactional(Arc::new(RumorAgent::new(rumor_store.clone())));
+        self = self.register_inline(Arc::new(RumorDistributionHandler::new(
+            memory_store,
+            rumor_store,
+        )));
         self
     }
 
@@ -388,6 +415,51 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
                     origin_chain_in: req.origin_chain_in.clone(),
                     topic: req.topic.clone(),
+                },
+            )),
+            Command::SeedRumor(req) => {
+                use crate::application::dto::RumorOriginInput;
+                let origin = match &req.origin {
+                    RumorOriginInput::Seeded => RumorOrigin::Seeded,
+                    RumorOriginInput::FromWorldEvent { event_id } => {
+                        RumorOrigin::FromWorldEvent {
+                            event_id: *event_id,
+                        }
+                    }
+                    RumorOriginInput::Authored { by } => RumorOrigin::Authored { by: by.clone() },
+                };
+                let reach = ReachPolicy {
+                    regions: req.reach.regions.clone(),
+                    factions: req.reach.factions.clone(),
+                    npc_ids: req.reach.npc_ids.clone(),
+                    min_significance: req.reach.min_significance,
+                };
+                // 고아 Rumor는 seed_content 필수 — DTO 단계에서 빠르게 reject.
+                if req.topic.is_none() && req.seed_content.is_none() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "SeedRumor: topic 없으면 seed_content 필수".into(),
+                    ));
+                }
+                let agg_id = req.topic.clone().unwrap_or_else(|| "orphan".into());
+                Ok(DomainEvent::new(
+                    0,
+                    agg_id,
+                    0,
+                    EventPayload::SeedRumorRequested {
+                        topic: req.topic.clone(),
+                        seed_content: req.seed_content.clone(),
+                        reach,
+                        origin,
+                    },
+                ))
+            }
+            Command::SpreadRumor(req) => Ok(DomainEvent::new(
+                0,
+                req.rumor_id.clone(),
+                0,
+                EventPayload::SpreadRumorRequested {
+                    rumor_id: req.rumor_id.clone(),
+                    extra_recipients: req.recipients.clone(),
                 },
             )),
             Command::StartScene {

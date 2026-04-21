@@ -54,6 +54,16 @@ pub enum Command {
     /// 청자당 1개의 `InformationTold` follow-up을 팬아웃(B5)한다. Inline
     /// `TellingIngestionHandler`가 각 청자의 `MemoryEntry(Heard/Rumor)`를 생성한다.
     TellInformation(TellInformationRequest),
+    /// 소문 시딩 (Step C3, Memory 컨텍스트)
+    ///
+    /// 새 Rumor 애그리거트 생성. `RumorAgent`가 `RumorSeeded` follow-up을 발행하고
+    /// `RumorStore`에 저장한다. 실제 확산은 별도 `SpreadRumor` 호출이 필요.
+    SeedRumor(SeedRumorRequest),
+    /// 소문 확산 (Step C3, Memory 컨텍스트)
+    ///
+    /// 기존 Rumor에 새 홉 추가. `RumorAgent`가 `RumorSpread` follow-up을 발행하고,
+    /// Inline `RumorDistributionHandler`가 각 수신자에게 `MemoryEntry(Rumor)`를 생성한다.
+    SpreadRumor(SpreadRumorRequest),
 }
 
 impl Command {
@@ -67,6 +77,9 @@ impl Command {
             | Command::EndDialogue { npc_id, .. }
             | Command::StartScene { npc_id, .. } => npc_id,
             Command::TellInformation(req) => &req.speaker,
+            // Rumor 커맨드는 NPC에 묶이지 않음 — 단일 스칼라로 근사값 제공.
+            Command::SeedRumor(_) => "",
+            Command::SpreadRumor(req) => &req.rumor_id,
         }
     }
 
@@ -83,7 +96,9 @@ impl Command {
             | Command::UpdateRelationship { partner_id, .. }
             | Command::EndDialogue { partner_id, .. }
             | Command::StartScene { partner_id, .. } => partner_id,
-            Command::TellInformation(_) => "",
+            Command::TellInformation(_)
+            | Command::SeedRumor(_)
+            | Command::SpreadRumor(_) => "",
         }
     }
 
@@ -115,6 +130,11 @@ impl Command {
             | Command::ApplyStimulus { npc_id, .. }
             | Command::GenerateGuide { npc_id, .. } => AggregateKey::Npc(npc_id.clone()),
             Command::TellInformation(req) => AggregateKey::Npc(req.speaker.clone()),
+            // Seed는 아직 rumor_id가 없어 topic 또는 "orphan" 기반 임시 키.
+            Command::SeedRumor(req) => {
+                AggregateKey::Rumor(req.topic.clone().unwrap_or_else(|| "orphan".into()))
+            }
+            Command::SpreadRumor(req) => AggregateKey::Rumor(req.rumor_id.clone()),
         }
     }
 }
