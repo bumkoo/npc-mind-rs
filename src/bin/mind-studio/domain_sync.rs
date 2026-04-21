@@ -373,6 +373,7 @@ fn build_after_dialogue_from_output(
                 after_closeness,
                 after_trust,
                 after_power,
+                ..
             } if (owner_id == npc_id && target_id == partner_id)
                 || (owner_id == partner_id && target_id == npc_id) =>
             {

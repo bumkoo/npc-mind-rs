@@ -8,6 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::aggregate::AggregateKey;
 use super::emotion::{Scene, Situation};
+use super::scene_id::SceneId;
 
 /// 이벤트 고유 식별자
 pub type EventId = u64;
@@ -63,6 +64,33 @@ pub struct DomainEvent {
 pub struct EventMetadata {
     /// 같은 요청에서 파생된 이벤트 묶음 ID
     pub correlation_id: Option<u64>,
+}
+
+/// `RelationshipUpdated` 이벤트에 실리는 **귀속 원인** (Memory 시스템 §8.3 hook, A8).
+///
+/// Step A에서는 모든 발행 지점이 `Unspecified`로 고정된다. Step C/D에서 InformationAgent/
+/// WorldOverlayAgent 추가 시 정식 variant로 채워진다. Memory 컨텍스트의
+/// `RelationshipMemoryPolicy`가 이 값으로 content·source·topic을 분기한다.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RelationshipChangeCause {
+    /// 장면 내 대사/행동 (Step A default가 이쪽으로 이행하려면 scene_id가 필요하므로
+    /// Step A는 Unspecified 유지)
+    SceneInteraction { scene_id: SceneId },
+    /// 정보 전달 (Step C `InformationTold`에서 설정)
+    InformationTold { origin_chain: Vec<String> },
+    /// 세계 사건 오버레이 (Step D `WorldEventOccurred`에서 설정)
+    WorldEventOverlay { topic: Option<String> },
+    /// 소문 확산 (Step C `RumorSpread`에서 설정)
+    Rumor { rumor_id: String },
+    /// Step A 기본값 — 마이그레이션·레거시 호환. Memory 정책은 이 값을 일반 분기로 처리한다.
+    Unspecified,
+}
+
+impl Default for RelationshipChangeCause {
+    fn default() -> Self {
+        Self::Unspecified
+    }
 }
 
 /// 도메인 이벤트 페이로드
@@ -199,6 +227,11 @@ pub enum EventPayload {
         after_closeness: f32,
         after_trust: f32,
         after_power: f32,
+        /// 갱신 원인 (Memory 시스템 §8.3 policy branching용, A8 hook).
+        /// Step A에서는 모든 발행 지점이 `Unspecified`로 고정. Step C/D에서 InformationAgent/
+        /// WorldOverlayAgent 등이 정식 variant를 채운다. serde default로 구 JSON 역호환.
+        #[serde(default)]
+        cause: RelationshipChangeCause,
     },
 
     /// 가이드 생성
@@ -463,6 +496,7 @@ mod tests {
                     after_closeness: 0.0,
                     after_trust: 0.0,
                     after_power: 0.0,
+                    cause: RelationshipChangeCause::Unspecified,
                 },
                 EventKind::RelationshipUpdated,
                 "RelationshipUpdated",
@@ -535,6 +569,7 @@ mod tests {
             after_closeness: 0.0,
             after_trust: 0.0,
             after_power: 0.0,
+            cause: RelationshipChangeCause::Unspecified,
         });
         assert_eq!(
             ev.aggregate_key(),

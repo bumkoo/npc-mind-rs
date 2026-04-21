@@ -207,3 +207,19 @@ High = "superior — speak respectfully, but personal exchange and opinions are 
 Neutral = "equal — speak comfortably and exchange opinions freely"
 Low = "subordinate — instructive tone, giving orders and corrections is natural"
 VeryLow = "absolute subordinate — commanding tone, little regard for the other's dignity"
+
+# ---------------------------------------------------------------------------
+# Memory Step B — memory block injection labels
+# ---------------------------------------------------------------------------
+# DialogueAgent.inject_memory_push uses these when prepending MemoryRanker results
+# to the system prompt. Source labels hint at reliability tiers.
+
+[memory.framing]
+experienced = "[Experienced] {content}"
+witnessed   = "[Witnessed] {content}"
+heard       = "[Heard] {content}"
+rumor       = "[Rumor] {content}"
+
+[memory.framing.block]
+header = "\n# Recollections\n"
+footer = "\n"

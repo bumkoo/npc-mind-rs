@@ -1,6 +1,7 @@
 pub mod formatter;
 pub mod korean;
 pub mod locale;
+pub mod memory_formatter;
 
 // ---------------------------------------------------------------------------
 // 빌트인 로케일 레지스트리

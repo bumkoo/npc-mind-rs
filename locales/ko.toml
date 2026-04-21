@@ -211,3 +211,19 @@ High = "상위자 — 존대하되, 개인적 교류와 의견 제시 가능"
 Neutral = "대등한 관계 — 편하게 대화하며 자유롭게 의견 교환"
 Low = "하위자 — 가르치는 어조, 지시와 훈계가 자연스러움"
 VeryLow = "절대 하위자 — 명령조, 상대의 체면을 크게 고려하지 않음"
+
+# ---------------------------------------------------------------------------
+# Memory Step B — 기억 블록 주입 라벨
+# ---------------------------------------------------------------------------
+# DialogueAgent.inject_memory_push가 MemoryRanker 결과를 프롬프트로 prepend할 때 사용.
+# Source별 라벨은 "겪음/목격/전해 들음/강호의 소문"으로 신뢰도 위계를 암시한다.
+
+[memory.framing]
+experienced = "[겪음] {content}"
+witnessed   = "[목격] {content}"
+heard       = "[전해 들음] {content}"
+rumor       = "[강호에 떠도는 소문] {content}"
+
+[memory.framing.block]
+header = "\n# 떠오르는 기억\n"
+footer = "\n"

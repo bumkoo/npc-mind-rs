@@ -159,3 +159,44 @@ pub const LLM_TOP_P_MAX: f32 = 1.0;
 /// 처리해 공간이 생기는" 경험값. 원격 LLM 호출이 수초간 지연되는 상황에서 backpressure가
 /// 발생할 수 있으며, 이 경우 caller가 backpressure를 포용하거나 용량을 늘려 조정한다.
 pub const SCENE_TASK_CHANNEL_CAPACITY: usize = 32;
+
+// ============================================================================
+// Memory (RAG · Ranker · Retention) — Step A
+// ============================================================================
+//
+// 3차 설계 §9. 값은 초기 제안값이며 실측·튜닝 후 조정한다.
+
+/// 하루 (ms) — retention 나이 계산 기준
+pub const DAY_MS: u64 = 86_400_000;
+
+/// Ranker 검색 제외 한계 — retention이 이 미만이면 탈락
+pub const MEMORY_RETENTION_CUTOFF: f32 = 0.10;
+
+/// recall_count 기반 retention 강화 계수 — `1 + ln1p(recall_count) × factor`
+pub const RECALL_BOOST_FACTOR: f32 = 0.15;
+
+/// 감정 근접(PAD cosine) 보너스 상한 — `1 + cos × bonus`
+pub const EMOTION_PROXIMITY_BONUS: f32 = 0.30;
+
+/// 최근성 부스트 수명 (days) — `exp(-age_days / τ_recency)`
+pub const RECENCY_BOOST_TAU_DAYS: f32 = 3.0;
+
+/// Ranker 1단계 Topic-없는 클러스터링 기준 (코사인 유사도)
+pub const SIMILARITY_CLUSTER_THRESHOLD: f32 = 0.85;
+
+/// τ 룩업 기본값 (days) — 미매핑 조합에 적용
+pub const DECAY_TAU_DEFAULT_DAYS: f32 = 30.0;
+
+// === Source 가중치 (MemoryRanker 2단계) ===
+pub const SOURCE_W_EXPERIENCED: f32 = 1.00;
+pub const SOURCE_W_WITNESSED: f32 = 0.85;
+pub const SOURCE_W_HEARD: f32 = 0.60;
+pub const SOURCE_W_RUMOR: f32 = 0.35;
+
+// === 프롬프트 예산 (Step B 주입용 · Step A에서는 상수만 정의) ===
+pub const MEMORY_PUSH_TOP_K: usize = 5;
+pub const MEMORY_PROMPT_TOKEN_BUDGET: usize = 400;
+
+// === Rumor 감쇠 (Step C 이후 사용) ===
+pub const RUMOR_HOP_CONFIDENCE_DECAY: f32 = 0.8;
+pub const RUMOR_MIN_CONFIDENCE: f32 = 0.1;

@@ -351,6 +351,7 @@ mod tests {
             after_closeness: 0.4,
             after_trust: 0.5,
             after_power: 0.6,
+            cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         });
 
         harness.dispatch(&handler, event).unwrap();
@@ -394,6 +395,7 @@ mod tests {
             after_closeness: 0.1,
             after_trust: 0.1,
             after_power: 0.1,
+            cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         });
         let ev2 = make_event(EventPayload::RelationshipUpdated {
             owner_id: "a".into(),
@@ -404,6 +406,7 @@ mod tests {
             after_closeness: 0.7,
             after_trust: 0.8,
             after_power: 0.9,
+            cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         });
 
         harness.dispatch(&handler, ev1).unwrap();

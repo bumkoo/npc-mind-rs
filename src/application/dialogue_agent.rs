@@ -62,7 +62,7 @@ use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, GuideFormatter, LlamaTimings,
-    MindRepository, UtteranceAnalyzer,
+    MemoryFramer, MemoryQuery, MemoryScopeFilter, MemoryStore, MindRepository, UtteranceAnalyzer,
 };
 
 // ---------------------------------------------------------------------------
@@ -142,6 +142,11 @@ pub struct DialogueAgent<R: MindRepository + Send + Sync + 'static, C: Conversat
     /// Phase 7: 화자 PAD → 청자 PAD 변환기 (옵셔널, listener_perspective feature)
     #[cfg(feature = "listener_perspective")]
     converter: Option<Arc<dyn ListenerPerspectiveConverter>>,
+    /// Step B: 기억 시스템 (Opt-in). 둘 다 Some일 때만 `inject_memory_push`가 작동한다.
+    memory_store: Option<Arc<dyn MemoryStore>>,
+    memory_framer: Option<Arc<dyn MemoryFramer>>,
+    /// memory_framer가 사용할 locale. 기본 "ko".
+    memory_locale: String,
     sessions: HashMap<String, SessionMeta>,
 }
 
@@ -165,8 +170,38 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
             analyzer: None,
             #[cfg(feature = "listener_perspective")]
             converter: None,
+            memory_store: None,
+            memory_framer: None,
+            memory_locale: "ko".to_string(),
             sessions: HashMap::new(),
         }
+    }
+
+    /// Step B: 기억 주입 활성화 (Opt-in).
+    ///
+    /// `store`에서 `MemoryQuery::NpcAllowed(npc_id)` 기반으로 후보를 뽑고
+    /// `MemoryRanker` 2단계(Source 우선 + 5요소 점수)로 Top-K를 선택한 뒤
+    /// `framer.frame_block`으로 프롬프트 블록을 구성해 시스템 프롬프트 앞에 prepend한다.
+    ///
+    /// 재주입 시점 (문서 §10.1 default):
+    /// - `start_session` 1회 (appraise 프롬프트 prepend)
+    /// - `BeatTransitioned` 발생 시 `update_system_prompt` 직전
+    ///
+    /// 실패 또는 미부착 시 빈 블록 반환 → 기존 프롬프트 변화 없음.
+    pub fn with_memory(
+        mut self,
+        store: Arc<dyn MemoryStore>,
+        framer: Arc<dyn MemoryFramer>,
+    ) -> Self {
+        self.memory_store = Some(store);
+        self.memory_framer = Some(framer);
+        self
+    }
+
+    /// memory framer가 사용할 locale 코드 (기본 "ko").
+    pub fn with_memory_locale(mut self, locale: impl Into<String>) -> Self {
+        self.memory_locale = locale.into();
+        self
     }
 
     /// PAD 자동 분석기 설정 (embed feature와 함께 사용)
@@ -230,12 +265,30 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
             situation,
         };
 
+        // start_session 쿼리 힌트 — situation 설명 우선, 없으면 partner_id를 쓴다.
+        // (memory_store 미부착 시 inject_memory_push는 즉시 빈 문자열 반환)
+        let memory_query_hint: String = match &cmd {
+            Command::Appraise {
+                situation: Some(s), ..
+            } => s.description.clone(),
+            _ => partner_id.to_string(),
+        };
+
         let output = self.dispatcher.dispatch_v2(cmd).await?;
         let appraise_result = self.build_appraise_from_v2(&output, npc_id, partner_id)?;
 
         // format()은 내부에서 format_prompt를 한 번 호출하므로, 결과의 prompt를
         // 그대로 재사용하여 동일 가이드를 중복 포맷팅하지 않는다.
         let appraise_resp: AppraiseResponse = appraise_result.format(&*self.formatter);
+
+        // Step B — "떠오르는 기억" 블록을 appraise 프롬프트 앞에 prepend.
+        // 미부착/결과 없음 → 빈 문자열 → 기존 프롬프트 무변화.
+        let memory_block = self.inject_memory_push(npc_id, &memory_query_hint, None);
+        let final_prompt = if memory_block.is_empty() {
+            appraise_resp.prompt.clone()
+        } else {
+            format!("{memory_block}{}", appraise_resp.prompt)
+        };
 
         // NPC 성격 기반 생성 파라미터 유도 (옵션)
         let generation_config = self
@@ -249,7 +302,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
             });
 
         self.chat
-            .start_session(session_id, &appraise_resp.prompt, generation_config)
+            .start_session(session_id, &final_prompt, generation_config)
             .await?;
 
         self.sessions.insert(
@@ -333,11 +386,21 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
             let stim_result = self.build_stimulus_from_v2(&output, pad)?;
             let changed = stim_result.beat_changed;
 
-            // ④ Beat 전환 시 system_prompt 갱신
+            // ④ Beat 전환 시 system_prompt 갱신 (Step B — 기억 블록 재주입)
             if changed {
                 let new_prompt = self.formatter.format_prompt(&stim_result.guide);
+                let memory_block = self.inject_memory_push(
+                    &meta.npc_id,
+                    user_utterance,
+                    Some((pad.pleasure, pad.arousal, pad.dominance)),
+                );
+                let final_prompt = if memory_block.is_empty() {
+                    new_prompt
+                } else {
+                    format!("{memory_block}{new_prompt}")
+                };
                 self.chat
-                    .update_system_prompt(session_id, &new_prompt)
+                    .update_system_prompt(session_id, &final_prompt)
                     .await?;
             }
 
@@ -400,6 +463,116 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     // -----------------------------------------------------------------------
     // 내부 헬퍼
     // -----------------------------------------------------------------------
+
+    /// Step B — MemoryStore 검색 + Ranker + Framer로 "떠오르는 기억" 블록 반환.
+    ///
+    /// 반환값은 시스템 프롬프트 prepend용 문자열. 비어 있으면 caller가
+    /// `format!("{block}{prompt}")`로 결합해도 no-op이 된다.
+    ///
+    /// 실패 경로 (모두 빈 문자열 반환, 치명적이지 않음):
+    /// - `memory_store`/`memory_framer` 둘 중 하나라도 None
+    /// - `store.search()` 에러 (tracing::warn 로그)
+    /// - 결과 엔트리 0개
+    fn inject_memory_push(
+        &mut self,
+        npc_id: &str,
+        query: &str,
+        pad: Option<(f32, f32, f32)>,
+    ) -> String {
+        use crate::domain::memory::ranker::{Candidate, DecayTauTable, MemoryRanker, RankQuery};
+        use crate::domain::tuning::{MEMORY_PUSH_TOP_K, MEMORY_RETENTION_CUTOFF};
+
+        let (Some(store), Some(framer)) = (self.memory_store.clone(), self.memory_framer.clone())
+        else {
+            return String::new();
+        };
+
+        // 1) 임베딩 — analyzer가 있으면 쿼리 텍스트로 임베딩 생성.
+        //    analyzer는 &mut self가 필요하므로 speaker_pad도 덤으로 얻게 되지만 여기서는 emb만 사용.
+        let query_embedding: Option<Vec<f32>> = match self.analyzer.as_mut() {
+            Some(a) => match a.analyze_with_embedding(query) {
+                Ok((_pad, emb)) => emb.map(|e| e.to_vec()),
+                Err(e) => {
+                    tracing::debug!("DialogueAgent.inject_memory_push: embedding 실패 {:?}", e);
+                    None
+                }
+            },
+            None => None,
+        };
+
+        // 2) MemoryStore 검색 — NpcAllowed scope, Top-K * 3 oversample (Ranker가 다시 K로 줄임)
+        let oversample = (MEMORY_PUSH_TOP_K * 3).max(MEMORY_PUSH_TOP_K);
+        let mem_query = MemoryQuery {
+            text: Some(query.to_string()),
+            embedding: query_embedding.clone(),
+            scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc_id.to_string())),
+            source_filter: None,
+            layer_filter: None,
+            topic: None,
+            exclude_superseded: true,
+            exclude_consolidated_source: true,
+            min_retention: Some(MEMORY_RETENTION_CUTOFF),
+            current_pad: pad,
+            limit: oversample,
+        };
+        let results = match store.search(mem_query) {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("DialogueAgent.inject_memory_push: store.search 실패 {:?}", e);
+                return String::new();
+            }
+        };
+        if results.is_empty() {
+            return String::new();
+        }
+
+        // 3) Ranker 적용 — 1단계 Source 우선 필터 + 2단계 5요소 점수
+        //
+        // 각 Candidate의 `embedding`은 **해당 엔트리 본인의 임베딩**이어야 1단계
+        // `cluster_by_embedding`이 의미있게 동작한다. 현재 `MemoryResult`는 엔트리
+        // 임베딩을 실어주지 않으므로, Topic 없는 후보는 각자 단독 클러스터가 되도록
+        // `None`을 전달한다. (쿼리 임베딩을 전부에 복사하면 모든 후보가 동일 클러스터로
+        // 묶여 source-priority 필터가 상위 source만 남기고 나머지를 부당하게 드롭한다.)
+        // Topic이 있는 후보는 어차피 Topic key로 그룹핑되므로 embedding은 사용되지 않는다.
+        let candidates: Vec<Candidate> = results
+            .into_iter()
+            .map(|r| Candidate {
+                entry: r.entry,
+                vec_similarity: r.relevance_score,
+                embedding: None,
+            })
+            .collect();
+        let tau = DecayTauTable::default_table();
+        let ranker = MemoryRanker::new(&tau);
+        let rq = RankQuery {
+            current_pad: pad,
+            limit: MEMORY_PUSH_TOP_K,
+            min_score_cutoff: 0.0,
+        };
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let ranked = ranker.rank(candidates, &rq, now_ms);
+        if ranked.is_empty() {
+            return String::new();
+        }
+
+        // 4) record_recall (best-effort)
+        for r in &ranked {
+            if let Err(e) = store.record_recall(&r.entry.id, now_ms) {
+                tracing::debug!(
+                    "DialogueAgent.inject_memory_push: record_recall({}) 실패 {:?}",
+                    r.entry.id,
+                    e
+                );
+            }
+        }
+
+        // 5) Framer로 블록 포맷
+        let entries: Vec<_> = ranked.into_iter().map(|r| r.entry).collect();
+        framer.frame_block(&entries, &self.memory_locale)
+    }
 
     /// 화자 PAD를 청자 관점 PAD로 변환한다 (Phase 7).
     ///

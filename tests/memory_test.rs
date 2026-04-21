@@ -1,5 +1,9 @@
 //! InMemoryMemoryStore + MemoryAgent 통합 테스트 (feature flag 없이 실행 가능)
 
+// 이 파일은 Step B에서 deprecated된 레거시 MemoryStore 메서드(search_by_meaning/
+// search_by_keyword/get_recent)의 호환성을 계속 검증한다. 의도된 호출이므로 경고 무시.
+#![allow(deprecated)]
+
 mod common;
 
 use common::in_memory_store::InMemoryMemoryStore;
@@ -12,15 +16,7 @@ use npc_mind::{EventStore, MemoryStore};
 use std::sync::Arc;
 
 fn sample_entry(id: &str, npc_id: &str, content: &str, memory_type: MemoryType) -> MemoryEntry {
-    MemoryEntry {
-        id: id.to_string(),
-        npc_id: npc_id.to_string(),
-        content: content.to_string(),
-        emotional_context: None,
-        timestamp_ms: 1000,
-        event_id: 1,
-        memory_type,
-    }
+    MemoryEntry::personal(id, npc_id, content, None, 1000, 1, memory_type)
 }
 
 #[test]
@@ -28,17 +24,17 @@ fn in_memory_store_index_and_count() {
     let store = InMemoryMemoryStore::new();
     assert_eq!(store.count(), 0);
 
-    store.index(sample_entry("m1", "npc1", "안녕하세요", MemoryType::Dialogue), None).unwrap();
-    store.index(sample_entry("m2", "npc1", "반갑습니다", MemoryType::Dialogue), None).unwrap();
+    store.index(sample_entry("m1", "npc1", "안녕하세요", MemoryType::DialogueTurn), None).unwrap();
+    store.index(sample_entry("m2", "npc1", "반갑습니다", MemoryType::DialogueTurn), None).unwrap();
     assert_eq!(store.count(), 2);
 }
 
 #[test]
 fn keyword_search_filters_by_content() {
     let store = InMemoryMemoryStore::new();
-    store.index(sample_entry("m1", "npc1", "무림맹주가 배신을 암시했다", MemoryType::Dialogue), None).unwrap();
-    store.index(sample_entry("m2", "npc1", "화산파의 검법은 정교하다", MemoryType::Dialogue), None).unwrap();
-    store.index(sample_entry("m3", "npc2", "무림맹주를 만났다", MemoryType::Dialogue), None).unwrap();
+    store.index(sample_entry("m1", "npc1", "무림맹주가 배신을 암시했다", MemoryType::DialogueTurn), None).unwrap();
+    store.index(sample_entry("m2", "npc1", "화산파의 검법은 정교하다", MemoryType::DialogueTurn), None).unwrap();
+    store.index(sample_entry("m3", "npc2", "무림맹주를 만났다", MemoryType::DialogueTurn), None).unwrap();
 
     // 전체 검색
     let results = store.search_by_keyword("무림맹주", None, 10).unwrap();
@@ -59,9 +55,9 @@ fn meaning_search_with_mock_embeddings() {
     let emb2 = vec![0.0, 1.0, 0.0]; // "우정" 방향
     let emb3 = vec![0.8, 0.2, 0.0]; // "배신" 유사
 
-    store.index(sample_entry("m1", "npc1", "배신당했다", MemoryType::Dialogue), Some(emb1)).unwrap();
-    store.index(sample_entry("m2", "npc1", "친구가 되었다", MemoryType::Dialogue), Some(emb2)).unwrap();
-    store.index(sample_entry("m3", "npc1", "약속을 어겼다", MemoryType::Dialogue), Some(emb3)).unwrap();
+    store.index(sample_entry("m1", "npc1", "배신당했다", MemoryType::DialogueTurn), Some(emb1)).unwrap();
+    store.index(sample_entry("m2", "npc1", "친구가 되었다", MemoryType::DialogueTurn), Some(emb2)).unwrap();
+    store.index(sample_entry("m3", "npc1", "약속을 어겼다", MemoryType::DialogueTurn), Some(emb3)).unwrap();
 
     // "배신" 방향으로 검색
     let query = vec![0.9, 0.1, 0.0];
@@ -77,11 +73,11 @@ fn meaning_search_with_mock_embeddings() {
 fn get_recent_sorted_by_time() {
     let store = InMemoryMemoryStore::new();
 
-    let mut e1 = sample_entry("m1", "npc1", "오래된 기억", MemoryType::Dialogue);
+    let mut e1 = sample_entry("m1", "npc1", "오래된 기억", MemoryType::DialogueTurn);
     e1.timestamp_ms = 100;
-    let mut e2 = sample_entry("m2", "npc1", "최근 기억", MemoryType::Dialogue);
+    let mut e2 = sample_entry("m2", "npc1", "최근 기억", MemoryType::DialogueTurn);
     e2.timestamp_ms = 300;
-    let mut e3 = sample_entry("m3", "npc1", "중간 기억", MemoryType::Dialogue);
+    let mut e3 = sample_entry("m3", "npc1", "중간 기억", MemoryType::DialogueTurn);
     e3.timestamp_ms = 200;
 
     store.index(e1, None).unwrap();
@@ -96,11 +92,11 @@ fn get_recent_sorted_by_time() {
 
 #[test]
 fn memory_entry_serialization() {
-    let entry = sample_entry("m1", "npc1", "테스트", MemoryType::Relationship);
+    let entry = sample_entry("m1", "npc1", "테스트", MemoryType::RelationshipChange);
     let json = serde_json::to_string(&entry).unwrap();
     let deserialized: MemoryEntry = serde_json::from_str(&json).unwrap();
     assert_eq!(deserialized.id, "m1");
-    assert_eq!(deserialized.memory_type, MemoryType::Relationship);
+    assert_eq!(deserialized.memory_type, MemoryType::RelationshipChange);
 }
 
 #[test]
@@ -133,14 +129,14 @@ fn dialogue_turn_completed_event_works() {
 #[test]
 fn npc_id_filter_isolates_memories() {
     let store = InMemoryMemoryStore::new();
-    store.index(sample_entry("m1", "alice", "alice의 기억", MemoryType::Dialogue), None).unwrap();
-    store.index(sample_entry("m2", "bob", "bob의 기억", MemoryType::Dialogue), None).unwrap();
+    store.index(sample_entry("m1", "alice", "alice의 기억", MemoryType::DialogueTurn), None).unwrap();
+    store.index(sample_entry("m2", "bob", "bob의 기억", MemoryType::DialogueTurn), None).unwrap();
 
     let alice = store.get_recent("alice", 10).unwrap();
     assert_eq!(alice.len(), 1);
-    assert_eq!(alice[0].npc_id, "alice");
+    assert_eq!(alice[0].legacy_npc_id(), "alice");
 
     let bob = store.get_recent("bob", 10).unwrap();
     assert_eq!(bob.len(), 1);
-    assert_eq!(bob[0].npc_id, "bob");
+    assert_eq!(bob[0].legacy_npc_id(), "bob");
 }
