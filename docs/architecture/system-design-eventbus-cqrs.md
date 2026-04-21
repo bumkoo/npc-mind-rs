@@ -934,6 +934,15 @@ impl ToolRegistry {
 
 ## 9. RAG 설계 (게임 내 히스토리)
 
+> **구현 현황 (2026-04 기준)**: Phase 3(MemoryAgent + SqliteMemoryStore + FTS5 + sqlite-vec
+> vec0) + **Memory Step A Foundation** 완료. Step A에서 `MemoryScope`/`MemorySource`/
+> `Provenance`/`MemoryLayer` VO 도입, `MemoryEntry` 13 필드 확장, `MemoryRanker` 2단계
+> 랭커, SQLite v2 자동 마이그레이션이 추가되었다. 본 §9의 초기 `MemoryEntry`/`MemoryStore`
+> 스케치(§9.2)는 역사 문서로 남기고, **실제 시그니처는 [`docs/api/api-reference.md`의
+> Memory API 섹션](../api/api-reference.md#memory-api-step-a-foundation)**과
+> [`docs/memory/03-implementation-design.md`](../memory/03-implementation-design.md)를
+> 정본으로 한다. Step B(주입) · C(Telling/Rumor) · D(Consolidation/WorldOverlay)는 미구현.
+
 ### 9.1 인덱싱 대상
 
 ```
@@ -950,31 +959,24 @@ impl ToolRegistry {
 └──────────────┴───────────────────────────┘
 ```
 
-### 9.2 RAG 포트
+### 9.2 RAG 포트 *(초기 스케치 — 현행 구현은 api-reference.md 참조)*
+
+> 아래는 Phase 3 초기 설계 스케치다. 현행 구현은 동기 API(`&self`, `Arc<dyn MemoryStore>`
+> 공유 가능)이고, `MemoryEntry`는 Step A에서 scope/source/provenance/layer/topic/confidence/
+> recall_count/superseded_by/consolidated_into 등 13개 필드가 추가되었다. `MemoryStore`는
+> 기존 5 메서드(`index`/`search_by_meaning`/`search_by_keyword`/`get_recent`/`count`) 외에
+> Step A 신규 7 메서드(`search`/`get_by_id`/`get_by_topic_latest`/`get_canonical_by_topic`/
+> `mark_superseded`/`mark_consolidated`/`record_recall`)를 제공한다. 정본 시그니처는
+> [`docs/api/api-reference.md`](../api/api-reference.md#memory-api-step-a-foundation)
+> Memory API 섹션을 참조한다.
 
 ```rust
+// Phase 3 초기 설계 (구현은 더 이상 이 시그니처를 따르지 않음 — 역사 문서)
 #[async_trait]
 pub trait MemoryStore: Send + Sync {
-    /// 기억 항목 인덱싱 (임베딩 + 저장)
     async fn index(&self, entry: MemoryEntry) -> Result<(), MemoryError>;
-    
-    /// 유사 기억 검색
-    async fn search(
-        &self,
-        query: &str,
-        npc_id: Option<&str>,
-        limit: usize,
-    ) -> Result<Vec<MemoryResult>, MemoryError>;
-    
-    /// 시간 범위 필터링
-    async fn search_temporal(
-        &self,
-        query: &str,
-        npc_id: &str,
-        after: Timestamp,
-        before: Timestamp,
-        limit: usize,
-    ) -> Result<Vec<MemoryResult>, MemoryError>;
+    async fn search(&self, query: &str, npc_id: Option<&str>, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
+    async fn search_temporal(&self, query: &str, npc_id: &str, after: Timestamp, before: Timestamp, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
 }
 
 #[derive(Debug, Clone)]

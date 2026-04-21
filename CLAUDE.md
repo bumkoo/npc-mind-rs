@@ -300,18 +300,30 @@ pub trait EventHandler: Send + Sync {
 MemoryAgent (EventBus subscriber)
   → 이벤트 수신 → MemoryEntry 구성 → TextEmbedder 임베딩 → MemoryStore.index()
 
-SqliteMemoryStore (기본 구현, 단일 SQLite 파일):
-  ├── memories       (일반 테이블 — 메타 + 원문 TEXT)
+SqliteMemoryStore (기본 구현, 단일 SQLite 파일, schema v2):
+  ├── schema_meta    (마이그레이션 버전 관리)
+  ├── memories       (일반 테이블 — 메타 + 원문 TEXT + Step A 신규 13 컬럼)
   ├── memories_fts   (FTS5 가상 테이블, tokenize='trigram' — 한글/CJK 전문 검색)
-  └── memories_vec   (sqlite-vec vec0 가상 테이블 — 코사인 ANN, FLOAT[dim])
+  ├── memories_vec   (sqlite-vec vec0 가상 테이블 — 코사인 ANN, FLOAT[dim])
+  │                    partition key: "personal:<id>" | "relationship:<a>:<b>" 등
+  └── rumors/rumor_hops/rumor_distortions (Step C에서 사용 예정, 빈 테이블 선제 생성)
   세 레이어가 id로 조인. search_by_meaning: vec0 Top-K → memories batch load.
   FTS5 trigram 토크나이저는 3-gram 기반이라 한글 단어 경계 문제를 우회한다
   (SQLite 3.34+). 예외 시 LIKE fallback으로 방어.
+  v1 DB는 최초 오픈 시 자동 v2 마이그레이션 (ALTER TABLE + vec0 재생성, 트랜잭션).
 
 테스트 전용:
   tests/common/in_memory_store.rs — InMemoryMemoryStore (brute-force cosine).
   라이브러리 public API로 노출되지 않음.
 ```
+
+**Memory Step A 확장 (완료)**: `MemoryEntry`가 scope/source/provenance/layer/topic/confidence/
+recall_count/superseded_by/consolidated_into 등을 포함. Scope는 Personal(기존 호환) 외에도
+Relationship(대칭 a≤b 정규화) · Faction · Family · World 5종. Canonical = `Seeded ∧ World`
+(τ=∞). `MemoryRanker`가 Source 우선 필터 + 5요소 점수(vec×retention×source×emotion×recency)로
+랭킹. 기존 `MemoryType::Dialogue`/`SceneEnd`/`Relationship`는 serde alias로 역호환되며 신규
+코드는 `DialogueTurn`/`SceneSummary`/`RelationshipChange`를 사용한다. Step A에서는 Ranker
+호출 경로가 아직 연결되지 않아 Framer/주입은 Step B 예정. 상세 설계: [`docs/memory/`](docs/memory/).
 
 **sqlite-vec 등록**: `SqliteMemoryStore` 최초 생성 시 `sqlite3_auto_extension(sqlite3_vec_init)`을
 프로세스 전역에 `Once`로 한 번만 등록. sqlite-vec는 순수 C 확장이라 **tokio 런타임을 요구하지 않는다**.
@@ -346,6 +358,10 @@ relevance_score = `1.0 - cosine_distance`.
 | **B안 B5.2** | ✅ 완료 | (1/3) DialogueAgent v2 마이그레이션. (2/3) Mind Studio handler v2 마이그레이션. (3/3) AppState 통합 — `shared_dispatcher` 도입, per-request snapshot 제거, UI CRUD/scenario load가 `rebuild_repo_from_inner`로 공유 repo 동기화. |
 | **B안 B5.3** | ✅ 완료 | v1 모듈·타입 삭제 — Pipeline/Projection trait/EventAwareMindService/MindService/FormattedMindService/HandlerContext·Output/v1 Agent handle_*/AppStateRepository(mut)/DialogueTestService struct/v1 dispatch/shadow_v2 전부 제거. `emotion_snapshot` 헬퍼 → `EmotionState::snapshot()` 메서드로 이관. `MindServiceError` → `application::error` 모듈로 분리. v1 테스트 파일 8종(application/event/command/pipeline/locale/port_injection/repository/coverage_gap) 삭제 + dispatch_v2_test 안의 v1 parallel 테스트 3종 삭제. |
 | B안 B5.4 | 불필요 | B5.3에서 `shadow_v2` 이미 제거. |
+| **Memory Step A** | ✅ 완료 | `MemoryScope`/`MemorySource`/`Provenance`/`MemoryLayer` VO + `MemoryEntry` 13 필드 확장 + `MemoryType` rename (serde alias 역호환) + `MemoryRanker` 2단계 (Source 우선 + 5요소 점수) + `DecayTauTable` + SQLite v2 자동 마이그레이션 + `MemoryStore` 7 신규 메서드 + `MemoryQuery`/`MemoryScopeFilter` + `RelationshipUpdated.cause` hook. 행동 변화 없이 foundation만. 상세: [`docs/memory/03-implementation-design.md`](docs/memory/03-implementation-design.md) |
+| Memory Step B | 미구현 | MemoryFramer + `DialogueAgent.inject_memory_push` + locale 섹션 (프롬프트 주입) |
+| Memory Step C | 미구현 | `Command::TellInformation`/`SeedRumor`/`SpreadRumor` + `InformationAgent`/`RumorAgent` + `Rumor` 애그리거트 + `RumorStore` |
+| Memory Step D | 미구현 | `SceneConsolidationHandler` (Layer A→B) + `WorldOverlayAgent` + `Command::ApplyWorldEvent` + `RelationshipMemoryHandler` cause-분기 |
 | Phase 5 | 미구현 | StoryAgent (서사 진행 판단) |
 | Phase 6 | 미구현 | Tool 시스템 (ToolRegistry) |
 | Phase 7 | 미구현 | WorldKnowledgeStore (세계관 정적 지식) |

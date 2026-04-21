@@ -1038,7 +1038,7 @@ pub enum StateEvent {
 
 2차 문서 §13의 3차 항목을 구체화.
 
-### Step A — Foundation (단독 머지 가능)
+### Step A — Foundation (단독 머지 가능) ✅ 완료
 
 **범위**:
 - `MemoryScope`(대칭 Relationship, 단순 Faction/Family) / `MemorySource` / `MemoryLayer` / `Provenance` VO 도입.
@@ -1056,6 +1056,22 @@ pub enum StateEvent {
 - 모든 기존 테스트 green
 - 신규 단위 테스트 (scope/source/provenance/retention/ranker) green
 - `cargo build --features embed` / `--features chat` 전부 green
+
+**구현 결과** (commit `ebc3a8a` + `f0964f6`):
+- 구현 파일: `src/domain/memory.rs`, `src/domain/memory/ranker.rs`(신규), `src/domain/tuning.rs`,
+  `src/domain/event.rs`, `src/ports.rs`, `src/adapter/sqlite_memory.rs`, `tests/common/in_memory_store.rs`.
+- 사용자 승인 결정 (§17): §17.1 `npc_id` grand-father + `#[deprecated]` · §17.4 `mem-{06d}` 순번 ID 유지.
+- 신규 단위/통합 테스트 15개 (scope 대칭, source priority, provenance canonical, serde alias,
+  retention curve, v1→v2 마이그레이션 백필, supersede, record_recall, MemoryQuery 필터 등).
+- `migrate_v2`는 `unchecked_transaction`으로 원자성 보장 (vec0 DROP/CREATE/RE-INSERT 중단 시 롤백).
+- `MemoryScopeFilter::NpcAllowed`는 Personal(해당 NPC) + World + Relationship(참여)을 포함.
+  Faction/Family 소속 Join은 Step C에서 `NpcWorld` 도입과 함께 확장 예정.
+- `partition_key` 포맷(`"personal:<id>"` 등)은 NPC/Faction/Family/World ID에 `:` 문자가
+  없다고 가정 (호출자 책임, 런타임 강제는 Step C에서).
+- Step A 범위 **외**: `MemoryRanker` 호출 경로 (Step B에서 `DialogueAgent` 주입 시 연결),
+  `RumorStore`·Rumor 애그리거트 (Step C), `Command::TellInformation`·`SeedRumor`·`SpreadRumor`
+  (Step C), `SceneConsolidationHandler`·`WorldOverlayAgent` (Step D), 이벤트 신규 variant
+  (`MemoryEntryCreated` 등 — Step C/D), Rumor 테이블은 빈 상태로 선제 생성만.
 
 ### Step B — Injection & Framing
 

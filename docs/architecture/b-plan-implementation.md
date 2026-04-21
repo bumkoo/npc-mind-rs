@@ -940,6 +940,7 @@ director.end_scene(scene_id).await?;
 - [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) — 현재 EventBus/CQRS 아키텍처 (B안 이행 후 업데이트 필요)
 - [`architecture-v2.md`](architecture-v2.md) — 전체 아키텍처 v2
 - [`frontend-architecture.md`](frontend-architecture.md) — Mind Studio UI 구조 (Stage B4에서 Scene 목록 UI 고려)
+- [`../memory/03-implementation-design.md`](../memory/03-implementation-design.md) — Memory System 확장 (Step A ✅ 완료 / Step B~D 미구현). B5 이후 Phase 3 확장 경로로, CQRS 경계는 유지하면서 MemoryStore/MemoryRanker/Rumor/WorldOverlay 서브시스템을 단계적으로 도입한다.
 
 ---
 
