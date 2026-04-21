@@ -17,10 +17,12 @@ pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};
 pub use application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse, AppraiseResult,
     GuideRequest, GuideResponse, GuideResult, RumorOriginInput, RumorReachInput, SceneRequest,
-    SceneResponse, SeedRumorRequest, SeedRumorResponse, SpreadRumorRequest, SpreadRumorResponse,
-    StimulusRequest, StimulusResponse, StimulusResult, TellInformationRequest,
-    TellInformationResponse,
+    SceneResponse, SeedRumorRequest, SpreadRumorRequest, StimulusRequest, StimulusResponse,
+    StimulusResult, TellInformationRequest,
 };
+// Response DTOs (TellInformationResponse / SeedRumorResponse / SpreadRumorResponse)는
+// 현재 dispatcher가 생성·반환하지 않으므로 공개 노출에서 뺀다. typed facade가 필요한
+// 시점(Step D에서 dispatch 결과 타입 확장 논의)에 공개하거나 제거 재검토.
 pub use ports::{
     AnchorLoadError, Appraiser, EmotionStore, GuideFormatter, MindRepository, NpcWorld,
     PadAnchorSource, PersonalityProfile, SceneStore, StimulusProcessor,

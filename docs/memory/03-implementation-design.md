@@ -579,7 +579,7 @@ v2 `EventHandler` trait 구현체. Transactional 단계에서 실행된다.
 | `relationship_memory_handler.rs` | `RelationshipMemoryHandler` | `RelationshipUpdated` | §8.3 | `cause`로 content·source·topic 분기 (A8). 관점 분리: 당사자 a, b 각각 별 엔트리(3.1.4) |
 | `world_overlay_handler.rs` | `WorldOverlayHandler` | `WorldEventOccurred` | §8.4 | `MemoryEntry(scope=World)` + 기존 Topic 최신 엔트리 Supersede |
 | `telling_ingestion_handler.rs` | `TellingIngestionHandler` | `InformationTold` | §8.5 | 청자 1명당 `MemoryEntry(Heard/Rumor)` 1개. 신뢰도 = stated × listener_trust |
-| `rumor_distribution_handler.rs` | `RumorDistributionHandler` | `RumorSpread` | §8.6 | Hop recipients 각각에 `MemoryEntry(Heard/Rumor)` 생성. I-RU-5 트랜잭션 일관성 보장 |
+| `rumor_distribution_handler.rs` | `RumorDistributionHandler` | `RumorSpread` | §8.6 | Hop recipients 각각에 `MemoryEntry(Rumor)` 생성. **Inline best-effort** — `MemoryStore.index` 실패는 로그만 남김. 완전 원자성은 §14 참조. |
 
 ### 6.4 신규 Inline Projection Handler
 
@@ -1179,7 +1179,7 @@ Phase 5 StoryAgent와 묶어 진행. 본 문서 범위 외.
 | LLM 기반 Consolidation 비용 | 비동기 배치 처리 필요 | Step D 초기에는 단순 휴리스틱(첫 문장 + 마지막 감정 태그) 요약 → 후속 개선 |
 | Heard/Rumor 자동 추출이 어려운 LLM 품질 | Heard 생성 누락 | `Command::TellInformation` 명시 호출 경로를 기본으로(판정 경로 (a), A11). 자동 추출((b)(c))은 향후 확장 |
 | 기존 `MemoryEntry::npc_id` 필드와 `MemoryScope` 중복 | 코드 복잡도 | Step A에서 `npc_id`를 `scope.owner_a()`의 Personal-경로 투영으로 grand-father (H10). `#[deprecated]` 주석 + 신규 코드는 `entry.scope` 사용 |
-| **Rumor 확산과 MemoryEntry 생성의 비원자성 (구 결과적 일관성)** | 소문 있는데 기억 없는 상태 | **I-RU-5 트랜잭션 일관성으로 해소 (B1/B4)**: `SpreadRumor` 커맨드 1회의 BFS cascade 안에서 `RumorDistributionHandler`가 Inline으로 MemoryEntry를 생성해 원자적 commit. 장애 시 전체 커맨드가 롤백되므로 부분 생성 불가. |
+| **Rumor 확산과 MemoryEntry 생성의 부분적 원자성** | 소문 aggregate는 갱신됐는데 일부 수신자 기억이 유실될 가능성 | **Rumor aggregate + RumorSpread 이벤트까지만 원자적**: `SpreadRumor` 커맨드의 Transactional phase에서 `RumorAgent`가 `Rumor.add_hop` → `RumorStore.save` → `RumorSpread` commit까지 한 단위로 롤백 가능. **수신자 `MemoryEntry` 쓰기는 Inline best-effort**: Inline phase가 commit 이후에 돌기 때문에 `MemoryStore.index` 실패는 `tracing::warn!`만 남기고 커맨드 전체는 성공으로 마무리된다. 완전한 cross-store 원자성(MemoryStore 포함)은 분산 트랜잭션 없이 불가능하므로 Step F 이후 별도 재시도 큐/ sidecar로 해소 예정. I-RU-5는 "aggregate 일관성" 수준으로 재정의됨. |
 | InformationTold N개 이벤트가 `MAX_EVENTS_PER_COMMAND=20` 초과 | 커맨드 실패 | N명 청자에 대해 이벤트 1개씩 발행되므로 청자 수를 감시. 초기 한도 N≤15로 가이드, 필요 시 한도 상향 또는 청자 일괄 이벤트 분리 검토 |
 | `RelationshipUpdated.cause` = `Unspecified` 잔존 | RelationshipMemoryHandler 분기 불능 → 기본 branch로만 기억 | Step A에서 기존 RelationshipAgent 발행 지점을 `Unspecified`로 두고, Step B/C에서 원인 소스 추가 시점마다 variant 채우기. 테스트로 감시 |
 
@@ -1213,7 +1213,7 @@ Phase 5 StoryAgent와 묶어 진행. 본 문서 범위 외.
 | A11 — 판정 경로 (a) 한정 | §4 Command 설명, §14 리스크 |
 | B1 — 트랜잭션 경계 완화(Supersede/Consolidation 원자성) | §12.2 `memory_consolidation_test`, §14 리스크 행 |
 | B3 — Faction/Family Scope 단순화 + acquired_by | §2.1 (npc_id 제거), §2.5 `acquired_by`, §7.2 `acquired_by` 컬럼 |
-| B4 — I-RU-5 트랜잭션 일관성 | §14 리스크 행(Rumor 원자성), §12.2 `rumor_spread_test` |
+| B4 — I-RU-5 aggregate 일관성(수신자 MemoryEntry는 best-effort로 축소) | §14 리스크 행(Rumor 원자성), §12.2 `rumor_spread_test` |
 | B5 — InformationTold 청자당 1 이벤트 | §3.1 InformationTold(listener 단일), §3.3 AggregateKey `Npc(listener)`, §6.2 InformationAgent follow-up 설명 |
 | B6 — Agent 우선순위 | §6.5 priority 상수 (C11 잠정 결정) |
 | B7 — PadSnapshot Shared Kernel | §2.5 `emotional_context` 주석 |

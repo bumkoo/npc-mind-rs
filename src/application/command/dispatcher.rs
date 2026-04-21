@@ -85,6 +85,11 @@ pub struct CommandDispatcher<R: MindRepository> {
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
     correlation_id: Arc<AtomicU64>,
+    /// 커맨드별 고유 suffix 생성용 내부 카운터. `Command::SeedRumor`의 pending_id 등에
+    /// 쓰이며, event_store의 next_id와 별개로 관리되어 **event id gap을 유발하지 않는다**
+    /// (Step C3 사후 리뷰 M1). 프로세스 수명 동안만 유일, replay 시 리셋되므로 id
+    /// 결정성은 §15 결정 유보 범위.
+    command_seq: Arc<AtomicU64>,
     transactional_handlers: Vec<Arc<dyn EventHandler>>,
     inline_handlers: Vec<Arc<dyn EventHandler>>,
 }
@@ -101,6 +106,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
             event_store,
             event_bus,
             correlation_id: Arc::new(AtomicU64::new(0)),
+            command_seq: Arc::new(AtomicU64::new(1)),
             transactional_handlers: Vec::new(),
             inline_handlers: Vec::new(),
         }
@@ -440,12 +446,19 @@ impl<R: MindRepository> CommandDispatcher<R> {
                         "SeedRumor: topic 없으면 seed_content 필수".into(),
                     ));
                 }
-                let agg_id = req.topic.clone().unwrap_or_else(|| "orphan".into());
+                // 커맨드별 고유 pending_id — 복수의 SeedRumor가 "orphan" 공용 버킷을
+                // 공유하지 않도록 (Step C3 사후 리뷰 C2).
+                let pending_id = format!(
+                    "{:012}",
+                    self.command_seq.fetch_add(1, Ordering::SeqCst)
+                );
+                let agg_id = format!("pending-{pending_id}");
                 Ok(DomainEvent::new(
                     0,
                     agg_id,
                     0,
                     EventPayload::SeedRumorRequested {
+                        pending_id,
                         topic: req.topic.clone(),
                         seed_content: req.seed_content.clone(),
                         reach,

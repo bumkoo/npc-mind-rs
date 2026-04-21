@@ -801,6 +801,9 @@ pub struct TellInformationRequest {
 }
 
 /// `Command::TellInformation` 응답 DTO.
+///
+/// **현재 미사용** — dispatcher가 `DispatchV2Output`만 반환하므로 C2/C3 시점에는
+/// 생성 지점이 없다. Step D에서 typed dispatch facade 도입 시 재검토.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TellInformationResponse {
     /// 실제 발행된 `InformationTold` 이벤트 수 (= listeners + overhearers).
@@ -871,14 +874,14 @@ pub enum RumorOriginInput {
     },
 }
 
-/// `Command::SeedRumor` 응답.
+/// `Command::SeedRumor` 응답. **현재 미사용** — `TellInformationResponse`와 동일 이유.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SeedRumorResponse {
     /// 생성된 Rumor id — `rumor-{event_id:012}` 형식 (결정적).
     pub rumor_id: String,
 }
 
-/// `Command::SpreadRumor` 응답.
+/// `Command::SpreadRumor` 응답. **현재 미사용** — Step D typed facade 논의 시 재검토.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SpreadRumorResponse {
     pub rumor_id: String,

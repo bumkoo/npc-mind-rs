@@ -13,6 +13,7 @@
 //! **불변식**: Rumor 자체의 I-RU-1~6은 `Rumor::add_hop`/`add_distortion`/`transition_to`가
 //! 방어한다. 본 에이전트는 저장소 오류를 `HandlerError::Infrastructure`로 전파한다.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
@@ -25,35 +26,35 @@ use crate::ports::RumorStore;
 
 pub struct RumorAgent {
     store: Arc<dyn RumorStore>,
+    /// Rumor id 생성용 단조 카운터. `EventStore::next_id()`와 독립 관리되어
+    /// **event log에 id gap을 유발하지 않는다** (Step C3 사후 리뷰 M1).
+    /// 프로세스 수명 동안만 유일 — replay 시 재생성 필요성은 설계 §15 결정 유보.
+    counter: Arc<AtomicU64>,
 }
 
 impl RumorAgent {
     pub fn new(store: Arc<dyn RumorStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            counter: Arc::new(AtomicU64::new(1)),
+        }
     }
 
-    /// Rumor id 포맷: `rumor-{reserved_id:012}`. `reserved_id`는 Transactional 페이즈에서
-    /// `EventStore::next_id()`로 선할당된 값이다.
-    ///
-    /// **왜 `event.id`를 안 쓰는가**: `build_initial_event`는 id=0으로 초기 이벤트를 만들고
-    /// 실제 id는 `commit_staging_buffer`에서 부여된다. 따라서 handler 실행 시점에 보이는
-    /// `event.id`는 항상 0이라 `rumor_id`가 모든 시드에서 충돌한다. 대신 event_store에서
-    /// 다음 id 한 자리를 미리 소비해 rumor_id에 쓴다 (commit 시점의 RumorSeeded 이벤트는
-    /// 또 다른 next_id를 받으며, rumor_id와 값이 같을 필요는 없음).
-    fn derive_rumor_id(reserved_id: u64) -> String {
-        format!("rumor-{reserved_id:012}")
+    /// Rumor id 포맷: `rumor-{counter:012}`. RumorAgent 인스턴스별 카운터 기반.
+    fn next_rumor_id(&self) -> String {
+        let n = self.counter.fetch_add(1, Ordering::SeqCst);
+        format!("rumor-{n:012}")
     }
 
     fn handle_seed(
         &self,
         event: &DomainEvent,
-        ctx: &EventHandlerContext<'_>,
         topic: &Option<String>,
         seed_content: &Option<String>,
         reach: &ReachPolicy,
         origin: &crate::domain::rumor::RumorOrigin,
     ) -> Result<HandlerResult, HandlerError> {
-        let rumor_id = Self::derive_rumor_id(ctx.event_store.next_id());
+        let rumor_id = self.next_rumor_id();
 
         // Rumor 생성 — topic/seed_content 조합에 따른 생성자 분기 (§2.6 Canonical 해소표).
         let rumor = match (topic, seed_content) {
@@ -121,6 +122,10 @@ impl RumorAgent {
                 HandlerError::InvalidInput(format!("SpreadRumor: rumor_id '{rumor_id}' 없음"))
             })?;
 
+        // TODO(step-f): Fading/Faded status 전이가 도입되면 여기서 `Faded` rumor의 spread를
+        // 거부해야 한다. Step C3 시점에는 status 전이 트리거(백그라운드 틱)가 없어 항상
+        // Active라 가드 불필요. 리뷰 M4 참조.
+
         // 동일 수신자 중복 제거 — 같은 홉에서 같은 사람에게 두 번 저장되지 않도록.
         let mut seen = std::collections::HashSet::new();
         let recipients: Vec<String> = extra_recipients
@@ -184,15 +189,16 @@ impl EventHandler for RumorAgent {
     fn handle(
         &self,
         event: &DomainEvent,
-        ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         match &event.payload {
             EventPayload::SeedRumorRequested {
+                pending_id: _,
                 topic,
                 seed_content,
                 reach,
                 origin,
-            } => self.handle_seed(event, ctx, topic, seed_content, reach, origin),
+            } => self.handle_seed(event, topic, seed_content, reach, origin),
             EventPayload::SpreadRumorRequested {
                 rumor_id,
                 extra_recipients,
@@ -257,6 +263,7 @@ mod tests {
             topic.map(|t| t.to_string()).unwrap_or_else(|| "orphan".into()),
             1,
             EventPayload::SeedRumorRequested {
+                pending_id: format!("{event_id:012}"),
                 topic: topic.map(|t| t.into()),
                 seed_content: seed.map(|s| s.into()),
                 reach: ReachPolicy::default(),

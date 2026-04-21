@@ -340,7 +340,14 @@ pub enum EventPayload {
 
     /// Memory 컨텍스트 — `Command::SeedRumor`의 초기 이벤트.
     /// `RumorAgent`가 소비해 `RumorSeeded` follow-up을 발행한다 (Step C3).
+    ///
+    /// `pending_id`는 dispatcher가 build 시점에 부여하는 **커맨드별 고유 aggregate**
+    /// suffix로, `AggregateKey::Rumor("pending-<pending_id>")` 형태로 매핑된다.
+    /// 여러 개의 고아 Rumor 시드가 `"orphan"` 버킷을 공유해 `event_store.get_events`에서
+    /// 뒤섞이는 문제를 막기 위함 (Step C3 사후 리뷰 C2).
     SeedRumorRequested {
+        #[serde(default)]
+        pending_id: String,
         topic: Option<String>,
         seed_content: Option<String>,
         reach: ReachPolicy,
@@ -373,6 +380,9 @@ pub enum EventPayload {
     },
 
     /// 소문 콘텐츠가 새 변형으로 파생됨 (DAG 노드 추가).
+    ///
+    /// TODO(step-f): 발행 지점 미구현. Step F에서 `Command::AddRumorDistortion`
+    /// (또는 자동 변형 정책) 도입 시 발행.
     RumorDistorted {
         rumor_id: String,
         distortion_id: String,
@@ -380,6 +390,9 @@ pub enum EventPayload {
     },
 
     /// 소문이 `Faded` 상태로 종결됨.
+    ///
+    /// TODO(step-f): 발행 지점 미구현. Step F에서 백그라운드 Rumor 확산 틱 또는
+    /// 명시적 fade-out 커맨드 도입 시 발행.
     RumorFaded {
         rumor_id: String,
     },
@@ -568,11 +581,11 @@ impl DomainEvent {
                 AggregateKey::Memory(b_entry_id.clone())
             }
 
-            // Rumor 컨텍스트 — `Rumor(rumor_id)`.
-            EventPayload::SeedRumorRequested { topic, .. } => {
-                // 시딩 요청 시에는 아직 rumor_id가 없으므로 topic 기반 임시 키.
-                // 고아 Rumor(topic=None)면 "orphan"을 사용.
-                AggregateKey::Rumor(topic.clone().unwrap_or_else(|| "orphan".into()))
+            // Rumor 컨텍스트 — `Rumor(rumor_id)`. Seed 요청은 실제 rumor_id가 아직 없으므로
+            // dispatcher가 build 시점에 부여하는 커맨드별 고유 `pending_id`로 분기 버킷을
+            // 만든다 (Step C3 사후 리뷰 C2).
+            EventPayload::SeedRumorRequested { pending_id, .. } => {
+                AggregateKey::Rumor(format!("pending-{pending_id}"))
             }
             EventPayload::SpreadRumorRequested { rumor_id, .. }
             | EventPayload::RumorSeeded { rumor_id, .. }
@@ -775,6 +788,7 @@ mod tests {
             ),
             (
                 EventPayload::SeedRumorRequested {
+                    pending_id: "test-pending".into(),
                     topic: Some("t".into()),
                     seed_content: None,
                     reach: ReachPolicy::default(),
@@ -985,25 +999,32 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_key_routes_seed_request_by_topic_with_orphan_fallback() {
-        let with_topic = make_event(EventPayload::SeedRumorRequested {
+    fn aggregate_key_routes_seed_request_by_pending_id() {
+        // Step C3 사후 리뷰 C2: topic 유무와 무관하게 커맨드별 고유 `pending_id`로 분기.
+        let seed_a = make_event(EventPayload::SeedRumorRequested {
+            pending_id: "000000000001".into(),
             topic: Some("moorim-leader-change".into()),
             seed_content: None,
             reach: ReachPolicy::default(),
             origin: RumorOrigin::Seeded,
         });
-        assert_eq!(
-            with_topic.aggregate_key(),
-            AggregateKey::Rumor("moorim-leader-change".into())
-        );
-
-        let orphan = make_event(EventPayload::SeedRumorRequested {
+        let seed_b = make_event(EventPayload::SeedRumorRequested {
+            pending_id: "000000000002".into(),
             topic: None,
             seed_content: Some("떠도는 흉흉한 얘기".into()),
             reach: ReachPolicy::default(),
             origin: RumorOrigin::Authored { by: None },
         });
-        assert_eq!(orphan.aggregate_key(), AggregateKey::Rumor("orphan".into()));
+        assert_eq!(
+            seed_a.aggregate_key(),
+            AggregateKey::Rumor("pending-000000000001".into())
+        );
+        assert_eq!(
+            seed_b.aggregate_key(),
+            AggregateKey::Rumor("pending-000000000002".into())
+        );
+        // 서로 다른 시드가 같은 버킷에 모이지 않음 (이전엔 둘 다 "orphan" 또는 같은 topic).
+        assert_ne!(seed_a.aggregate_key(), seed_b.aggregate_key());
     }
 
     #[test]
