@@ -17,7 +17,6 @@
 //! `normalized_trust = (trust.value() + 1) / 2` 로 [-1, 1] → [0, 1] 매핑.
 //! 관계가 없으면 0.5 (중립)로 fallback.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
@@ -32,24 +31,19 @@ use crate::ports::MemoryStore;
 /// 청자의 관점에서 정보 전달 내용을 `MemoryEntry`로 저장하는 Inline 핸들러.
 pub struct TellingIngestionHandler {
     store: Arc<dyn MemoryStore>,
-    /// `mem-{NNNNNN}` 형식 엔트리 id 생성용 카운터. 프로세스 내에서 단조 증가.
-    /// 분산 환경·replay는 Step F 이후 §15 결정 유보 항목.
-    counter: Arc<AtomicU64>,
 }
 
 impl TellingIngestionHandler {
     pub fn new(store: Arc<dyn MemoryStore>) -> Self {
-        // 기존 store에 저장된 개수로 카운터 초기화 — 같은 프로세스 내 재시작 시 id 충돌 방지.
-        let start = store.count() as u64;
-        Self {
-            store,
-            counter: Arc::new(AtomicU64::new(start)),
-        }
+        Self { store }
     }
 
-    fn next_id(&self) -> String {
-        let n = self.counter.fetch_add(1, Ordering::SeqCst);
-        format!("mem-{n:06}")
+    /// 결정적 엔트리 id — `mem-{event_id:012}-{listener}` 형식.
+    ///
+    /// (event.id, listener) 쌍이 유일하므로 프로세스 재시작·replay·동시 쓰기 경로
+    /// 모두에서 id 충돌이 발생하지 않는다. `mem-` prefix는 기존 포맷과의 시각적 호환.
+    fn derive_id(event_id: u64, listener: &str) -> String {
+        format!("mem-{event_id:012}-{listener}")
     }
 }
 
@@ -76,10 +70,11 @@ impl EventHandler for TellingIngestionHandler {
         let EventPayload::InformationTold {
             speaker,
             listener,
-            listener_role: _,
+            listener_role: _, // TODO(step-d): Overhearer의 confidence 감쇠·관계 cause 분기 (리뷰 M2)
             claim,
             stated_confidence,
             origin_chain_in,
+            topic,
         } = &event.payload
         else {
             return Ok(HandlerResult::default());
@@ -101,7 +96,7 @@ impl EventHandler for TellingIngestionHandler {
             .unwrap_or(0.5);
         let confidence = (stated_confidence * normalized_trust).clamp(0.0, 1.0);
 
-        let id = self.next_id();
+        let id = Self::derive_id(event.id, listener);
         #[allow(deprecated)] // Grand-fathered Personal 투영 (§2.5 H10) — scope.owner_a()와 일치.
         let entry = MemoryEntry {
             id: id.clone(),
@@ -115,7 +110,7 @@ impl EventHandler for TellingIngestionHandler {
             memory_type: MemoryType::DialogueTurn,
             layer: MemoryLayer::A,
             content: claim.clone(),
-            topic: None,
+            topic: topic.clone(),
             emotional_context: None,
             timestamp_ms: event.timestamp_ms,
             last_recalled_at: None,
@@ -271,6 +266,7 @@ mod tests {
                 claim: "장문인이 바뀐다".into(),
                 stated_confidence: stated,
                 origin_chain_in: chain_in.iter().map(|s| s.to_string()).collect(),
+                topic: None,
             },
         )
     }

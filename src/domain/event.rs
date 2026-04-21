@@ -397,6 +397,9 @@ pub enum EventPayload {
         claim: String,
         stated_confidence: f32,
         origin_chain_in: Vec<String>,
+        /// 선택적 topic — Canonical 연결이나 Step D World 오버레이에서 사용될 수 있다.
+        #[serde(default)]
+        topic: Option<String>,
     },
 
     /// 청자 1명당 1 이벤트 (B5). N명 청자 → N개 follow-up.
@@ -408,6 +411,9 @@ pub enum EventPayload {
         claim: String,
         stated_confidence: f32,
         origin_chain_in: Vec<String>,
+        /// `TellInformationRequested`에서 그대로 전달된 topic. 청자의 `MemoryEntry.topic`이 된다.
+        #[serde(default)]
+        topic: Option<String>,
     },
 }
 
@@ -830,6 +836,7 @@ mod tests {
                     claim: "truth".into(),
                     stated_confidence: 1.0,
                     origin_chain_in: vec![],
+                    topic: None,
                 },
                 EventKind::TellInformationRequested,
                 "TellInformationRequested",
@@ -842,6 +849,7 @@ mod tests {
                     claim: "truth".into(),
                     stated_confidence: 1.0,
                     origin_chain_in: vec![],
+                    topic: None,
                 },
                 EventKind::InformationTold,
                 "InformationTold",
@@ -1008,6 +1016,7 @@ mod tests {
             claim: "맹주가 바뀐다".into(),
             stated_confidence: 0.8,
             origin_chain_in: vec!["sage".into()],
+            topic: None,
         });
         assert_eq!(req.aggregate_key(), AggregateKey::Npc("sage".into()));
 
@@ -1019,6 +1028,7 @@ mod tests {
             claim: "맹주가 바뀐다".into(),
             stated_confidence: 0.8,
             origin_chain_in: vec!["sage".into()],
+            topic: None,
         });
         assert_eq!(told.aggregate_key(), AggregateKey::Npc("pupil".into()));
     }

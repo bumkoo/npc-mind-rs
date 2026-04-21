@@ -57,16 +57,24 @@ impl EventHandler for InformationAgent {
             claim,
             stated_confidence,
             origin_chain_in,
+            topic,
         } = &event.payload
         else {
             return Ok(HandlerResult::default());
         };
 
-        // stated_confidence 방어적 클램프 — 외부 DTO는 자유로운 범위가 올 수 있다.
-        let stated = stated_confidence.clamp(0.0, 1.0);
+        // Dispatcher가 이미 [0, 1] clamp를 했으므로 여기서는 그대로 사용.
+        let stated = *stated_confidence;
 
+        // listeners ∩ overhearers 중복 제거 — 같은 NPC가 양쪽에 있으면 Direct가 우선 (§8.5
+        // "청자 1명당 MemoryEntry 1개"). 또한 한 쪽 내 중복(같은 ID 2회 포함)도 제거해
+        // 이중 기억이 만들어지지 않게 한다.
+        let mut seen = std::collections::HashSet::new();
         let mut follow_ups = Vec::with_capacity(listeners.len() + overhearers.len());
         for listener in listeners {
+            if !seen.insert(listener.as_str()) {
+                continue;
+            }
             follow_ups.push(DomainEvent::new(
                 0,
                 listener.clone(), // aggregate_id = 청자 — B5 라우팅 (§3.3)
@@ -78,10 +86,14 @@ impl EventHandler for InformationAgent {
                     claim: claim.clone(),
                     stated_confidence: stated,
                     origin_chain_in: origin_chain_in.clone(),
+                    topic: topic.clone(),
                 },
             ));
         }
         for listener in overhearers {
+            if !seen.insert(listener.as_str()) {
+                continue;
+            }
             follow_ups.push(DomainEvent::new(
                 0,
                 listener.clone(),
@@ -93,6 +105,7 @@ impl EventHandler for InformationAgent {
                     claim: claim.clone(),
                     stated_confidence: stated,
                     origin_chain_in: origin_chain_in.clone(),
+                    topic: topic.clone(),
                 },
             ));
         }
@@ -125,6 +138,7 @@ mod tests {
                 claim: "claim".into(),
                 stated_confidence: 0.8,
                 origin_chain_in: chain.iter().map(|s| s.to_string()).collect(),
+                topic: None,
             },
         )
     }
@@ -210,30 +224,38 @@ mod tests {
     }
 
     #[test]
-    fn stated_confidence_is_clamped_to_unit_range() {
+    fn duplicates_in_listeners_and_overhearers_are_deduped_direct_wins() {
         let agent = InformationAgent::new();
         let mut harness = HandlerTestHarness::new();
-        let event = DomainEvent::new(
-            0,
-            "sage".into(),
-            0,
-            EventPayload::TellInformationRequested {
-                speaker: "sage".into(),
-                listeners: vec!["p".into()],
-                overhearers: vec![],
-                claim: "c".into(),
-                stated_confidence: 1.5,
-                origin_chain_in: vec![],
-            },
-        );
+        // "pupil"이 listeners와 overhearers에 모두 있는 케이스 — Direct 하나만 발행.
+        let event = request_event("sage", &["pupil", "pupil"], &["pupil", "other"], &[]);
+
         let result = harness.dispatch(&agent, event).expect("must succeed");
-        let EventPayload::InformationTold {
-            stated_confidence, ..
-        } = &result.follow_up_events[0].payload
-        else {
-            panic!("expected InformationTold");
-        };
-        assert_eq!(*stated_confidence, 1.0);
+
+        // pupil 1개 (Direct) + other 1개 (Overhearer) = 2개
+        assert_eq!(result.follow_up_events.len(), 2);
+        let roles_by_listener: Vec<(String, ListenerRole)> = result
+            .follow_up_events
+            .iter()
+            .map(|ev| {
+                let EventPayload::InformationTold {
+                    listener,
+                    listener_role,
+                    ..
+                } = &ev.payload
+                else {
+                    unreachable!()
+                };
+                (listener.clone(), *listener_role)
+            })
+            .collect();
+        assert_eq!(
+            roles_by_listener,
+            vec![
+                ("pupil".into(), ListenerRole::Direct),
+                ("other".into(), ListenerRole::Overhearer),
+            ]
+        );
     }
 
     #[test]

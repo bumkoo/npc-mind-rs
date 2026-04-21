@@ -387,6 +387,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     claim: req.claim.clone(),
                     stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
                     origin_chain_in: req.origin_chain_in.clone(),
+                    topic: req.topic.clone(),
                 },
             )),
             Command::StartScene {
@@ -491,15 +492,21 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
     fn commit_staging_buffer(
         &self,
-        aggregate_key: &AggregateKey,
+        _command_key: &AggregateKey,
         staging: Vec<DomainEvent>,
     ) -> Vec<DomainEvent> {
-        let aggregate_id = aggregate_key.npc_id_hint().to_string();
+        // 각 이벤트의 aggregate_id는 **payload의 자기 aggregate_key**로 결정한다.
+        // 커맨드의 aggregate_key는 참고용이며 덮어쓰기에 쓰지 않는다 — 그래야
+        // `EventStore.get_events(listener)` 같은 청자 기반 질의가 §3.3 B5
+        // (`InformationTold → Npc(listener)`)를 정확히 반영한다. 기존 이벤트
+        // (EmotionAppraised·BeatTransitioned·RelationshipUpdated 등)는 payload의
+        // `npc_id_hint`가 커맨드의 것과 같아서 저장값이 변하지 않는다.
         let mut committed = Vec::with_capacity(staging.len());
         for event in staging {
+            let per_event_id = event.aggregate_key().npc_id_hint().to_string();
             let id = self.event_store.next_id();
-            let seq = self.event_store.next_sequence(&aggregate_id);
-            let mut e = DomainEvent::new(id, aggregate_id.clone(), seq, event.payload);
+            let seq = self.event_store.next_sequence(&per_event_id);
+            let mut e = DomainEvent::new(id, per_event_id, seq, event.payload);
             if let Some(cid) = self.current_correlation_id() {
                 e = e.with_correlation(cid);
             }
