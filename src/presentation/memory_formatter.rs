@@ -61,8 +61,17 @@ impl LocaleMemoryFramer {
         let mut labels: HashMap<String, FramingLabels> = HashMap::new();
         for code in ["ko", "en"] {
             if let Some(toml_str) = builtin_toml(code) {
-                if let Ok(root) = toml::from_str::<FramingRoot>(toml_str) {
-                    labels.insert(code.to_string(), root.memory.framing);
+                match toml::from_str::<FramingRoot>(toml_str) {
+                    Ok(root) => {
+                        labels.insert(code.to_string(), root.memory.framing);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "LocaleMemoryFramer: locale '{}' TOML에 [memory.framing] 파싱 실패 ({}) — raw content fallback",
+                            code,
+                            e
+                        );
+                    }
                 }
             }
         }

@@ -527,12 +527,19 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         }
 
         // 3) Ranker 적용 — 1단계 Source 우선 필터 + 2단계 5요소 점수
+        //
+        // 각 Candidate의 `embedding`은 **해당 엔트리 본인의 임베딩**이어야 1단계
+        // `cluster_by_embedding`이 의미있게 동작한다. 현재 `MemoryResult`는 엔트리
+        // 임베딩을 실어주지 않으므로, Topic 없는 후보는 각자 단독 클러스터가 되도록
+        // `None`을 전달한다. (쿼리 임베딩을 전부에 복사하면 모든 후보가 동일 클러스터로
+        // 묶여 source-priority 필터가 상위 source만 남기고 나머지를 부당하게 드롭한다.)
+        // Topic이 있는 후보는 어차피 Topic key로 그룹핑되므로 embedding은 사용되지 않는다.
         let candidates: Vec<Candidate> = results
             .into_iter()
             .map(|r| Candidate {
                 entry: r.entry,
                 vec_similarity: r.relevance_score,
-                embedding: query_embedding.clone(),
+                embedding: None,
             })
             .collect();
         let tau = DecayTauTable::default_table();

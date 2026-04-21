@@ -256,12 +256,13 @@ async fn injection_reapplied_on_beat_transition() {
         .await
         .expect("turn ok");
 
-    if !turn_out.beat_changed {
-        // 시나리오가 beat 전환을 트리거하지 않으면 본 테스트는 스킵 의미로 pass.
-        // (감정 엔진 재튜닝 시 트리거 조건이 달라질 수 있음)
-        eprintln!("beat_changed=false — 환경에서 트리거 조건 미충족, skip-style pass");
-        return;
-    }
+    // 시나리오는 Joy absent + 강한 부정 PAD로 "angry" focus가 반드시 트리거되도록
+    // 설계되었다. beat_changed=false면 튜닝 변동 / 엔진 회귀이므로 실패시켜 가시화한다.
+    assert!(
+        turn_out.beat_changed,
+        "테스트 시나리오는 Beat 전환을 보장해야 함 (강한 부정 PAD → Joy absent 트리거). \
+         엔진 튜닝 변동으로 더 이상 트리거되지 않으면 시나리오를 조정해야 함."
+    );
 
     // Beat 전환 시 UpdateSystemPrompt가 호출됐는지 확인
     let calls = calls.lock().unwrap();
