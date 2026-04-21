@@ -610,10 +610,10 @@ pub enum MindServiceError {
 
 ---
 
-## Memory API (Step A Foundation)
+## Memory API (Step A Foundation + Step B Injection)
 
-`docs/memory/03-implementation-design.md`의 Step A가 구현된 상태의 공개 API.
-Step B~D의 Rumor/Telling/Consolidation/WorldOverlay 관련 타입은 아직 미도입.
+`docs/memory/03-implementation-design.md`의 Step A·B가 구현된 상태의 공개 API.
+Step C~D의 Rumor/Telling/Consolidation/WorldOverlay 관련 타입은 아직 미도입.
 
 ### MemoryEntry — 기억 항목
 
@@ -717,12 +717,17 @@ pub enum MemoryType {
 
 ```rust
 pub trait MemoryStore: Send + Sync {
-    // 기존 5 메서드 — 호환 유지, Step B에서 #[deprecated] 예정
+    // `index` · `count` — 계속 권장 경로
     fn index(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>) -> Result<(), MemoryError>;
-    fn search_by_meaning(&self, query: &[f32], npc_id: Option<&str>, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
-    fn search_by_keyword(&self, kw: &str, npc_id: Option<&str>, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
-    fn get_recent(&self, npc_id: &str, limit: usize) -> Result<Vec<MemoryEntry>, MemoryError>;
     fn count(&self) -> usize;
+
+    // Step B에서 #[deprecated(since="0.4.0")] 마킹 — 신규 코드는 `search(MemoryQuery)` 사용.
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { embedding: Some(..), .. })")]
+    fn search_by_meaning(&self, query: &[f32], npc_id: Option<&str>, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { text: Some(..), .. })")]
+    fn search_by_keyword(&self, kw: &str, npc_id: Option<&str>, limit: usize) -> Result<Vec<MemoryResult>, MemoryError>;
+    #[deprecated(since = "0.4.0", note = "Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })")]
+    fn get_recent(&self, npc_id: &str, limit: usize) -> Result<Vec<MemoryEntry>, MemoryError>;
 
     // Step A 신규
     fn search(&self, query: MemoryQuery) -> Result<Vec<MemoryResult>, MemoryError>;
@@ -756,7 +761,7 @@ pub enum MemoryScopeFilter {
 }
 ```
 
-### MemoryRanker — 2단계 랭커 (도메인 순수 함수, 호출 경로는 Step B에서 연결)
+### MemoryRanker — 2단계 랭커 (도메인 순수 함수)
 
 ```rust
 use npc_mind::domain::memory::ranker::{MemoryRanker, DecayTauTable, Candidate, RankQuery, RankedEntry};
@@ -767,6 +772,68 @@ let ranked: Vec<RankedEntry> = ranker.rank(candidates, &query, now_ms);
 // 1단계: Topic/클러스터별 min(source.priority()) 필터
 // 2단계: vec_similarity × retention × source_confidence × emotion_proximity × temporal_recency
 ```
+
+Step B에서 `DialogueAgent::with_memory(store, framer)`가 활성화되면
+`inject_memory_push`가 위 Ranker를 호출해 시스템 프롬프트 prepend용 블록을 만든다 (아래 참조).
+
+### MemoryFramer — 기억 엔트리 → 프롬프트 블록 (Step B)
+
+```rust
+pub trait MemoryFramer: Send + Sync {
+    /// 단일 엔트리를 source별 라벨로 포맷 (예: "[겪음] content").
+    fn frame(&self, entry: &MemoryEntry, locale: &str) -> String;
+    /// header/footer + 엔트리 줄바꿈 결합. 빈 slice → 빈 문자열.
+    fn frame_block(&self, entries: &[MemoryEntry], locale: &str) -> String;
+}
+```
+
+**기본 구현 `LocaleMemoryFramer`** (`presentation/memory_formatter.rs`):
+- `LocaleMemoryFramer::new()` — 빌트인 `[memory.framing]` ko/en 자동 로드.
+- `with_locale_toml(locale, toml_str)` — 외부 TOML 추가.
+- `with_default_locale(locale)` — fallback locale 변경 (기본 `"ko"`).
+
+**Locale TOML 스키마** (`locales/ko.toml`):
+```toml
+[memory.framing]
+experienced = "[겪음] {content}"
+witnessed   = "[목격] {content}"
+heard       = "[전해 들음] {content}"
+rumor       = "[강호에 떠도는 소문] {content}"
+
+[memory.framing.block]
+header = "\n# 떠오르는 기억\n"
+footer = "\n"
+```
+
+영어 locale은 `[Experienced] / [Witnessed] / [Heard] / [Rumor]` + `# Recollections` 헤더.
+
+### DialogueAgent::with_memory — 프롬프트 주입 활성화 (Step B, [chat feature])
+
+```rust
+use std::sync::Arc;
+use npc_mind::ports::{MemoryFramer, MemoryStore};
+use npc_mind::presentation::memory_formatter::LocaleMemoryFramer;
+
+let store: Arc<dyn MemoryStore> = ...;
+let framer: Arc<dyn MemoryFramer> = Arc::new(LocaleMemoryFramer::new());
+
+let agent = DialogueAgent::new(dispatcher, chat, formatter)
+    .with_memory(store, framer)              // Opt-in
+    .with_memory_locale("ko");               // 기본 "ko"
+```
+
+활성화 시 동작 (미부착 시 모든 훅 no-op):
+- `start_session` 1회: `situation.description`(없으면 `partner_id`)을 쿼리로 검색·랭킹·포맷,
+  appraise 프롬프트 앞에 prepend.
+- `BeatTransitioned` 발생 시: user utterance + listener-converted PAD를 쿼리로 재구성,
+  `update_system_prompt` 직전에 prepend.
+
+**검색 설정** (코드 고정):
+- `MemoryScopeFilter::NpcAllowed(npc_id)` (Personal + World + Relationship 참여).
+- `exclude_superseded: true`, `exclude_consolidated_source: true`.
+- `min_retention: MEMORY_RETENTION_CUTOFF (0.10)`.
+- 검색 limit `MEMORY_PUSH_TOP_K * 3`로 oversample → Ranker가 `MEMORY_PUSH_TOP_K=5`로 컷.
+- 결과 엔트리에 `record_recall(id, now_ms)` 호출 (best-effort, 실패는 debug 로그만).
 
 ### RelationshipUpdated 이벤트 — `cause` 필드 추가 (A8 hook)
 

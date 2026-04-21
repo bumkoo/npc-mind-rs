@@ -1073,7 +1073,7 @@ pub enum StateEvent {
   (Step C), `SceneConsolidationHandler`·`WorldOverlayAgent` (Step D), 이벤트 신규 variant
   (`MemoryEntryCreated` 등 — Step C/D), Rumor 테이블은 빈 상태로 선제 생성만.
 
-### Step B — Injection & Framing
+### Step B — Injection & Framing ✅ 완료 (Core only)
 
 **범위**: `MemoryFramer` + locale 섹션 추가, `DialogueAgent.inject_memory_push()`, Push 경로 온. Pull(`recall_memory` tool)은 feature-gated off. 구 `search_by_meaning`/`search_by_keyword` deprecated 마킹.
 
@@ -1083,6 +1083,30 @@ pub enum StateEvent {
 - `memory_injection_test` green
 - Mind Studio 프롬프트 미리보기에 기억 블록 하이라이트 + Ranker 점수 tooltip
 - 샘플 시나리오로 LLM 대화 시 주입 동작 수동 검증
+
+**구현 결과** (commit `43cef24` + `17f0cd7`):
+- 구현 파일: `src/ports.rs`(MemoryFramer trait + 구 메서드 deprecation),
+  `src/presentation/memory_formatter.rs`(신규 LocaleMemoryFramer),
+  `locales/ko.toml` + `locales/en.toml`([memory.framing] 섹션),
+  `src/application/dialogue_agent.rs`(with_memory + inject_memory_push + 훅),
+  `tests/memory_injection_test.rs`(신규).
+- 사용자 승인 결정: 범위는 **Core only** (Mind Studio UI는 Step E로 분리).
+  재주입 시점은 `start_session` 1회 + `BeatTransitioned` 발생 시 (매 turn 옵션은 Step F).
+- 신규 단위/통합 테스트 10건: LocaleMemoryFramer 7개(ko/en source variants, block
+  empty/assemble, 미지원 locale fallback, raw content fallback) + memory_injection_test
+  3개(start_session prepend, with_memory 미부착 no-op, BeatTransitioned 재주입).
+- `start_session` 쿼리: `situation.description`(없으면 `partner_id`).
+- `turn` 쿼리: user utterance + listener-converted PAD.
+- `Candidate.embedding`은 `None`으로 전달 — 엔트리 자체 임베딩이 `MemoryResult`에 없으므로
+  topic-less 후보가 단독 클러스터가 되어 source-priority 필터의 부당한 드롭을 방지 (리뷰
+  대응). 엔트리 임베딩 전달은 `MemoryResult` 스키마 확장(Step C/D)에서 보강 예정.
+- Step B 범위 **외**:
+  - **Mind Studio 프롬프트 미리보기 UI** → Step E (Mind Studio 편집 기능)
+  - **Pull 경로 (`recall_memory` tool)** + 매 turn 재주입 → Step F (Phase 5)
+  - **`SqliteMemoryStore::search`의 vec0 통합** (현재 `relevance_score=1.0` 하드코딩,
+    semantic 검증은 InMemoryStore에서만) → 후속 작업
+  - **`record_recall` 세션 내 dedup** → Step C/D 명시적 Command 경로 도입 시
+  - 구 `MemoryStore` 메서드 완전 제거 → Step D 이후
 
 ### Step C — Telling & Rumor Seeding
 

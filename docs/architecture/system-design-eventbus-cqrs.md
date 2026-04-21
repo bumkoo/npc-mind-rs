@@ -935,13 +935,17 @@ impl ToolRegistry {
 ## 9. RAG 설계 (게임 내 히스토리)
 
 > **구현 현황 (2026-04 기준)**: Phase 3(MemoryAgent + SqliteMemoryStore + FTS5 + sqlite-vec
-> vec0) + **Memory Step A Foundation** 완료. Step A에서 `MemoryScope`/`MemorySource`/
-> `Provenance`/`MemoryLayer` VO 도입, `MemoryEntry` 13 필드 확장, `MemoryRanker` 2단계
-> 랭커, SQLite v2 자동 마이그레이션이 추가되었다. 본 §9의 초기 `MemoryEntry`/`MemoryStore`
-> 스케치(§9.2)는 역사 문서로 남기고, **실제 시그니처는 [`docs/api/api-reference.md`의
-> Memory API 섹션](../api/api-reference.md#memory-api-step-a-foundation)**과
+> vec0) + **Memory Step A Foundation** + **Memory Step B Injection** 완료.
+> Step A에서 `MemoryScope`/`MemorySource`/`Provenance`/`MemoryLayer` VO, `MemoryEntry`
+> 13 필드 확장, `MemoryRanker` 2단계 랭커, SQLite v2 자동 마이그레이션이 추가됐고,
+> **Step B**에서 `MemoryFramer` trait + `LocaleMemoryFramer` + `[memory.framing]` locale
+> 섹션 + `DialogueAgent::with_memory()` opt-in이 추가되어 LLM 시스템 프롬프트에
+> "떠오르는 기억" 블록이 prepend된다 (Source별 라벨 차등 + Top-K Ranker 적용).
+> 본 §9의 초기 `MemoryEntry`/`MemoryStore` 스케치(§9.2)는 역사 문서로 남기고, **실제
+> 시그니처는 [`docs/api/api-reference.md`의 Memory API 섹션](../api/api-reference.md#memory-api-step-a-foundation--step-b-injection)**과
 > [`docs/memory/03-implementation-design.md`](../memory/03-implementation-design.md)를
-> 정본으로 한다. Step B(주입) · C(Telling/Rumor) · D(Consolidation/WorldOverlay)는 미구현.
+> 정본으로 한다. Step C(Telling/Rumor) · D(Consolidation/WorldOverlay) · E(Mind Studio
+> 미리보기 UI) · F(Pull/recall_memory tool, 매 turn 재주입)는 미구현.
 
 ### 9.1 인덱싱 대상
 
