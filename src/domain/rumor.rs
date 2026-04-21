@@ -136,6 +136,11 @@ pub enum RumorError {
 
     #[error("중복된 hop_index: {index}")]
     DuplicateHopIndex { index: u32 },
+
+    #[error(
+        "RumorHop.content_version '{cv}'이 이 rumor의 distortion 목록에 없다 (참조 무결성 위반)"
+    )]
+    HopContentVersionUnknown { cv: String },
 }
 
 impl Rumor {
@@ -228,8 +233,14 @@ impl Rumor {
         self.hops.last().map(|h| h.hop_index + 1).unwrap_or(0)
     }
 
-    /// 새 홉 추가 — I-RU-1 (단조 증가) 강제.
+    /// 새 홉 추가 — I-RU-1 (단조 증가) + content_version 참조 무결성 강제.
     pub fn add_hop(&mut self, hop: RumorHop) -> Result<(), RumorError> {
+        // content_version이 있으면 distortions에 실존해야 한다 (참조 무결성).
+        if let Some(cv) = &hop.content_version {
+            if !self.distortions.iter().any(|d| &d.id == cv) {
+                return Err(RumorError::HopContentVersionUnknown { cv: cv.clone() });
+            }
+        }
         if let Some(last) = self.hops.last() {
             if hop.hop_index <= last.hop_index {
                 return Err(RumorError::HopIndexNotMonotonic {
@@ -238,7 +249,7 @@ impl Rumor {
                 });
             }
         }
-        // 동일 hop_index 중복 방지 (hops는 빈 상태에서도 단조성 외 검사).
+        // 동일 hop_index 중복 방지 (last 이후 추가되는 hop이라도 중간 삽입 시 걸러냄).
         if self.hops.iter().any(|h| h.hop_index == hop.hop_index) {
             return Err(RumorError::DuplicateHopIndex {
                 index: hop.hop_index,
@@ -267,9 +278,8 @@ impl Rumor {
                     parent: parent.clone(),
                 });
             }
-            // 기존 distortion 그래프가 이미 비순환이라면, 새 노드를 잎으로 붙일 때
-            // 새 id가 기존 어느 조상 체인에도 나올 수 없으므로 추가 순환 검사는 불필요.
-            // (distortion id 유일성은 위에서 이미 검증.)
+            // 순환 검사 불필요: 신규 id는 중복 검사를 이미 통과했으므로 기존 조상 체인에
+            // 존재하지 않는다. 기존 distortions가 비순환이면 잎으로 붙여도 비순환 유지.
         }
         self.distortions.push(distortion);
         Ok(())
@@ -320,21 +330,34 @@ impl Rumor {
         }
 
         // I-RU-2: distortion DAG 비순환 + parent 존재.
+        //
+        // 불변식: parent는 반드시 목록에서 **앞**에 나와야 한다 (토폴로지 정렬).
+        // parent가 뒤에 있으면 = 순환 의심 (둘 이상의 노드가 서로를 참조). `add_distortion`이
+        // 순차 추가만 허용하므로 위배는 `from_parts`로 저장된 데이터를 로드할 때만 발생.
         for (i, d) in self.distortions.iter().enumerate() {
             if let Some(parent) = &d.parent {
                 if parent == &d.id {
                     return Err(RumorError::DistortionSelfParent { id: d.id.clone() });
                 }
-                let parent_idx = self.distortions[..i].iter().position(|p| &p.id == parent);
-                if parent_idx.is_none() {
-                    // parent가 자기 뒤에 있거나 아예 없는 경우 — DAG 위배 가능성.
-                    if !self.distortions.iter().any(|p| &p.id == parent) {
-                        return Err(RumorError::DistortionParentNotFound {
-                            child: d.id.clone(),
-                            parent: parent.clone(),
-                        });
-                    }
-                    // parent가 뒤에 있다면 저장 순서가 DAG 순서와 어긋남 — 회피 검사.
+                if self.distortions[..i].iter().any(|p| &p.id == parent) {
+                    continue; // OK — parent가 앞에 있음
+                }
+                // 앞에 없음: 뒤에 있는지 / 아예 없는지 분기
+                if self.distortions[i + 1..].iter().any(|p| &p.id == parent) {
+                    return Err(RumorError::DistortionCycle { id: d.id.clone() });
+                }
+                return Err(RumorError::DistortionParentNotFound {
+                    child: d.id.clone(),
+                    parent: parent.clone(),
+                });
+            }
+        }
+
+        // RumorHop.content_version 참조 무결성.
+        for h in &self.hops {
+            if let Some(cv) = &h.content_version {
+                if !self.distortions.iter().any(|d| &d.id == cv) {
+                    return Err(RumorError::HopContentVersionUnknown { cv: cv.clone() });
                 }
             }
         }
@@ -349,8 +372,11 @@ impl Rumor {
 
     /// 저장소 로드용 — 원시 필드로 Rumor 재구성. 불변식 검증 포함.
     ///
-    /// `hops`는 hop_index 오름차순으로 주어져야 한다.
-    pub fn from_parts(
+    /// `hops`는 hop_index 오름차순으로, `distortions`는 토폴로지 순서(부모 먼저)로
+    /// 주어져야 한다. 이 메서드는 **저장소 재구성 전용**이며 `transition_to`의
+    /// 단방향 규칙(I-RU-3)을 우회한다 — 외부 consumer가 악용하지 못하도록
+    /// `pub(crate)`로 제한한다.
+    pub(crate) fn from_parts(
         id: String,
         topic: Option<String>,
         seed_content: Option<String>,
@@ -602,6 +628,169 @@ mod tests {
     }
 
     #[test]
+    fn from_parts_detects_two_node_cycle() {
+        // d1 → d2 → d1 (상호 참조) — 토폴로지 정렬 불가능
+        let err = Rumor::from_parts(
+            "r1".into(),
+            Some("t".into()),
+            None,
+            RumorOrigin::Seeded,
+            empty_reach(),
+            vec![],
+            vec![
+                RumorDistortion {
+                    id: "d1".into(),
+                    parent: Some("d2".into()),
+                    content: "a".into(),
+                    created_at: 1,
+                },
+                RumorDistortion {
+                    id: "d2".into(),
+                    parent: Some("d1".into()),
+                    content: "b".into(),
+                    created_at: 2,
+                },
+            ],
+            0,
+            RumorStatus::Active,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, RumorError::DistortionCycle { .. }),
+            "2-node cycle must be caught, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn from_parts_detects_three_node_cycle() {
+        // d1 → d2 → d3 → d1
+        let err = Rumor::from_parts(
+            "r1".into(),
+            Some("t".into()),
+            None,
+            RumorOrigin::Seeded,
+            empty_reach(),
+            vec![],
+            vec![
+                RumorDistortion {
+                    id: "d1".into(),
+                    parent: Some("d3".into()),
+                    content: "a".into(),
+                    created_at: 1,
+                },
+                RumorDistortion {
+                    id: "d2".into(),
+                    parent: Some("d1".into()),
+                    content: "b".into(),
+                    created_at: 2,
+                },
+                RumorDistortion {
+                    id: "d3".into(),
+                    parent: Some("d2".into()),
+                    content: "c".into(),
+                    created_at: 3,
+                },
+            ],
+            0,
+            RumorStatus::Active,
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, RumorError::DistortionCycle { .. }),
+            "3-node cycle must be caught, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn from_parts_accepts_valid_topological_order() {
+        // d1 (root) → d2 → d3 순서대로 저장된 정상 DAG
+        let r = Rumor::from_parts(
+            "r1".into(),
+            Some("t".into()),
+            None,
+            RumorOrigin::Seeded,
+            empty_reach(),
+            vec![],
+            vec![
+                RumorDistortion {
+                    id: "d1".into(),
+                    parent: None,
+                    content: "root".into(),
+                    created_at: 1,
+                },
+                RumorDistortion {
+                    id: "d2".into(),
+                    parent: Some("d1".into()),
+                    content: "child".into(),
+                    created_at: 2,
+                },
+                RumorDistortion {
+                    id: "d3".into(),
+                    parent: Some("d2".into()),
+                    content: "grandchild".into(),
+                    created_at: 3,
+                },
+            ],
+            0,
+            RumorStatus::Active,
+        )
+        .unwrap();
+        assert_eq!(r.distortions().len(), 3);
+    }
+
+    #[test]
+    fn add_hop_rejects_unknown_content_version() {
+        let mut r = Rumor::new("r1", "t", RumorOrigin::Seeded, empty_reach(), 0);
+        let err = r
+            .add_hop(RumorHop {
+                hop_index: 0,
+                content_version: Some("ghost".into()),
+                recipients: vec!["a".into()],
+                spread_at: 1,
+            })
+            .unwrap_err();
+        assert!(matches!(err, RumorError::HopContentVersionUnknown { .. }));
+
+        // distortion 추가 후에는 같은 id를 참조하는 hop이 통과
+        r.add_distortion(RumorDistortion {
+            id: "d1".into(),
+            parent: None,
+            content: "a".into(),
+            created_at: 2,
+        })
+        .unwrap();
+        r.add_hop(RumorHop {
+            hop_index: 0,
+            content_version: Some("d1".into()),
+            recipients: vec!["a".into()],
+            spread_at: 3,
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn from_parts_rejects_unknown_content_version() {
+        let err = Rumor::from_parts(
+            "r1".into(),
+            Some("t".into()),
+            None,
+            RumorOrigin::Seeded,
+            empty_reach(),
+            vec![RumorHop {
+                hop_index: 0,
+                content_version: Some("ghost".into()),
+                recipients: vec![],
+                spread_at: 1,
+            }],
+            vec![],
+            0,
+            RumorStatus::Active,
+        )
+        .unwrap_err();
+        assert!(matches!(err, RumorError::HopContentVersionUnknown { .. }));
+    }
+
+    #[test]
     fn serde_roundtrip_preserves_status_and_origin_tag() {
         let mut r = Rumor::with_forecast_content(
             "r1",
@@ -616,18 +805,19 @@ mod tests {
             },
             123,
         );
-        r.add_hop(RumorHop {
-            hop_index: 0,
-            content_version: Some("d1".into()),
-            recipients: vec!["npc-a".into()],
-            spread_at: 200,
-        })
-        .unwrap();
+        // distortion이 먼저 추가되어야 content_version 참조 무결성을 만족.
         r.add_distortion(RumorDistortion {
             id: "d1".into(),
             parent: None,
             content: "변형".into(),
             created_at: 150,
+        })
+        .unwrap();
+        r.add_hop(RumorHop {
+            hop_index: 0,
+            content_version: Some("d1".into()),
+            recipients: vec!["npc-a".into()],
+            spread_at: 200,
         })
         .unwrap();
 

@@ -249,8 +249,9 @@ fn sqlite_file_backed_roundtrip() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn sqlite_schema_meta_recorded_as_v2() {
-    // 신규 DB 생성 직후 schema_meta에 version=2가 기록되어야 한다.
+fn sqlite_schema_meta_recorded_as_current_version() {
+    // 신규 DB 생성 직후 schema_meta에 최신 버전이 기록되어야 한다.
+    // v3 = rumor_distortions composite PK 이후 (Step C1 사후 리뷰 대응).
     let tmp = tempfile::tempdir().unwrap();
     let db_path = tmp.path().join("mem.db");
     {
@@ -261,7 +262,57 @@ fn sqlite_schema_meta_recorded_as_v2() {
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM schema_meta", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, 3);
+}
+
+#[test]
+fn sqlite_v3_rumor_distortions_has_composite_primary_key() {
+    // rumor_distortions는 `PRIMARY KEY (rumor_id, id)` — 서로 다른 rumor에 같은
+    // distortion id가 충돌 없이 공존해야 Step C3 이후 안전.
+    let tmp = tempfile::tempdir().unwrap();
+    let db_path = tmp.path().join("mem.db");
+    {
+        let _store =
+            SqliteMemoryStore::with_dim(db_path.to_str().unwrap(), TEST_DIM).unwrap();
+    }
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+    conn.execute(
+        "INSERT INTO rumors (id, origin_kind, reach_min_significance, created_at) \
+         VALUES ('r1', 'seeded', 0.0, 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO rumors (id, origin_kind, reach_min_significance, created_at) \
+         VALUES ('r2', 'seeded', 0.0, 0)",
+        [],
+    )
+    .unwrap();
+    conn.execute(
+        "INSERT INTO rumor_distortions (id, rumor_id, parent, content, created_at) \
+         VALUES ('d1', 'r1', NULL, 'v1', 0)",
+        [],
+    )
+    .unwrap();
+    // 같은 id "d1"이지만 rumor_id가 달라 composite PK 기준 별개 — 통과해야 함.
+    conn.execute(
+        "INSERT INTO rumor_distortions (id, rumor_id, parent, content, created_at) \
+         VALUES ('d1', 'r2', NULL, 'v2', 0)",
+        [],
+    )
+    .expect("composite PK must allow same distortion id across different rumors");
+
+    // 같은 (rumor_id, id)는 거부되어야 함.
+    let dup = conn.execute(
+        "INSERT INTO rumor_distortions (id, rumor_id, parent, content, created_at) \
+         VALUES ('d1', 'r1', NULL, 'dup', 0)",
+        [],
+    );
+    assert!(
+        dup.is_err(),
+        "composite PK must reject same (rumor_id, id) duplicate"
+    );
 }
 
 #[test]

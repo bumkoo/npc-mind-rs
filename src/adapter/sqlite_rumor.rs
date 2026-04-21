@@ -44,8 +44,12 @@ impl SqliteRumorStore {
         Ok(store)
     }
 
-    /// `CREATE TABLE IF NOT EXISTS`로 rumor 3종 + 인덱스 보장.
-    /// 스키마는 `SqliteMemoryStore::migrate_v2`와 동일하며 idempotent.
+    /// `CREATE TABLE IF NOT EXISTS`로 rumor 3종 + 인덱스 보장. Idempotent.
+    ///
+    /// 스키마는 schema v3 형식. `SqliteMemoryStore::migrate_v2` + `migrate_v3`가 같은
+    /// 테이블을 만들고 PK를 composite로 올리는데, 여기서는 처음부터 composite PK로 만든다.
+    /// 같은 DB 파일에서 두 스토어가 공존하면 `CREATE IF NOT EXISTS`가 no-op이 되므로
+    /// 스키마 불일치가 발생하지 않는다.
     fn init_tables(&self) -> Result<(), MemoryError> {
         let conn = self.conn.lock().unwrap();
         conn.execute_batch(
@@ -71,11 +75,12 @@ impl SqliteRumorStore {
                 PRIMARY KEY (rumor_id, hop_index)
             );
             CREATE TABLE IF NOT EXISTS rumor_distortions (
-                id TEXT PRIMARY KEY,
+                id TEXT NOT NULL,
                 rumor_id TEXT NOT NULL REFERENCES rumors(id),
-                parent TEXT REFERENCES rumor_distortions(id),
+                parent TEXT,
                 content TEXT NOT NULL,
-                created_at INTEGER NOT NULL
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (rumor_id, id)
             );
             CREATE INDEX IF NOT EXISTS idx_rumors_topic ON rumors(topic) WHERE topic IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_rumors_status ON rumors(status);",
@@ -236,15 +241,11 @@ impl RumorStore for SqliteRumorStore {
 
     fn find_by_topic(&self, topic: &str) -> Result<Vec<Rumor>, MemoryError> {
         let conn = self.conn.lock().unwrap();
-        let ids: Vec<String> = {
-            let mut stmt = conn
-                .prepare("SELECT id FROM rumors WHERE topic = ?")
-                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-            let rows = stmt
-                .query_map(params![topic], |r| r.get::<_, String>(0))
-                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
+        let ids = collect_ids(
+            &conn,
+            "SELECT id FROM rumors WHERE topic = ?",
+            params![topic],
+        )?;
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {
             if let Some(r) = load_internal(&conn, &id)? {
@@ -255,19 +256,16 @@ impl RumorStore for SqliteRumorStore {
     }
 
     fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError> {
-        // Step C1 단순 구현: 'active' status 전체를 불러와 ReachPolicy 필터를 메모리에서 적용.
-        // 대규모 이전 단계에서는 SQL-level 조인이 바람직하지만 현재 rumor 개수 스케일에서는 충분.
-        // Step C3에서 인덱스 추가 + 범위 쿼리화 계획.
+        // Step C1 단순 구현: 'active' / 'fading' status 전체를 불러와 ReachPolicy 필터를
+        // 메모리에서 적용. Fading은 아직 완전히 죽지 않았으므로 도달 가능 (리뷰 M6 결정).
+        // 대규모 이전 단계에서는 SQL-level 조인이 바람직하지만 현재 rumor 개수 스케일에서는
+        // 충분. Step C3에서 인덱스 추가 + 범위 쿼리화 계획.
         let conn = self.conn.lock().unwrap();
-        let ids: Vec<String> = {
-            let mut stmt = conn
-                .prepare("SELECT id FROM rumors WHERE status = 'active'")
-                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-            let rows = stmt
-                .query_map([], |r| r.get::<_, String>(0))
-                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-            rows.filter_map(|r| r.ok()).collect()
-        };
+        let ids = collect_ids(
+            &conn,
+            "SELECT id FROM rumors WHERE status IN ('active', 'fading')",
+            params![],
+        )?;
         let mut out = Vec::new();
         for id in ids {
             if let Some(r) = load_internal(&conn, &id)? {
@@ -280,10 +278,32 @@ impl RumorStore for SqliteRumorStore {
     }
 }
 
+/// 단일 컬럼(id) 쿼리를 실행해 `Vec<String>`로 수집. 각 row 파싱 실패를 에러로 전파.
+fn collect_ids(
+    conn: &Connection,
+    sql: &str,
+    params: impl rusqlite::Params,
+) -> Result<Vec<String>, MemoryError> {
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+    let rows = stmt
+        .query_map(params, |r| r.get::<_, String>(0))
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+    let mut out = Vec::new();
+    for row in rows {
+        out.push(row.map_err(|e| MemoryError::StorageError(e.to_string()))?);
+    }
+    Ok(out)
+}
+
 /// 주어진 두 reach가 "도달 중첩"을 가지는지 판정.
 ///
-/// 한 축이라도 교집합이 있으면 overlap. 양쪽 모두 비어 있는 축은 "제한 없음"으로 취급.
-/// min_significance는 문의 reach의 하한이 rumor의 min_significance 이하여야 통과.
+/// - regions/factions/npc_ids: 한 축이라도 교집합이 있거나 양쪽이 비어 있으면 통과
+///   (빈 vec = "이 축은 제한 없음").
+/// - min_significance: **rumor가 설정한 하한을 query가 만족해야** 통과한다.
+///   즉 rumor의 "이 정도 유의미성이 있어야 전파될 가치"라는 기준을 query가 충족하려면
+///   `query.min_significance >= rumor.min_significance`이어야 한다.
 fn reach_overlaps(query: &ReachPolicy, rumor: &ReachPolicy) -> bool {
     let region_ok = query.regions.is_empty()
         || rumor.regions.is_empty()
@@ -294,36 +314,39 @@ fn reach_overlaps(query: &ReachPolicy, rumor: &ReachPolicy) -> bool {
     let npc_ok = query.npc_ids.is_empty()
         || rumor.npc_ids.is_empty()
         || query.npc_ids.iter().any(|n| rumor.npc_ids.contains(n));
-    let sig_ok = query.min_significance <= rumor.min_significance.max(f32::MIN_POSITIVE * 0.0)
-        || query.min_significance <= 0.0;
+    let sig_ok = query.min_significance >= rumor.min_significance;
     region_ok && faction_ok && npc_ok && sig_ok
 }
 
 fn load_internal(conn: &Connection, id: &str) -> Result<Option<Rumor>, MemoryError> {
-    let row = conn
-        .query_row(
-            "SELECT id, topic, seed_content, origin_kind, origin_ref,
-                    reach_regions, reach_factions, reach_npc_ids, reach_min_significance,
-                    status, created_at
-             FROM rumors WHERE id = ?",
-            params![id],
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, Option<String>>(1)?,
-                    r.get::<_, Option<String>>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, Option<String>>(4)?,
-                    r.get::<_, Option<String>>(5)?,
-                    r.get::<_, Option<String>>(6)?,
-                    r.get::<_, Option<String>>(7)?,
-                    r.get::<_, Option<f64>>(8)?,
-                    r.get::<_, String>(9)?,
-                    r.get::<_, i64>(10)?,
-                ))
-            },
-        )
-        .ok();
+    // QueryReturnedNoRows만 None으로 승격하고, 나머지 SQL 오류는 전파한다.
+    // `.ok()` 패턴은 스키마 불일치·락·I/O 오류까지 조용히 None으로 묻어 디버깅을 방해했다.
+    let row = match conn.query_row(
+        "SELECT id, topic, seed_content, origin_kind, origin_ref,
+                reach_regions, reach_factions, reach_npc_ids, reach_min_significance,
+                status, created_at
+         FROM rumors WHERE id = ?",
+        params![id],
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<String>>(1)?,
+                r.get::<_, Option<String>>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, Option<String>>(4)?,
+                r.get::<_, Option<String>>(5)?,
+                r.get::<_, Option<String>>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<f64>>(8)?,
+                r.get::<_, String>(9)?,
+                r.get::<_, i64>(10)?,
+            ))
+        },
+    ) {
+        Ok(v) => Some(v),
+        Err(rusqlite::Error::QueryReturnedNoRows) => None,
+        Err(e) => return Err(MemoryError::StorageError(e.to_string())),
+    };
 
     let Some((
         id,
@@ -369,7 +392,13 @@ fn load_internal(conn: &Connection, id: &str) -> Result<Option<Rumor>, MemoryErr
                 })
             })
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-        rows.filter_map(|r| r.ok()).collect()
+        // row 파싱 실패를 조용히 드롭하지 않고 에러로 전파 — hop 개수 불일치로 인한
+        // 불변식 위반을 묻어버리는 일을 방지.
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| MemoryError::StorageError(e.to_string()))?);
+        }
+        out
     };
 
     // Distortions — created_at 오름차순 (DAG 순서 보장을 위해 부모가 먼저 저장되어야 함)
@@ -390,7 +419,11 @@ fn load_internal(conn: &Connection, id: &str) -> Result<Option<Rumor>, MemoryErr
                 })
             })
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-        rows.filter_map(|r| r.ok()).collect()
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row.map_err(|e| MemoryError::StorageError(e.to_string()))?);
+        }
+        out
     };
 
     let rumor = Rumor::from_parts(
@@ -413,9 +446,9 @@ fn load_internal(conn: &Connection, id: &str) -> Result<Option<Rumor>, MemoryErr
 mod tests {
     use super::*;
 
-    /// 테스트용 샘플 rumor. distortion id는 rumor id로 prefix되어 전역 UNIQUE를 만족한다.
+    /// 테스트용 샘플 rumor. distortion id는 rumor 내부에서만 유일하면 된다 (schema v3의
+    /// composite PK `(rumor_id, id)` 덕분).
     fn sample_rumor(id: &str) -> Rumor {
-        let d1 = format!("{id}:d1");
         let mut r = Rumor::with_forecast_content(
             id,
             "moorim-leader-change",
@@ -432,7 +465,7 @@ mod tests {
             100,
         );
         r.add_distortion(RumorDistortion {
-            id: d1.clone(),
+            id: "d1".into(),
             parent: None,
             content: "순한 버전".into(),
             created_at: 110,
@@ -440,7 +473,7 @@ mod tests {
         .unwrap();
         r.add_hop(RumorHop {
             hop_index: 0,
-            content_version: Some(d1),
+            content_version: Some("d1".into()),
             recipients: vec!["npc-a".into(), "npc-b".into()],
             spread_at: 120,
         })
@@ -470,19 +503,17 @@ mod tests {
         let mut r = sample_rumor("r-upsert");
         store.save(&r).unwrap();
 
-        let d1 = "r-upsert:d1".to_string();
-        let d2 = "r-upsert:d2".to_string();
         // 새 홉 추가 후 재저장
         r.add_distortion(RumorDistortion {
-            id: d2.clone(),
-            parent: Some(d1),
+            id: "d2".into(),
+            parent: Some("d1".into()),
             content: "더 과장된 버전".into(),
             created_at: 200,
         })
         .unwrap();
         r.add_hop(RumorHop {
             hop_index: 1,
-            content_version: Some(d2),
+            content_version: Some("d2".into()),
             recipients: vec!["npc-c".into()],
             spread_at: 210,
         })
@@ -527,15 +558,12 @@ mod tests {
     fn find_active_in_reach_excludes_faded_and_applies_overlap() {
         let store = SqliteRumorStore::in_memory().unwrap();
 
-        let mut active = sample_rumor("r-active");
+        let active = sample_rumor("r-active");
         let mut faded = sample_rumor("r-faded");
         faded.transition_to(RumorStatus::Faded).unwrap();
         let mut elsewhere = sample_rumor("r-elsewhere");
         elsewhere.reach_policy.regions = vec!["frontier".into()];
         elsewhere.reach_policy.factions = vec!["sapa".into()];
-
-        // active 소문 하나 더 — 지역은 중첩 없지만 faction은 중첩
-        active.reach_policy.regions = vec!["central".into()];
 
         store.save(&active).unwrap();
         store.save(&faded).unwrap();
@@ -545,7 +573,8 @@ mod tests {
             regions: vec!["central".into()],
             factions: vec![],
             npc_ids: vec![],
-            min_significance: 0.0,
+            // sample_rumor(r-active)의 min_significance=0.3을 만족하려면 query도 >= 0.3.
+            min_significance: 0.5,
         };
         let found = store.find_active_in_reach(&query).unwrap();
         let ids: Vec<String> = found.iter().map(|r| r.id.clone()).collect();
@@ -558,6 +587,89 @@ mod tests {
             !ids.contains(&"r-elsewhere".to_string()),
             "no region overlap → excluded"
         );
+    }
+
+    #[test]
+    fn find_active_in_reach_includes_fading_status() {
+        // Fading은 "아직 완전히 죽지 않음" — 도달 가능해야 함 (리뷰 M6 결정).
+        let store = SqliteRumorStore::in_memory().unwrap();
+
+        let active = sample_rumor("r-active");
+        let mut fading = sample_rumor("r-fading");
+        fading.transition_to(RumorStatus::Fading).unwrap();
+        let mut faded = sample_rumor("r-faded");
+        faded.transition_to(RumorStatus::Faded).unwrap();
+
+        store.save(&active).unwrap();
+        store.save(&fading).unwrap();
+        store.save(&faded).unwrap();
+
+        let query = ReachPolicy {
+            regions: vec!["central".into()],
+            factions: vec![],
+            npc_ids: vec![],
+            min_significance: 0.5,
+        };
+        let found = store.find_active_in_reach(&query).unwrap();
+        let ids: Vec<String> = found.iter().map(|r| r.id.clone()).collect();
+        assert!(ids.contains(&"r-active".to_string()));
+        assert!(
+            ids.contains(&"r-fading".to_string()),
+            "fading rumor must be included"
+        );
+        assert!(!ids.contains(&"r-faded".to_string()));
+    }
+
+    #[test]
+    fn find_active_in_reach_filters_by_min_significance() {
+        // reach_overlaps.sig_ok: query.min_significance >= rumor.min_significance.
+        // query가 요구하는 수준이 rumor의 유의미성 하한 이상이면 overlap.
+        let store = SqliteRumorStore::in_memory().unwrap();
+        let base_reach = |sig: f32| ReachPolicy {
+            regions: vec![],
+            factions: vec![],
+            npc_ids: vec![],
+            min_significance: sig,
+        };
+        let mut r_lo = Rumor::new("r-lo", "t", RumorOrigin::Seeded, base_reach(0.1), 0);
+        let mut r_hi = Rumor::new("r-hi", "t", RumorOrigin::Seeded, base_reach(0.7), 0);
+        let mut r_zero = Rumor::new("r-zero", "t", RumorOrigin::Seeded, base_reach(0.0), 0);
+        // 필수 불변식 — topic 있으므로 seed_content 없어도 OK
+        r_lo.transition_to(RumorStatus::Active).ok();
+        r_hi.transition_to(RumorStatus::Active).ok();
+        r_zero.transition_to(RumorStatus::Active).ok();
+        store.save(&r_lo).unwrap();
+        store.save(&r_hi).unwrap();
+        store.save(&r_zero).unwrap();
+
+        // query=0.3 → r_lo(0.1) 통과, r_hi(0.7) 탈락, r_zero(0.0) 통과
+        let found: Vec<String> = store
+            .find_active_in_reach(&base_reach(0.3))
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert!(found.contains(&"r-lo".to_string()));
+        assert!(!found.contains(&"r-hi".to_string()));
+        assert!(found.contains(&"r-zero".to_string()));
+
+        // query=0.0 → r_zero만 통과
+        let found: Vec<String> = store
+            .find_active_in_reach(&base_reach(0.0))
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(found, vec!["r-zero".to_string()]);
+
+        // query=0.9 → 전부 통과
+        let found: Vec<String> = store
+            .find_active_in_reach(&base_reach(0.9))
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(found.len(), 3);
     }
 
     #[test]

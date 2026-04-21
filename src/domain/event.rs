@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::aggregate::AggregateKey;
 use super::emotion::{Scene, Situation};
-use super::memory::{MemoryLayer, MemoryScope, MemorySource, Provenance};
+use super::memory::{MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance};
 use super::rumor::{ReachPolicy, RumorOrigin};
 use super::scene_id::SceneId;
 
@@ -307,6 +307,8 @@ pub enum EventPayload {
         scope: MemoryScope,
         source: MemorySource,
         provenance: Provenance,
+        /// 엔트리 종류 (DialogueTurn/BeatTransition/SceneSummary 등 — 설계 §3.1 요구)
+        memory_type: MemoryType,
         layer: MemoryLayer,
         topic: Option<String>,
         confidence: f32,
@@ -736,6 +738,7 @@ mod tests {
                     },
                     source: MemorySource::Experienced,
                     provenance: Provenance::Runtime,
+                    memory_type: MemoryType::DialogueTurn,
                     layer: MemoryLayer::A,
                     topic: None,
                     confidence: 1.0,
@@ -920,6 +923,7 @@ mod tests {
             },
             source: MemorySource::Experienced,
             provenance: Provenance::Runtime,
+            memory_type: MemoryType::DialogueTurn,
             layer: MemoryLayer::A,
             topic: None,
             confidence: 1.0,

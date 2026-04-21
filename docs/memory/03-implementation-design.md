@@ -526,12 +526,16 @@ pub enum MemoryScopeFilter {
 
 ```rust
 pub trait RumorStore: Send + Sync {
-    fn save(&self, rumor: Rumor) -> Result<(), MemoryError>;
+    fn save(&self, rumor: &Rumor) -> Result<(), MemoryError>;
     fn load(&self, id: &str) -> Result<Option<Rumor>, MemoryError>;
     fn find_by_topic(&self, topic: &str) -> Result<Vec<Rumor>, MemoryError>;
     fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
 }
 ```
+
+> **Step C1 구현 결정**: `save` 시그니처를 `&Rumor` 참조로 유지한다. 호출자가 `save → add_hop →
+> save` 패턴으로 동일 Rumor를 계속 mutate하는 사용이 자연스럽기 때문. `find_active_in_reach`는
+> `Active`와 `Fading` 두 상태를 포함한다 (아직 완전히 죽지 않은 소문은 도달 가능).
 
 ### 5.3 `InformationTellingPort` — 신규 포트 (선택)
 
@@ -706,29 +710,40 @@ CREATE TABLE rumor_hops (
 );
 
 CREATE TABLE rumor_distortions (
-    id TEXT PRIMARY KEY,
+    id TEXT NOT NULL,
     rumor_id TEXT NOT NULL REFERENCES rumors(id),
-    parent TEXT REFERENCES rumor_distortions(id),
+    parent TEXT,                         -- FK는 application-level (add_distortion)에서 검증
     content TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (rumor_id, id)           -- composite — Step C1 사후 리뷰에서 전역 UNIQUE → composite로 전환
 );
 
 CREATE INDEX IF NOT EXISTS idx_rumors_topic ON rumors(topic) WHERE topic IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_rumors_status ON rumors(status);
 ```
 
+> **Step C1 사후 리뷰 결정 (Schema v3)**: 구 설계는 `rumor_distortions.id TEXT PRIMARY KEY`
+> (전역 UNIQUE)였는데, 서로 다른 rumor가 각자 `"d1"` distortion을 생성할 때 바로 충돌한다.
+> Step C1 초기 구현에서 테스트 헬퍼가 `"{rumor_id}:d1"` prefix로 우회했으나, 발행 지점이
+> 생기는 Step C3 전에 PK를 `(rumor_id, id)` composite로 전환한다. 마이그레이션은 `migrate_v3`
+> 함수에서 테이블 재생성 + 데이터 복사 + DROP + RENAME을 `unchecked_transaction`으로 감싸
+> 처리한다.
+
 ### 7.5 마이그레이션 코드 위치
 
 `src/adapter/sqlite_memory.rs`의 `SqliteMemoryStore::init_schema()`에 버전 관리 추가:
 
 ```rust
-const SCHEMA_VERSION: i64 = 2;  // 1: 기존, 2: 본 확장
+const SCHEMA_VERSION: i64 = 3;
+// 1: 기존. 2: Step A Foundation (13 컬럼 ALTER + vec0 재생성 + rumor 테이블 선제 생성).
+// 3: Step C1 사후 — rumor_distortions를 (rumor_id, id) composite PK로 전환.
 
 fn init_schema(conn: &Connection) -> Result<()> {
     conn.execute("CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER PRIMARY KEY)", [])?;
     let current: i64 = conn.query_row("SELECT COALESCE(MAX(version), 0) FROM schema_meta", [], |r| r.get(0))?;
     if current < 1 { /* 기존 DDL */ }
-    if current < 2 { /* 본 문서의 ALTER + 신규 테이블 + vec0 재생성 */ }
+    if current < 2 { /* Step A ALTER + 신규 테이블 + vec0 재생성 */ }
+    if current < 3 { /* rumor_distortions composite PK 전환 */ }
     conn.execute("INSERT OR REPLACE INTO schema_meta(version) VALUES (?)", [SCHEMA_VERSION])?;
 }
 ```

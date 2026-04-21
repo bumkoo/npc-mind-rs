@@ -21,7 +21,7 @@ use zerocopy::AsBytes;
 pub const DEFAULT_EMBEDDING_DIM: usize = 1024;
 
 /// 현재 스키마 버전. 마이그레이션 추가 시 이 값을 올린다.
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 /// sqlite-vec auto-extension 등록은 프로세스 전역 1회만 수행.
 static VEC_INIT: Once = Once::new();
@@ -103,6 +103,9 @@ impl SqliteMemoryStore {
         }
         if current < 2 {
             Self::migrate_v2(&conn, self.dim)?;
+        }
+        if current < 3 {
+            Self::migrate_v3(&conn)?;
         }
 
         conn.execute(
@@ -288,6 +291,57 @@ impl SqliteMemoryStore {
             );
             CREATE INDEX IF NOT EXISTS idx_rumors_topic ON rumors(topic) WHERE topic IS NOT NULL;
             CREATE INDEX IF NOT EXISTS idx_rumors_status ON rumors(status);",
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
+        tx.commit()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        Ok(())
+    }
+
+    /// v3 — `rumor_distortions`의 PRIMARY KEY를 전역 `id`에서 `(rumor_id, id)`
+    /// composite로 변경.
+    ///
+    /// **이유**: v2 스키마의 `id TEXT PRIMARY KEY`는 전역 UNIQUE라 서로 다른 rumor가
+    /// 각자 `"d1"` distortion을 생성할 때 바로 충돌한다 (Step C1 리뷰 NITPICK 참조).
+    /// Step C3 발행 지점이 생기기 전에 바로잡는다.
+    ///
+    /// **마이그레이션 전략**: 테이블 재생성. 기존 데이터(있다면)를 임시 테이블로 옮긴 뒤
+    /// DROP → 새 스키마로 생성 → 복사 → DROP 임시. 전부 `unchecked_transaction`으로 감싸
+    /// 중간 실패 시 롤백. C1 배포 전이므로 실제 데이터는 대부분 비어 있다.
+    fn migrate_v3(conn: &Connection) -> Result<(), MemoryError> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
+        // 기존 v2 데이터가 있을 수 있으므로 임시 테이블로 백업.
+        tx.execute(
+            "CREATE TABLE IF NOT EXISTS rumor_distortions_v3 (
+                id TEXT NOT NULL,
+                rumor_id TEXT NOT NULL REFERENCES rumors(id),
+                parent TEXT,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                PRIMARY KEY (rumor_id, id)
+            )",
+            [],
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
+        // 기존 행을 새 테이블로 이전. 구 스키마(id 전역 UNIQUE)에서는 rumor_id별 중복이
+        // 불가능했으므로 그대로 옮기면 새 composite PK도 만족한다.
+        tx.execute(
+            "INSERT OR IGNORE INTO rumor_distortions_v3 (id, rumor_id, parent, content, created_at)
+             SELECT id, rumor_id, parent, content, created_at FROM rumor_distortions",
+            [],
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
+        tx.execute("DROP TABLE rumor_distortions", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute(
+            "ALTER TABLE rumor_distortions_v3 RENAME TO rumor_distortions",
+            [],
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
