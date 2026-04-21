@@ -20,6 +20,9 @@ use zerocopy::AsBytes;
 /// bge-m3 dense 임베딩 차원 (기본값).
 pub const DEFAULT_EMBEDDING_DIM: usize = 1024;
 
+/// 현재 스키마 버전. 마이그레이션 추가 시 이 값을 올린다.
+const SCHEMA_VERSION: i64 = 2;
+
 /// sqlite-vec auto-extension 등록은 프로세스 전역 1회만 수행.
 static VEC_INIT: Once = Once::new();
 
@@ -103,8 +106,8 @@ impl SqliteMemoryStore {
         }
 
         conn.execute(
-            "INSERT OR REPLACE INTO schema_meta(version) VALUES (2)",
-            [],
+            "INSERT OR REPLACE INTO schema_meta(version) VALUES (?)",
+            [SCHEMA_VERSION],
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
@@ -199,6 +202,7 @@ impl SqliteMemoryStore {
             "CREATE INDEX IF NOT EXISTS idx_memories_superseded ON memories(superseded_by)",
             "CREATE INDEX IF NOT EXISTS idx_memories_source_layer ON memories(source, layer)",
             "CREATE INDEX IF NOT EXISTS idx_memories_provenance ON memories(provenance, scope_kind)",
+            "CREATE INDEX IF NOT EXISTS idx_memories_canonical ON memories(topic, provenance, scope_kind) WHERE provenance = 'seeded' AND scope_kind = 'world'",
         ];
         for stmt in &indexes {
             tx.execute(stmt, [])

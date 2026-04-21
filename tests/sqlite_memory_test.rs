@@ -265,6 +265,42 @@ fn sqlite_schema_meta_recorded_as_v2() {
 }
 
 #[test]
+fn sqlite_v2_canonical_index_exists() {
+    // Canonical 조회 최적화 partial index가 설치되어 있어야 한다.
+    // Step D의 WorldOverlayHandler·get_canonical_by_topic()이 사용할 지점.
+    let tmp = tempfile::tempdir().unwrap();
+    let db_path = tmp.path().join("mem.db");
+    {
+        let _store =
+            SqliteMemoryStore::with_dim(db_path.to_str().unwrap(), TEST_DIM).unwrap();
+    }
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let mut stmt = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'memories'")
+        .unwrap();
+    let indexes: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(0))
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    for expected in [
+        "idx_memories_topic",
+        "idx_memories_topic_latest",
+        "idx_memories_scope",
+        "idx_memories_superseded",
+        "idx_memories_source_layer",
+        "idx_memories_provenance",
+        "idx_memories_canonical",
+    ] {
+        assert!(
+            indexes.iter().any(|i| i == expected),
+            "expected index {expected} not found; have {indexes:?}"
+        );
+    }
+}
+
+#[test]
 fn sqlite_v2_columns_exist_on_memories() {
     // 신규 13개 컬럼이 실제로 memories 테이블에 존재하는지.
     let tmp = tempfile::tempdir().unwrap();
