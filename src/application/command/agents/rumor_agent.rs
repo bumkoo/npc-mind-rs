@@ -32,19 +32,28 @@ impl RumorAgent {
         Self { store }
     }
 
-    fn derive_rumor_id(event_id: u64) -> String {
-        format!("rumor-{event_id:012}")
+    /// Rumor id 포맷: `rumor-{reserved_id:012}`. `reserved_id`는 Transactional 페이즈에서
+    /// `EventStore::next_id()`로 선할당된 값이다.
+    ///
+    /// **왜 `event.id`를 안 쓰는가**: `build_initial_event`는 id=0으로 초기 이벤트를 만들고
+    /// 실제 id는 `commit_staging_buffer`에서 부여된다. 따라서 handler 실행 시점에 보이는
+    /// `event.id`는 항상 0이라 `rumor_id`가 모든 시드에서 충돌한다. 대신 event_store에서
+    /// 다음 id 한 자리를 미리 소비해 rumor_id에 쓴다 (commit 시점의 RumorSeeded 이벤트는
+    /// 또 다른 next_id를 받으며, rumor_id와 값이 같을 필요는 없음).
+    fn derive_rumor_id(reserved_id: u64) -> String {
+        format!("rumor-{reserved_id:012}")
     }
 
     fn handle_seed(
         &self,
         event: &DomainEvent,
+        ctx: &EventHandlerContext<'_>,
         topic: &Option<String>,
         seed_content: &Option<String>,
         reach: &ReachPolicy,
         origin: &crate::domain::rumor::RumorOrigin,
     ) -> Result<HandlerResult, HandlerError> {
-        let rumor_id = Self::derive_rumor_id(event.id);
+        let rumor_id = Self::derive_rumor_id(ctx.event_store.next_id());
 
         // Rumor 생성 — topic/seed_content 조합에 따른 생성자 분기 (§2.6 Canonical 해소표).
         let rumor = match (topic, seed_content) {
@@ -175,7 +184,7 @@ impl EventHandler for RumorAgent {
     fn handle(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         match &event.payload {
             EventPayload::SeedRumorRequested {
@@ -183,7 +192,7 @@ impl EventHandler for RumorAgent {
                 seed_content,
                 reach,
                 origin,
-            } => self.handle_seed(event, topic, seed_content, reach, origin),
+            } => self.handle_seed(event, ctx, topic, seed_content, reach, origin),
             EventPayload::SpreadRumorRequested {
                 rumor_id,
                 extra_recipients,
@@ -295,12 +304,12 @@ mod tests {
         else {
             panic!("expected RumorSeeded");
         };
-        assert_eq!(rumor_id, "rumor-000000000042");
+        assert!(rumor_id.starts_with("rumor-"), "rumor_id format: {rumor_id}");
         assert_eq!(topic.as_deref(), Some("moorim-leader-change"));
         assert!(seed_content.is_none());
 
-        // 저장됨
-        let saved = store.load("rumor-000000000042").unwrap().unwrap();
+        // follow-up의 rumor_id로 저장소에서 조회 가능해야 한다 (round-trip)
+        let saved = store.load(rumor_id).unwrap().unwrap();
         assert_eq!(saved.topic.as_deref(), Some("moorim-leader-change"));
         assert!(!saved.is_orphan());
         assert_eq!(saved.status(), RumorStatus::Active);
@@ -318,20 +327,28 @@ mod tests {
         assert!(matches!(err, HandlerError::InvalidInput(_)));
     }
 
+    fn rumor_id_of(result: &HandlerResult) -> String {
+        let EventPayload::RumorSeeded { rumor_id, .. } = &result.follow_up_events[0].payload
+        else {
+            panic!("expected RumorSeeded");
+        };
+        rumor_id.clone()
+    }
+
     #[test]
     fn seed_orphan_with_seed_content_succeeds() {
         let store = Arc::new(SpyRumorStore::default());
         let agent = RumorAgent::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        harness
+        let result = harness
             .dispatch(
                 &agent,
                 seed_req_event(7, None, Some("떠도는 얘기"), RumorOrigin::Authored { by: None }),
             )
             .expect("must succeed");
 
-        let saved = store.load("rumor-000000000007").unwrap().unwrap();
+        let saved = store.load(&rumor_id_of(&result)).unwrap().unwrap();
         assert!(saved.is_orphan());
         assert_eq!(saved.seed_content.as_deref(), Some("떠도는 얘기"));
     }
@@ -342,7 +359,7 @@ mod tests {
         let agent = RumorAgent::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        harness
+        let result = harness
             .dispatch(
                 &agent,
                 seed_req_event(
@@ -356,9 +373,31 @@ mod tests {
             )
             .unwrap();
 
-        let saved = store.load("rumor-000000000010").unwrap().unwrap();
+        let saved = store.load(&rumor_id_of(&result)).unwrap().unwrap();
         assert_eq!(saved.topic.as_deref(), Some("master-change"));
         assert_eq!(saved.seed_content.as_deref(), Some("조만간 바뀐다더라"));
+    }
+
+    #[test]
+    fn successive_seeds_get_distinct_rumor_ids() {
+        // 핵심 회귀 가드 — `event.id=0`을 쓰던 버그를 방지. 두 번 시드하면 서로 다른
+        // rumor_id가 나와야 한다.
+        let store = Arc::new(SpyRumorStore::default());
+        let agent = RumorAgent::new(store.clone());
+        let mut harness = HandlerTestHarness::new();
+
+        let r1 = harness
+            .dispatch(&agent, seed_req_event(0, Some("t1"), None, RumorOrigin::Seeded))
+            .unwrap();
+        let r2 = harness
+            .dispatch(&agent, seed_req_event(0, Some("t2"), None, RumorOrigin::Seeded))
+            .unwrap();
+
+        let id1 = rumor_id_of(&r1);
+        let id2 = rumor_id_of(&r2);
+        assert_ne!(id1, id2, "두 시드는 서로 다른 rumor_id를 받아야 함");
+        assert!(store.load(&id1).unwrap().is_some());
+        assert!(store.load(&id2).unwrap().is_some());
     }
 
     #[test]

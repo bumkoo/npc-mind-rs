@@ -265,6 +265,36 @@ async fn spread_dedupes_repeated_recipients() {
 }
 
 #[tokio::test]
+async fn successive_seeds_produce_distinct_rumor_ids_in_same_dispatcher() {
+    // RumorAgent가 event.id(=0)를 쓰던 버그의 회귀 가드 — 같은 dispatcher로 두 번 시드하면
+    // 두 Rumor가 서로 다른 id로 저장되어야 한다.
+    let (dispatcher, _, _, rumor_store) = build_dispatcher();
+
+    dispatcher
+        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+            topic: Some("t1".into()),
+            seed_content: None,
+            reach: RumorReachInput::default(),
+            origin: RumorOriginInput::Seeded,
+        }))
+        .await
+        .unwrap();
+    dispatcher
+        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+            topic: Some("t2".into()),
+            seed_content: None,
+            reach: RumorReachInput::default(),
+            origin: RumorOriginInput::Seeded,
+        }))
+        .await
+        .unwrap();
+
+    let r1 = rumor_store.find_by_topic("t1").unwrap().pop().unwrap();
+    let r2 = rumor_store.find_by_topic("t2").unwrap().pop().unwrap();
+    assert_ne!(r1.id, r2.id, "두 Rumor는 서로 다른 id를 가져야 함");
+}
+
+#[tokio::test]
 async fn seed_rumor_is_stored_under_rumor_id_aggregate() {
     // C1 회귀 가드 확장 — RumorSeeded.aggregate_id = rumor_id여서
     // EventStore.get_events(rumor_id) 로 조회 가능해야 한다 (§3.3).
