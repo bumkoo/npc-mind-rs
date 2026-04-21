@@ -147,7 +147,14 @@ impl SqliteMemoryStore {
     /// `memories_vec`은 dim·partition key 스키마가 고정이라 ALTER 불가 → 기존 테이블을
     /// 드랍 후 재생성하고, 기존 행은 새 partition_key 포맷으로 재인덱싱한다.
     /// (v1 데이터의 npc_id → `"personal:<npc_id>"`)
+    ///
+    /// **원자성**: 전체 작업을 트랜잭션으로 감싸 중간 실패 시 롤백. 이로써 DROP 후 INSERT
+    /// 사이에 크래시가 나도 vec0 데이터가 소실되지 않는다.
     fn migrate_v2(conn: &Connection, dim: usize) -> Result<(), MemoryError> {
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+
         // ALTER TABLE — 13 신규 컬럼
         let alters = [
             "ALTER TABLE memories ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'personal'",
@@ -169,16 +176,16 @@ impl SqliteMemoryStore {
         for stmt in &alters {
             // 이미 존재하면 SQLite가 "duplicate column name" 에러를 내지만 migration 재실행
             // 시나리오에서만 발생 — 무시한다.
-            let _ = conn.execute(stmt, []);
+            let _ = tx.execute(stmt, []);
         }
 
         // 기존 v1 행의 신규 컬럼 기본값 백필
-        conn.execute(
+        tx.execute(
             "UPDATE memories SET owner_a = npc_id WHERE owner_a IS NULL",
             [],
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-        conn.execute(
+        tx.execute(
             "UPDATE memories SET created_seq = event_id WHERE created_seq = 0",
             [],
         )
@@ -194,13 +201,13 @@ impl SqliteMemoryStore {
             "CREATE INDEX IF NOT EXISTS idx_memories_provenance ON memories(provenance, scope_kind)",
         ];
         for stmt in &indexes {
-            conn.execute(stmt, [])
+            tx.execute(stmt, [])
                 .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         }
 
         // vec0 재생성 — partition key를 npc_id → partition_key로 변경
         // 기존 벡터 데이터를 새 테이블로 옮기기
-        let has_rows: i64 = conn
+        let has_rows: i64 = tx
             .query_row("SELECT COUNT(*) FROM memories_vec", [], |r| r.get(0))
             .unwrap_or(0);
 
@@ -208,7 +215,7 @@ impl SqliteMemoryStore {
         let mut migrated_vecs: Vec<(String, String, Vec<u8>)> = Vec::new();
         if has_rows > 0 {
             let sql = "SELECT v.id, m.npc_id, v.embedding FROM memories_vec v JOIN memories m ON v.id = m.id";
-            let mut stmt = conn
+            let mut stmt = tx
                 .prepare(sql)
                 .map_err(|e| MemoryError::StorageError(e.to_string()))?;
             let rows = stmt
@@ -226,7 +233,7 @@ impl SqliteMemoryStore {
             }
         }
 
-        conn.execute("DROP TABLE IF EXISTS memories_vec", [])
+        tx.execute("DROP TABLE IF EXISTS memories_vec", [])
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         let vec_ddl = format!(
             "CREATE VIRTUAL TABLE memories_vec USING vec0(
@@ -235,10 +242,10 @@ impl SqliteMemoryStore {
                 embedding FLOAT[{dim}] distance_metric=cosine
             );"
         );
-        conn.execute_batch(&vec_ddl)
+        tx.execute_batch(&vec_ddl)
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         for (id, pkey, emb) in migrated_vecs {
-            conn.execute(
+            tx.execute(
                 "INSERT INTO memories_vec (id, partition_key, embedding) VALUES (?1, ?2, ?3)",
                 params![id, pkey, emb],
             )
@@ -246,7 +253,7 @@ impl SqliteMemoryStore {
         }
 
         // Rumor 테이블 (Step C에서 사용 시작, v2에서 테이블만 선제 생성)
-        conn.execute_batch(
+        tx.execute_batch(
             "CREATE TABLE IF NOT EXISTS rumors (
                 id TEXT PRIMARY KEY,
                 topic TEXT,
@@ -280,6 +287,8 @@ impl SqliteMemoryStore {
         )
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
+        tx.commit()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         Ok(())
     }
 }
@@ -543,14 +552,23 @@ impl MemoryStore for SqliteMemoryStore {
             Some(MemoryScopeFilter::NpcAllowed(npc)) => {
                 // Personal Scope with matching npc_id OR World scope OR Relationship touching npc.
                 // Faction/Family은 Step C에서 NpcWorld join 도입 예정.
+                //
+                // 각 참조를 독립 파라미터로 바인딩 — SQLite는 `?N` 반복을 허용하지만
+                // rusqlite params_from_iter와 결합 시 일부 경로에서 불확실한 동작을
+                // 피하기 위해 세 번 명시적으로 push한다.
+                let base = binds.len();
                 where_parts.push(format!(
                     "(\
-                        (scope_kind = 'personal' AND owner_a = ?{n}) \
+                        (scope_kind = 'personal' AND owner_a = ?{n1}) \
                         OR scope_kind = 'world' \
-                        OR (scope_kind = 'relationship' AND (owner_a = ?{n} OR owner_b = ?{n}))\
+                        OR (scope_kind = 'relationship' AND (owner_a = ?{n2} OR owner_b = ?{n3}))\
                     )",
-                    n = binds.len() + 1
+                    n1 = base + 1,
+                    n2 = base + 2,
+                    n3 = base + 3,
                 ));
+                binds.push(Box::new(npc.clone()));
+                binds.push(Box::new(npc.clone()));
                 binds.push(Box::new(npc.clone()));
             }
         }

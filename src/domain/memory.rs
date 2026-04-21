@@ -62,6 +62,11 @@ impl MemoryScope {
     }
 
     /// vec0 partition key (scope별 결정적 포맷).
+    ///
+    /// **제약**: NPC/Faction/Family/World ID는 `:` 문자를 포함하지 않아야 한다.
+    /// 포함되면 서로 다른 scope 조합이 같은 partition_key를 생성해 벡터 검색 격리가
+    /// 깨진다 (예: `relationship:a:b:c` vs `relationship:a:b:c`). 현재 코드에서
+    /// 강제하지는 않으며, 시나리오 JSON · NPC 등록 시 호출자가 보장할 책임이 있다.
     pub fn partition_key(&self) -> String {
         match self {
             Self::Personal { npc_id } => format!("personal:{npc_id}"),
@@ -112,7 +117,13 @@ impl MemorySource {
     }
 
     /// OriginChain 길이에서 추론되는 기본 Source.
-    /// 힌트가 Experienced/Witnessed이면 체인 길이와 무관하게 힌트 사용 (직접 체험/목격 명시).
+    ///
+    /// - 힌트가 `Experienced` 또는 `Witnessed`이면 체인 길이 무시하고 힌트를 반환
+    ///   (직접 체험/목격이라는 외부 단서가 명시적으로 주어진 경우).
+    /// - 힌트가 `Heard`/`Rumor`이거나 `None`이면 체인 길이 기반 판정:
+    ///   - `0` → `Rumor` (출처 불명)
+    ///   - `1` → `Heard` (직접 들음)
+    ///   - `≥2` → `Rumor` (재전파)
     pub fn from_origin_chain(chain_len: usize, hint: Option<Self>) -> Self {
         if let Some(h @ (Self::Experienced | Self::Witnessed)) = hint {
             return h;
