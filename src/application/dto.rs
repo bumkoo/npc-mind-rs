@@ -764,3 +764,47 @@ pub struct FocusObjectInfo {
     pub target_id: String,
     pub appealingness: f32,
 }
+
+// ---------------------------------------------------------------------------
+// TellInformation (Step C2 — Mind 컨텍스트 명령)
+// ---------------------------------------------------------------------------
+
+/// `Command::TellInformation` 요청 DTO.
+///
+/// 한 번의 발화로 `listeners`(직접 대상)와 `overhearers`(동석자 — 엿들은 자)에게
+/// 정보를 전달한다. Dispatcher는 `TellInformationRequested`를 초기 이벤트로 만들고,
+/// `InformationAgent`가 청자당 1개의 `InformationTold` follow-up을 팬아웃한다 (B5).
+///
+/// **청자 수 상한**: `MAX_EVENTS_PER_COMMAND=20`에 맞춰 listeners + overhearers ≤ 15를
+/// 권장한다. 초과 시 `DispatchV2Error::EventBudgetExceeded`.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TellInformationRequest {
+    /// 발화자 NPC ID
+    pub speaker: String,
+    /// 직접 대화 상대 목록 — `ListenerRole::Direct`로 전달됨
+    pub listeners: Vec<String>,
+    /// 엿들은 동석자 목록 — `ListenerRole::Overhearer`로 전달됨. 없으면 빈 벡터.
+    #[serde(default)]
+    pub overhearers: Vec<String>,
+    /// 전달하려는 주장 본문 (청자 `MemoryEntry.content`가 됨)
+    pub claim: String,
+    /// 화자가 표명하는 확신도 [0.0, 1.0]. 청자 entry.confidence는 이 값에
+    /// 청자의 화자에 대한 trust(정규화)를 곱한다.
+    pub stated_confidence: f32,
+    /// 화자가 이 정보를 어떤 체인으로 받았는지. 빈 vec = 화자가 직접 경험/목격.
+    /// 청자의 origin_chain은 `[speaker, ...origin_chain_in]`이 된다.
+    #[serde(default)]
+    pub origin_chain_in: Vec<String>,
+    /// 선택적 topic — Canonical 연결이 필요한 경우 (Step D 이후 본격 사용)
+    #[serde(default)]
+    pub topic: Option<String>,
+}
+
+/// `Command::TellInformation` 응답 DTO.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TellInformationResponse {
+    /// 실제 발행된 `InformationTold` 이벤트 수 (= listeners + overhearers).
+    pub listeners_informed: usize,
+    /// 생성된 청자별 `MemoryEntry` id 목록 (청자 순서대로). MemoryStore가 미부착이면 empty.
+    pub memory_entry_ids: Vec<String>,
+}

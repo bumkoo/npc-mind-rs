@@ -47,6 +47,13 @@ pub enum Command {
         significance: Option<f32>,
         focuses: Vec<SceneFocusInput>,
     },
+    /// 정보 전달 (Step C2, Mind 컨텍스트)
+    ///
+    /// 화자가 listeners / overhearers에게 정보를 전달한다. Dispatcher가
+    /// `TellInformationRequested`를 초기 이벤트로 만들고, `InformationAgent`가
+    /// 청자당 1개의 `InformationTold` follow-up을 팬아웃(B5)한다. Inline
+    /// `TellingIngestionHandler`가 각 청자의 `MemoryEntry(Heard/Rumor)`를 생성한다.
+    TellInformation(TellInformationRequest),
 }
 
 impl Command {
@@ -59,10 +66,15 @@ impl Command {
             | Command::UpdateRelationship { npc_id, .. }
             | Command::EndDialogue { npc_id, .. }
             | Command::StartScene { npc_id, .. } => npc_id,
+            Command::TellInformation(req) => &req.speaker,
         }
     }
 
     /// 대화 상대 ID
+    ///
+    /// `TellInformation`은 복수 청자 기반 커맨드로 단일 partner 개념이 없다 — 빈
+    /// 문자열을 반환한다. 호출자(Director의 Scene 라우팅 등)는 TellInformation을
+    /// Scene 기반으로 라우팅하지 않으므로 실용적 충돌은 없다.
     pub fn partner_id(&self) -> &str {
         match self {
             Command::Appraise { partner_id, .. }
@@ -71,6 +83,7 @@ impl Command {
             | Command::UpdateRelationship { partner_id, .. }
             | Command::EndDialogue { partner_id, .. }
             | Command::StartScene { partner_id, .. } => partner_id,
+            Command::TellInformation(_) => "",
         }
     }
 
@@ -101,6 +114,7 @@ impl Command {
             Command::Appraise { npc_id, .. }
             | Command::ApplyStimulus { npc_id, .. }
             | Command::GenerateGuide { npc_id, .. } => AggregateKey::Npc(npc_id.clone()),
+            Command::TellInformation(req) => AggregateKey::Npc(req.speaker.clone()),
         }
     }
 }

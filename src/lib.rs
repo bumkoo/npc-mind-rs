@@ -17,7 +17,7 @@ pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};
 pub use application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse, AppraiseResult,
     GuideRequest, GuideResponse, GuideResult, SceneRequest, SceneResponse, StimulusRequest,
-    StimulusResponse, StimulusResult,
+    StimulusResponse, StimulusResult, TellInformationRequest, TellInformationResponse,
 };
 pub use ports::{
     AnchorLoadError, Appraiser, EmotionStore, GuideFormatter, MindRepository, NpcWorld,
@@ -34,7 +34,8 @@ pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 // --- CQRS Command / Agent (v2) ---
 pub use application::command::{
     Command, CommandDispatcher, EmotionAgent, EmotionProjectionHandler, GuideAgent,
-    RelationshipAgent, RelationshipProjectionHandler, SceneProjectionHandler,
+    InformationAgent, RelationshipAgent, RelationshipProjectionHandler, SceneProjectionHandler,
+    TellingIngestionHandler,
 };
 
 // --- Memory / RAG ---

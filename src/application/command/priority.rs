@@ -33,6 +33,10 @@ pub mod transactional {
     /// 관계 갱신 — Scene/Beat 종료 시
     pub const RELATIONSHIP_UPDATE: i32 = 30;
 
+    /// 정보 전달 — 화자의 발화 이벤트를 청자당 1 `InformationTold` follow-up으로 팬아웃.
+    /// 관계 갱신(30) 이후에 실행되어야 청자의 현재 trust 값을 반영할 수 있다 (§6.5, B6).
+    pub const INFORMATION_TELLING: i32 = 35;
+
     /// 감사 로그 — 가장 마지막
     pub const AUDIT: i32 = 90;
 }
@@ -80,5 +84,15 @@ mod invariants {
     #[test]
     fn scene_start_runs_before_emotion_appraisal() {
         assert!(transactional::SCENE_START < transactional::EMOTION_APPRAISAL);
+    }
+
+    #[test]
+    fn information_telling_runs_after_relationship_update() {
+        assert!(transactional::INFORMATION_TELLING > transactional::RELATIONSHIP_UPDATE);
+    }
+
+    #[test]
+    fn information_telling_runs_before_audit() {
+        assert!(transactional::INFORMATION_TELLING < transactional::AUDIT);
     }
 }

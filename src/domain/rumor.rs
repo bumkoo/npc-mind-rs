@@ -376,6 +376,10 @@ impl Rumor {
     /// 주어져야 한다. 이 메서드는 **저장소 재구성 전용**이며 `transition_to`의
     /// 단방향 규칙(I-RU-3)을 우회한다 — 외부 consumer가 악용하지 못하도록
     /// `pub(crate)`로 제한한다.
+    ///
+    /// `SqliteRumorStore`는 `embed` feature 전용이므로 no-features 빌드에서는 호출자가
+    /// 테스트 외에는 없다 — dead_code 경고를 억제한다.
+    #[cfg_attr(not(feature = "embed"), allow(dead_code))]
     pub(crate) fn from_parts(
         id: String,
         topic: Option<String>,

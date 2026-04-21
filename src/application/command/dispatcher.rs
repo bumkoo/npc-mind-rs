@@ -15,14 +15,18 @@ use crate::ports::MindRepository;
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
-use super::agents::{EmotionAgent, GuideAgent, RelationshipAgent, SceneAgent, StimulusAgent};
+use super::agents::{
+    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, SceneAgent, StimulusAgent,
+};
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
 };
 use super::projection_handlers::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
+use super::telling_ingestion_handler::TellingIngestionHandler;
 use super::types::Command;
+use crate::ports::MemoryStore;
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -99,16 +103,34 @@ impl<R: MindRepository> CommandDispatcher<R> {
         }
     }
 
-    /// 5 Agent + 3 Projection wrapper를 기본 등록.
+    /// 6 Agent + 3 Projection wrapper를 기본 등록.
+    ///
+    /// Step C2 이후: `InformationAgent`도 기본 포함. Memory 인덱싱 Inline 핸들러
+    /// (`TellingIngestionHandler`)는 `MemoryStore` 주입이 필요하므로 `with_memory()`
+    /// 빌더로 따로 부착한다.
     pub fn with_default_handlers(mut self) -> Self {
         self = self.register_transactional(Arc::new(SceneAgent::new()));
         self = self.register_transactional(Arc::new(EmotionAgent::new()));
         self = self.register_transactional(Arc::new(StimulusAgent::new()));
         self = self.register_transactional(Arc::new(GuideAgent::new()));
         self = self.register_transactional(Arc::new(RelationshipAgent::new()));
+        self = self.register_transactional(Arc::new(InformationAgent::new()));
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
+        self
+    }
+
+    /// Memory 저장소 연동용 Inline 핸들러 부착 (Step C2~).
+    ///
+    /// 현재 등록 대상: `TellingIngestionHandler` (`InformationTold` → `MemoryEntry`).
+    /// Step D에서 `SceneConsolidationHandler`·`WorldOverlayHandler` 등이 추가될 예정.
+    ///
+    /// MemoryStore가 없는 환경(테스트·단순 시나리오)에서는 이 빌더를 호출하지 않으면
+    /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
+    /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
+    pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
         self
     }
 
@@ -352,6 +374,19 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
                     significance: *significance,
+                },
+            )),
+            Command::TellInformation(req) => Ok(DomainEvent::new(
+                0,
+                req.speaker.clone(),
+                0,
+                EventPayload::TellInformationRequested {
+                    speaker: req.speaker.clone(),
+                    listeners: req.listeners.clone(),
+                    overhearers: req.overhearers.clone(),
+                    claim: req.claim.clone(),
+                    stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
+                    origin_chain_in: req.origin_chain_in.clone(),
                 },
             )),
             Command::StartScene {
