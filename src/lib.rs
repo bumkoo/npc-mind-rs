@@ -41,8 +41,16 @@ pub use application::command::{
 pub use domain::memory::{MemoryEntry, MemoryResult, MemoryType};
 pub use ports::{MemoryError, MemoryStore};
 
+// --- Rumor (Step C1 foundation) ---
+pub use domain::rumor::{
+    ReachPolicy, Rumor, RumorDistortion, RumorError, RumorHop, RumorOrigin, RumorStatus,
+};
+pub use ports::RumorStore;
+
 #[cfg(feature = "embed")]
 pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
+#[cfg(feature = "embed")]
+pub use adapter::sqlite_rumor::SqliteRumorStore;
 #[cfg(feature = "embed")]
 pub use application::memory_agent::MemoryAgent;
 

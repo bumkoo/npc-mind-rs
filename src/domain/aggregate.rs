@@ -30,17 +30,32 @@ pub enum AggregateKey {
         owner_id: String,
         target_id: String,
     },
+    /// Memory 애그리거트 — `MemoryEntryId` 단위 라우팅 (Step C1 foundation, §3.3).
+    /// `MemoryEntryCreated/Superseded/Consolidated` 이벤트가 이 키를 쓴다.
+    Memory(String),
+    /// Rumor 애그리거트 — `RumorId` 단위 라우팅 (Step C1, §3.3).
+    /// `RumorSeeded/Spread/Distorted/Faded` 및 `SeedRumorRequested/SpreadRumorRequested`가
+    /// 이 키를 쓴다.
+    Rumor(String),
+    /// World 오버레이 — `WorldId` 단위 라우팅 (Step C1 foundation, §3.3).
+    /// `WorldEventOccurred/ApplyWorldEventRequested` 이벤트가 이 키를 쓴다 (Step D에서 사용).
+    World(String),
 }
 
 impl AggregateKey {
     /// 이 aggregate와 연관된 NPC id 힌트 (로깅/트레이싱용)
     ///
     /// Scene/Npc은 `npc_id`를, Relationship은 `owner_id`를 반환.
+    /// Memory/Rumor/World는 NPC 소속이 아니므로 애그리거트 id를 그대로 반환한다
+    /// (로그 가독성 목적 — "실제 NPC id"로 해석하면 안 됨).
     pub fn npc_id_hint(&self) -> &str {
         match self {
             AggregateKey::Scene { npc_id, .. } => npc_id,
             AggregateKey::Npc(npc_id) => npc_id,
             AggregateKey::Relationship { owner_id, .. } => owner_id,
+            AggregateKey::Memory(id) => id,
+            AggregateKey::Rumor(id) => id,
+            AggregateKey::World(id) => id,
         }
     }
 }
@@ -56,6 +71,9 @@ impl fmt::Display for AggregateKey {
                 owner_id,
                 target_id,
             } => write!(f, "Rel({owner_id}→{target_id})"),
+            AggregateKey::Memory(id) => write!(f, "Memory({id})"),
+            AggregateKey::Rumor(id) => write!(f, "Rumor({id})"),
+            AggregateKey::World(id) => write!(f, "World({id})"),
         }
     }
 }
@@ -146,6 +164,27 @@ mod tests {
             }
             .to_string(),
             "Rel(a→b)"
+        );
+    }
+
+    #[test]
+    fn memory_rumor_world_variants_format_and_hint() {
+        assert_eq!(AggregateKey::Memory("m1".into()).to_string(), "Memory(m1)");
+        assert_eq!(AggregateKey::Rumor("r1".into()).to_string(), "Rumor(r1)");
+        assert_eq!(AggregateKey::World("w1".into()).to_string(), "World(w1)");
+
+        assert_eq!(AggregateKey::Memory("m1".into()).npc_id_hint(), "m1");
+        assert_eq!(AggregateKey::Rumor("r1".into()).npc_id_hint(), "r1");
+        assert_eq!(AggregateKey::World("w1".into()).npc_id_hint(), "w1");
+
+        // 서로 다른 variant는 서로 같지 않다.
+        assert_ne!(
+            AggregateKey::Memory("x".into()),
+            AggregateKey::Rumor("x".into())
+        );
+        assert_ne!(
+            AggregateKey::Rumor("x".into()),
+            AggregateKey::World("x".into())
         );
     }
 }

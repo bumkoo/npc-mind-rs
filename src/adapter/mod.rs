@@ -10,6 +10,8 @@
 pub mod ort_embedder;
 #[cfg(feature = "embed")]
 pub mod sqlite_memory;
+#[cfg(feature = "embed")]
+pub mod sqlite_rumor;
 
 #[cfg(feature = "chat")]
 pub mod llama_timings;
