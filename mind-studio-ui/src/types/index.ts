@@ -306,12 +306,15 @@ export interface MemoryEntry {
 /** Rust `#[serde(rename_all = "snake_case")]`. */
 export type RumorStatus = 'active' | 'fading' | 'faded'
 
-/** Rust `RumorOrigin` 기본 derive — PascalCase variant. */
+/**
+ * Rust `#[serde(tag = "kind", rename_all = "snake_case")]` — internally tagged.
+ * JSON 예: `{"kind":"seeded"}` / `{"kind":"from_world_event","event_id":42}` /
+ * `{"kind":"authored","by":"npc1"|null}`.
+ */
 export type RumorOrigin =
-  | { Seeded: null } // unit variant는 Rust serde 기본 "Seeded" string이므로 별도 파싱
-  | { FromWorldEvent: { event_id: number } }
-  | { Authored: { by: string | null } }
-  | string // unit variant 직렬화 대응 — 서버 반환 원형 유지
+  | { kind: 'seeded' }
+  | { kind: 'from_world_event'; event_id: number }
+  | { kind: 'authored'; by: string | null }
 
 export interface ReachPolicy {
   regions: string[]

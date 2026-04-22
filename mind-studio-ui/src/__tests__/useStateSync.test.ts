@@ -303,4 +303,52 @@ describe('useStateSync', () => {
     urls = fetchMock.mock.calls.map((c: string[]) => c[0])
     expect(urls).toContain('/api/memory/by-npc/mu_baek')
   })
+
+  // M4 — leading+trailing 디바운스: 100ms 윈도우 안 후속 이벤트가 drop되지 않고
+  // trailing 타이머에 1회 추가 fetch.
+  it('memory 이벤트 버스트 → leading 1회 + trailing 1회 = 총 2회 fetch', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+
+    // 3개 이벤트를 연속 발행 (100ms 안).
+    act(() => {
+      es._emit('memory_created')
+      es._emit('memory_superseded')
+      es._emit('memory_consolidated')
+    })
+
+    // leading edge — 첫 이벤트에서 즉시 1회 fetch.
+    let urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const leadingCount = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(leadingCount).toBe(1)
+
+    // 윈도우 종료 후 trailing 1회 더 fetch.
+    act(() => { vi.advanceTimersByTime(150) })
+    urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const totalCount = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(totalCount).toBe(2)
+  })
+
+  it('memory 이벤트 단발 → leading 1회만 (trailing 생략)', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('memory_created') })
+    act(() => { vi.advanceTimersByTime(150) })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const count = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(count).toBe(1)
+  })
 })

@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { api } from '../../api/client'
 import { useMemoryStore } from '../../stores/useMemoryStore'
-import type { MemoryEntry, MemoryLayer, MemoryListResponse, MemoryScope, MemorySource, MemoryType, Npc, Provenance } from '../../types'
+import { useUIStore } from '../../stores/useUIStore'
+import type { MemoryEntry, MemoryListResponse, MemoryScope, MemorySource, MemoryType, Npc } from '../../types'
 
 interface MemoryViewProps {
   npcs: Npc[]
@@ -10,12 +11,12 @@ interface MemoryViewProps {
 /**
  * `/api/memory/by-npc/:id` 결과를 표시한다 (Step E2).
  *
- * - NPC 선택 드롭다운 (기본: npc_id URL 파라미터 없음 상태에서는 미선택).
+ * - NPC 선택 드롭다운 (기본: 사이드바에서 선택한 NPC = `useUIStore.npcId`).
  * - Layer A/B 필터 (탭 느낌의 버튼 그룹).
  * - Scope/Source/Provenance/Type 뱃지, retention bar, recall count.
  *
  * 실시간 갱신은 `useStateSync`의 `memory_created/superseded/consolidated` 이벤트가
- * 처리. NPC 변경 시 수동 fetch 추가.
+ * 처리. NPC 변경 시 AbortController로 stale response 폐기.
  */
 export default function MemoryView({ npcs }: MemoryViewProps) {
   const entries = useMemoryStore((s) => s.entriesByNpc)
@@ -26,19 +27,44 @@ export default function MemoryView({ npcs }: MemoryViewProps) {
   const setSelectedNpcId = useMemoryStore((s) => s.setSelectedNpcId)
   const setLayerFilter = useMemoryStore((s) => s.setLayerFilter)
   const setLoading = useMemoryStore((s) => s.setLoading)
+  const uiNpcId = useUIStore((s) => s.npcId)
 
-  // NPC 선택 시 targeted fetch.
+  // M1: Memory 탭 마운트 시점 (또는 사이드바 NPC 변경 시) 아직 선택이 없으면 UI store의
+  // npcId를 기본값으로 복사. 이미 다른 NPC로 명시 선택한 상태라면 덮어쓰지 않는다.
+  useEffect(() => {
+    if (!selectedNpcId && uiNpcId) {
+      setSelectedNpcId(uiNpcId)
+    }
+    // 의존성: uiNpcId만 — selectedNpcId를 의존에 넣으면 명시 해제 직후 재복사되는 원치 않는
+    // 루프가 생긴다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uiNpcId])
+
+  // NPC 선택 시 targeted fetch — H1: 과거 엔트리 즉시 클리어해 flash 방지,
+  // H2: AbortController로 빠른 전환 시 stale response 폐기.
   useEffect(() => {
     if (!selectedNpcId) {
       setEntries([])
+      setLoading(false)
       return
     }
+    // 이전 NPC 데이터 즉시 비우고 로딩 상태로.
+    setEntries([])
     setLoading(true)
+    const ctrl = new AbortController()
     api
-      .get<MemoryListResponse>(`/api/memory/by-npc/${encodeURIComponent(selectedNpcId)}`)
+      .get<MemoryListResponse>(`/api/memory/by-npc/${encodeURIComponent(selectedNpcId)}`, { signal: ctrl.signal })
       .then((r) => setEntries(r.entries || []))
-      .catch(() => setEntries([]))
-      .finally(() => setLoading(false))
+      .catch((e) => {
+        // AbortError는 정상 (NPC 전환으로 폐기됨) — 엔트리 유지(다음 fetch가 채움).
+        if (e?.name !== 'AbortError') setEntries([])
+      })
+      .finally(() => {
+        // AbortError 경로에서 다음 effect가 이미 loading=true로 바꿨을 수 있으므로,
+        // 해당 요청이 abort된 경우 loading을 건드리지 않는다.
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
+    return () => ctrl.abort()
   }, [selectedNpcId, setEntries, setLoading])
 
   const filtered = useMemo(() => {
@@ -293,6 +319,3 @@ function sourceColor(src: MemorySource): string {
 function typeLabel(t: MemoryType): string {
   return t
 }
-
-// Provenance는 badge에 이미 표시되므로 추가 헬퍼 불필요.
-export type { Provenance, MemoryLayer }

@@ -148,13 +148,13 @@ function statusColor(s: RumorStatus): string {
   }
 }
 
-/** Rust unit-enum 직렬화는 string("Seeded") 또는 {"FromWorldEvent":{...}} 형태. */
+/** Rust `RumorOrigin`은 internally tagged — `kind` 필드로 분기. */
 function describeOrigin(o: RumorOrigin): string {
-  if (typeof o === 'string') return o
-  if ('FromWorldEvent' in o && o.FromWorldEvent) return `from event#${o.FromWorldEvent.event_id}`
-  if ('Authored' in o && o.Authored) return o.Authored.by ? `by ${o.Authored.by}` : 'authored'
-  if ('Seeded' in o) return 'Seeded'
-  return 'unknown'
+  switch (o.kind) {
+    case 'seeded': return 'Seeded'
+    case 'from_world_event': return `from event#${o.event_id}`
+    case 'authored': return o.by ? `by ${o.by}` : 'authored'
+  }
 }
 
 function describeReach(r: Rumor): string {

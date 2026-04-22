@@ -20,12 +20,38 @@ export function useStateSync(refresh: () => Promise<void>) {
     let retryDelay = 1000
     let closed = false
 
-    // 디바운스: 동일 fetch가 100ms 내 중복 요청되지 않도록
+    // 디바운스: 동일 fetch가 100ms 내 중복 요청되지 않도록 (leading edge only).
+    // 엔티티 CRUD처럼 단발성 이벤트에 적합. 100ms 윈도우 안의 후속 이벤트는 drop.
     const pending = new Map<string, ReturnType<typeof setTimeout>>()
     function debounced(key: string, fn: () => void) {
       if (pending.has(key)) return
       fn()
       pending.set(key, setTimeout(() => pending.delete(key), 100))
+    }
+
+    // Leading + trailing debounce (Step E2 M4 — Memory/Rumor 이벤트 전용).
+    // - 첫 이벤트는 즉시 fetch (leading).
+    // - 100ms 윈도우 안에 추가 이벤트가 오면 윈도우 끝에 1회 더 fetch (trailing).
+    // - 윈도우 안 이벤트가 없으면 trailing 생략.
+    // 목적: 빠르게 연속되는 memory_* 이벤트가 drop되더라도 마지막 상태를 반드시
+    // 반영. 단발 이벤트와 버스트 모두 정확.
+    const trailing = new Map<string, { timer: ReturnType<typeof setTimeout>; retriggered: boolean; fn: () => void }>()
+    function debouncedLeadingTrailing(key: string, fn: () => void) {
+      const existing = trailing.get(key)
+      if (!existing) {
+        fn()
+        const timer = setTimeout(() => {
+          const entry = trailing.get(key)
+          trailing.delete(key)
+          if (entry?.retriggered) entry.fn()
+        }, 100)
+        trailing.set(key, { timer, retriggered: false, fn })
+      } else {
+        existing.retriggered = true
+        // 최신 fn으로 교체 — selectedNpcId가 변경된 상태에서 트리거된 이벤트가 있다면
+        // 윈도우 끝 fetch는 그 최신 상태를 봐야 한다.
+        existing.fn = fn
+      }
     }
 
     // Targeted re-fetch 함수들
@@ -102,18 +128,28 @@ export function useStateSync(refresh: () => Promise<void>) {
     // Step E2 — Memory/Rumor 탭 refetch (선택된 NPC에만 해당).
     // SSE는 페이로드 없이 이름만 오므로 현재 selected NPC 기준으로 갱신.
     // selected NPC가 없으면 조용히 skip (기억 탭이 열려 있지 않은 상태).
+    // M4: leading+trailing 디바운스로 버스트 이벤트의 trailing 상태도 반영.
     function fetchMemoriesForSelected() {
       const npc = useMemoryStore.getState().selectedNpcId
       if (!npc) return
-      debounced(`mem:${npc}`, () => {
+      debouncedLeadingTrailing(`mem:${npc}`, () => {
+        const latest = useMemoryStore.getState().selectedNpcId
+        if (!latest) return
         api
-          .get<MemoryListResponse>(`/api/memory/by-npc/${encodeURIComponent(npc)}`)
-          .then((r) => useMemoryStore.getState().setEntries(r.entries || []))
+          .get<MemoryListResponse>(`/api/memory/by-npc/${encodeURIComponent(latest)}`)
+          .then((r) => {
+            // 요청 중 사용자가 다른 NPC로 전환했을 가능성 — 응답 도착 시점의 selectedNpcId와
+            // 요청 대상 npc가 다르면 stale이라 무시. MemoryView의 AbortController와 중복
+            // 방어이지만 SSE 경로는 MemoryView 바깥에서 호출되므로 여기서도 체크.
+            if (useMemoryStore.getState().selectedNpcId === latest) {
+              useMemoryStore.getState().setEntries(r.entries || [])
+            }
+          })
           .catch(() => {})
       })
     }
     function fetchRumors() {
-      debounced('rumors', () => {
+      debouncedLeadingTrailing('rumors', () => {
         api
           .get<RumorListResponse>('/api/rumors')
           .then((r) => useMemoryStore.getState().setRumors(r.rumors || []))
@@ -126,6 +162,8 @@ export function useStateSync(refresh: () => Promise<void>) {
       // 이전 연결의 debounce 타이머 정리
       pending.forEach((t) => clearTimeout(t))
       pending.clear()
+      trailing.forEach((e) => clearTimeout(e.timer))
+      trailing.clear()
       es = new EventSource('/api/events')
 
       es.addEventListener('connected', () => { retryDelay = 1000 })
@@ -190,6 +228,8 @@ export function useStateSync(refresh: () => Promise<void>) {
       es?.close()
       pending.forEach((t) => clearTimeout(t))
       pending.clear()
+      trailing.forEach((e) => clearTimeout(e.timer))
+      trailing.clear()
     }
   }, [])
 }

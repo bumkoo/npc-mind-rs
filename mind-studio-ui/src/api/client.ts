@@ -1,9 +1,11 @@
 export const api = {
-  get: <T = unknown>(url: string): Promise<T> =>
-    fetch(url).then((r) => {
+  get: <T = unknown>(url: string, opts?: { signal?: AbortSignal }): Promise<T> => {
+    const p = opts?.signal ? fetch(url, { signal: opts.signal }) : fetch(url)
+    return p.then((r) => {
       if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
       return r.json()
-    }),
+    })
+  },
 
   post: (url: string, data?: unknown): Promise<Response> =>
     fetch(url, {

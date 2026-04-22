@@ -336,7 +336,7 @@ const mockRumor: Rumor = {
   id: 'rumor-000001',
   topic: 'sect:leader',
   seed_content: null,
-  origin: 'Seeded',
+  origin: { kind: 'seeded' },
   reach_policy: { regions: [], factions: [], npc_ids: [], min_significance: 0 },
   hops: [],
   distortions: [],
