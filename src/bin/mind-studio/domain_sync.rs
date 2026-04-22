@@ -31,6 +31,10 @@ use npc_mind::application::dto::{
     AppraiseResult, GuideRequest, GuideResult, PadOutput, RelationshipValues, SceneRequest,
     SceneResult, StimulusRequest, StimulusResult,
 };
+#[cfg(feature = "embed")]
+use npc_mind::application::dto::{
+    ApplyWorldEventRequest, SeedRumorRequest, SpreadRumorRequest, TellInformationRequest,
+};
 use npc_mind::domain::event::{EventKind, EventPayload};
 use npc_mind::domain::guide::ActingGuide;
 use npc_mind::domain::relationship::Relationship;
@@ -257,6 +261,92 @@ pub async fn dispatch_start_scene(
         initial_appraise,
         active_focus_id,
     })
+}
+
+// ---------------------------------------------------------------------------
+// Step E1 — Memory / Rumor / World dispatch 헬퍼
+//
+// 모두 `DispatchV2Output` 원본을 그대로 반환한다. 이벤트 결과를 핸들러가 직접
+// 검사해 SSE 방출/응답을 구성하도록 설계했다 (C2/C3 DTO response가 현재 미사용이라
+// typed facade는 범위 외).
+//
+// 헬퍼 4종은 `embed` feature 활성 시에만 사용되는 REST 핸들러 전용이라 cfg-gate로
+// dead-code 경고를 억제한다.
+// ---------------------------------------------------------------------------
+
+/// `Command::TellInformation` dispatch.
+///
+/// `RelationshipMemoryHandler`가 cause를 근거로 관계 갱신을 연쇄 발행할 수 있으므로
+/// `sync_from_repo`로 UI 레이어를 재동기화한다.
+#[cfg(feature = "embed")]
+pub async fn dispatch_tell_information(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: TellInformationRequest,
+) -> Result<DispatchV2Output, AppError> {
+    let output = state
+        .shared_dispatcher
+        .dispatch_v2(Command::TellInformation(req))
+        .await?;
+    {
+        let guard = state.shared_dispatcher.repository_guard();
+        sync_from_repo(&*guard, inner);
+    }
+    Ok(output)
+}
+
+/// `Command::ApplyWorldEvent` dispatch.
+#[cfg(feature = "embed")]
+pub async fn dispatch_apply_world_event(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: ApplyWorldEventRequest,
+) -> Result<DispatchV2Output, AppError> {
+    let output = state
+        .shared_dispatcher
+        .dispatch_v2(Command::ApplyWorldEvent(req))
+        .await?;
+    {
+        let guard = state.shared_dispatcher.repository_guard();
+        sync_from_repo(&*guard, inner);
+    }
+    Ok(output)
+}
+
+/// `Command::SeedRumor` dispatch.
+#[cfg(feature = "embed")]
+pub async fn dispatch_seed_rumor(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: SeedRumorRequest,
+) -> Result<DispatchV2Output, AppError> {
+    let output = state
+        .shared_dispatcher
+        .dispatch_v2(Command::SeedRumor(req))
+        .await?;
+    {
+        let guard = state.shared_dispatcher.repository_guard();
+        sync_from_repo(&*guard, inner);
+    }
+    Ok(output)
+}
+
+/// `Command::SpreadRumor` dispatch.
+#[cfg(feature = "embed")]
+pub async fn dispatch_spread_rumor(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: SpreadRumorRequest,
+) -> Result<DispatchV2Output, AppError> {
+    let output = state
+        .shared_dispatcher
+        .dispatch_v2(Command::SpreadRumor(req))
+        .await?;
+    {
+        let guard = state.shared_dispatcher.repository_guard();
+        sync_from_repo(&*guard, inner);
+    }
+    Ok(output)
 }
 
 // ---------------------------------------------------------------------------

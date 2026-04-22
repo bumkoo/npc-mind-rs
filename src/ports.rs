@@ -736,6 +736,11 @@ pub trait RumorStore: Send + Sync {
     /// 해석한다(설계 §2.6). min_significance는 하한 필터.
     /// Step C1에서는 후보 필터만 제공하고 최종 정책은 Step C3 `RumorAgent`가 결정.
     fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
+
+    /// 저장된 모든 rumor 목록 (status 필터 없음 — Active/Fading/Faded 전부 포함).
+    ///
+    /// UI 조회용 헬퍼. 정렬은 구현체 재량이지만 Sqlite 구현은 `created_at DESC`.
+    fn list_all(&self) -> Result<Vec<Rumor>, MemoryError>;
 }
 
 /// 기억 프레이밍 포트 (Step B — LLM 프롬프트 주입용).

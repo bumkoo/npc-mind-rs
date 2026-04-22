@@ -975,6 +975,9 @@ pub trait RumorStore: Send + Sync {
     fn load(&self, id: &str) -> Result<Option<Rumor>, MemoryError>;
     fn find_by_topic(&self, topic: &str) -> Result<Vec<Rumor>, MemoryError>;
     fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
+    /// 저장된 모든 rumor 목록 (Active/Fading/Faded 전부 포함, Sqlite는 `created_at DESC`).
+    /// Mind Studio `GET /api/rumors` 전용 (Step E1).
+    fn list_all(&self) -> Result<Vec<Rumor>, MemoryError>;
 }
 ```
 
@@ -1135,3 +1138,74 @@ content 끝에 `[{axis} Δ={value:.2}]` 포맷으로 붙인다. 동률이면 clo
 
 **관점**: owner → target 관점 엔트리만 생성 (Step F 확장 예정 — target 관점 자동 미러는
 도메인 판단 필요).
+
+## Step E1 — Mind Studio Memory/Rumor REST 엔드포인트
+
+`embed` feature 활성 시에만 등록된다. `AppState::new()`에서 `shared_dispatcher`에
+`with_memory_full` + `with_rumor`를 자동 부착하고, `NPC_MIND_MEMORY_DB` 환경변수로
+DB 파일 경로 지정 (미설정 시 in-memory SQLite).
+
+### Memory 엔드포인트 (`src/bin/mind-studio/handlers/memory.rs`)
+
+| 메서드·경로 | 요청 | 응답 |
+|---|---|---|
+| `GET /api/memory/search?npc=&topic=&layer=&source=&limit=&q=` | 쿼리 파라미터만 | `{ entries: Vec<MemoryEntry> }` |
+| `GET /api/memory/by-npc/{id}?limit=&layer=` | path `id` + 옵션 쿼리 | `{ entries: Vec<MemoryEntry> }` |
+| `GET /api/memory/by-topic/{topic}?limit=` | path `topic` + 옵션 쿼리 (기본 50) | `{ entries: Vec<MemoryEntry> }` — supersede 이력 전체 포함 |
+| `GET /api/memory/canonical/{topic}` | path `topic` | `{ entry: Option<MemoryEntry> }` |
+| `POST /api/memory/entries` | `MemoryEntry` JSON | 201 CREATED (embedding 생성 안 함 — 메타 저장만) |
+| `POST /api/memory/tell` | `TellInformationRequest` | `{ listeners_informed: usize }` |
+
+- `search`의 `source` 파라미터는 CSV (`experienced,witnessed,heard,rumor`). `layer`는 `A`/`B`.
+- `search`의 `q` 파라미터는 현재 무시 (semantic 검색 미통합 — Step B 후속 과제).
+- `by-topic`은 `exclude_superseded=false` — Topic 역사 완전 공개용.
+
+### World 엔드포인트 (`handlers/world.rs`)
+
+| 메서드·경로 | 요청 | 응답 |
+|---|---|---|
+| `POST /api/world/apply-event` | `ApplyWorldEventRequest` | `{ applied: bool }` |
+
+실제 Canonical `MemoryEntry` 생성은 Inline `WorldOverlayHandler`가 담당.
+SSE `MemorySuperseded`는 dispatch 전에 `get_canonical_by_topic`으로 기존 존재를 확인한 뒤
+실제 supersede가 일어났을 때만 방출(리뷰 대응 M1).
+
+### Rumor 엔드포인트 (`handlers/rumor.rs`)
+
+| 메서드·경로 | 요청 | 응답 |
+|---|---|---|
+| `GET /api/rumors` | 없음 | `{ rumors: Vec<Rumor> }` — Active/Fading/Faded 전부 |
+| `POST /api/rumors/seed` | `SeedRumorRequest` | `{ rumor_id: String }` |
+| `POST /api/rumors/{id}/spread` | path `id` + `{ recipients, content_version? }` | `{ hop_index: u32, recipient_count: usize }` |
+
+`/api/rumors/{id}/spread`의 body에는 `rumor_id`가 없다(path가 담음). 내부적으로
+`SpreadRumorRequest`를 재구성.
+
+### SSE StateEvent (Step E1 신규 5종)
+
+`GET /api/events` SSE 스트림에 다음 이벤트명이 추가된다(`snake_case` 이름, 페이로드 없음 —
+프런트엔드는 이름만 받고 해당 엔드포인트를 refetch):
+
+- `memory_created` — Tell/ApplyWorldEvent/SpreadRumor/manual entry 성공 시
+- `memory_superseded` — ApplyWorldEvent이 기존 Canonical을 대체했을 때
+- `memory_consolidated` — (현재 방출 지점 없음 — Step F 이벤트 팬아웃에서 연결)
+- `rumor_seeded` — SeedRumor 성공 시
+- `rumor_spread` — SpreadRumor 성공 시
+
+### 저장소 구성 (환경변수)
+
+```
+NPC_MIND_MEMORY_DB=/path/to/studio.db   # 파일 SQLite (영속)
+# 미설정 시 SqliteMemoryStore::in_memory() + SqliteRumorStore::in_memory() 사용
+```
+
+두 store가 같은 DB 파일을 공유한다. `SqliteMemoryStore::init_schema`가 rumor 테이블을
+선제 생성하고 `SqliteRumorStore::init_schema`도 `IF NOT EXISTS`로 무충돌(§7.4).
+
+### 범위 외 (후속 스텝)
+
+- 프런트엔드 Memory/Rumor UI → Step E2
+- 시나리오 JSON `initial_rumors`/`world_knowledge` + 편집 GUI → Step E3
+- `MemoryEntryCreated/Superseded/Consolidated` 이벤트 EventStore 팬아웃 → Step F
+- Semantic `q` 검색 (SqliteMemoryStore::search의 vec0 통합) → Step B 후속
+- `director_v2` 경로에 memory/rumor 배선 (E1은 shared_dispatcher만)

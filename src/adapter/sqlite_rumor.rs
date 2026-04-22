@@ -276,6 +276,22 @@ impl RumorStore for SqliteRumorStore {
         }
         Ok(out)
     }
+
+    fn list_all(&self) -> Result<Vec<Rumor>, MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let ids = collect_ids(
+            &conn,
+            "SELECT id FROM rumors ORDER BY created_at DESC",
+            params![],
+        )?;
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(r) = load_internal(&conn, &id)? {
+                out.push(r);
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// 단일 컬럼(id) 쿼리를 실행해 `Vec<String>`로 수집. 각 row 파싱 실패를 에러로 전파.

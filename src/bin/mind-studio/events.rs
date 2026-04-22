@@ -34,6 +34,13 @@ pub enum StateEvent {
 
     // 히스토리 (catch-all)
     HistoryChanged,
+
+    // Step E1 — Memory / Rumor (embed feature 경로에서만 발생)
+    MemoryCreated,
+    MemorySuperseded,
+    MemoryConsolidated,
+    RumorSeeded,
+    RumorSpread,
 }
 
 impl StateEvent {
@@ -58,6 +65,11 @@ impl StateEvent {
             Self::ChatTurnCompleted => "chat_turn_completed",
             Self::ChatEnded => "chat_ended",
             Self::HistoryChanged => "history_changed",
+            Self::MemoryCreated => "memory_created",
+            Self::MemorySuperseded => "memory_superseded",
+            Self::MemoryConsolidated => "memory_consolidated",
+            Self::RumorSeeded => "rumor_seeded",
+            Self::RumorSpread => "rumor_spread",
         }
     }
 }

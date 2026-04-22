@@ -1247,15 +1247,68 @@ pub enum StateEvent {
   - 신규 lib 단위 테스트 14개 (WorldOverlayAgent 2 + WorldOverlayHandler 3 + SceneConsolidationHandler 3 + RelationshipMemoryHandler 6).
   - 기존 `dispatch_v2_test::with_default_handlers_registers_expected_counts` 업데이트 (6→7).
 
-### Step E — Mind Studio 편집 기능 (선택, 병렬 진행 가능)
+### Step E — Mind Studio 통합 (3 서브-PR로 분할)
 
-**범위**: Topic 히스토리 뷰어(Canonical 강조), 소문 편집기(seed_content, 고아 표시), 시나리오 편집 GUI.
+원 설계는 단일 "편집 기능" 스텝이었으나 구현 단계에서 백엔드·표시·편집 세 층으로 분리해 순차 진행한다.
 
-**가치**: 작가 워크플로우 편의성.
+#### Step E1 — 백엔드 REST + SSE 배선 ✅ 완료
 
-**DoD**:
-- 프론트엔드 Vitest 테스트 추가
-- 수동 시나리오 편집 → 저장 → 로드 → 재생 플로우 검증
+**범위 (E1)**:
+- `AppState`에 embed-gated `memory_store`/`rumor_store` 필드 추가 + `shared_dispatcher`에
+  `.with_memory_full()` + `.with_rumor()` 자동 부착 (`NPC_MIND_MEMORY_DB` 환경변수).
+- `RumorStore::list_all()` 포트 메서드 신설.
+- REST 엔드포인트 10종 (embed feature 활성 시에만 라우팅 등록):
+    - `GET /api/memory/{search,by-npc/{id},by-topic/{topic},canonical/{topic}}`
+    - `POST /api/memory/{entries,tell}`
+    - `POST /api/world/apply-event`
+    - `GET /api/rumors`, `POST /api/rumors/{seed,{id}/spread}`
+- `domain_sync`에 4 dispatch 헬퍼 (`tell_information`/`apply_world_event`/
+  `seed_rumor`/`spread_rumor`).
+- SSE `StateEvent` 5 variant 추가 (`MemoryCreated`/`MemorySuperseded`/
+  `MemoryConsolidated`/`RumorSeeded`/`RumorSpread`).
+
+**가치**: MCP 클라이언트·외부 HTTP 도구가 기억/소문을 조회·생성할 수 있다. 프런트엔드(E2)가 의존할 엔드포인트 확정.
+
+**DoD (달성)**:
+- 통합 테스트 5종 green: `manual_entry_seed_appears_in_by_npc` / `tell_creates_memory_entry_and_emits_sse` / `apply_world_event_creates_canonical` / `by_topic_returns_history_including_superseded` / `seed_then_spread_rumor_creates_recipient_memories`.
+- 기존 `handler_tests` 43개 + lib 198개 회귀 green.
+- non-embed 빌드에서 라우터·상태 clean.
+
+**범위 외 (E1에서 제외)**:
+- 프런트엔드 React/Zustand UI → Step E2.
+- 시나리오 JSON `initial_rumors`/`world_knowledge` 필드 → Step E3.
+- `director_v2` 경로에 memory/rumor 배선 (shared_dispatcher만 다룸).
+- `SqliteMemoryStore::search`의 vec0 semantic 통합 (Step B 후속).
+- `POST /api/memory/entries`에서 embedding 생성 (현재는 메타 저장만).
+- `MemoryEntryCreated/Superseded/Consolidated` 이벤트 EventStore 팬아웃 → Step F.
+
+**구현 결과 (커밋 `3356675` + 리뷰 대응 `e63d638`)**:
+- 파일: `src/ports.rs`(list_all), `src/adapter/sqlite_rumor.rs`(list_all impl),
+  `src/application/command/{agents/rumor_agent.rs,rumor_distribution_handler.rs}`(SpyRumorStore list_all),
+  `tests/common/in_memory_rumor.rs`(list_all),
+  `src/bin/mind-studio/{state.rs,events.rs,domain_sync.rs,main.rs,handler_tests.rs}`,
+  `src/bin/mind-studio/handlers/{mod.rs,memory.rs,rumor.rs,world.rs}`.
+- **사후 리뷰 수정 4건 (커밋 `e63d638`)**:
+  - **M1**: `apply_world_event`의 `MemorySuperseded` SSE 오탐 제거 — dispatch 직전에 `get_canonical_by_topic`으로 기존 존재 여부를 확정한 뒤 실제 supersede일 때만 방출.
+  - **M2**: `GET /api/memory/by-topic/:topic`에 `?limit=` 쿼리 파라미터 추가 (기본 50).
+  - **M4**: `tell_creates_...` 테스트에 `search?npc=&source=heard` 스모크 assertion 추가.
+  - **L5**: 4개 dispatch 헬퍼 호출부를 `&mut *inner` 명시 deref로 통일 (scenario.rs 관례).
+
+#### Step E2 — 프런트엔드 표시 UI (미구현)
+
+**범위**: NPC 상세 "기억" 탭 (Layer A/B, Scope/Source/Provenance/Type 뱃지, retention bar), 프롬프트 미리보기 주입 기억 하이라이트 + Ranker 점수 tooltip, Memory/Rumor Zustand 스토어, `useStateSync` 훅에 신규 5 StateEvent 분기.
+
+**가치**: 작가·디버거의 시각적 검증.
+
+**DoD**: Vitest 컴포넌트 테스트 + 수동 시나리오 로드 시 기억 탭 동작 확인.
+
+#### Step E3 — 편집 GUI + 시나리오 JSON 확장 (미구현)
+
+**범위**: Topic 히스토리 뷰어 (Canonical 강조), 소문 편집기 (seed_content·Reach·수동 확산·고아 Rumor 표시), 시나리오 JSON `initial_rumors`/`world_knowledge` 섹션 + GUI 편집기 (§17.3 결정 3과 함께).
+
+**가치**: 작가 워크플로우 일체화.
+
+**DoD**: 수동 시나리오 편집 → 저장 → 로드 → 재생 플로우 end-to-end.
 
 ### Step F — (향후) Pull 경로 활성, 백그라운드 Rumor 확산 틱
 

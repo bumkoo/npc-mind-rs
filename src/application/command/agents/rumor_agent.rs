@@ -258,6 +258,9 @@ mod tests {
         ) -> Result<Vec<Rumor>, crate::ports::MemoryError> {
             Ok(self.inner.lock().unwrap().clone())
         }
+        fn list_all(&self) -> Result<Vec<Rumor>, crate::ports::MemoryError> {
+            Ok(self.inner.lock().unwrap().clone())
+        }
     }
 
     fn seed_req_event(

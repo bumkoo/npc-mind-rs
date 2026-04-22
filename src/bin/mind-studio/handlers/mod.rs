@@ -102,6 +102,14 @@ pub mod v2_scenes;
 pub mod chat;
 #[cfg(feature = "chat")]
 pub mod llm;
+// Step E1 — Memory/Rumor/World 엔드포인트 (embed feature 활성 시에만).
+// with_memory_full + with_rumor가 embed에서만 배선되므로 핸들러도 같은 gate.
+#[cfg(feature = "embed")]
+pub mod memory;
+#[cfg(feature = "embed")]
+pub mod rumor;
+#[cfg(feature = "embed")]
+pub mod world;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

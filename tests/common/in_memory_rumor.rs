@@ -70,4 +70,8 @@ impl RumorStore for InMemoryRumorStore {
             .cloned()
             .collect())
     }
+
+    fn list_all(&self) -> Result<Vec<Rumor>, MemoryError> {
+        Ok(self.inner.read().unwrap().iter().cloned().collect())
+    }
 }

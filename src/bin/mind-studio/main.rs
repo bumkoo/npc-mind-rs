@@ -167,6 +167,21 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/llm/slots", get(handlers::llm::llm_slots))
         .route("/api/llm/metrics", get(handlers::llm::llm_metrics));
 
+    // Step E1 — Memory / Rumor / World 엔드포인트 (embed feature 활성 시).
+    // shared_dispatcher가 with_memory_full + with_rumor로 배선된 상태에서만 의미가 있다.
+    #[cfg(feature = "embed")]
+    let router = router
+        .route("/api/memory/search", get(handlers::memory::search))
+        .route("/api/memory/by-npc/{id}", get(handlers::memory::by_npc))
+        .route("/api/memory/by-topic/{topic}", get(handlers::memory::by_topic))
+        .route("/api/memory/canonical/{topic}", get(handlers::memory::canonical))
+        .route("/api/memory/entries", post(handlers::memory::create_entry))
+        .route("/api/memory/tell", post(handlers::memory::tell))
+        .route("/api/world/apply-event", post(handlers::world::apply_event))
+        .route("/api/rumors", get(handlers::rumor::list))
+        .route("/api/rumors/seed", post(handlers::rumor::seed))
+        .route("/api/rumors/{id}/spread", post(handlers::rumor::spread));
+
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());
 
