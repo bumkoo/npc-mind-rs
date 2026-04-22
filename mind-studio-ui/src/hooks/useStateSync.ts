@@ -3,7 +3,8 @@ import { api } from '../api/client'
 import { useEntityStore } from '../stores/useEntityStore'
 import { useSceneStore } from '../stores/useSceneStore'
 import { useResultStore } from '../stores/useResultStore'
-import type { Npc, Relationship, GameObject, TurnHistory, ScenarioEntry, ScenarioMeta, SceneInfo, Situation } from '../types'
+import { useMemoryStore } from '../stores/useMemoryStore'
+import type { Npc, Relationship, GameObject, TurnHistory, ScenarioEntry, ScenarioMeta, SceneInfo, Situation, MemoryListResponse, RumorListResponse } from '../types'
 
 /**
  * SSE 기반 실시간 상태 동기화 훅.
@@ -98,6 +99,28 @@ export function useStateSync(refresh: () => Promise<void>) {
       fetchHistory()
     }
 
+    // Step E2 — Memory/Rumor 탭 refetch (선택된 NPC에만 해당).
+    // SSE는 페이로드 없이 이름만 오므로 현재 selected NPC 기준으로 갱신.
+    // selected NPC가 없으면 조용히 skip (기억 탭이 열려 있지 않은 상태).
+    function fetchMemoriesForSelected() {
+      const npc = useMemoryStore.getState().selectedNpcId
+      if (!npc) return
+      debounced(`mem:${npc}`, () => {
+        api
+          .get<MemoryListResponse>(`/api/memory/by-npc/${encodeURIComponent(npc)}`)
+          .then((r) => useMemoryStore.getState().setEntries(r.entries || []))
+          .catch(() => {})
+      })
+    }
+    function fetchRumors() {
+      debounced('rumors', () => {
+        api
+          .get<RumorListResponse>('/api/rumors')
+          .then((r) => useMemoryStore.getState().setRumors(r.rumors || []))
+          .catch(() => {})
+      })
+    }
+
     function connect() {
       if (closed) return
       // 이전 연결의 debounce 타이머 정리
@@ -135,6 +158,19 @@ export function useStateSync(refresh: () => Promise<void>) {
       es.addEventListener('chat_ended', () => fetchRelsAndHistory())
 
       es.addEventListener('history_changed', () => fetchHistory())
+
+      // Step E2 — Memory / Rumor SSE
+      // memory_created는 tell / apply_world / spread_rumor / 수동 주입에서 방출.
+      // memory_superseded는 실제 기존 Canonical이 교체될 때만 (M1 수정 반영).
+      // memory_consolidated는 현재 방출 지점 없음 (Step F에서 Memory 이벤트 팬아웃 시 연결).
+      es.addEventListener('memory_created', () => fetchMemoriesForSelected())
+      es.addEventListener('memory_superseded', () => fetchMemoriesForSelected())
+      es.addEventListener('memory_consolidated', () => fetchMemoriesForSelected())
+      es.addEventListener('rumor_seeded', () => fetchRumors())
+      es.addEventListener('rumor_spread', () => {
+        fetchRumors()
+        fetchMemoriesForSelected()
+      })
 
       // 이벤트 누락 시 전체 동기화
       es.addEventListener('resync', () => refreshRef.current())

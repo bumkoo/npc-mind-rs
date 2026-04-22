@@ -8,11 +8,43 @@ interface ContextViewProps {
   onCopy: () => void
 }
 
+/**
+ * 프롬프트 문자열에서 `LocaleMemoryFramer`가 prepend한 "떠오르는 기억" 블록을 분리한다
+ * (Step E2 시각화).
+ *
+ * 블록 포맷 (`locales/{ko,en}.toml` [memory.framing.block]):
+ * - ko: `\n# 떠오르는 기억\n` header + entries + `\n` footer
+ * - en: `\n# Recollections\n` header + entries + `\n` footer
+ *
+ * 헤더 매칭 실패 시 전체 프롬프트를 원본 그대로 반환.
+ */
+function splitMemoryBlock(prompt: string): { memory: string | null; rest: string } {
+  const patterns = [/^\s*#\s*떠오르는 기억\s*\n/, /^\s*#\s*Recollections\s*\n/]
+  for (const re of patterns) {
+    const m = prompt.match(re)
+    if (m) {
+      const afterHeader = prompt.slice(m.index! + m[0].length)
+      // 다음 h1 heading(`\n# `) 또는 두 줄 이상의 빈 줄까지를 블록으로 본다.
+      const endMatch = afterHeader.match(/\n(?=#\s)|\n{2,}/)
+      if (endMatch) {
+        const blockEnd = endMatch.index! + endMatch[0].length
+        const memory = m[0] + afterHeader.slice(0, blockEnd)
+        const rest = afterHeader.slice(blockEnd)
+        return { memory: memory.trim(), rest }
+      }
+      // 블록 끝을 못 찾으면 전체가 메모리 블록.
+      return { memory: prompt.trim(), rest: '' }
+    }
+  }
+  return { memory: null, rest: prompt }
+}
+
 export default function ContextView({ prompt, chatMessages, selectedMsgIdx, onRegenerate, onCopy }: ContextViewProps) {
   // selectedMsgIdx가 있으면: 해당 시점의 activePrompt + 그 이전 대화만 표시
   const isHistorical = selectedMsgIdx !== null && selectedMsgIdx !== undefined
   const selectedMsg = isHistorical && chatMessages ? chatMessages[selectedMsgIdx] : null
   const displayPrompt = (isHistorical && selectedMsg?.activePrompt) ? selectedMsg.activePrompt : prompt
+  const { memory, rest } = splitMemoryBlock(displayPrompt)
 
   const llmHistory = chatMessages
     ? (isHistorical
@@ -32,7 +64,28 @@ export default function ContextView({ prompt, chatMessages, selectedMsgIdx, onRe
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
           System Prompt {isHistorical && '(해당 시점)'}
         </div>
-        <div className="prompt-box">{displayPrompt}</div>
+        {memory && (
+          <div
+            data-testid="memory-block"
+            title="DialogueAgent가 주입한 떠오르는 기억 블록 (Step B Framer)"
+            style={{
+              borderLeft: '3px solid var(--accent2)',
+              background: 'var(--bg4)',
+              padding: '6px 10px',
+              marginBottom: 6,
+              borderRadius: 'var(--radius)',
+              fontSize: 12,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent2)', marginBottom: 4 }}>
+              💭 주입된 기억 블록
+            </div>
+            {memory}
+          </div>
+        )}
+        <div className="prompt-box">{memory ? rest : displayPrompt}</div>
         <div className="btn-row" style={{ marginTop: 6 }}>
           <button
             className="btn small"

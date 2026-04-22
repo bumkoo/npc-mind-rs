@@ -239,3 +239,124 @@ export interface Toast {
 }
 
 export type ToastFn = (msg: string, type?: ToastType) => void
+
+// ---------------------------------------------------------------------------
+// Memory / Rumor (Step E2 — Mind Studio 표시 UI)
+// ---------------------------------------------------------------------------
+
+/**
+ * 소유·접근 범위. Rust `#[serde(tag = "kind", rename_all = "snake_case")]`.
+ * Relationship은 `a ≤ b`로 정규화돼 있음.
+ */
+export type MemoryScope =
+  | { kind: 'personal'; npc_id: string }
+  | { kind: 'relationship'; a: string; b: string }
+  | { kind: 'faction'; faction_id: string }
+  | { kind: 'family'; family_id: string }
+  | { kind: 'world'; world_id: string }
+
+/** Rust `rename_all = "snake_case"`. */
+export type MemorySource = 'experienced' | 'witnessed' | 'heard' | 'rumor'
+
+/** Rust `rename_all = "snake_case"`. `seeded` = 작가 시드, `runtime` = 엔진 파생. */
+export type Provenance = 'seeded' | 'runtime'
+
+/** Rust `rename_all = "UPPERCASE"`. */
+export type MemoryLayer = 'A' | 'B'
+
+/**
+ * Rust `MemoryType` — 기본 derive(Serialize)라 PascalCase 그대로.
+ * 구 JSON(`Dialogue`/`Relationship`/`SceneEnd`)은 serde alias로 역호환되지만
+ * 서버는 항상 신규 이름으로 내보낸다.
+ */
+export type MemoryType =
+  | 'DialogueTurn'
+  | 'RelationshipChange'
+  | 'BeatTransition'
+  | 'SceneSummary'
+  | 'GameEvent'
+  | 'WorldEvent'
+  | 'FactionKnowledge'
+  | 'FamilyFact'
+
+export interface MemoryEntry {
+  id: string
+  created_seq: number
+  event_id: number
+  scope: MemoryScope
+  source: MemorySource
+  provenance: Provenance
+  memory_type: MemoryType
+  layer: MemoryLayer
+  content: string
+  topic: string | null
+  emotional_context: [number, number, number] | null
+  timestamp_ms: number
+  last_recalled_at: number | null
+  recall_count: number
+  origin_chain: string[]
+  confidence: number
+  acquired_by: string | null
+  superseded_by: string | null
+  consolidated_into: string | null
+  /** grand-fathered Personal-scope 투영값. 신규 UI는 `scope`를 우선 사용. */
+  npc_id: string
+}
+
+/** Rust `#[serde(rename_all = "snake_case")]`. */
+export type RumorStatus = 'active' | 'fading' | 'faded'
+
+/** Rust `RumorOrigin` 기본 derive — PascalCase variant. */
+export type RumorOrigin =
+  | { Seeded: null } // unit variant는 Rust serde 기본 "Seeded" string이므로 별도 파싱
+  | { FromWorldEvent: { event_id: number } }
+  | { Authored: { by: string | null } }
+  | string // unit variant 직렬화 대응 — 서버 반환 원형 유지
+
+export interface ReachPolicy {
+  regions: string[]
+  factions: string[]
+  npc_ids: string[]
+  min_significance: number
+}
+
+export interface RumorHop {
+  hop_index: number
+  content_version: string | null
+  recipients: string[]
+  spread_at: number
+}
+
+export interface RumorDistortion {
+  id: string
+  parent: string | null
+  content: string
+  created_at: number
+}
+
+export interface Rumor {
+  id: string
+  topic: string | null
+  seed_content: string | null
+  origin: RumorOrigin
+  reach_policy: ReachPolicy
+  hops: RumorHop[]
+  distortions: RumorDistortion[]
+  created_at: number
+  status: RumorStatus
+}
+
+/** `GET /api/memory/search|by-npc|by-topic` 공통 응답. */
+export interface MemoryListResponse {
+  entries: MemoryEntry[]
+}
+
+/** `GET /api/memory/canonical/{topic}` 응답. */
+export interface CanonicalResponse {
+  entry: MemoryEntry | null
+}
+
+/** `GET /api/rumors` 응답. */
+export interface RumorListResponse {
+  rumors: Rumor[]
+}
