@@ -611,10 +611,12 @@ pub enum MindServiceError {
 
 ---
 
-## Memory API (Step A Foundation + Step B Injection + Step C Telling & Rumor)
+## Memory API (Step A~D)
 
-`docs/memory/03-implementation-design.md`의 Step A·B·C가 구현된 상태의 공개 API.
-Step D의 Consolidation/WorldOverlay 관련 타입은 아직 미도입.
+`docs/memory/03-implementation-design.md`의 Step A·B·C·D가 구현된 상태의 공개 API.
+**Step D (Consolidation & World Overlay)** 포함: `Command::ApplyWorldEvent`,
+`WorldOverlayAgent`/`WorldOverlayHandler`, `SceneConsolidationHandler`,
+`RelationshipMemoryHandler`.
 
 ### MemoryEntry — 기억 항목
 
@@ -836,22 +838,31 @@ let agent = DialogueAgent::new(dispatcher, chat, formatter)
 - 검색 limit `MEMORY_PUSH_TOP_K * 3`로 oversample → Ranker가 `MEMORY_PUSH_TOP_K=5`로 컷.
 - 결과 엔트리에 `record_recall(id, now_ms)` 호출 (best-effort, 실패는 debug 로그만).
 
-### RelationshipUpdated 이벤트 — `cause` 필드 추가 (A8 hook)
+### RelationshipUpdated 이벤트 — `cause` 필드 (A8 hook, Step D 활성)
 
 ```rust
 EventPayload::RelationshipUpdated {
     // 기존 8 필드 …
-    cause: RelationshipChangeCause,  // Step A는 Unspecified 고정
+    cause: RelationshipChangeCause,
 }
 
 pub enum RelationshipChangeCause {
-    SceneInteraction { scene_id: SceneId },       // (미사용, Step D에서 채움)
-    InformationTold { origin_chain: Vec<String> },// (Step D — RelationshipMemoryHandler)
-    WorldEventOverlay { topic: Option<String> },  // (Step D)
-    Rumor { rumor_id: String },                   // (Step D)
-    Unspecified,                                  // Step A 기본값 · 구 JSON 역호환
+    SceneInteraction { scene_id: SceneId },       // Step D: BeatTransitioned 경로에서 설정
+    InformationTold { origin_chain: Vec<String> },// (Step F 예정 — 자동 채움)
+    WorldEventOverlay { topic: Option<String> },  // (Step F 예정)
+    Rumor { rumor_id: String },                   // (Step F 예정)
+    Unspecified,                                  // DialogueEnd/UpdateRelationship 기본값
 }
 ```
+
+**Step D 현재 설정 지점**:
+- `RelationshipAgent.handle_relationship_update_with_cause` — `BeatTransitioned` 경로에서
+  cause=`SceneInteraction { scene_id: SceneId::new(npc, partner) }` 자동 설정.
+- `DialogueEndRequested`/`RelationshipUpdateRequested` 경로는 여전히 `Unspecified`
+  (TODO step-f: DialogueEnd는 scene_id 필드 추가 후 SceneInteraction 승격 예정).
+
+`RelationshipMemoryHandler` (Step D, Inline)가 이 cause를 읽어 variant별로 source/topic/
+content/origin_chain을 분기한 `MemoryEntry(RelationshipChange)`를 생성한다 (§Step D API 참조).
 
 ---
 
@@ -978,18 +989,22 @@ composite (schema v3).
 
 ```rust
 let dispatcher = CommandDispatcher::new(repo, event_store, event_bus)
-    .with_default_handlers()                                          // 6 Agent + 3 Projection
-    .with_memory(memory_store.clone())                                // + TellingIngestionHandler (Step C2)
+    .with_default_handlers()                                          // 7 Agent + 3 Projection (Step D: +WorldOverlayAgent)
+    .with_memory(memory_store.clone())                                // lean: TellingIngestionHandler만 (Step C2 호환)
+    // or: .with_memory_full(memory_store.clone())                    // Step D 번들: Telling + WorldOverlay + RelationshipMemory + SceneConsolidation
     .with_rumor(memory_store.clone(), rumor_store.clone());           // + RumorAgent + RumorDistributionHandler (Step C3)
 ```
 
-- **`with_memory(Arc<dyn MemoryStore>)`** — Step B `DialogueAgent::with_memory`와 별개.
-  `TellingIngestionHandler`만 등록.
+- **`with_memory(Arc<dyn MemoryStore>)`** — **lean** (Step C2 호환, 리뷰 H5).
+  `TellingIngestionHandler` 1개만 등록. 기존 C2 콜러의 silent behavior break 방지용.
+- **`with_memory_full(Arc<dyn MemoryStore>)`** — **Step D 전체 번들**. 4개 Inline
+  핸들러를 일괄 등록: `TellingIngestionHandler` (C2) + `WorldOverlayHandler` (D) +
+  `RelationshipMemoryHandler` (D) + `SceneConsolidationHandler` (D).
 - **`with_rumor(Arc<dyn MemoryStore>, Arc<dyn RumorStore>)`** — `RumorAgent` (Transactional,
   priority 40) + `RumorDistributionHandler` (Inline) 일괄 등록.
-- 두 빌더 모두 생략 가능 — 이벤트만 발행되고 실제 저장은 외부 구독자 책임.
+- 모든 빌더는 생략 가능 — 이벤트만 발행되고 실제 저장은 외부 구독자 책임.
 
-### Transactional priority (§6.5 확장)
+### Transactional priority (§6.5 확장, Step D 반영)
 
 | 상수 | 값 | 역할 |
 |---|---|---|
@@ -997,10 +1012,23 @@ let dispatcher = CommandDispatcher::new(repo, event_store, event_bus)
 | `EMOTION_APPRAISAL` | 10 | 감정 평가 |
 | `STIMULUS_APPLICATION` | 15 | 자극 적용 |
 | `GUIDE_GENERATION` | 20 | 가이드 생성 |
+| **`WORLD_OVERLAY`** | **25** | **세계 오버레이 팬아웃 (Step D)** |
 | `RELATIONSHIP_UPDATE` | 30 | 관계 갱신 |
 | **`INFORMATION_TELLING`** | **35** | **정보 전달 팬아웃 (Step C2)** |
 | **`RUMOR_SPREAD`** | **40** | **소문 확산 (Step C3)** |
 | `AUDIT` | 90 | 감사 로그 |
+
+### Inline priority (Step D 반영)
+
+| 상수 | 값 | 역할 |
+|---|---|---|
+| `EMOTION_PROJECTION` | 10 | Emotion/Scene/Relationship 프로젝션 |
+| `RELATIONSHIP_PROJECTION` | 20 | 관계 프로젝션 |
+| `SCENE_PROJECTION` | 30 | Scene 프로젝션 |
+| `MEMORY_INGESTION` | 40 | TellingIngestion / RumorDistribution (C2/C3) |
+| **`WORLD_OVERLAY_INGESTION`** | **45** | **WorldOverlayHandler (Step D) — Canonical + supersede** |
+| **`RELATIONSHIP_MEMORY`** | **50** | **RelationshipMemoryHandler (Step D) — cause 분기** |
+| **`SCENE_CONSOLIDATION`** | **60** | **SceneConsolidationHandler (Step D) — Layer A→B 흡수** |
 
 ### 원자성 경계 (§14 재정의)
 
@@ -1009,3 +1037,101 @@ commit한다. 수신자별 `MemoryEntry` 쓰기는 `RumorDistributionHandler`가
 best-effort**로 수행하므로, `MemoryStore.index` 실패는 `tracing::warn!`만 남고 커맨드는
 성공 마무리된다. 완전한 cross-store 원자성은 분산 트랜잭션 없이 불가능 → Step F 재시도
 큐/sidecar로 해소 예정. I-RU-5는 "aggregate 일관성" 수준.
+
+---
+
+## Step D — Consolidation & World Overlay API
+
+Step D 완료 후 공개된 커맨드·이벤트·핸들러.
+
+### Commands
+
+```rust
+// Step D — Mind 컨텍스트
+Command::ApplyWorldEvent(ApplyWorldEventRequest)
+
+pub struct ApplyWorldEventRequest {
+    pub world_id: String,           // AggregateKey::World 라우팅
+    #[serde(default)]
+    pub topic: Option<String>,      // Canonical 연결 키. None이면 supersede 없음
+    pub fact: String,               // 세계 사실 본문 (MemoryEntry.content)
+    #[serde(default = "default_world_significance")] // 기본 0.5
+    pub significance: f32,          // [0, 1]. dispatcher에서 clamp
+    #[serde(default)]
+    pub witnesses: Vec<String>,     // 목격자 목록 (Step F 소비 예정)
+}
+```
+
+빈 `world_id` 또는 `fact.trim().is_empty()`면 `DispatchV2Error::InvalidSituation`로
+조기 reject.
+
+### 이벤트
+
+```rust
+// 초기 이벤트 (dispatcher가 발행)
+EventPayload::ApplyWorldEventRequested {
+    world_id: String,
+    topic: Option<String>,
+    fact: String,
+    significance: f32,
+    witnesses: Vec<String>,
+}
+
+// follow-up (WorldOverlayAgent가 발행)
+EventPayload::WorldEventOccurred {
+    world_id: String,
+    topic: Option<String>,
+    fact: String,                   // §3.1 원래 이름 "updated_fact"
+    significance: f32,
+    witnesses: Vec<String>,
+}
+```
+
+두 이벤트 모두 `AggregateKey::World(world_id)`로 라우팅.
+
+### Agents · Handlers
+
+| 파일 | 이름 | Mode | Priority | 역할 |
+|---|---|---|---|---|
+| `agents/world_overlay_agent.rs` | `WorldOverlayAgent` | Transactional | 25 (WORLD_OVERLAY) | ApplyWorldEventRequested → WorldEventOccurred 1:1 |
+| `world_overlay_handler.rs` | `WorldOverlayHandler` | Inline | 45 (WORLD_OVERLAY_INGESTION) | Canonical `MemoryEntry(World, Seeded)` 생성 + 같은 topic **Canonical 1건** supersede |
+| `relationship_memory_handler.rs` | `RelationshipMemoryHandler` | Inline | 50 (RELATIONSHIP_MEMORY) | RelationshipUpdated.cause variant별 source/topic/content 분기 |
+| `scene_consolidation_handler.rs` | `SceneConsolidationHandler` | Inline | 60 (SCENE_CONSOLIDATION) | SceneEnded → 참여 NPC별 Personal SceneSummary + Layer A `consolidated_into` 마킹 |
+
+### WorldOverlay supersede 정책 (리뷰 B1)
+
+`topic` 있는 `ApplyWorldEvent`는 **`get_canonical_by_topic(topic)` 단건만** supersede.
+개별 NPC의 Personal `Heard`/`Rumor` 엔트리(주관 기억)는 보존 — 엔진이 "사실 변경"을
+이유로 사용자 기억을 파괴하지 않는다. 각 NPC는 다음 상호작용에서 자연스럽게 갱신된 사실을
+학습한다.
+
+### SceneConsolidation 관점 분리 (리뷰 B3)
+
+`SceneEnded` 수신 시 **참여 NPC별**로 1개씩 Personal Scope SceneSummary를 만든다.
+각 summary는 **그 NPC 관점의 Layer A만** 흡수:
+
+- `alice` summary: `scope=Personal{alice}`, `alice`의 Personal + `alice↔bob` Relationship의
+  Layer A만 `consolidated_into = alice_summary_id` 마킹.
+- `bob` summary: 동일하되 `bob` 관점.
+- `topic = Some("scene:{a}:{b}")` (a ≤ b 정규화) — 후속 `get_by_topic_latest` 조회 편의.
+- 한 쪽 NPC만 Layer A가 있으면 그쪽 summary만 생성.
+- 대상 타입: `DialogueTurn`/`BeatTransition`만 (RelationshipChange/WorldEvent 제외).
+- 휴리스틱 요약: `{count}턴 간 대화 요약: {첫} ... {끝}` (120자 cap, UTF-8 safe).
+
+### RelationshipMemoryHandler cause 분기 (§8.3)
+
+| cause | source | topic | content 포맷 | origin_chain |
+|---|---|---|---|---|
+| `SceneInteraction { scene_id }` | Experienced | None | "장면에서 {target}과(와)의 관계 변화 [{axis} Δ={value}]" | `[]` |
+| `InformationTold { origin_chain }` | Heard(len=1) or Rumor(len≥2, len=0) | None | "정보 전달로 {target} 관련 감정 변화 [{axis} Δ={value}]" | 입력 체인 계승 |
+| `WorldEventOverlay { topic }` | Experienced | topic 계승 | "세계 사건({topic})으로 {target} 관련 변화 [{axis} Δ={value}]" | `[]` |
+| `Rumor { rumor_id }` | Rumor | None | "소문({rumor_id}) 여파로 {target} 관련 변화 [{axis} Δ={value}]" | `[rumor:{rumor_id}]` |
+| `Unspecified` | Experienced | None | "{target}과(와)의 관계 변화 [{axis} Δ={value}]" | `[]` |
+
+**주도 축 라벨** (리뷰 H4): `closeness`/`trust`/`power` 중 |Δ|가 가장 큰 축 이름과 값을
+content 끝에 `[{axis} Δ={value:.2}]` 포맷으로 붙인다. 동률이면 closeness → trust → power 선점.
+
+**threshold**: `MEMORY_RELATIONSHIP_DELTA_THRESHOLD = 0.05` 미만 Δ는 skip.
+
+**관점**: owner → target 관점 엔트리만 생성 (Step F 확장 예정 — target 관점 자동 미러는
+도메인 판단 필요).
