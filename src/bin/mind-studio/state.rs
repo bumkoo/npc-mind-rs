@@ -18,6 +18,8 @@ use npc_mind::InMemoryRepository;
 #[cfg(feature = "listener_perspective")]
 use npc_mind::domain::listener_perspective::ListenerPerspectiveConverter;
 use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
+#[cfg(feature = "embed")]
+use npc_mind::ports::{MemoryStore, RumorStore};
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -80,6 +82,16 @@ pub struct AppState {
     /// 되므로 실용상 문제없음 — 장기 실행 시 메모리 사용량 증가와 `next_sequence`
     /// O(N) scan 부하가 누적됨을 염두에 둘 것. Phase 8+ persistent store 도입 시 해소.
     pub shared_dispatcher: Arc<CommandDispatcher<InMemoryRepository>>,
+
+    /// Step E1: Memory 저장소. `embed` feature 활성 시 `NPC_MIND_MEMORY_DB` 환경변수
+    /// 경로(또는 `:memory:`)로 초기화되며 `shared_dispatcher`에 `with_memory_full`로
+    /// 부착된다. REST 핸들러가 직접 조회할 때도 사용.
+    #[cfg(feature = "embed")]
+    pub memory_store: Arc<dyn MemoryStore>,
+
+    /// Step E1: Rumor 저장소. `embed` feature 활성 시에만 존재하며 같은 DB 파일을 공유.
+    #[cfg(feature = "embed")]
+    pub rumor_store: Arc<dyn RumorStore>,
 }
 
 impl AppState {
@@ -104,8 +116,50 @@ impl AppState {
             Arc::new(Director::new(dispatcher, spawner))
         };
 
-        // B5.2 (3/3): 공유 CommandDispatcher — REST /api/* 경로가 재사용.
-        // shadow Director와는 별도의 repo/store/bus를 소유한다(책임 분리).
+        // Step E1: embed feature 활성 시 MemoryStore/RumorStore를 먼저 초기화한 뒤
+        // 공유 dispatcher에 with_memory_full + with_rumor로 부착한다.
+        // `NPC_MIND_MEMORY_DB` 환경변수가 있으면 해당 파일, 없으면 in-memory SQLite.
+        // 두 store가 같은 DB 파일/인스턴스를 공유 — SqliteRumorStore가 init_schema에서
+        // rumors/rumor_hops/rumor_distortions 테이블을 선제 생성하도록 설계됨(§7.4).
+        #[cfg(feature = "embed")]
+        let (shared_dispatcher, memory_store, rumor_store) = {
+            use npc_mind::adapter::sqlite_memory::SqliteMemoryStore;
+            use npc_mind::adapter::sqlite_rumor::SqliteRumorStore;
+
+            let db_path = std::env::var("NPC_MIND_MEMORY_DB").ok();
+            let mem: Arc<dyn MemoryStore> = match db_path.as_deref() {
+                Some(path) => Arc::new(
+                    SqliteMemoryStore::new(path)
+                        .expect("MemoryStore 초기화 실패 — NPC_MIND_MEMORY_DB 경로 확인"),
+                ),
+                None => Arc::new(
+                    SqliteMemoryStore::in_memory().expect("MemoryStore in-memory 초기화 실패"),
+                ),
+            };
+            let rum: Arc<dyn RumorStore> = match db_path.as_deref() {
+                Some(path) => Arc::new(
+                    SqliteRumorStore::new(path)
+                        .expect("RumorStore 초기화 실패 — NPC_MIND_MEMORY_DB 경로 확인"),
+                ),
+                None => Arc::new(
+                    SqliteRumorStore::in_memory().expect("RumorStore in-memory 초기화 실패"),
+                ),
+            };
+
+            let repo = InMemoryRepository::new();
+            let store = Arc::new(InMemoryEventStore::new());
+            let bus = Arc::new(EventBus::new());
+            let dispatcher = Arc::new(
+                CommandDispatcher::new(repo, store, bus)
+                    .with_default_handlers()
+                    .with_memory_full(mem.clone())
+                    .with_rumor(mem.clone(), rum.clone()),
+            );
+            (dispatcher, mem, rum)
+        };
+
+        // embed 미활성 — 기존 구성 그대로.
+        #[cfg(not(feature = "embed"))]
         let shared_dispatcher = {
             let repo = InMemoryRepository::new();
             let store = Arc::new(InMemoryEventStore::new());
@@ -132,6 +186,10 @@ impl AppState {
             mcp_server: None,
             director_v2,
             shared_dispatcher,
+            #[cfg(feature = "embed")]
+            memory_store,
+            #[cfg(feature = "embed")]
+            rumor_store,
         }
     }
 

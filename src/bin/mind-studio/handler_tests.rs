@@ -2039,3 +2039,273 @@ async fn v2_dispatch_scene_mismatch_returns_bad_request() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
+
+// ---------------------------------------------------------------------------
+// Step E1 — Memory / Rumor / World REST 엔드포인트 (embed feature 전용)
+//
+// `shared_dispatcher`가 `with_memory_full` + `with_rumor`로 배선된 상태에서 전체
+// 흐름을 검증한다. `AppState::new()`가 `NPC_MIND_MEMORY_DB` 미설정 시 in-memory
+// SQLite로 저장소를 구성하므로 테스트 격리는 자동이다.
+// ---------------------------------------------------------------------------
+
+#[cfg(feature = "embed")]
+mod memory_endpoints {
+    use super::*;
+    use crate::events::StateEvent;
+
+    /// NPC 두 명과 관계를 준비한 테스트 앱.
+    fn seeded_app() -> (axum::Router, crate::state::AppState) {
+        let state = test_state();
+        let app = crate::build_api_router(state.clone());
+        (app, state)
+    }
+
+    async fn seed_two_npcs(app: &axum::Router) {
+        for npc in [mu_baek_profile(), gyo_ryong_profile()] {
+            let resp = app.clone().oneshot(json_post("/api/npcs", npc)).await.unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
+        let rel = serde_json::json!({
+            "owner_id": "mu_baek",
+            "target_id": "gyo_ryong",
+            "closeness": 0.3,
+            "trust": 0.2,
+            "power": 0.1
+        });
+        let resp = app.clone().oneshot(json_post("/api/relationships", rel)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn manual_entry_seed_appears_in_by_npc() {
+        let (app, _state) = seeded_app();
+        seed_two_npcs(&app).await;
+
+        // 작가 도구 경로: Seeded Personal 엔트리를 수동 주입.
+        // JSON 직접 구성 — `MemoryEntry`의 serde default가 누락 필드를 채운다.
+        // scope: `#[serde(tag = "kind", rename_all = "snake_case")]`.
+        // source/provenance: `rename_all = "snake_case"`.
+        // layer: `rename_all = "UPPERCASE"`.
+        // memory_type: default PascalCase (serde alias 유지용).
+        let body = serde_json::json!({
+            "id": "seeded-1",
+            "created_seq": 1,
+            "event_id": 1,
+            "scope": { "kind": "personal", "npc_id": "mu_baek" },
+            "source": "experienced",
+            "provenance": "seeded",
+            "memory_type": "DialogueTurn",
+            "layer": "A",
+            "content": "첫 만남의 기억",
+            "emotional_context": null,
+            "timestamp_ms": 100,
+            "npc_id": "mu_baek"
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/memory/entries", body))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/by-npc/mu_baek"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["id"], "seeded-1");
+    }
+
+    #[tokio::test]
+    async fn tell_creates_memory_entry_and_emits_sse() {
+        let (app, state) = seeded_app();
+        seed_two_npcs(&app).await;
+
+        // 테스트가 `state.emit` 이전에 구독해야 이벤트를 받을 수 있음.
+        let mut rx = state.event_tx.subscribe();
+
+        let req = serde_json::json!({
+            "speaker": "gyo_ryong",
+            "listeners": ["mu_baek"],
+            "overhearers": [],
+            "claim": "장문인이 교체됐다",
+            "stated_confidence": 0.9,
+            "origin_chain_in": [],
+            "topic": "sect:leader"
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/memory/tell", req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["listeners_informed"], 1);
+
+        // SSE 이벤트 — MemoryCreated 수신 확인.
+        let mut saw_memory_created = false;
+        while let Ok(ev) = rx.try_recv() {
+            if matches!(ev, StateEvent::MemoryCreated) {
+                saw_memory_created = true;
+                break;
+            }
+        }
+        assert!(saw_memory_created, "StateEvent::MemoryCreated가 방출되지 않음");
+
+        // mu_baek에게 Heard 엔트리가 생성됐는지 확인.
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/by-npc/mu_baek"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
+        assert!(!entries.is_empty(), "mu_baek의 Heard 엔트리가 없음");
+        assert_eq!(entries[0]["source"], "heard");
+    }
+
+    #[tokio::test]
+    async fn apply_world_event_creates_canonical() {
+        let (app, _state) = seeded_app();
+        seed_two_npcs(&app).await;
+
+        let req = serde_json::json!({
+            "world_id": "jianghu",
+            "topic": "sect:leader",
+            "fact": "새 장문인은 백운이다",
+            "significance": 0.8,
+            "witnesses": []
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/world/apply-event", req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["applied"], true);
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/canonical/sect:leader"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entry = &body["entry"];
+        assert!(entry.is_object(), "Canonical 엔트리가 반환되지 않음");
+        assert_eq!(entry["provenance"], "seeded");
+    }
+
+    #[tokio::test]
+    async fn by_topic_returns_history_including_superseded() {
+        let (app, _state) = seeded_app();
+        seed_two_npcs(&app).await;
+
+        for fact in ["첫 발표", "두 번째 발표"] {
+            let req = serde_json::json!({
+                "world_id": "jianghu",
+                "topic": "sect:news",
+                "fact": fact,
+                "significance": 0.5,
+                "witnesses": []
+            });
+            let resp = app
+                .clone()
+                .oneshot(json_post("/api/world/apply-event", req))
+                .await
+                .unwrap();
+            assert_eq!(resp.status(), StatusCode::OK);
+        }
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/by-topic/sect:news"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
+        assert_eq!(entries.len(), 2, "superseded 포함 전체 이력을 반환해야 함");
+    }
+
+    #[tokio::test]
+    async fn seed_then_spread_rumor_creates_recipient_memories() {
+        let (app, state) = seeded_app();
+        seed_two_npcs(&app).await;
+
+        let mut rx = state.event_tx.subscribe();
+
+        let seed_req = serde_json::json!({
+            "topic": null,
+            "seed_content": "강호에 도사가 나타났다",
+            "reach": { "regions": [], "factions": [], "npc_ids": [], "min_significance": 0.0 },
+            "origin": { "kind": "authored", "by": null }
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/rumors/seed", seed_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let rumor_id = body["rumor_id"].as_str().unwrap().to_string();
+
+        // `GET /api/rumors` — 방금 시딩한 소문 1건이 목록에.
+        let resp = app
+            .clone()
+            .oneshot(get("/api/rumors"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let rumors = body.get("rumors").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(rumors.len(), 1);
+        assert_eq!(rumors[0]["id"], rumor_id);
+
+        // 확산.
+        let spread_req = serde_json::json!({
+            "recipients": ["mu_baek", "gyo_ryong"],
+            "content_version": null
+        });
+        let uri = format!("/api/rumors/{}/spread", rumor_id);
+        let resp = app
+            .clone()
+            .oneshot(json_post(&uri, spread_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["hop_index"], 0);
+        assert_eq!(body["recipient_count"], 2);
+
+        // SSE — RumorSeeded + RumorSpread + MemoryCreated 방출됐는지.
+        let mut saw_seed = false;
+        let mut saw_spread = false;
+        let mut saw_memory = false;
+        while let Ok(ev) = rx.try_recv() {
+            match ev {
+                StateEvent::RumorSeeded => saw_seed = true,
+                StateEvent::RumorSpread => saw_spread = true,
+                StateEvent::MemoryCreated => saw_memory = true,
+                _ => {}
+            }
+        }
+        assert!(saw_seed && saw_spread && saw_memory, "SSE 방출 누락: seed={} spread={} memory={}", saw_seed, saw_spread, saw_memory);
+
+        // 각 수신자의 기억 목록에 Rumor source 엔트리가 있어야 함.
+        for npc in ["mu_baek", "gyo_ryong"] {
+            let uri = format!("/api/memory/by-npc/{}", npc);
+            let resp = app.clone().oneshot(get(&uri)).await.unwrap();
+            let body = body_json(resp).await;
+            let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
+            let has_rumor = entries.iter().any(|e| e["source"] == "rumor");
+            assert!(has_rumor, "{}의 Rumor 엔트리가 없음", npc);
+        }
+    }
+}

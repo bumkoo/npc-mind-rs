@@ -293,6 +293,9 @@ mod tests {
         ) -> Result<Vec<Rumor>, crate::ports::MemoryError> {
             Ok(vec![])
         }
+        fn list_all(&self) -> Result<Vec<Rumor>, crate::ports::MemoryError> {
+            Ok(self.inner.lock().unwrap().iter().cloned().collect())
+        }
     }
 
     fn spread_event(event_id: u64, rumor_id: &str, hop: u32, recipients: &[&str]) -> DomainEvent {
