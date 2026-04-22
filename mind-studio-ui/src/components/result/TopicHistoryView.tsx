@@ -20,6 +20,11 @@ export default function TopicHistoryView() {
 
   const [draft, setDraft] = useState(selectedTopic || '')
 
+  // selectedTopic이 외부(시나리오 로드 등에 의한 clear)에서 변경되면 draft도 sync.
+  // 사용자 타이핑 중 직접 입력과 간섭하지 않도록 selectedTopic이 진짜 바뀔 때만 반영.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { setDraft(selectedTopic || '') }, [selectedTopic])
+
   // selectedTopic 변경 시 fetch.
   useEffect(() => {
     if (!selectedTopic) {

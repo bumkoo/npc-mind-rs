@@ -181,9 +181,17 @@ export function useStateSync(refresh: () => Promise<void>) {
       es.addEventListener('scene_started', () => { fetchHistoryAndScene(); fetchScenarioMeta() })
       es.addEventListener('scene_info_changed', () => fetchSceneInfo())
 
-      // 시나리오 라이프사이클 — 전체 상태 교체
-      es.addEventListener('scenario_loaded', () => refreshRef.current())
-      es.addEventListener('result_loaded', () => refreshRef.current())
+      // 시나리오 라이프사이클 — 전체 상태 교체.
+      // 기억/소문 스토어의 selectedNpcId·selectedTopic·entriesByNpc·topicEntries는
+      // 이전 시나리오 컨텍스트라 반드시 리셋 (E3.1 리뷰 M1).
+      es.addEventListener('scenario_loaded', () => {
+        useMemoryStore.getState().clear()
+        refreshRef.current()
+      })
+      es.addEventListener('result_loaded', () => {
+        useMemoryStore.getState().clear()
+        refreshRef.current()
+      })
       es.addEventListener('scenario_saved', () => fetchScenarios())
 
       // 개별 필드
