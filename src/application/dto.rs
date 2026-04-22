@@ -764,3 +764,175 @@ pub struct FocusObjectInfo {
     pub target_id: String,
     pub appealingness: f32,
 }
+
+// ---------------------------------------------------------------------------
+// TellInformation (Step C2 — Mind 컨텍스트 명령)
+// ---------------------------------------------------------------------------
+
+/// `Command::TellInformation` 요청 DTO.
+///
+/// 한 번의 발화로 `listeners`(직접 대상)와 `overhearers`(동석자 — 엿들은 자)에게
+/// 정보를 전달한다. Dispatcher는 `TellInformationRequested`를 초기 이벤트로 만들고,
+/// `InformationAgent`가 청자당 1개의 `InformationTold` follow-up을 팬아웃한다 (B5).
+///
+/// **청자 수 상한**: `MAX_EVENTS_PER_COMMAND=20`에 맞춰 listeners + overhearers ≤ 15를
+/// 권장한다. 초과 시 `DispatchV2Error::EventBudgetExceeded`.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TellInformationRequest {
+    /// 발화자 NPC ID
+    pub speaker: String,
+    /// 직접 대화 상대 목록 — `ListenerRole::Direct`로 전달됨
+    pub listeners: Vec<String>,
+    /// 엿들은 동석자 목록 — `ListenerRole::Overhearer`로 전달됨. 없으면 빈 벡터.
+    #[serde(default)]
+    pub overhearers: Vec<String>,
+    /// 전달하려는 주장 본문 (청자 `MemoryEntry.content`가 됨)
+    pub claim: String,
+    /// 화자가 표명하는 확신도 [0.0, 1.0]. 청자 entry.confidence는 이 값에
+    /// 청자의 화자에 대한 trust(정규화)를 곱한다.
+    pub stated_confidence: f32,
+    /// 화자가 이 정보를 어떤 체인으로 받았는지. 빈 vec = 화자가 직접 경험/목격.
+    /// 청자의 origin_chain은 `[speaker, ...origin_chain_in]`이 된다.
+    #[serde(default)]
+    pub origin_chain_in: Vec<String>,
+    /// 선택적 topic — Canonical 연결이 필요한 경우 (Step D 이후 본격 사용)
+    #[serde(default)]
+    pub topic: Option<String>,
+}
+
+/// `Command::TellInformation` 응답 DTO.
+///
+/// **현재 미사용** — dispatcher가 `DispatchV2Output`만 반환하므로 C2/C3 시점에는
+/// 생성 지점이 없다. Step D에서 typed dispatch facade 도입 시 재검토.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TellInformationResponse {
+    /// 실제 발행된 `InformationTold` 이벤트 수 (= listeners + overhearers).
+    pub listeners_informed: usize,
+    /// 생성된 청자별 `MemoryEntry` id 목록 (청자 순서대로). MemoryStore가 미부착이면 empty.
+    pub memory_entry_ids: Vec<String>,
+}
+
+// ---------------------------------------------------------------------------
+// SeedRumor / SpreadRumor (Step C3 — Memory 컨텍스트 명령)
+// ---------------------------------------------------------------------------
+
+/// `Command::SeedRumor` 요청 DTO.
+///
+/// 새 Rumor 애그리거트를 생성한다. `topic`이 있으면 "일반 소문"(Canonical MemoryEntry에
+/// 묶임) 또는 "예보된 사실"(seed_content도 함께 제공). `topic`이 없으면 고아 Rumor로
+/// seed_content 필수. `docs/memory/03-implementation-design.md` §2.6 Canonical 해소표 참조.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SeedRumorRequest {
+    /// Canonical 참조 키. None이면 고아 Rumor.
+    #[serde(default)]
+    pub topic: Option<String>,
+    /// 고아 Rumor 또는 예보된 사실일 때 본문. `topic=None`이면 필수.
+    #[serde(default)]
+    pub seed_content: Option<String>,
+    /// 도달 범위 제한 (regions/factions/npc_ids 교집합 + min_significance 하한).
+    pub reach: RumorReachInput,
+    /// 기원 — Seeded / FromWorldEvent / Authored.
+    pub origin: RumorOriginInput,
+}
+
+/// `Command::SpreadRumor` 요청 DTO.
+///
+/// 기존 Rumor 애그리거트에 새 홉을 추가해 N명의 수신자에게 전파한다.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpreadRumorRequest {
+    /// 확산할 Rumor id.
+    pub rumor_id: String,
+    /// 이번 홉의 수신자 목록. 각 수신자에게 `MemoryEntry(Rumor)`가 생성된다.
+    pub recipients: Vec<String>,
+    /// 이 홉이 참조할 변형(distortion) id. None이면 원본 content.
+    #[serde(default)]
+    pub content_version: Option<String>,
+}
+
+/// `ReachPolicy`에 매핑되는 DTO — 직렬화 전담.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct RumorReachInput {
+    #[serde(default)]
+    pub regions: Vec<String>,
+    #[serde(default)]
+    pub factions: Vec<String>,
+    #[serde(default)]
+    pub npc_ids: Vec<String>,
+    #[serde(default)]
+    pub min_significance: f32,
+}
+
+/// `RumorOrigin`에 매핑되는 DTO.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RumorOriginInput {
+    Seeded,
+    FromWorldEvent { event_id: u64 },
+    Authored {
+        #[serde(default)]
+        by: Option<String>,
+    },
+}
+
+// DTO → 도메인 변환 — `CommandDispatcher::build_initial_event`가 인라인 match 중복
+// 없이 `req.reach.into()`/`req.origin.into()`로 변환할 수 있게 한다 (C3 리뷰 m2).
+
+impl From<RumorReachInput> for crate::domain::rumor::ReachPolicy {
+    fn from(r: RumorReachInput) -> Self {
+        Self {
+            regions: r.regions,
+            factions: r.factions,
+            npc_ids: r.npc_ids,
+            min_significance: r.min_significance,
+        }
+    }
+}
+
+impl From<&RumorReachInput> for crate::domain::rumor::ReachPolicy {
+    fn from(r: &RumorReachInput) -> Self {
+        Self {
+            regions: r.regions.clone(),
+            factions: r.factions.clone(),
+            npc_ids: r.npc_ids.clone(),
+            min_significance: r.min_significance,
+        }
+    }
+}
+
+impl From<RumorOriginInput> for crate::domain::rumor::RumorOrigin {
+    fn from(o: RumorOriginInput) -> Self {
+        match o {
+            RumorOriginInput::Seeded => Self::Seeded,
+            RumorOriginInput::FromWorldEvent { event_id } => Self::FromWorldEvent { event_id },
+            RumorOriginInput::Authored { by } => Self::Authored { by },
+        }
+    }
+}
+
+impl From<&RumorOriginInput> for crate::domain::rumor::RumorOrigin {
+    fn from(o: &RumorOriginInput) -> Self {
+        match o {
+            RumorOriginInput::Seeded => Self::Seeded,
+            RumorOriginInput::FromWorldEvent { event_id } => Self::FromWorldEvent {
+                event_id: *event_id,
+            },
+            RumorOriginInput::Authored { by } => Self::Authored { by: by.clone() },
+        }
+    }
+}
+
+/// `Command::SeedRumor` 응답. **현재 미사용** — `TellInformationResponse`와 동일 이유.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SeedRumorResponse {
+    /// 생성된 Rumor id — `rumor-{event_id:012}` 형식 (결정적).
+    pub rumor_id: String,
+}
+
+/// `Command::SpreadRumor` 응답. **현재 미사용** — Step D typed facade 논의 시 재검토.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SpreadRumorResponse {
+    pub rumor_id: String,
+    pub hop_index: u32,
+    /// 수신자별 생성된 `MemoryEntry.id` — MemoryStore 미부착이면 empty.
+    pub memory_entry_ids: Vec<String>,
+}

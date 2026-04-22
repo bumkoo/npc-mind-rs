@@ -15,14 +15,21 @@ use crate::ports::MindRepository;
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
-use super::agents::{EmotionAgent, GuideAgent, RelationshipAgent, SceneAgent, StimulusAgent};
+use super::agents::{
+    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, SceneAgent,
+    StimulusAgent,
+};
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
 };
 use super::projection_handlers::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
+use super::rumor_distribution_handler::RumorDistributionHandler;
+use super::telling_ingestion_handler::TellingIngestionHandler;
 use super::types::Command;
+use crate::domain::rumor::{ReachPolicy, RumorOrigin};
+use crate::ports::{MemoryStore, RumorStore};
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -78,6 +85,11 @@ pub struct CommandDispatcher<R: MindRepository> {
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
     correlation_id: Arc<AtomicU64>,
+    /// 커맨드별 고유 suffix 생성용 내부 카운터. `Command::SeedRumor`의 pending_id 등에
+    /// 쓰이며, event_store의 next_id와 별개로 관리되어 **event id gap을 유발하지 않는다**
+    /// (Step C3 사후 리뷰 M1). 프로세스 수명 동안만 유일, replay 시 리셋되므로 id
+    /// 결정성은 §15 결정 유보 범위.
+    command_seq: Arc<AtomicU64>,
     transactional_handlers: Vec<Arc<dyn EventHandler>>,
     inline_handlers: Vec<Arc<dyn EventHandler>>,
 }
@@ -94,21 +106,64 @@ impl<R: MindRepository> CommandDispatcher<R> {
             event_store,
             event_bus,
             correlation_id: Arc::new(AtomicU64::new(0)),
+            command_seq: Arc::new(AtomicU64::new(1)),
             transactional_handlers: Vec::new(),
             inline_handlers: Vec::new(),
         }
     }
 
-    /// 5 Agent + 3 Projection wrapper를 기본 등록.
+    /// 6 Agent + 3 Projection wrapper를 기본 등록.
+    ///
+    /// Step C2 이후: `InformationAgent`도 기본 포함. Memory 인덱싱 Inline 핸들러
+    /// (`TellingIngestionHandler`)는 `MemoryStore` 주입이 필요하므로 `with_memory()`
+    /// 빌더로 따로 부착한다.
     pub fn with_default_handlers(mut self) -> Self {
         self = self.register_transactional(Arc::new(SceneAgent::new()));
         self = self.register_transactional(Arc::new(EmotionAgent::new()));
         self = self.register_transactional(Arc::new(StimulusAgent::new()));
         self = self.register_transactional(Arc::new(GuideAgent::new()));
         self = self.register_transactional(Arc::new(RelationshipAgent::new()));
+        self = self.register_transactional(Arc::new(InformationAgent::new()));
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
+        self
+    }
+
+    /// Memory 저장소 연동용 Inline 핸들러 부착 (Step C2~).
+    ///
+    /// 현재 등록 대상: `TellingIngestionHandler` (`InformationTold` → `MemoryEntry`).
+    /// Step D에서 `SceneConsolidationHandler`·`WorldOverlayHandler` 등이 추가될 예정.
+    ///
+    /// MemoryStore가 없는 환경(테스트·단순 시나리오)에서는 이 빌더를 호출하지 않으면
+    /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
+    /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
+    pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+        self
+    }
+
+    /// 소문(Rumor) 서브시스템 연동 (Step C3~).
+    ///
+    /// 두 핸들러를 등록한다:
+    /// - **`RumorAgent`** (Transactional) — `Seed/SpreadRumorRequested` 처리,
+    ///   `Rumor` 애그리거트를 `RumorStore`에 저장하고 `RumorSeeded`/`RumorSpread`
+    ///   follow-up을 발행.
+    /// - **`RumorDistributionHandler`** (Inline) — `RumorSpread` 구독해 각 수신자에게
+    ///   `MemoryEntry(Rumor)`를 `MemoryStore`에 저장 (content 해소는 §2.6 규칙을 따름).
+    ///
+    /// `MemoryStore`와 `RumorStore` 둘 다 필요하다. 둘이 없는 환경에서는
+    /// `register_transactional`/`register_inline`으로 개별 등록 가능.
+    pub fn with_rumor(
+        mut self,
+        memory_store: Arc<dyn MemoryStore>,
+        rumor_store: Arc<dyn RumorStore>,
+    ) -> Self {
+        self = self.register_transactional(Arc::new(RumorAgent::new(rumor_store.clone())));
+        self = self.register_inline(Arc::new(RumorDistributionHandler::new(
+            memory_store,
+            rumor_store,
+        )));
         self
     }
 
@@ -354,6 +409,60 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     significance: *significance,
                 },
             )),
+            Command::TellInformation(req) => Ok(DomainEvent::new(
+                0,
+                req.speaker.clone(),
+                0,
+                EventPayload::TellInformationRequested {
+                    speaker: req.speaker.clone(),
+                    listeners: req.listeners.clone(),
+                    overhearers: req.overhearers.clone(),
+                    claim: req.claim.clone(),
+                    stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
+                    origin_chain_in: req.origin_chain_in.clone(),
+                    topic: req.topic.clone(),
+                },
+            )),
+            Command::SeedRumor(req) => {
+                // DTO→도메인 변환은 `impl From<&RumorOriginInput>` / `<&RumorReachInput>`
+                // 가 담당 (C3 리뷰 m2에서 인라인 match 제거).
+                let origin: RumorOrigin = (&req.origin).into();
+                let reach: ReachPolicy = (&req.reach).into();
+                // 고아 Rumor는 seed_content 필수 — DTO 단계에서 빠르게 reject.
+                if req.topic.is_none() && req.seed_content.is_none() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "SeedRumor: topic 없으면 seed_content 필수".into(),
+                    ));
+                }
+                // 커맨드별 고유 pending_id — 복수의 SeedRumor가 "orphan" 공용 버킷을
+                // 공유하지 않도록 (Step C3 사후 리뷰 C2).
+                let pending_id = format!(
+                    "{:012}",
+                    self.command_seq.fetch_add(1, Ordering::SeqCst)
+                );
+                let agg_id = format!("pending-{pending_id}");
+                Ok(DomainEvent::new(
+                    0,
+                    agg_id,
+                    0,
+                    EventPayload::SeedRumorRequested {
+                        pending_id,
+                        topic: req.topic.clone(),
+                        seed_content: req.seed_content.clone(),
+                        reach,
+                        origin,
+                    },
+                ))
+            }
+            Command::SpreadRumor(req) => Ok(DomainEvent::new(
+                0,
+                req.rumor_id.clone(),
+                0,
+                EventPayload::SpreadRumorRequested {
+                    rumor_id: req.rumor_id.clone(),
+                    extra_recipients: req.recipients.clone(),
+                },
+            )),
             Command::StartScene {
                 npc_id,
                 partner_id,
@@ -456,15 +565,21 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
     fn commit_staging_buffer(
         &self,
-        aggregate_key: &AggregateKey,
+        _command_key: &AggregateKey,
         staging: Vec<DomainEvent>,
     ) -> Vec<DomainEvent> {
-        let aggregate_id = aggregate_key.npc_id_hint().to_string();
+        // 각 이벤트의 aggregate_id는 **payload의 자기 aggregate_key**로 결정한다.
+        // 커맨드의 aggregate_key는 참고용이며 덮어쓰기에 쓰지 않는다 — 그래야
+        // `EventStore.get_events(listener)` 같은 청자 기반 질의가 §3.3 B5
+        // (`InformationTold → Npc(listener)`)를 정확히 반영한다. 기존 이벤트
+        // (EmotionAppraised·BeatTransitioned·RelationshipUpdated 등)는 payload의
+        // `npc_id_hint`가 커맨드의 것과 같아서 저장값이 변하지 않는다.
         let mut committed = Vec::with_capacity(staging.len());
         for event in staging {
+            let per_event_id = event.aggregate_key().npc_id_hint().to_string();
             let id = self.event_store.next_id();
-            let seq = self.event_store.next_sequence(&aggregate_id);
-            let mut e = DomainEvent::new(id, aggregate_id.clone(), seq, event.payload);
+            let seq = self.event_store.next_sequence(&per_event_id);
+            let mut e = DomainEvent::new(id, per_event_id, seq, event.payload);
             if let Some(cid) = self.current_correlation_id() {
                 e = e.with_correlation(cid);
             }

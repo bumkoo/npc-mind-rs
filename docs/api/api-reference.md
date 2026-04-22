@@ -607,13 +607,14 @@ pub enum MindServiceError {
 | `LlmModelDetector` | 모델 런타임 재감지 (chat feature) | `RigChatAdapter` |
 | `LlamaServerMonitor` | llama-server health/slots/metrics (chat feature) | `RigChatAdapter` |
 | `MemoryStore` | 기억 저장/검색 (RAG) | `SqliteMemoryStore` (embed feature) |
+| `RumorStore` | Rumor 애그리거트 저장/검색 (Step C1~) | `SqliteRumorStore` (embed feature). 테스트 전용 `InMemoryRumorStore`. |
 
 ---
 
-## Memory API (Step A Foundation + Step B Injection)
+## Memory API (Step A Foundation + Step B Injection + Step C Telling & Rumor)
 
-`docs/memory/03-implementation-design.md`의 Step A·B가 구현된 상태의 공개 API.
-Step C~D의 Rumor/Telling/Consolidation/WorldOverlay 관련 타입은 아직 미도입.
+`docs/memory/03-implementation-design.md`의 Step A·B·C가 구현된 상태의 공개 API.
+Step D의 Consolidation/WorldOverlay 관련 타입은 아직 미도입.
 
 ### MemoryEntry — 기억 항목
 
@@ -844,10 +845,167 @@ EventPayload::RelationshipUpdated {
 }
 
 pub enum RelationshipChangeCause {
-    SceneInteraction { scene_id: SceneId },       // (미사용, Step C/D 채움)
-    InformationTold { origin_chain: Vec<String> },// (Step C)
+    SceneInteraction { scene_id: SceneId },       // (미사용, Step D에서 채움)
+    InformationTold { origin_chain: Vec<String> },// (Step D — RelationshipMemoryHandler)
     WorldEventOverlay { topic: Option<String> },  // (Step D)
-    Rumor { rumor_id: String },                   // (Step C)
+    Rumor { rumor_id: String },                   // (Step D)
     Unspecified,                                  // Step A 기본값 · 구 JSON 역호환
 }
 ```
+
+---
+
+## Step C — Telling & Rumor API
+
+Step C1/C2/C3 완료 후 공개된 커맨드·도메인·포트.
+
+### Commands
+
+```rust
+// Step C2 — Mind 컨텍스트
+Command::TellInformation(TellInformationRequest)
+
+pub struct TellInformationRequest {
+    pub speaker: String,
+    pub listeners: Vec<String>,       // Direct 청자
+    #[serde(default)]
+    pub overhearers: Vec<String>,     // Overhearer 청자 (엿들은 자)
+    pub claim: String,                 // 전달 본문
+    pub stated_confidence: f32,        // [0, 1]. dispatcher에서 clamp
+    #[serde(default)]
+    pub origin_chain_in: Vec<String>,  // 화자가 상속받은 체인. 청자 chain은 [speaker, ...inherited]
+    #[serde(default)]
+    pub topic: Option<String>,         // Canonical 연결 키
+}
+```
+
+→ `InformationAgent`가 listener + overhearer 각자에게 `InformationTold` follow-up 발행
+(listeners ∩ overhearers 중복은 Direct 우선으로 dedup).
+→ `TellingIngestionHandler` (Inline)가 각 청자의 `MemoryEntry(Personal, source=Heard/Rumor)`
+생성. `confidence = stated × (trust.value()+1)/2`, 관계 부재 시 0.5. `origin_chain` 길이가
+1이면 Heard, 2+면 Rumor (자동 분류).
+
+```rust
+// Step C3 — Memory 컨텍스트
+Command::SeedRumor(SeedRumorRequest)
+Command::SpreadRumor(SpreadRumorRequest)
+
+pub struct SeedRumorRequest {
+    #[serde(default)]
+    pub topic: Option<String>,
+    #[serde(default)]
+    pub seed_content: Option<String>,  // 고아 Rumor(topic=None)이면 필수
+    pub reach: RumorReachInput,
+    pub origin: RumorOriginInput,
+}
+
+pub struct SpreadRumorRequest {
+    pub rumor_id: String,
+    pub recipients: Vec<String>,
+    #[serde(default)]
+    pub content_version: Option<String>,  // Distortion id 참조 (원본이면 None)
+}
+
+pub struct RumorReachInput {
+    pub regions: Vec<String>,
+    pub factions: Vec<String>,
+    pub npc_ids: Vec<String>,
+    pub min_significance: f32,  // rumor가 가치 있다고 볼 최소 중요도
+}
+
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RumorOriginInput {
+    Seeded,
+    FromWorldEvent { event_id: u64 },
+    Authored { #[serde(default)] by: Option<String> },
+}
+```
+
+→ `RumorAgent`가 `Rumor` 애그리거트 생성/갱신 + `RumorStore.save` + `RumorSeeded`/`RumorSpread`
+follow-up. Seed의 커맨드별 고유 aggregate는 `SeedRumorRequested.pending_id` +
+dispatcher `command_seq` 조합 (여러 고아 Rumor가 같은 버킷 공유 방지).
+→ `RumorDistributionHandler` (Inline)가 `RumorSpread` 수신자에게 `MemoryEntry(Rumor)` 생성.
+Confidence는 `RUMOR_HOP_CONFIDENCE_DECAY(0.8)^hop_index × RUMOR_MIN_CONFIDENCE(0.1) 하한`.
+콘텐츠 해소 3-tier: Distortion → `MemoryStore::get_canonical_by_topic` → `seed_content`.
+
+### Rumor 도메인 (`src/domain/rumor.rs`)
+
+```rust
+pub struct Rumor {
+    pub id: String,
+    pub topic: Option<String>,
+    pub seed_content: Option<String>,
+    pub origin: RumorOrigin,
+    pub reach_policy: ReachPolicy,
+    pub created_at: u64,
+    // hops / distortions / status는 read-only accessor로만 노출
+}
+
+impl Rumor {
+    pub fn new(id, topic, origin, reach, created_at) -> Self;                      // 일반 소문
+    pub fn with_forecast_content(id, topic, seed, origin, reach, at) -> Self;      // 예보된 사실
+    pub fn orphan(id, seed, origin, reach, created_at) -> Self;                    // 고아 Rumor
+    pub fn add_hop(&mut self, hop: RumorHop) -> Result<(), RumorError>;
+    pub fn add_distortion(&mut self, d: RumorDistortion) -> Result<(), RumorError>;
+    pub fn transition_to(&mut self, status: RumorStatus) -> Result<(), RumorError>;
+    pub fn validate(&self) -> Result<(), RumorError>;  // 불변식 I-RU-1~6
+    pub(crate) fn from_parts(...) -> Result<Self, RumorError>;  // 저장소 로드 전용
+}
+
+pub enum RumorStatus { Active, Fading, Faded }
+pub enum RumorOrigin { Seeded, FromWorldEvent { event_id }, Authored { by } }
+```
+
+### RumorStore 포트
+
+```rust
+pub trait RumorStore: Send + Sync {
+    fn save(&self, rumor: &Rumor) -> Result<(), MemoryError>;
+    fn load(&self, id: &str) -> Result<Option<Rumor>, MemoryError>;
+    fn find_by_topic(&self, topic: &str) -> Result<Vec<Rumor>, MemoryError>;
+    fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
+}
+```
+
+**기본 구현**: `SqliteRumorStore` (embed feature). `rumors` / `rumor_hops` /
+`rumor_distortions` 3 테이블, `rumor_distortions`는 `PRIMARY KEY (rumor_id, id)`
+composite (schema v3).
+
+**테스트 전용**: `tests/common/in_memory_rumor.rs::InMemoryRumorStore` — `find_active_in_reach`에
+`status IN (Active, Fading)` 필터 적용.
+
+### CommandDispatcher 빌더 API
+
+```rust
+let dispatcher = CommandDispatcher::new(repo, event_store, event_bus)
+    .with_default_handlers()                                          // 6 Agent + 3 Projection
+    .with_memory(memory_store.clone())                                // + TellingIngestionHandler (Step C2)
+    .with_rumor(memory_store.clone(), rumor_store.clone());           // + RumorAgent + RumorDistributionHandler (Step C3)
+```
+
+- **`with_memory(Arc<dyn MemoryStore>)`** — Step B `DialogueAgent::with_memory`와 별개.
+  `TellingIngestionHandler`만 등록.
+- **`with_rumor(Arc<dyn MemoryStore>, Arc<dyn RumorStore>)`** — `RumorAgent` (Transactional,
+  priority 40) + `RumorDistributionHandler` (Inline) 일괄 등록.
+- 두 빌더 모두 생략 가능 — 이벤트만 발행되고 실제 저장은 외부 구독자 책임.
+
+### Transactional priority (§6.5 확장)
+
+| 상수 | 값 | 역할 |
+|---|---|---|
+| `SCENE_START` | 5 | Scene 시작 |
+| `EMOTION_APPRAISAL` | 10 | 감정 평가 |
+| `STIMULUS_APPLICATION` | 15 | 자극 적용 |
+| `GUIDE_GENERATION` | 20 | 가이드 생성 |
+| `RELATIONSHIP_UPDATE` | 30 | 관계 갱신 |
+| **`INFORMATION_TELLING`** | **35** | **정보 전달 팬아웃 (Step C2)** |
+| **`RUMOR_SPREAD`** | **40** | **소문 확산 (Step C3)** |
+| `AUDIT` | 90 | 감사 로그 |
+
+### 원자성 경계 (§14 재정의)
+
+Step C3의 `SpreadRumor` 커맨드는 **Rumor aggregate + `RumorSpread` 이벤트까지만** 원자적으로
+commit한다. 수신자별 `MemoryEntry` 쓰기는 `RumorDistributionHandler`가 **Inline
+best-effort**로 수행하므로, `MemoryStore.index` 실패는 `tracing::warn!`만 남고 커맨드는
+성공 마무리된다. 완전한 cross-store 원자성은 분산 트랜잭션 없이 불가능 → Step F 재시도
+큐/sidecar로 해소 예정. I-RU-5는 "aggregate 일관성" 수준.

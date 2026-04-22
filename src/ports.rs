@@ -710,6 +710,34 @@ pub enum MemoryError {
     EmbeddingError(String),
 }
 
+// ---------------------------------------------------------------------------
+// 소문 저장소 포트 (Step C1 foundation)
+// ---------------------------------------------------------------------------
+
+use crate::domain::rumor::{ReachPolicy, Rumor};
+
+/// 소문 애그리거트 저장/검색 포트.
+///
+/// Step C1에서는 trait 시그니처만 정의하고 `SqliteRumorStore` 어댑터가 구현한다.
+/// 실제 호출 경로(`RumorAgent`, `RumorDistributionHandler`)는 Step C3에서 연결된다.
+pub trait RumorStore: Send + Sync {
+    /// 신규 또는 기존 rumor upsert. `Rumor.validate()`로 이미 검증된 값을 받는다.
+    fn save(&self, rumor: &Rumor) -> Result<(), MemoryError>;
+
+    /// ID로 단일 rumor 조회. Hop·distortion 목록을 모두 포함해 복원한다.
+    fn load(&self, id: &str) -> Result<Option<Rumor>, MemoryError>;
+
+    /// Topic에 묶인 모든 rumor 조회. Canonical 해소 대상 탐색 등에 사용.
+    fn find_by_topic(&self, topic: &str) -> Result<Vec<Rumor>, MemoryError>;
+
+    /// 주어진 `reach`에 도달 가능한 활성 rumor 목록.
+    ///
+    /// reach 규칙: reach.regions/factions/npc_ids는 "이 축 중 하나라도 겹치면 도달"로
+    /// 해석한다(설계 §2.6). min_significance는 하한 필터.
+    /// Step C1에서는 후보 필터만 제공하고 최종 정책은 Step C3 `RumorAgent`가 결정.
+    fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
+}
+
 /// 기억 프레이밍 포트 (Step B — LLM 프롬프트 주입용).
 ///
 /// `MemoryEntry`를 Source별 라벨(예: `[겪음]`/`[목격]`/`[전해 들음]`/`[강호에 떠도는 소문]`)로

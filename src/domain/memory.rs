@@ -76,6 +76,38 @@ impl MemoryScope {
             Self::World { world_id } => format!("world:{world_id}"),
         }
     }
+
+    /// 이 Scope가 특정 NPC에게 회상 접근권을 허용하는지 정적으로 판정한다.
+    ///
+    /// 설계 §2.1은 `NpcWorld` 인자를 받는 원형이지만, Step A 시점에 Faction/Family
+    /// 소속 조회 인프라(`NpcWorld`)가 없으므로 소속 목록을 호출자가 주입하는
+    /// 축소 시그니처로 먼저 제공한다. Step C에서 `NpcWorld` 도입 시 이 메서드를
+    /// 래핑하는 오버로드를 추가할 예정.
+    ///
+    /// I-ME-9에 따라 Faction/Family Scope는 **획득 시점의 소속 기준**(= entry의
+    /// `acquired_by`)으로 판정한다. `allowed_*`는 현재 시점의 소속이 아닌,
+    /// "해당 NPC가 회상 시점에 접근 가능한 그룹 ID 목록"이다.
+    pub fn is_accessible_to(
+        &self,
+        npc_id: &str,
+        allowed_factions: &[String],
+        allowed_families: &[String],
+        acquired_by: Option<&str>,
+    ) -> bool {
+        match self {
+            Self::Personal { npc_id: owner } => owner == npc_id,
+            Self::Relationship { a, b } => a == npc_id || b == npc_id,
+            Self::World { .. } => true,
+            Self::Faction { faction_id } => {
+                acquired_by.is_some_and(|by| by == npc_id)
+                    || allowed_factions.iter().any(|f| f == faction_id)
+            }
+            Self::Family { family_id } => {
+                acquired_by.is_some_and(|by| by == npc_id)
+                    || allowed_families.iter().any(|f| f == family_id)
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -475,6 +507,57 @@ mod tests {
         };
         assert_eq!(personal.owner_a(), "npc1");
         assert_eq!(personal.owner_b(), None);
+    }
+
+    #[test]
+    fn memory_scope_is_accessible_to_personal_and_relationship() {
+        let mine = MemoryScope::Personal {
+            npc_id: "alice".into(),
+        };
+        assert!(mine.is_accessible_to("alice", &[], &[], None));
+        assert!(!mine.is_accessible_to("bob", &[], &[], None));
+
+        let rel = MemoryScope::relationship("alice", "bob");
+        assert!(rel.is_accessible_to("alice", &[], &[], None));
+        assert!(rel.is_accessible_to("bob", &[], &[], None));
+        assert!(!rel.is_accessible_to("carol", &[], &[], None));
+    }
+
+    #[test]
+    fn memory_scope_is_accessible_to_world_always_allowed() {
+        let world = MemoryScope::World {
+            world_id: "jianghu".into(),
+        };
+        assert!(world.is_accessible_to("anyone", &[], &[], None));
+    }
+
+    #[test]
+    fn memory_scope_is_accessible_to_faction_by_membership_or_acquired() {
+        let scope = MemoryScope::Faction {
+            faction_id: "moorim".into(),
+        };
+        let moorim = vec!["moorim".to_string()];
+
+        // 현재 소속자
+        assert!(scope.is_accessible_to("alice", &moorim, &[], None));
+        // 비소속자 (소속 목록·acquired_by 모두 없음)
+        assert!(!scope.is_accessible_to("carol", &[], &[], None));
+        // 비소속자이지만 I-ME-9: 획득 시점에 본인이 획득자였다면 접근 가능
+        assert!(scope.is_accessible_to("alice", &[], &[], Some("alice")));
+        // 다른 사람이 획득했다면 접근 불가
+        assert!(!scope.is_accessible_to("bob", &[], &[], Some("alice")));
+    }
+
+    #[test]
+    fn memory_scope_is_accessible_to_family_mirrors_faction_semantics() {
+        let scope = MemoryScope::Family {
+            family_id: "namgoong".into(),
+        };
+        let namgoong = vec!["namgoong".to_string()];
+
+        assert!(scope.is_accessible_to("alice", &[], &namgoong, None));
+        assert!(!scope.is_accessible_to("bob", &[], &[], None));
+        assert!(scope.is_accessible_to("bob", &[], &[], Some("bob")));
     }
 
     #[test]

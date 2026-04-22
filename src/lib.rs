@@ -16,9 +16,13 @@ pub mod presentation;
 pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};
 pub use application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse, AppraiseResult,
-    GuideRequest, GuideResponse, GuideResult, SceneRequest, SceneResponse, StimulusRequest,
-    StimulusResponse, StimulusResult,
+    GuideRequest, GuideResponse, GuideResult, RumorOriginInput, RumorReachInput, SceneRequest,
+    SceneResponse, SeedRumorRequest, SpreadRumorRequest, StimulusRequest, StimulusResponse,
+    StimulusResult, TellInformationRequest,
 };
+// Response DTOs (TellInformationResponse / SeedRumorResponse / SpreadRumorResponse)는
+// 현재 dispatcher가 생성·반환하지 않으므로 공개 노출에서 뺀다. typed facade가 필요한
+// 시점(Step D에서 dispatch 결과 타입 확장 논의)에 공개하거나 제거 재검토.
 pub use ports::{
     AnchorLoadError, Appraiser, EmotionStore, GuideFormatter, MindRepository, NpcWorld,
     PadAnchorSource, PersonalityProfile, SceneStore, StimulusProcessor,
@@ -34,15 +38,24 @@ pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 // --- CQRS Command / Agent (v2) ---
 pub use application::command::{
     Command, CommandDispatcher, EmotionAgent, EmotionProjectionHandler, GuideAgent,
-    RelationshipAgent, RelationshipProjectionHandler, SceneProjectionHandler,
+    InformationAgent, RelationshipAgent, RelationshipProjectionHandler, RumorAgent,
+    RumorDistributionHandler, SceneProjectionHandler, TellingIngestionHandler,
 };
 
 // --- Memory / RAG ---
 pub use domain::memory::{MemoryEntry, MemoryResult, MemoryType};
 pub use ports::{MemoryError, MemoryStore};
 
+// --- Rumor (Step C1 foundation) ---
+pub use domain::rumor::{
+    ReachPolicy, Rumor, RumorDistortion, RumorError, RumorHop, RumorOrigin, RumorStatus,
+};
+pub use ports::RumorStore;
+
 #[cfg(feature = "embed")]
 pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
+#[cfg(feature = "embed")]
+pub use adapter::sqlite_rumor::SqliteRumorStore;
 #[cfg(feature = "embed")]
 pub use application::memory_agent::MemoryAgent;
 

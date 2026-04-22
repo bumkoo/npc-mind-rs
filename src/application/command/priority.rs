@@ -33,6 +33,14 @@ pub mod transactional {
     /// 관계 갱신 — Scene/Beat 종료 시
     pub const RELATIONSHIP_UPDATE: i32 = 30;
 
+    /// 정보 전달 — 화자의 발화 이벤트를 청자당 1 `InformationTold` follow-up으로 팬아웃.
+    /// 관계 갱신(30) 이후에 실행되어야 청자의 현재 trust 값을 반영할 수 있다 (§6.5, B6).
+    pub const INFORMATION_TELLING: i32 = 35;
+
+    /// 소문 확산 — TellInformation 이후(§6.5 B6). `RumorAgent`가
+    /// `RumorSeeded`/`RumorSpread` follow-up을 발행하고 `RumorStore`에 저장한다.
+    pub const RUMOR_SPREAD: i32 = 40;
+
     /// 감사 로그 — 가장 마지막
     pub const AUDIT: i32 = 90;
 }
@@ -49,6 +57,11 @@ pub mod inline {
 
     /// Scene 프로젝션 (SceneStarted / BeatTransitioned / SceneEnded)
     pub const SCENE_PROJECTION: i32 = 30;
+
+    /// Memory 저장 계열 Inline 핸들러 — `TellingIngestionHandler` (Step C2),
+    /// `RumorDistributionHandler` (Step C3) 공용. Projection(30) 이후 실행되어
+    /// 쿼리 일관성 뷰가 먼저 업데이트된 뒤 기억 인덱싱이 일어난다.
+    pub const MEMORY_INGESTION: i32 = 40;
 }
 
 #[cfg(test)]
@@ -80,5 +93,31 @@ mod invariants {
     #[test]
     fn scene_start_runs_before_emotion_appraisal() {
         assert!(transactional::SCENE_START < transactional::EMOTION_APPRAISAL);
+    }
+
+    #[test]
+    fn information_telling_runs_after_relationship_update() {
+        assert!(transactional::INFORMATION_TELLING > transactional::RELATIONSHIP_UPDATE);
+    }
+
+    #[test]
+    fn information_telling_runs_before_audit() {
+        assert!(transactional::INFORMATION_TELLING < transactional::AUDIT);
+    }
+
+    #[test]
+    fn rumor_spread_runs_after_information_telling() {
+        assert!(transactional::RUMOR_SPREAD > transactional::INFORMATION_TELLING);
+    }
+
+    #[test]
+    fn rumor_spread_runs_before_audit() {
+        assert!(transactional::RUMOR_SPREAD < transactional::AUDIT);
+    }
+
+    #[test]
+    fn memory_ingestion_runs_after_scene_projection() {
+        // Projection 3종보다 뒤에서 실행되어야 쿼리 일관성 보장.
+        assert!(inline::MEMORY_INGESTION > inline::SCENE_PROJECTION);
     }
 }

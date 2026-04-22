@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+pub mod in_memory_rumor;
 pub mod in_memory_store;
 #[cfg(feature = "chat")]
 pub mod mock_chat;
