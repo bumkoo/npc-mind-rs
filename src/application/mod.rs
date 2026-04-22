@@ -8,6 +8,7 @@ pub mod event_store;
 #[cfg(feature = "embed")]
 pub mod memory_agent;
 pub mod scene_service;
+pub mod scenario_seeds;
 pub mod situation_service;
 
 #[cfg(feature = "chat")]

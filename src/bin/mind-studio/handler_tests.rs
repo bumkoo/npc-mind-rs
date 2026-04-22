@@ -2320,4 +2320,130 @@ mod memory_endpoints {
             assert!(has_rumor, "{}의 Rumor 엔트리가 없음", npc);
         }
     }
+
+    // -------------------------------------------------------------------
+    // Step E3.2 — 시나리오 JSON seeding
+    // -------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn load_scenario_seeds_memory_and_rumor_into_stores() {
+        use std::io::Write;
+        let (app, _state) = seeded_app();
+
+        // 시나리오 JSON 작성 — world_knowledge + faction_knowledge + initial_rumors.
+        let scenario_json = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "seed-test", "description": "" },
+            "world_knowledge": [
+                {
+                    "world_id": "jianghu",
+                    "topic": "sect:leader",
+                    "content": "장문인은 백운이다"
+                }
+            ],
+            "faction_knowledge": {
+                "sect_yun": [
+                    { "id": "sy-1", "content": "문파의 비전은 천뢰검법이다" }
+                ]
+            },
+            "initial_rumors": [
+                {
+                    "id": "r-seed-1",
+                    "topic": "sect:leader",
+                    "reach": { "regions": [], "factions": [], "npc_ids": [], "min_significance": 0.0 },
+                    "origin": { "kind": "seeded" }
+                }
+            ]
+        });
+
+        // 임시 파일에 쓰고 /api/load 호출.
+        let tmp_dir = std::env::temp_dir().join(format!("npc-mind-seed-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let tmp_path = tmp_dir.join("scenario.json");
+        let mut f = std::fs::File::create(&tmp_path).unwrap();
+        writeln!(f, "{}", scenario_json).unwrap();
+        drop(f);
+
+        let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
+        let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // world_knowledge 검증 — canonical 조회.
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/canonical/sect:leader"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entry = &body["entry"];
+        assert!(entry.is_object(), "Canonical 엔트리 부재");
+        assert_eq!(entry["content"], "장문인은 백운이다");
+        assert_eq!(entry["provenance"], "seeded");
+        assert_eq!(entry["scope"]["kind"], "world");
+        assert_eq!(entry["scope"]["world_id"], "jianghu");
+
+        // faction_knowledge 검증 — by-topic 조회가 sy-1을 포함해야 함. topic 미지정 엔트리는
+        // 검색되지 않으므로 search 엔드포인트로 source/scope 필터.
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/search?source=experienced&limit=50"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entries = body["entries"].as_array().unwrap();
+        let has_faction = entries.iter().any(|e| e["id"] == "sy-1");
+        assert!(has_faction, "sect_yun 문파 지식 시드가 저장되지 않음");
+
+        // initial_rumors 검증 — /api/rumors 목록.
+        let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
+        let body = body_json(resp).await;
+        let rumors = body["rumors"].as_array().unwrap();
+        assert!(
+            rumors.iter().any(|r| r["id"] == "r-seed-1"),
+            "initial_rumors가 시딩되지 않음",
+        );
+
+        // 정리.
+        let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_dir(&tmp_dir);
+    }
+
+    #[tokio::test]
+    async fn load_scenario_without_seed_sections_leaves_stores_empty() {
+        use std::io::Write;
+        let (app, _state) = seeded_app();
+
+        // 시드 섹션 전혀 없는 "기존 시나리오" 포맷 — 회귀 감시.
+        let scenario_json = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "no-seed", "description": "" }
+        });
+
+        let tmp_dir = std::env::temp_dir().join(format!("npc-mind-noseed-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp_dir).unwrap();
+        let tmp_path = tmp_dir.join("scenario.json");
+        let mut f = std::fs::File::create(&tmp_path).unwrap();
+        writeln!(f, "{}", scenario_json).unwrap();
+        drop(f);
+
+        let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
+        let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // 소문 목록 비어 있음.
+        let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
+        let body = body_json(resp).await;
+        assert_eq!(body["rumors"].as_array().unwrap().len(), 0);
+
+        let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_dir(&tmp_dir);
+    }
 }

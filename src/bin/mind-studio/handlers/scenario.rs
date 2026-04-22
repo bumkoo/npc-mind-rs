@@ -191,6 +191,8 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
     loaded.turn_history.clear();
     loaded.loaded_path = Some(resolved);
     let scene_cfg = loaded.scene.clone();
+    #[cfg(feature = "embed")]
+    let seeds = loaded.scenario_seeds.clone();
     {
         let mut inner = state.inner.write().await;
         *inner = loaded;
@@ -198,6 +200,10 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
     // B5.2 (3/3): 먼저 inner에 시나리오를 붙이고, 공유 repo를 fresh하게 만든 뒤
     // dispatch_v2(StartScene) 계열 호출을 실행한다.
     state.rebuild_repo_from_inner().await;
+    // Step E3.2: 시나리오 JSON의 memory/rumor 시드를 Mind Studio store에 주입.
+    // embed feature 비활성 경로에서는 저장소 자체가 없으므로 스킵.
+    #[cfg(feature = "embed")]
+    apply_scenario_seeds(&state, &seeds);
     if let Some(scene_val) = scene_cfg {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
@@ -214,11 +220,15 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     loaded.loaded_path = Some(resolved);
     let scene_cfg = loaded.scene.clone();
     let history = loaded.turn_history.clone();
+    #[cfg(feature = "embed")]
+    let seeds = loaded.scenario_seeds.clone();
     {
         let mut inner = state.inner.write().await;
         *inner = loaded;
     }
     state.rebuild_repo_from_inner().await;
+    #[cfg(feature = "embed")]
+    apply_scenario_seeds(&state, &seeds);
     if let Some(scene_val) = scene_cfg {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
@@ -226,6 +236,71 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     }
     state.emit(StateEvent::ResultLoaded);
     Ok(Json(super::LoadResultResponse { turn_history: history }))
+}
+
+/// Step E3.2: ScenarioSeeds를 Mind Studio의 memory_store/rumor_store에 인덱싱.
+///
+/// best-effort — 개별 주입 실패는 `tracing::warn!`로 로그만 남긴다. store가 in-memory
+/// 이거나 SQLite 파일에 이미 같은 id가 있으면 index/save가 upsert로 동작하므로 중복
+/// 시딩도 안전.
+#[cfg(feature = "embed")]
+fn apply_scenario_seeds(
+    state: &AppState,
+    seeds: &npc_mind::application::scenario_seeds::ScenarioSeeds,
+) {
+    use npc_mind::domain::memory::MemoryScope;
+
+    if seeds.is_empty() {
+        return;
+    }
+
+    // Rumor 시드.
+    for (idx, seed) in seeds.initial_rumors.iter().enumerate() {
+        let fallback = format!("{idx}");
+        match seed.clone().into_rumor(&fallback) {
+            Ok(rumor) => {
+                if let Err(e) = state.rumor_store.save(&rumor) {
+                    tracing::warn!("scenario seed rumor[{idx}] 저장 실패: {e}");
+                }
+            }
+            Err(e) => {
+                tracing::warn!("scenario seed rumor[{idx}] 빌드 실패: {e}");
+            }
+        }
+    }
+
+    // World 지식.
+    for (idx, seed) in seeds.world_knowledge.iter().enumerate() {
+        let fallback = format!("world-{idx}");
+        let entry = seed.clone().into_entry(&fallback);
+        if let Err(e) = state.memory_store.index(entry, None) {
+            tracing::warn!("scenario seed world_knowledge[{idx}] 저장 실패: {e}");
+        }
+    }
+
+    // Faction 지식.
+    for (faction_id, entries) in &seeds.faction_knowledge {
+        for (idx, seed) in entries.iter().enumerate() {
+            let fallback = format!("faction-{faction_id}-{idx}");
+            let scope = MemoryScope::Faction { faction_id: faction_id.clone() };
+            let entry = seed.clone().into_entry(scope, &fallback);
+            if let Err(e) = state.memory_store.index(entry, None) {
+                tracing::warn!("scenario seed faction_knowledge[{faction_id}][{idx}] 저장 실패: {e}");
+            }
+        }
+    }
+
+    // Family 사실.
+    for (family_id, entries) in &seeds.family_facts {
+        for (idx, seed) in entries.iter().enumerate() {
+            let fallback = format!("family-{family_id}-{idx}");
+            let scope = MemoryScope::Family { family_id: family_id.clone() };
+            let entry = seed.clone().into_entry(scope, &fallback);
+            if let Err(e) = state.memory_store.index(entry, None) {
+                tracing::warn!("scenario seed family_facts[{family_id}][{idx}] 저장 실패: {e}");
+            }
+        }
+    }
 }
 
 /// GET /api/test-report
