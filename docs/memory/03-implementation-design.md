@@ -1168,21 +1168,64 @@ pub enum StateEvent {
   - `CommandDispatcher::with_rumor(memory_store, rumor_store)` 빌더 — `RumorAgent` + `RumorDistributionHandler` 일괄 등록.
   - **사후 리뷰 수정 5건 + Step F 명기**: ① `rumor_id`가 `event.id=0`으로 충돌하던 버그 (전 SeedRumor가 같은 id로 귀결) → `RumorAgent` 자체 counter, ② 고아 Rumor들이 `"orphan"` 공용 event_store aggregate 버킷 공유하던 문제 → `SeedRumorRequested.pending_id` 필드 + dispatcher `command_seq: AtomicU64`로 커맨드별 고유 `pending-<id>`, ③ `InMemoryRumorStore` 테스트 헬퍼가 프로덕션 대비 느슨 → status 필터 추가, ④ dead Response export 제거, ⑤ 설계 §14 "원자적 commit" 문구를 "Rumor aggregate + RumorSpread 이벤트까지 원자, MemoryStore 쓰기는 Inline best-effort"로 재정의. `RumorDistorted`/`RumorFaded` 및 Fading/Faded spread 가드에 `TODO(step-f):` 명기.
 
-### Step D — Consolidation & World Overlay
+### Step D — Consolidation & World Overlay ✅ 완료
 
 **범위**:
 - `SceneConsolidationHandler` (SceneEnded → Layer B 생성).
-- `WorldOverlayAgent` (Mind) + `WorldOverlayHandler` (Memory Inline) + `Command::ApplyWorldEvent`.
-- `TopicLatestProjection`.
+- `WorldOverlayAgent` (Mind, Transactional) + `WorldOverlayHandler` (Memory Inline) + `Command::ApplyWorldEvent`.
 - `RelationshipMemoryHandler` — `RelationshipUpdated.cause` variant별 분기.
+- `RelationshipAgent` BeatTransitioned 경로에서 cause=`SceneInteraction { scene_id }` 설정.
 
 **가치**: 장기 플레이에서 기억 폭증 방지. 세계관이 살아 진화.
 
-**DoD**:
-- `memory_consolidation_test`, `memory_world_overlay_test`, `memory_relationship_cause_test` green
-- 10턴 Scene 후 Layer A 일부가 consolidated_into 마킹됨
-- 세계관 오버레이 샘플 시나리오 E2E
-- Canonical 무효화(Supersede)가 기존 Topic 조회에 반영됨
+**DoD (달성)**:
+- `memory_consolidation_test` (3) / `memory_world_overlay_test` (6) / `memory_relationship_cause_test` (6) green
+- 다턴 Scene 후 Layer A 엔트리 전수가 `consolidated_into` 마킹됨 + Layer B `SceneSummary` 1건 생성
+- 세계관 오버레이: `Command::ApplyWorldEvent` → Canonical `MemoryEntry(World, Seeded)` 생성 + 같은 topic 기존 엔트리 supersede
+- `get_canonical_by_topic`이 supersede 후 새 Canonical 반환
+
+**범위 외 (본 Step에서 제외, 후속 Phase로 이관)**:
+- `TopicLatestProjection` 독립 구조체 — `SqliteMemoryStore.get_by_topic_latest`/`get_canonical_by_topic`이 이미 인덱스 기반 조회를 제공하므로 **별도 Projection struct는 생성하지 않는다** (2차 §10 프로젝션 최소주의). UI 전용 캐시가 필요해지면 Step E에서 추가.
+- LLM 기반 요약 Consolidator — 현재는 휴리스틱(첫·끝 content 조합). 후속 Phase.
+- 목격자(`witnesses`) 개별 Personal MemoryEntry 생성 — Step F 예정.
+- `RelationshipAgent`의 나머지 cause variant 자동 채우기 (`InformationTold`/`Rumor`/`WorldEventOverlay` 계열) — 해당 경로가 실제로 관계 갱신을 트리거하게 되는 Step F 이후에 연결. 현재 `RelationshipMemoryHandler`는 cause를 입력만 받으면 올바르게 분기함 (단위 테스트로 검증).
+
+**구현 결과**:
+
+- **도메인·이벤트 확장**:
+  - `EventKind::{ApplyWorldEventRequested, WorldEventOccurred}` 2종 추가.
+  - `EventPayload::{ApplyWorldEventRequested, WorldEventOccurred}` variant (world_id/topic/fact/significance/witnesses).
+  - `AggregateKey::World(world_id)` 라우팅.
+  - `Command::ApplyWorldEvent(ApplyWorldEventRequest)` + DTO.
+  - `tuning::MEMORY_RELATIONSHIP_DELTA_THRESHOLD = 0.05` (관계 변화 기록 하한).
+  - `priority::transactional::WORLD_OVERLAY = 25`, `priority::inline::{WORLD_OVERLAY_INGESTION=45, RELATIONSHIP_MEMORY=50, SCENE_CONSOLIDATION=60}`.
+
+- **Agent / Handler 추가**:
+  - `WorldOverlayAgent` (Transactional, `priority::WORLD_OVERLAY`) — `ApplyWorldEventRequested → WorldEventOccurred` 1:1 변환. Inline 핸들러가 실제 영속화 담당.
+  - `WorldOverlayHandler` (Inline, `priority::WORLD_OVERLAY_INGESTION`) — Canonical `MemoryEntry(scope=World, provenance=Seeded, type=WorldEvent)` 생성 + `topic` 있을 때 기존 유효 엔트리 **모두** supersede (Canonical 여부 불문 — 새 세계 오버레이가 모든 기존 해석을 덮는 정책).
+  - `SceneConsolidationHandler` (Inline, `priority::SCENE_CONSOLIDATION`) — `SceneEnded` 수신 시 NpcAllowed 필터로 두 NPC의 Layer A 엔트리 수집 → `MemoryType::{DialogueTurn, BeatTransition}` 만 흡수 → `SceneSummary` Layer B 엔트리 생성 + `mark_consolidated`. 휴리스틱 요약(첫·끝 content 조합).
+  - `RelationshipMemoryHandler` (Inline, `priority::RELATIONSHIP_MEMORY`) — `RelationshipUpdated.cause` variant별 분기:
+    - `SceneInteraction { scene_id }` → `source=Experienced, topic=None, content="장면에서 {target}과(와)의 관계 변화"`
+    - `InformationTold { origin_chain }` → 체인 길이 기반 Heard/Rumor 분기, `origin_chain` 계승
+    - `WorldEventOverlay { topic }` → `Experienced`, `topic` 계승
+    - `Rumor { rumor_id }` → `Rumor`, `origin_chain=[rumor:{rumor_id}]`
+    - `Unspecified` → `Experienced`, 일반 content
+    - `MEMORY_RELATIONSHIP_DELTA_THRESHOLD=0.05` 미만 미세 변동은 skip.
+  - `RelationshipAgent.handle_relationship_update_with_cause` 도입 — `BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id: SceneId::new(npc, partner) }` 설정.
+
+- **Dispatcher 통합**:
+  - `with_default_handlers()`에 `WorldOverlayAgent` 추가 (transactional 7종: Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay).
+  - `with_memory(store)` 빌더가 Step D Inline 3종 (`WorldOverlayHandler`/`RelationshipMemoryHandler`/`SceneConsolidationHandler`)을 `TellingIngestionHandler`와 함께 일괄 등록.
+  - `Command::ApplyWorldEvent` 초기 이벤트 빌더 + `world_id`/`fact` 비어 있으면 `InvalidSituation` 조기 reject, `significance` [0,1] clamp.
+
+- **우선순위 invariants 테스트 추가**: world overlay가 guide 후, relationship 전; world overlay ingestion이 memory ingestion 후; relationship memory가 world overlay ingestion 후; scene consolidation이 가장 마지막에 실행되는지 회귀 가드.
+
+- **테스트**:
+  - `memory_consolidation_test` (3): 다턴 Scene 후 Layer A → Layer B 흡수, no-entries no-op, RelationshipChange 타입 제외 검증.
+  - `memory_world_overlay_test` (6): Request/Occurred 이벤트 쌍, Canonical 생성, 기존 supersede, topic=None non-supersede, invalid 입력 reject, significance clamp.
+  - `memory_relationship_cause_test` (6): EndDialogue 경로 Unspecified → Experienced, 5개 cause variant별 source/topic/chain 분기.
+  - 신규 lib 단위 테스트 14개 (WorldOverlayAgent 2 + WorldOverlayHandler 3 + SceneConsolidationHandler 3 + RelationshipMemoryHandler 6).
+  - 기존 `dispatch_v2_test::with_default_handlers_registers_expected_counts` 업데이트 (6→7).
 
 ### Step E — Mind Studio 편집 기능 (선택, 병렬 진행 가능)
 

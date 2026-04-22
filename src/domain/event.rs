@@ -66,6 +66,14 @@ pub enum EventKind {
     TellInformationRequested,
     /// 청자당 1 이벤트 (B5)
     InformationTold,
+
+    // ─── World 오버레이 (Step D, §3.1/§3.2) ─────────────────────────────────
+    /// Mind 컨텍스트 — `Command::ApplyWorldEvent`의 초기 이벤트 (Step D).
+    /// `WorldOverlayAgent`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
+    ApplyWorldEventRequested,
+    /// 세계 오버레이 사건 발생 — 메모리 레이어에 `MemoryEntry(scope=World)` +
+    /// 기존 Canonical supersede를 트리거 (Step D).
+    WorldEventOccurred,
 }
 
 /// 청자 역할 — `InformationTold` 이벤트에 실림 (B5).
@@ -428,6 +436,43 @@ pub enum EventPayload {
         #[serde(default)]
         topic: Option<String>,
     },
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Mind 컨텍스트 — World 오버레이 (Step D, §3.2)
+    // ─────────────────────────────────────────────────────────────────────
+
+    /// Mind 컨텍스트 — `Command::ApplyWorldEvent`의 초기 이벤트.
+    /// `WorldOverlayAgent`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
+    /// `AggregateKey::World(world_id)`로 라우팅.
+    ApplyWorldEventRequested {
+        /// 이벤트가 속한 World 식별자 (예: `"jianghu"`).
+        world_id: String,
+        /// 선택적 Topic — Canonical MemoryEntry 생성 시 링크되며 기존 Topic을 supersede.
+        #[serde(default)]
+        topic: Option<String>,
+        /// 세계에 추가되는 사실 본문. MemoryEntry.content가 된다.
+        fact: String,
+        /// 사건 중요도 (0.0~1.0). 현 단계에서는 기록만 하며, 필터링은 Step F.
+        significance: f32,
+        /// 이 사건을 목격한 NPC 목록 (선택). Step D 초기에는 World MemoryEntry만 생성하고
+        /// 목격자 개별 Personal MemoryEntry 생성은 Step F의 과제로 남긴다.
+        #[serde(default)]
+        witnesses: Vec<String>,
+    },
+
+    /// 세계 오버레이 사건 발생 — `WorldOverlayHandler`가 Inline phase에서 소비해
+    /// `MemoryEntry(scope=World, provenance=Seeded)` Canonical을 생성하고 기존
+    /// 같은 Topic의 유효 Canonical을 supersede한다.
+    WorldEventOccurred {
+        world_id: String,
+        #[serde(default)]
+        topic: Option<String>,
+        /// 사건 본문 (설계 §3.1의 `updated_fact`).
+        fact: String,
+        significance: f32,
+        #[serde(default)]
+        witnesses: Vec<String>,
+    },
 }
 
 impl DomainEvent {
@@ -483,6 +528,8 @@ impl DomainEvent {
             EventPayload::RumorFaded { .. } => "RumorFaded",
             EventPayload::TellInformationRequested { .. } => "TellInformationRequested",
             EventPayload::InformationTold { .. } => "InformationTold",
+            EventPayload::ApplyWorldEventRequested { .. } => "ApplyWorldEventRequested",
+            EventPayload::WorldEventOccurred { .. } => "WorldEventOccurred",
         }
     }
 
@@ -517,6 +564,8 @@ impl DomainEvent {
             EventPayload::RumorFaded { .. } => EventKind::RumorFaded,
             EventPayload::TellInformationRequested { .. } => EventKind::TellInformationRequested,
             EventPayload::InformationTold { .. } => EventKind::InformationTold,
+            EventPayload::ApplyWorldEventRequested { .. } => EventKind::ApplyWorldEventRequested,
+            EventPayload::WorldEventOccurred { .. } => EventKind::WorldEventOccurred,
         }
     }
 
@@ -599,6 +648,12 @@ impl DomainEvent {
             }
             EventPayload::InformationTold { listener, .. } => {
                 AggregateKey::Npc(listener.clone())
+            }
+
+            // World 오버레이 — 세계 단위 라우팅 (Step D, §3.3).
+            EventPayload::ApplyWorldEventRequested { world_id, .. }
+            | EventPayload::WorldEventOccurred { world_id, .. } => {
+                AggregateKey::World(world_id.clone())
             }
         }
     }

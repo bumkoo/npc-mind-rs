@@ -401,13 +401,13 @@ fn with_default_handlers_registers_expected_counts() {
     let d = CommandDispatcher::new(ctx.repo, store, bus).with_default_handlers();
     assert_eq!(
         d.transactional_handler_count(),
-        6,
-        "Scene/Emotion/Stimulus/Guide/Relationship/Information 6종 (Step C2에서 InformationAgent 추가)"
+        7,
+        "Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay 7종 (Step D에서 WorldOverlayAgent 추가)"
     );
     assert_eq!(
         d.inline_handler_count(),
         3,
-        "Emotion/Relationship/Scene Projection 3종 (TellingIngestionHandler는 with_memory() 별도 부착)"
+        "Emotion/Relationship/Scene Projection 3종 (Memory 계열은 with_memory() 별도 부착)"
     );
 }
 

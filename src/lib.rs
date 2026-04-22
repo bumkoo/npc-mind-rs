@@ -15,10 +15,10 @@ pub mod presentation;
 
 pub use adapter::memory_repository::{InMemoryRepository, RepositoryLoadError};
 pub use application::dto::{
-    AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse, AppraiseResult,
-    GuideRequest, GuideResponse, GuideResult, RumorOriginInput, RumorReachInput, SceneRequest,
-    SceneResponse, SeedRumorRequest, SpreadRumorRequest, StimulusRequest, StimulusResponse,
-    StimulusResult, TellInformationRequest,
+    AfterDialogueRequest, AfterDialogueResponse, ApplyWorldEventRequest, AppraiseRequest,
+    AppraiseResponse, AppraiseResult, GuideRequest, GuideResponse, GuideResult, RumorOriginInput,
+    RumorReachInput, SceneRequest, SceneResponse, SeedRumorRequest, SpreadRumorRequest,
+    StimulusRequest, StimulusResponse, StimulusResult, TellInformationRequest,
 };
 // Response DTOs (TellInformationResponse / SeedRumorResponse / SpreadRumorResponse)는
 // 현재 dispatcher가 생성·반환하지 않으므로 공개 노출에서 뺀다. typed facade가 필요한
@@ -38,8 +38,9 @@ pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 // --- CQRS Command / Agent (v2) ---
 pub use application::command::{
     Command, CommandDispatcher, EmotionAgent, EmotionProjectionHandler, GuideAgent,
-    InformationAgent, RelationshipAgent, RelationshipProjectionHandler, RumorAgent,
-    RumorDistributionHandler, SceneProjectionHandler, TellingIngestionHandler,
+    InformationAgent, RelationshipAgent, RelationshipMemoryHandler, RelationshipProjectionHandler,
+    RumorAgent, RumorDistributionHandler, SceneConsolidationHandler, SceneProjectionHandler,
+    TellingIngestionHandler, WorldOverlayAgent, WorldOverlayHandler,
 };
 
 // --- Memory / RAG ---

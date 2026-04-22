@@ -30,6 +30,10 @@ pub mod transactional {
     /// 가이드 생성 — 감정 평가·자극 이후 (HandlerShared.emotion_state 의존)
     pub const GUIDE_GENERATION: i32 = 20;
 
+    /// 세계 오버레이 — Guide 직후, Relationship 이전 (§6.5 B6, C11 잠정).
+    /// `ApplyWorldEventRequested`를 `WorldEventOccurred`로 변환하는 순수 팬아웃.
+    pub const WORLD_OVERLAY: i32 = 25;
+
     /// 관계 갱신 — Scene/Beat 종료 시
     pub const RELATIONSHIP_UPDATE: i32 = 30;
 
@@ -62,6 +66,18 @@ pub mod inline {
     /// `RumorDistributionHandler` (Step C3) 공용. Projection(30) 이후 실행되어
     /// 쿼리 일관성 뷰가 먼저 업데이트된 뒤 기억 인덱싱이 일어난다.
     pub const MEMORY_INGESTION: i32 = 40;
+
+    /// World 오버레이 MemoryEntry 생성 — `WorldOverlayHandler` (Step D).
+    /// Canonical 생성 + 기존 Topic Canonical supersede가 이 단계에서 일어난다.
+    pub const WORLD_OVERLAY_INGESTION: i32 = 45;
+
+    /// 관계 갱신 기록 — `RelationshipMemoryHandler` (Step D). `RelationshipUpdated`를
+    /// cause variant에 따라 MemoryEntry로 기록. Projection/Memory 인덱싱 뒤에서 돈다.
+    pub const RELATIONSHIP_MEMORY: i32 = 50;
+
+    /// Scene 통합 (Layer A→B) — `SceneConsolidationHandler` (Step D). 모든 기억
+    /// 인덱싱 뒤에서 실행되어 Scene 턴별 엔트리를 Layer B로 흡수할 수 있다.
+    pub const SCENE_CONSOLIDATION: i32 = 60;
 }
 
 #[cfg(test)]
@@ -119,5 +135,30 @@ mod invariants {
     fn memory_ingestion_runs_after_scene_projection() {
         // Projection 3종보다 뒤에서 실행되어야 쿼리 일관성 보장.
         assert!(inline::MEMORY_INGESTION > inline::SCENE_PROJECTION);
+    }
+
+    #[test]
+    fn world_overlay_runs_after_guide_before_relationship() {
+        // §6.5 B6: Guide 직후, Relationship 이전.
+        assert!(transactional::WORLD_OVERLAY > transactional::GUIDE_GENERATION);
+        assert!(transactional::WORLD_OVERLAY < transactional::RELATIONSHIP_UPDATE);
+    }
+
+    #[test]
+    fn world_overlay_ingestion_runs_after_memory_ingestion() {
+        // MemoryEntry 생성 → supersede 순서 보장.
+        assert!(inline::WORLD_OVERLAY_INGESTION > inline::MEMORY_INGESTION);
+    }
+
+    #[test]
+    fn relationship_memory_runs_after_world_overlay_ingestion() {
+        // World 오버레이 Canonical이 먼저 생성된 뒤 관계 기억에 반영될 수 있게.
+        assert!(inline::RELATIONSHIP_MEMORY > inline::WORLD_OVERLAY_INGESTION);
+    }
+
+    #[test]
+    fn scene_consolidation_runs_last() {
+        // Layer A→B 흡수는 모든 Layer A 엔트리 인덱싱 이후에 돌아야 놓치는 것이 없다.
+        assert!(inline::SCENE_CONSOLIDATION > inline::RELATIONSHIP_MEMORY);
     }
 }

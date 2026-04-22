@@ -17,7 +17,7 @@ use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
 use super::agents::{
     EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, SceneAgent,
-    StimulusAgent,
+    StimulusAgent, WorldOverlayAgent,
 };
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
@@ -25,9 +25,12 @@ use super::handler_v2::{
 use super::projection_handlers::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
+use super::relationship_memory_handler::RelationshipMemoryHandler;
 use super::rumor_distribution_handler::RumorDistributionHandler;
+use super::scene_consolidation_handler::SceneConsolidationHandler;
 use super::telling_ingestion_handler::TellingIngestionHandler;
 use super::types::Command;
+use super::world_overlay_handler::WorldOverlayHandler;
 use crate::domain::rumor::{ReachPolicy, RumorOrigin};
 use crate::ports::{MemoryStore, RumorStore};
 
@@ -124,6 +127,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self = self.register_transactional(Arc::new(GuideAgent::new()));
         self = self.register_transactional(Arc::new(RelationshipAgent::new()));
         self = self.register_transactional(Arc::new(InformationAgent::new()));
+        self = self.register_transactional(Arc::new(WorldOverlayAgent::new()));
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
@@ -139,7 +143,12 @@ impl<R: MindRepository> CommandDispatcher<R> {
     /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
     /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
     pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
-        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store.clone())));
+        // Step D: World 오버레이 → Canonical MemoryEntry, Relationship cause 기록, Scene 통합.
+        // 세 handler 모두 MemoryStore 의존이므로 with_memory에서 일괄 부착한다.
+        self = self.register_inline(Arc::new(WorldOverlayHandler::new(store.clone())));
+        self = self.register_inline(Arc::new(RelationshipMemoryHandler::new(store.clone())));
+        self = self.register_inline(Arc::new(SceneConsolidationHandler::new(store)));
         self
     }
 
@@ -463,6 +472,30 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     extra_recipients: req.recipients.clone(),
                 },
             )),
+            Command::ApplyWorldEvent(req) => {
+                if req.world_id.is_empty() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "ApplyWorldEvent: world_id가 비어 있습니다".into(),
+                    ));
+                }
+                if req.fact.trim().is_empty() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "ApplyWorldEvent: fact가 비어 있습니다".into(),
+                    ));
+                }
+                Ok(DomainEvent::new(
+                    0,
+                    req.world_id.clone(),
+                    0,
+                    EventPayload::ApplyWorldEventRequested {
+                        world_id: req.world_id.clone(),
+                        topic: req.topic.clone(),
+                        fact: req.fact.clone(),
+                        significance: req.significance.clamp(0.0, 1.0),
+                        witnesses: req.witnesses.clone(),
+                    },
+                ))
+            }
             Command::StartScene {
                 npc_id,
                 partner_id,
