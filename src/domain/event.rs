@@ -454,15 +454,21 @@ pub enum EventPayload {
         fact: String,
         /// 사건 중요도 (0.0~1.0). 현 단계에서는 기록만 하며, 필터링은 Step F.
         significance: f32,
-        /// 이 사건을 목격한 NPC 목록 (선택). Step D 초기에는 World MemoryEntry만 생성하고
-        /// 목격자 개별 Personal MemoryEntry 생성은 Step F의 과제로 남긴다.
+        /// 이 사건을 목격한 NPC 목록 (선택).
+        ///
+        /// **현재 미소비 (TODO step-f)**: Step D 범위에서는 이벤트 페이로드에 기록만 되고
+        /// 어떤 핸들러도 읽지 않는다. Step F에서 각 witness에게 `MemoryEntry(source=
+        /// Experienced, scope=Personal)`를 개별 생성하는 정책 도입 시 소비될 예정이다.
+        /// 스키마가 안정되지 않은 상태에서 일단 필드로 제공한 이유: (1) 시나리오 작가가
+        /// 세계 사건과 함께 목격자 명단을 같이 기술할 수 있게 하고, (2) Step F 확장 시
+        /// event payload 변경 없이 핸들러만 추가하면 되도록.
         #[serde(default)]
         witnesses: Vec<String>,
     },
 
     /// 세계 오버레이 사건 발생 — `WorldOverlayHandler`가 Inline phase에서 소비해
     /// `MemoryEntry(scope=World, provenance=Seeded)` Canonical을 생성하고 기존
-    /// 같은 Topic의 유효 Canonical을 supersede한다.
+    /// 같은 Topic의 Canonical 1건만 supersede한다 (다른 NPC의 주관 기억은 보존).
     WorldEventOccurred {
         world_id: String,
         #[serde(default)]
@@ -470,6 +476,7 @@ pub enum EventPayload {
         /// 사건 본문 (설계 §3.1의 `updated_fact`).
         fact: String,
         significance: f32,
+        /// 목격자 목록 — `ApplyWorldEventRequested`에서 그대로 전달. Step F에서 소비.
         #[serde(default)]
         witnesses: Vec<String>,
     },

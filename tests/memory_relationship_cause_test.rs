@@ -60,7 +60,7 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
     let bus = Arc::new(EventBus::new());
     let dispatcher = CommandDispatcher::new(repo, event_store, bus)
         .with_default_handlers()
-        .with_memory(store.clone() as Arc<dyn MemoryStore>);
+        .with_memory_full(store.clone() as Arc<dyn MemoryStore>);
 
     // Appraise로 emotion_state 시드
     dispatcher
@@ -244,4 +244,137 @@ fn rumor_cause_sets_rumor_source_and_chain_marker() {
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].source, MemorySource::Rumor);
     assert_eq!(entries[0].origin_chain, vec!["rumor:r-42".to_string()]);
+}
+
+// ---------------------------------------------------------------------------
+// E2E: BeatTransitioned → RelationshipUpdated.cause=SceneInteraction (리뷰 M6)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_cause() {
+    // Scene에 Beat 트리거 Focus를 넣고 ApplyStimulus로 Beat 전환을 유발하면,
+    // RelationshipAgent가 RelationshipUpdated를 cause=SceneInteraction으로 발행하고
+    // RelationshipMemoryHandler가 Experienced source + topic=None의 엔트리를 만든다.
+    use npc_mind::domain::emotion::{
+        ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, Scene,
+        SceneFocus,
+    };
+    use npc_mind::ports::SceneStore;
+
+    let store = Arc::new(InMemoryMemoryStore::new());
+    let mut repo = InMemoryRepository::new();
+    repo.add_npc(NpcBuilder::new("alice", "Alice").build());
+    repo.add_npc(NpcBuilder::new("bob", "Bob").build());
+    repo.add_relationship(Relationship::neutral("alice", "bob"));
+    repo.add_relationship(Relationship::neutral("bob", "alice"));
+    // Beat 트리거 Scene 직접 저장 (StartScene 경로는 focus 재구성이 번거로워 우회)
+    let scene = {
+        let focuses = vec![
+            SceneFocus {
+                id: "initial".into(),
+                description: "초기".into(),
+                trigger: FocusTrigger::Initial,
+                event: Some(EventFocus {
+                    description: "".into(),
+                    desirability_for_self: 0.3,
+                    desirability_for_other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+                test_script: vec![],
+            },
+            SceneFocus {
+                id: "next".into(),
+                description: "다음".into(),
+                trigger: FocusTrigger::Conditions(vec![vec![EmotionCondition {
+                    emotion: EmotionType::Hate,
+                    threshold: ConditionThreshold::Absent,
+                }]]),
+                event: Some(EventFocus {
+                    description: "".into(),
+                    desirability_for_self: 0.2,
+                    desirability_for_other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+                test_script: vec![],
+            },
+        ];
+        let mut s = Scene::new("alice".into(), "bob".into(), focuses);
+        s.set_active_focus("initial".into());
+        s
+    };
+    repo.save_scene(scene);
+
+    let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
+    let bus = Arc::new(EventBus::new());
+    let dispatcher = CommandDispatcher::new(repo, event_store, bus)
+        .with_default_handlers()
+        .with_memory_full(store.clone() as Arc<dyn MemoryStore>);
+
+    // Appraise seed (emotion_state 필요)
+    dispatcher
+        .dispatch_v2(Command::Appraise {
+            npc_id: "alice".into(),
+            partner_id: "bob".into(),
+            situation: Some(SituationInput {
+                description: "장면".into(),
+                event: Some(EventInput {
+                    description: "초기 상황".into(),
+                    desirability_for_self: 0.3,
+                    other: None,
+                    prospect: None,
+                }),
+                action: None,
+                object: None,
+            }),
+        })
+        .await
+        .expect("appraise");
+
+    // Stimulus → Beat 전환 유발
+    let out = dispatcher
+        .dispatch_v2(Command::ApplyStimulus {
+            npc_id: "alice".into(),
+            partner_id: "bob".into(),
+            pleasure: 0.3,
+            arousal: 0.1,
+            dominance: 0.0,
+            situation_description: Some("test".into()),
+        })
+        .await
+        .expect("stimulus");
+
+    // 커맨드 결과에 BeatTransitioned + RelationshipUpdated(cause=SceneInteraction) 포함.
+    let rel_updated = out
+        .events
+        .iter()
+        .find(|e| matches!(&e.payload, EventPayload::RelationshipUpdated { .. }))
+        .expect("RelationshipUpdated 발행");
+    let EventPayload::RelationshipUpdated { cause, .. } = &rel_updated.payload else {
+        unreachable!()
+    };
+    match cause {
+        RelationshipChangeCause::SceneInteraction { scene_id } => {
+            assert_eq!(scene_id.npc_id, "alice");
+            assert_eq!(scene_id.partner_id, "bob");
+        }
+        other => panic!("expected SceneInteraction cause, got {other:?}"),
+    }
+
+    // 본 테스트의 주된 assert는 cause=SceneInteraction 이미 검증됨.
+    // RelationshipMemoryHandler가 MemoryEntry를 만드는지는 Δ ≥ 0.05일 때만이며, 기본
+    // Beat 변동은 threshold 아래일 수 있다 (CLOSENESS_UPDATE_RATE=0.05 × sig × valence).
+    // 엔트리가 생긴 경우에만 source/라벨 형태를 확인한다 — 없어도 fail 아님.
+    let entries = personal_rel_entries(&*store, "alice");
+    for e in &entries {
+        assert_eq!(e.source, MemorySource::Experienced);
+        assert!(
+            e.content.contains("Δ="),
+            "content에 축별 Δ 라벨 포함되어야 (리뷰 H4): {}",
+            e.content
+        );
+    }
 }

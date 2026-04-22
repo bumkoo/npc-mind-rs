@@ -3,27 +3,40 @@
 //! 설계 문서: `docs/memory/03-implementation-design.md` §6.3, §8.2
 //!
 //! **책임**: `SceneEnded` 이벤트를 구독해 해당 Scene에서 생성된 Layer A
-//! (DialogueTurn / BeatTransition) 엔트리들을 하나의 Layer B `SceneSummary` 엔트리로
-//! 흡수한다. 각 Layer A 엔트리의 `consolidated_into`에 새 Layer B 엔트리 id를 기록.
+//! (DialogueTurn / BeatTransition) 엔트리들을 각 참여 NPC 관점의 Layer B
+//! `SceneSummary` 엔트리로 흡수한다.
 //!
-//! **후보 선정** (Scene 범위 탐지):
-//! - Personal scope가 `npc_id` 또는 `partner_id`인 Layer A 엔트리.
-//! - Relationship scope `{a, b} == {npc_id, partner_id}` 인 Layer A 엔트리.
+//! **관점 분리** (리뷰 B3): 이전 구현은 한쪽 NPC의 Personal Scope로 단일 summary를 만들고
+//! 양쪽 Layer A를 모두 그쪽으로 `consolidated_into` 링크해서 partner 관점에서는 자신의
+//! Layer A가 "상대 NPC의 Personal 요약"을 가리키는 비대칭이 생겼다. 이제:
+//! - 각 참여 NPC마다 **자기 Layer A만 흡수하는 Personal Scope 요약 1건**을 생성한다.
+//! - Layer A가 없는 NPC는 summary를 만들지 않는다.
+//! - 결과: Scene당 최대 2개의 Layer B `SceneSummary`가 만들어지며, 각 NPC의
+//!   `consolidated_into` 체인은 항상 자기 Personal Scope 안에서 닫힌다.
+//!
+//! **후보 선정** (per-NPC):
+//! - 해당 NPC의 Personal Scope Layer A + 해당 NPC가 참여한 Relationship Scope Layer A.
+//!   (`MemoryScopeFilter::NpcAllowed(npc)`는 이 둘과 World를 모두 반환하므로, World는
+//!   사후 scope 체크로 제외한다.)
 //! - `consolidated_into`가 이미 있는 엔트리는 제외 (중복 흡수 방지).
 //! - `memory_type ∈ {DialogueTurn, BeatTransition}` 만 대상 (I-ME-8,
 //!   RelationshipChange/WorldEvent/FactionKnowledge/FamilyFact는 제외).
+//! - Scene 범위 scope 확인 (다른 Scene의 엔트리가 NpcAllowed로 딸려오는 경우 배제).
 //!
 //! **요약 생성** (휴리스틱, §14):
-//! - 후보가 0개면 아무 것도 안 함 (no-op).
-//! - 후보가 1개 이상이면 `"{turn 개수}턴 간 대화 요약: {첫 content} ... {끝 content}"` 포맷.
+//! - 후보가 0개면 해당 NPC는 skip.
+//! - 후보가 1개 이상이면 `"{count}턴 간 대화 요약: {첫 content} ... {끝 content}"`.
+//!   긴 content는 `SUMMARY_ENTRY_SNIPPET_CAP`으로 잘라낸다 (리뷰 L3).
 //!   LLM 기반 요약은 후속 Phase 과제.
 //!
 //! **산출**:
-//! - 새 `MemoryEntry(scope=Personal{npc_id}, memory_type=SceneSummary, layer=B)` 생성.
-//!   요약 엔트리는 Scene 주체 NPC의 Personal Scope로 저장 (관점 분리는 향후 과제).
-//! - 각 흡수된 entry에 `consolidated_into = new_id` 마킹.
+//! - NPC별 `MemoryEntry(scope=Personal{npc}, memory_type=SceneSummary, layer=B)`
+//!   + `topic=Some("scene:{npc}:{partner}")` (리뷰 M7 — 후속 검색 편의).
+//! - 자기 Layer A 엔트리들에 `consolidated_into = self_summary_id` 마킹.
 //!
 //! **Inline 계약**: MemoryStore 호출 실패는 로그만. 커맨드 전체는 중단되지 않음.
+//! 한 NPC 수집이 실패해도 다른 NPC의 요약은 여전히 생성된다 (리뷰 H2는 per-NPC 단위에서
+//! 반쪽 데이터 방지로 해석: 한 NPC의 search가 실패하면 그 NPC의 summary는 skip).
 
 use std::sync::Arc;
 
@@ -38,6 +51,9 @@ use crate::domain::memory::{
 use crate::domain::scene_id::SceneId;
 use crate::ports::{MemoryQuery, MemoryScopeFilter, MemoryStore};
 
+/// 요약 content에 포함하는 첫/끝 content 스니펫 최대 문자 수 (리뷰 L3).
+const SUMMARY_ENTRY_SNIPPET_CAP: usize = 120;
+
 pub struct SceneConsolidationHandler {
     store: Arc<dyn MemoryStore>,
 }
@@ -47,94 +63,131 @@ impl SceneConsolidationHandler {
         Self { store }
     }
 
+    /// 요약 엔트리 id — NPC별 고유 (리뷰 B3, M3).
+    /// `(event.id, npc_id)` 쌍이 유일하므로 결정적이며, replay 시 overwrite-in-place.
     fn derive_summary_id(event_id: u64, npc_id: &str) -> String {
         format!("summary-{event_id:012}-{npc_id}")
     }
 
-    /// Scene 범위의 Layer A 대화·Beat 엔트리를 모은다.
+    /// Scene summary 전용 topic — 후속 `get_by_topic_latest` 편의 (리뷰 M7).
+    /// `SceneId`는 (npc, partner) 방향이 유의미하므로 양방향 쌍을 정규화해
+    /// 두 NPC 요약이 같은 topic 아래에서 조회 가능하게 한다.
+    fn derive_scene_topic(scene: &SceneId) -> String {
+        let (a, b) = if scene.npc_id <= scene.partner_id {
+            (scene.npc_id.as_str(), scene.partner_id.as_str())
+        } else {
+            (scene.partner_id.as_str(), scene.npc_id.as_str())
+        };
+        format!("scene:{a}:{b}")
+    }
+
+    /// **한 NPC의 관점**에서 Scene 범위 Layer A 대화·Beat 엔트리를 모은다.
     ///
-    /// NpcAllowed 필터로 두 NPC의 관점을 각각 긁어와 id로 dedup한다.
-    /// Personal/Relationship scope 모두 자동 포함되며, World/Faction/Family는 관점이
-    /// NPC-specific하지 않으므로 요약 대상에서 제외된다(§8.2).
-    fn collect_scene_entries(&self, scene: &SceneId) -> Vec<MemoryEntry> {
-        let mut collected: Vec<MemoryEntry> = Vec::new();
-        for npc in [scene.npc_id.as_str(), scene.partner_id.as_str()] {
-            let q = MemoryQuery {
-                scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc.into())),
-                layer_filter: Some(MemoryLayer::A),
-                exclude_superseded: true,
-                exclude_consolidated_source: true,
-                limit: 1000,
-                ..Default::default()
-            };
-            match self.store.search(q) {
-                Ok(rs) => {
-                    for r in rs {
-                        // Consolidation 대상 타입만 (§8.2)
-                        if !matches!(
-                            r.entry.memory_type,
-                            MemoryType::DialogueTurn | MemoryType::BeatTransition
-                        ) {
-                            continue;
-                        }
-                        // Scene 범위 scope 확인
-                        if !Self::scope_matches_scene(&r.entry.scope, scene) {
-                            continue;
-                        }
-                        if collected.iter().any(|e| e.id == r.entry.id) {
-                            continue;
-                        }
-                        collected.push(r.entry);
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        scene = %scene,
-                        npc,
-                        error = %e,
-                        "SceneConsolidationHandler: search failed"
-                    );
-                }
+    /// 반환 규칙:
+    /// - `Ok(entries)`: 검색 성공. entries는 비어 있을 수 있다.
+    /// - `Err(())`: 저장소 search 실패. 호출자는 이 NPC의 summary를 skip해야 한다
+    ///   (리뷰 H2 — 반쪽짜리 summary 생성 방지).
+    #[allow(clippy::result_unit_err)]
+    fn collect_entries_for(
+        &self,
+        scene: &SceneId,
+        npc: &str,
+    ) -> Result<Vec<MemoryEntry>, ()> {
+        let q = MemoryQuery {
+            scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc.into())),
+            layer_filter: Some(MemoryLayer::A),
+            exclude_superseded: true,
+            exclude_consolidated_source: true,
+            limit: 1000,
+            ..Default::default()
+        };
+        let rs = match self.store.search(q) {
+            Ok(rs) => rs,
+            Err(e) => {
+                tracing::warn!(
+                    scene = %scene,
+                    npc,
+                    error = %e,
+                    "SceneConsolidationHandler: search failed"
+                );
+                return Err(());
             }
+        };
+        let mut out: Vec<MemoryEntry> = Vec::new();
+        for r in rs {
+            if !matches!(
+                r.entry.memory_type,
+                MemoryType::DialogueTurn | MemoryType::BeatTransition
+            ) {
+                continue;
+            }
+            if !Self::scope_belongs_to_npc_in_scene(&r.entry.scope, scene, npc) {
+                continue;
+            }
+            if out.iter().any(|e| e.id == r.entry.id) {
+                continue;
+            }
+            out.push(r.entry);
         }
-        // 결정적 순서: timestamp 오름차순 → created_seq 오름차순
-        collected.sort_by(|a, b| {
+        // 결정적 순서: timestamp 오름차순 → created_seq 오름차순.
+        out.sort_by(|a, b| {
             a.timestamp_ms
                 .cmp(&b.timestamp_ms)
                 .then_with(|| a.created_seq.cmp(&b.created_seq))
         });
-        collected
+        Ok(out)
     }
 
-    fn scope_matches_scene(scope: &MemoryScope, scene: &SceneId) -> bool {
+    /// 특정 NPC 관점에서 이 scope 엔트리가 이 Scene의 자기 몫인지 판정.
+    ///
+    /// - Personal{X}: X == 이 NPC
+    /// - Relationship{a, b}: {a, b} == {npc, scene의 상대}
+    /// - World/Faction/Family: 관점 비특정 → 요약 대상 아님 (§8.2)
+    ///
+    /// Relationship 대칭 정규화(a ≤ b)는 `MemoryScope::relationship` 생성자에서 강제되지만,
+    /// 방어적으로 양방향 모두 체크한다 (리뷰 M5).
+    fn scope_belongs_to_npc_in_scene(
+        scope: &MemoryScope,
+        scene: &SceneId,
+        npc: &str,
+    ) -> bool {
+        let other = if npc == scene.npc_id {
+            scene.partner_id.as_str()
+        } else if npc == scene.partner_id {
+            scene.npc_id.as_str()
+        } else {
+            return false;
+        };
         match scope {
-            MemoryScope::Personal { npc_id } => {
-                npc_id == &scene.npc_id || npc_id == &scene.partner_id
-            }
+            MemoryScope::Personal { npc_id } => npc_id == npc,
             MemoryScope::Relationship { a, b } => {
-                (a == &scene.npc_id && b == &scene.partner_id)
-                    || (a == &scene.partner_id && b == &scene.npc_id)
+                (a == npc && b == other) || (a == other && b == npc)
             }
             _ => false,
         }
     }
 
-    /// 휴리스틱 요약 — 첫 · 마지막 엔트리 content를 조합.
+    /// 휴리스틱 요약 — 첫 · 마지막 엔트리 content를 조합 (긴 content는 cap).
     fn summarize(entries: &[MemoryEntry]) -> String {
         if entries.is_empty() {
             return String::new();
         }
         if entries.len() == 1 {
-            return format!("1턴 요약: {}", entries[0].content);
+            return format!("1턴 요약: {}", truncate(&entries[0].content));
         }
-        let first = &entries.first().unwrap().content;
-        let last = &entries.last().unwrap().content;
-        format!(
-            "{}턴 간 대화 요약: {} ... {}",
-            entries.len(),
-            first,
-            last
-        )
+        let first = truncate(&entries.first().unwrap().content);
+        let last = truncate(&entries.last().unwrap().content);
+        format!("{}턴 간 대화 요약: {} ... {}", entries.len(), first, last)
+    }
+}
+
+/// UTF-8 안전한 char 기준 truncate (리뷰 L3).
+fn truncate(s: &str) -> String {
+    if s.chars().count() <= SUMMARY_ENTRY_SNIPPET_CAP {
+        s.to_string()
+    } else {
+        let truncated: String = s.chars().take(SUMMARY_ENTRY_SNIPPET_CAP).collect();
+        format!("{truncated}…")
     }
 }
 
@@ -163,61 +216,72 @@ impl EventHandler for SceneConsolidationHandler {
         };
 
         let scene_id = SceneId::new(npc_id.clone(), partner_id.clone());
-        let entries = self.collect_scene_entries(&scene_id);
-        if entries.is_empty() {
-            return Ok(HandlerResult::default());
+        let topic = Self::derive_scene_topic(&scene_id);
+
+        // self-Scene(npc == partner) 가드 (리뷰 H1) — dedup된 participant 목록.
+        let mut participants: Vec<&str> = vec![npc_id.as_str()];
+        if partner_id != npc_id {
+            participants.push(partner_id.as_str());
         }
 
-        let summary_id = Self::derive_summary_id(event.id, npc_id);
-        let summary_content = Self::summarize(&entries);
+        for npc in participants {
+            // 한 NPC의 수집 실패는 해당 NPC summary만 skip — 다른 NPC는 여전히 처리됨.
+            let entries = match self.collect_entries_for(&scene_id, npc) {
+                Ok(es) => es,
+                Err(()) => continue,
+            };
+            if entries.is_empty() {
+                continue;
+            }
 
-        // timestamp는 마지막 턴 이후 = event.timestamp_ms 사용
-        #[allow(deprecated)]
-        let summary_entry = MemoryEntry {
-            id: summary_id.clone(),
-            created_seq: event.id,
-            event_id: event.id,
-            scope: MemoryScope::Personal {
-                npc_id: npc_id.clone(),
-            },
-            source: MemorySource::Experienced,
-            provenance: Provenance::Runtime,
-            memory_type: MemoryType::SceneSummary,
-            layer: MemoryLayer::B,
-            content: summary_content,
-            topic: None,
-            emotional_context: None,
-            timestamp_ms: event.timestamp_ms,
-            last_recalled_at: None,
-            recall_count: 0,
-            origin_chain: vec![],
-            confidence: 1.0,
-            acquired_by: None,
-            superseded_by: None,
-            consolidated_into: None,
-            npc_id: npc_id.clone(),
-        };
+            let summary_id = Self::derive_summary_id(event.id, npc);
+            let summary_content = Self::summarize(&entries);
 
-        if let Err(e) = self.store.index(summary_entry, None) {
-            tracing::warn!(
-                event_id = event.id,
-                npc_id,
-                partner_id,
-                error = %e,
-                "SceneConsolidationHandler: summary index failed"
-            );
-            return Ok(HandlerResult::default());
-        }
+            #[allow(deprecated)] // Personal grand-father — scope.owner_a()와 일치
+            let summary_entry = MemoryEntry {
+                id: summary_id.clone(),
+                created_seq: event.id,
+                event_id: event.id,
+                scope: MemoryScope::Personal {
+                    npc_id: npc.into(),
+                },
+                source: MemorySource::Experienced,
+                provenance: Provenance::Runtime,
+                memory_type: MemoryType::SceneSummary,
+                layer: MemoryLayer::B,
+                content: summary_content,
+                topic: Some(topic.clone()),
+                emotional_context: None,
+                timestamp_ms: event.timestamp_ms,
+                last_recalled_at: None,
+                recall_count: 0,
+                origin_chain: vec![],
+                confidence: 1.0,
+                acquired_by: None,
+                superseded_by: None,
+                consolidated_into: None,
+                npc_id: npc.into(),
+            };
 
-        let a_ids: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
-        if let Err(e) = self.store.mark_consolidated(&a_ids, &summary_id) {
-            tracing::warn!(
-                event_id = event.id,
-                npc_id,
-                partner_id,
-                error = %e,
-                "SceneConsolidationHandler: mark_consolidated failed"
-            );
+            if let Err(e) = self.store.index(summary_entry, None) {
+                tracing::warn!(
+                    event_id = event.id,
+                    npc,
+                    error = %e,
+                    "SceneConsolidationHandler: summary index failed"
+                );
+                continue;
+            }
+
+            let a_ids: Vec<String> = entries.iter().map(|e| e.id.clone()).collect();
+            if let Err(e) = self.store.mark_consolidated(&a_ids, &summary_id) {
+                tracing::warn!(
+                    event_id = event.id,
+                    npc,
+                    error = %e,
+                    "SceneConsolidationHandler: mark_consolidated failed"
+                );
+            }
         }
 
         Ok(HandlerResult::default())
@@ -378,17 +442,17 @@ mod tests {
     }
 
     #[test]
-    fn consolidates_layer_a_entries_into_layer_b_summary() {
+    fn per_participant_summary_splits_layer_a_by_owner() {
+        // 리뷰 B3: 각 NPC의 Personal Scope 안에서만 consolidated_into 링크가 닫혀야 한다.
         let store = Arc::new(SpyStore::default());
-        // 두 NPC의 대화 turn 3개 시드
         store
-            .index(layer_a_turn("t1", "alice", "인사 나눔", 1), None)
+            .index(layer_a_turn("t1", "alice", "alice 인사", 1), None)
             .unwrap();
         store
-            .index(layer_a_turn("t2", "bob", "답인사", 2), None)
+            .index(layer_a_turn("t2", "bob", "bob 답인사", 2), None)
             .unwrap();
         store
-            .index(layer_a_turn("t3", "alice", "작별", 3), None)
+            .index(layer_a_turn("t3", "alice", "alice 작별", 3), None)
             .unwrap();
 
         let handler = SceneConsolidationHandler::new(store.clone());
@@ -398,21 +462,35 @@ mod tests {
             .expect("must succeed");
 
         let all = store.entries.lock().unwrap().clone();
-        // 3 Layer A + 1 Layer B summary = 4
-        assert_eq!(all.len(), 4);
-        let summary = all
+        // 3 Layer A + 2 Layer B summary (per-NPC)
+        assert_eq!(all.len(), 5);
+        let summaries: Vec<&MemoryEntry> = all
             .iter()
-            .find(|e| e.memory_type == MemoryType::SceneSummary)
-            .unwrap();
-        assert_eq!(summary.layer, MemoryLayer::B);
-        assert!(summary.content.contains("요약"));
+            .filter(|e| e.memory_type == MemoryType::SceneSummary)
+            .collect();
+        assert_eq!(summaries.len(), 2, "NPC당 1개 summary (총 2개)");
 
-        // Layer A 엔트리 3개 모두 consolidated_into 마킹
-        let consolidated_count = all
+        // alice summary는 alice Personal Scope, bob summary는 bob Personal Scope
+        let alice_summary = summaries
             .iter()
-            .filter(|e| e.memory_type == MemoryType::DialogueTurn && e.consolidated_into.is_some())
-            .count();
-        assert_eq!(consolidated_count, 3, "3개 Layer A가 모두 consolidated_into 마킹");
+            .find(|e| matches!(&e.scope, MemoryScope::Personal { npc_id } if npc_id == "alice"))
+            .expect("alice의 summary");
+        let bob_summary = summaries
+            .iter()
+            .find(|e| matches!(&e.scope, MemoryScope::Personal { npc_id } if npc_id == "bob"))
+            .expect("bob의 summary");
+
+        // topic이 "scene:alice:bob"로 정규화 (a ≤ b)
+        assert_eq!(alice_summary.topic.as_deref(), Some("scene:alice:bob"));
+        assert_eq!(bob_summary.topic.as_deref(), Some("scene:alice:bob"));
+
+        // alice 소속 엔트리(t1, t3)는 alice summary를 가리키고, bob 소속(t2)은 bob summary를 가리킴
+        let t1 = all.iter().find(|e| e.id == "t1").unwrap();
+        let t2 = all.iter().find(|e| e.id == "t2").unwrap();
+        let t3 = all.iter().find(|e| e.id == "t3").unwrap();
+        assert_eq!(t1.consolidated_into.as_deref(), Some(alice_summary.id.as_str()));
+        assert_eq!(t3.consolidated_into.as_deref(), Some(alice_summary.id.as_str()));
+        assert_eq!(t2.consolidated_into.as_deref(), Some(bob_summary.id.as_str()));
     }
 
     #[test]
@@ -423,8 +501,29 @@ mod tests {
         harness
             .dispatch(&handler, scene_ended(1, "alice", "bob"))
             .expect("must succeed");
-        // 아무 엔트리도 없었으므로 요약도 생성되지 않음
         assert_eq!(store.entries.lock().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn one_sided_layer_a_creates_only_that_npcs_summary() {
+        // alice만 Layer A 엔트리가 있으면 alice summary만 생성되고 bob summary는 없다.
+        let store = Arc::new(SpyStore::default());
+        store
+            .index(layer_a_turn("t1", "alice", "일방적 독백", 1), None)
+            .unwrap();
+        let handler = SceneConsolidationHandler::new(store.clone());
+        let mut harness = HandlerTestHarness::new();
+        harness
+            .dispatch(&handler, scene_ended(101, "alice", "bob"))
+            .expect("must succeed");
+        let summary_count = store
+            .entries
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.memory_type == MemoryType::SceneSummary)
+            .count();
+        assert_eq!(summary_count, 1);
     }
 
     #[test]
@@ -456,5 +555,27 @@ mod tests {
         assert!(rel_e.consolidated_into.is_none(), "RelationshipChange는 제외");
         let turn_e = all.iter().find(|e| e.id == "t1").unwrap();
         assert!(turn_e.consolidated_into.is_some(), "DialogueTurn은 흡수");
+    }
+
+    #[test]
+    fn self_scene_deduplicates_participant() {
+        // 리뷰 H1: npc_id == partner_id인 self-scene도 무한루프/이중 summary 없이 처리.
+        let store = Arc::new(SpyStore::default());
+        store
+            .index(layer_a_turn("t1", "alice", "독백", 1), None)
+            .unwrap();
+        let handler = SceneConsolidationHandler::new(store.clone());
+        let mut harness = HandlerTestHarness::new();
+        harness
+            .dispatch(&handler, scene_ended(300, "alice", "alice"))
+            .expect("must succeed");
+        let summary_count = store
+            .entries
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.memory_type == MemoryType::SceneSummary)
+            .count();
+        assert_eq!(summary_count, 1, "self-scene은 summary 1개만");
     }
 }

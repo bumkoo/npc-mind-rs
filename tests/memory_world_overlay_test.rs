@@ -35,7 +35,7 @@ fn build_dispatcher(
     let bus = Arc::new(EventBus::new());
     let dispatcher = CommandDispatcher::new(repo, event_store.clone(), bus)
         .with_default_handlers()
-        .with_memory(store as Arc<dyn MemoryStore>);
+        .with_memory_full(store as Arc<dyn MemoryStore>);
     (dispatcher, event_store)
 }
 
@@ -164,6 +164,55 @@ async fn new_world_event_supersedes_existing_same_topic_canonical() {
     assert!(
         old.superseded_by.is_some(),
         "기존 Canonical은 supersede 마킹"
+    );
+}
+
+#[tokio::test]
+async fn non_canonical_personal_entries_on_same_topic_preserved() {
+    // 리뷰 B1 회귀 가드 — Personal Heard/Rumor는 World 오버레이로 supersede되지 않아야.
+    let store = Arc::new(InMemoryMemoryStore::new());
+    let (dispatcher, _) = build_dispatcher(store.clone());
+
+    // 기존 Canonical 시드
+    seed_canonical(&*store, "old-canon", "leader", "옛 맹주", 1);
+    // 어떤 NPC의 Personal Heard 엔트리도 시드
+    let heard = MemoryEntry::personal(
+        "pupil-heard",
+        "pupil",
+        "맹주가 바뀐다는 소문을 들었다",
+        None,
+        2,
+        2,
+        MemoryType::DialogueTurn,
+    );
+    // topic 명시 후 재저장
+    let heard = MemoryEntry {
+        topic: Some("leader".into()),
+        source: MemorySource::Heard,
+        ..heard
+    };
+    store.index(heard, None).unwrap();
+
+    dispatcher
+        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+            world_id: "jianghu".into(),
+            topic: Some("leader".into()),
+            fact: "새 맹주 등장".into(),
+            significance: 0.7,
+            witnesses: vec![],
+        }))
+        .await
+        .unwrap();
+
+    // Canonical은 supersede됨
+    let old_canon = store.get_by_id("old-canon").unwrap().unwrap();
+    assert!(old_canon.superseded_by.is_some());
+
+    // Personal Heard는 보존되어야 함
+    let heard = store.get_by_id("pupil-heard").unwrap().unwrap();
+    assert!(
+        heard.superseded_by.is_none(),
+        "Personal Heard는 World 오버레이로 supersede되지 않아야"
     );
 }
 

@@ -58,7 +58,7 @@ fn dispatcher_with_memory(
     let bus = Arc::new(EventBus::new());
     CommandDispatcher::new(repo, event_store, bus)
         .with_default_handlers()
-        .with_memory(store as Arc<dyn MemoryStore>)
+        .with_memory_full(store as Arc<dyn MemoryStore>)
 }
 
 fn seed_turn(store: &dyn MemoryStore, id: &str, npc: &str, content: &str, ts: u64) {
@@ -126,26 +126,50 @@ async fn scene_end_consolidates_layer_a_into_layer_b_summary() {
         .await
         .expect("end dialogue must succeed");
 
-    // 한쪽(요약이 저장된 NPC = alice) 관점에서 Layer B 요약이 1개
+    // 리뷰 B3: per-NPC Personal Summary. 각 NPC 관점에서 자기 Summary가 1개씩.
     let alice_entries = personal_entries(&*store, "alice");
-    let summary_count = alice_entries
+    let bob_entries = personal_entries(&*store, "bob");
+    let alice_summary = alice_entries
         .iter()
-        .filter(|e| {
-            e.layer == MemoryLayer::B && matches!(e.memory_type, MemoryType::SceneSummary)
-        })
-        .count();
-    assert_eq!(summary_count, 1, "Layer B SceneSummary 1개 생성");
+        .find(|e| matches!(e.memory_type, MemoryType::SceneSummary))
+        .expect("alice summary");
+    let bob_summary = bob_entries
+        .iter()
+        .find(|e| matches!(e.memory_type, MemoryType::SceneSummary))
+        .expect("bob summary");
 
-    // alice 관점 Layer A 엔트리들은 consolidated_into 마킹됨
-    let alice_layer_a_turns: Vec<_> = alice_entries
+    assert_eq!(alice_summary.layer, MemoryLayer::B);
+    assert_eq!(bob_summary.layer, MemoryLayer::B);
+    assert_ne!(alice_summary.id, bob_summary.id, "서로 다른 엔트리");
+    // 리뷰 M7: topic "scene:{a}:{b}" (정규화)
+    assert_eq!(alice_summary.topic.as_deref(), Some("scene:alice:bob"));
+    assert_eq!(bob_summary.topic.as_deref(), Some("scene:alice:bob"));
+
+    // alice 관점 Layer A 엔트리는 alice summary를 가리킨다
+    let alice_turns: Vec<_> = alice_entries
         .iter()
         .filter(|e| matches!(e.memory_type, MemoryType::DialogueTurn))
         .collect();
-    assert!(!alice_layer_a_turns.is_empty(), "alice 관점 Layer A 엔트리가 존재");
-    for e in &alice_layer_a_turns {
-        assert!(
-            e.consolidated_into.is_some(),
-            "Layer A 엔트리({}) consolidated_into가 설정되어야",
+    assert!(!alice_turns.is_empty());
+    for e in &alice_turns {
+        assert_eq!(
+            e.consolidated_into.as_deref(),
+            Some(alice_summary.id.as_str()),
+            "alice Layer A({})는 alice summary를 가리켜야",
+            e.id
+        );
+    }
+    // bob 관점 Layer A도 bob summary를 가리킨다
+    let bob_turns: Vec<_> = bob_entries
+        .iter()
+        .filter(|e| matches!(e.memory_type, MemoryType::DialogueTurn))
+        .collect();
+    assert!(!bob_turns.is_empty());
+    for e in &bob_turns {
+        assert_eq!(
+            e.consolidated_into.as_deref(),
+            Some(bob_summary.id.as_str()),
+            "bob Layer A({})는 bob summary를 가리켜야 (리뷰 B3 관점 분리)",
             e.id
         );
     }

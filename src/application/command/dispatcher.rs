@@ -134,18 +134,37 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self
     }
 
-    /// Memory 저장소 연동용 Inline 핸들러 부착 (Step C2~).
+    /// Memory 저장소 연동 — **TellingIngestionHandler만** 부착 (Step C2 호환).
     ///
-    /// 현재 등록 대상: `TellingIngestionHandler` (`InformationTold` → `MemoryEntry`).
-    /// Step D에서 `SceneConsolidationHandler`·`WorldOverlayHandler` 등이 추가될 예정.
+    /// Step C2부터 존재한 lean 경로. `Command::TellInformation`으로 생성되는
+    /// `InformationTold` 이벤트를 받아 청자별 `MemoryEntry(Heard/Rumor)`를 저장한다.
+    ///
+    /// Step D의 추가 핸들러(WorldOverlay/RelationshipMemory/SceneConsolidation)는 이
+    /// 빌더가 **등록하지 않는다**. 해당 기능을 함께 쓰려면 `with_memory_full(store)`를
+    /// 대신 호출한다 (리뷰 H5: 기존 콜러의 semantic break 방지).
     ///
     /// MemoryStore가 없는 환경(테스트·단순 시나리오)에서는 이 빌더를 호출하지 않으면
     /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
-    /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
+    /// 건너뛴다.
     pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+        self
+    }
+
+    /// Memory 저장소 연동 — Step D 전체 번들 (Telling + WorldOverlay + RelationshipMemory
+    /// + SceneConsolidation).
+    ///
+    /// `with_memory`가 Step C2 동작만 유지하는 반면, 이 빌더는 Step D 기능 전체를 켠다.
+    /// 4종 Inline 핸들러가 `priority::inline::MEMORY_INGESTION`(40) → `WORLD_OVERLAY_INGESTION`(45)
+    /// → `RELATIONSHIP_MEMORY`(50) → `SCENE_CONSOLIDATION`(60) 순서로 실행된다.
+    ///
+    /// 부작용:
+    /// - `InformationTold` → 청자 `MemoryEntry(Heard/Rumor)`
+    /// - `WorldEventOccurred` → Canonical `MemoryEntry(World, Seeded)` + topic Canonical supersede
+    /// - `RelationshipUpdated` → `MemoryEntry(RelationshipChange)` (Δ ≥ 0.05)
+    /// - `SceneEnded` → 참여 NPC별 Layer B `SceneSummary` + Layer A `consolidated_into` 마킹
+    pub fn with_memory_full(mut self, store: Arc<dyn MemoryStore>) -> Self {
         self = self.register_inline(Arc::new(TellingIngestionHandler::new(store.clone())));
-        // Step D: World 오버레이 → Canonical MemoryEntry, Relationship cause 기록, Scene 통합.
-        // 세 handler 모두 MemoryStore 의존이므로 with_memory에서 일괄 부착한다.
         self = self.register_inline(Arc::new(WorldOverlayHandler::new(store.clone())));
         self = self.register_inline(Arc::new(RelationshipMemoryHandler::new(store.clone())));
         self = self.register_inline(Arc::new(SceneConsolidationHandler::new(store)));

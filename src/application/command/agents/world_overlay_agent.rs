@@ -4,6 +4,16 @@
 //! Canonical MemoryEntry 생성 / supersede 는 Inline `WorldOverlayHandler`가 처리하며,
 //! 이 에이전트는 순수 이벤트 변환 역할만 한다.
 //!
+//! **왜 별도 Agent로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
+//! `build_initial_event`에서 바로 `WorldEventOccurred`를 발행하는 쪽이 cascade depth가
+//! 얕아지지만, 다음 이유로 Agent 단계를 유지한다:
+//! 1. 다른 Command도 Transactional 체인을 통해 `*Requested → *Occurred` 흐름을 거친다
+//!    (`InformationAgent`, `SceneAgent` 등) — 일관된 대칭.
+//! 2. 향후 세계 사건 유효성 검증·Canonical 충돌 감지·다중 follow-up (예: 목격자 개별
+//!    이벤트)이 필요해지면 dispatcher를 건드리지 않고 여기서 확장 가능.
+//! 3. Event Sourcing 관점에서 `*Requested`와 `*Occurred`가 이벤트 스토어에 별도로 남아
+//!    replay·audit 시 인과 분리가 명확.
+//!
 //! **Priority**: `WORLD_OVERLAY = 25` — Guide 직후, Relationship 이전 (§6.5 B6).
 
 use crate::application::command::handler_v2::{

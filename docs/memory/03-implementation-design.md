@@ -593,24 +593,33 @@ v2 `EventHandler` trait 구현체. Transactional 단계에서 실행된다.
 
 2차 §11.1 B6 제안에 정렬.
 
+**Transactional 축** (follow-up 발행, 에러 시 커맨드 중단):
 ```rust
-// 기존 (변경 없음)
-pub const SCENE_START: u32 = 5;
-pub const EMOTION_APPRAISAL: u32 = 10;
-pub const STIMULUS_APPLICATION: u32 = 15;
-pub const GUIDE_GENERATION: u32 = 20;
-
-// 신규 — 2차 §11.1 B6 (잠정, C11 결정 대기)
-pub const WORLD_OVERLAY: u32 = 25;            // Guide 직후, Relationship 이전
-pub const RELATIONSHIP_UPDATE: u32 = 30;      // 기존 유지
-pub const INFORMATION_TELLING: u32 = 35;      // Relationship 직후
-pub const RUMOR_SPREAD: u32 = 40;             // 정보 전달 이후
-pub const SCENE_CONSOLIDATION: u32 = 45;      // Scene 종료 직전 가장 마지막
+pub const SCENE_START: i32 = 5;
+pub const EMOTION_APPRAISAL: i32 = 10;
+pub const STIMULUS_APPLICATION: i32 = 15;
+pub const GUIDE_GENERATION: i32 = 20;
+pub const WORLD_OVERLAY: i32 = 25;            // Guide 직후, Relationship 이전 (C11)
+pub const RELATIONSHIP_UPDATE: i32 = 30;
+pub const INFORMATION_TELLING: i32 = 35;
+pub const RUMOR_SPREAD: i32 = 40;
+pub const AUDIT: i32 = 90;
 ```
 
-> **C11 잠정 결정 — WorldOverlay = 25**: 2차 §11.1 B6의 안대로 Guide 직후, Relationship 이전에 배치한다. 근거: "세계 오버레이가 장면 프롬프트 guide에는 반영되지 않되, 관계 갱신에는 반영될 수 있어야 한다". 대안(50)은 Rumor 이후 실행으로 같은 커맨드 안에서 세계 사건 → 관계 변화 → 정보 전달 흐름이 역전된다. 최종 승인은 §17 결정 사항 2번 참조.
+**Inline 축** (commit 이후 동기 실행, Step D 구현에서 SCENE_CONSOLIDATION은 여기로 이동):
+```rust
+pub const EMOTION_PROJECTION: i32 = 10;
+pub const RELATIONSHIP_PROJECTION: i32 = 20;
+pub const SCENE_PROJECTION: i32 = 30;
+pub const MEMORY_INGESTION: i32 = 40;          // TellingIngestion, RumorDistribution
+pub const WORLD_OVERLAY_INGESTION: i32 = 45;   // Step D: Canonical + supersede
+pub const RELATIONSHIP_MEMORY: i32 = 50;       // Step D: cause 분기
+pub const SCENE_CONSOLIDATION: i32 = 60;       // Step D: Layer A→B 흡수 (가장 마지막)
+```
 
-Inline Projection(§6.4)은 별도 priority 축 — commit 이후 순서는 handler 등록 순.
+> **C11 잠정 결정 — WorldOverlay = 25**: 2차 §11.1 B6의 안대로 Guide 직후, Relationship 이전에 배치한다. 근거: "세계 오버레이가 장면 프롬프트 guide에는 반영되지 않되, 관계 갱신에는 반영될 수 있어야 한다".
+>
+> **SceneConsolidation Inline 이동**: 원 설계는 Transactional 축 `SCENE_CONSOLIDATION=45`였으나, Scene 통합은 `SceneEnded` commit 이후 Layer A 인덱싱이 모두 끝난 상태에서 실행되어야 중복/누락 없이 동작한다. Inline 축으로 재배치하고 값은 `60`(가장 늦게)으로 고정. Invariants: `SCENE_CONSOLIDATION > RELATIONSHIP_MEMORY > WORLD_OVERLAY_INGESTION > MEMORY_INGESTION > SCENE_PROJECTION` (priority.rs 테스트 가드).
 
 ## 7. SQLite 스키마 — `src/adapter/sqlite_memory.rs` 마이그레이션
 
@@ -1186,9 +1195,20 @@ pub enum StateEvent {
 
 **범위 외 (본 Step에서 제외, 후속 Phase로 이관)**:
 - `TopicLatestProjection` 독립 구조체 — `SqliteMemoryStore.get_by_topic_latest`/`get_canonical_by_topic`이 이미 인덱스 기반 조회를 제공하므로 **별도 Projection struct는 생성하지 않는다** (2차 §10 프로젝션 최소주의). UI 전용 캐시가 필요해지면 Step E에서 추가.
-- LLM 기반 요약 Consolidator — 현재는 휴리스틱(첫·끝 content 조합). 후속 Phase.
-- 목격자(`witnesses`) 개별 Personal MemoryEntry 생성 — Step F 예정.
+- LLM 기반 요약 Consolidator — 현재는 휴리스틱(첫·끝 content 조합, 120자 cap). 후속 Phase.
+- 목격자(`witnesses`) 개별 Personal MemoryEntry 생성 — Step F 예정. 이벤트 payload에는 필드로 유지.
+- Target 관점 Relationship MemoryEntry — `RelationshipMemoryHandler`는 현재 owner 관점 엔트리만 생성한다. Target이 같은 변화를 "느꼈다"는 도메인 판단이 필요하므로 Step F로 연기 (§6.3 line 579 완전 충족은 후속 과제).
+- `DialogueEndRequested` → cause=`SceneInteraction` 승격 — payload에 scene_id를 명시 추가하는 스키마 변경이 필요해 Step F에서 처리. 현재는 `Unspecified`.
 - `RelationshipAgent`의 나머지 cause variant 자동 채우기 (`InformationTold`/`Rumor`/`WorldEventOverlay` 계열) — 해당 경로가 실제로 관계 갱신을 트리거하게 되는 Step F 이후에 연결. 현재 `RelationshipMemoryHandler`는 cause를 입력만 받으면 올바르게 분기함 (단위 테스트로 검증).
+
+**리뷰 후 수정사항 (2차 파이프라인 통과)**:
+- **B1**: `WorldOverlayHandler` supersede 정책 좁힘 — `get_canonical_by_topic` 단건만 supersede. 다른 NPC의 Personal Heard/Rumor는 보존.
+- **B3**: `SceneConsolidationHandler` 관점 분리 — 참여 NPC별로 자기 Layer A만 흡수하는 Personal summary를 각각 생성. topic = `"scene:{a}:{b}"`로 정규화.
+- **H1/H2**: self-Scene 가드 + per-NPC search 실패 시 해당 NPC만 skip (반쪽 summary 방지).
+- **H4**: `RelationshipMemoryHandler`가 주도 축(closeness/trust/power)을 content에 `[axis Δ=0.34]` 형식으로 포함.
+- **H5**: `with_memory(store)`를 lean(Step C2 호환)으로 복원하고, Step D 번들은 `with_memory_full(store)`로 분리.
+- **M7**: SceneSummary에 `topic=Some("scene:{a}:{b}")` 부여 — 후속 `get_by_topic_latest` 조회 편의.
+- **M6**: BeatTransitioned → cause=SceneInteraction 경로 E2E 테스트 추가.
 
 **구현 결과**:
 

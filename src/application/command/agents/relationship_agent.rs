@@ -223,6 +223,12 @@ impl RelationshipAgent {
         // 3 follow-ups: RelationshipUpdated + EmotionCleared + SceneEnded
         // SceneEnded는 터미널 이벤트 — 다른 transactional handler가 interest 가지지 않음
         // (RelationshipAgent 본인도 interest에서 SceneEnded 제외했으므로 재진입 없음).
+        // TODO(step-f): DialogueEnd는 장면 종료 직전 관계 정산이므로 cause는 의미상
+        // `SceneInteraction { scene_id }`에 가깝다. 다만 DialogueEndRequested 페이로드는
+        // scene_id를 직접 운반하지 않고 (npc_id, partner_id)로부터 합성되며, 장면이
+        // end 직전까지 유효한지 확인하지 않고 cause를 단정하면 인과 오표기 위험이 있다.
+        // Step F에서 DialogueEndRequested에 scene_id를 명시 필드로 추가하거나
+        // 장면 유효성 검증 후 cause를 `SceneInteraction`으로 승격할 것.
         let rel_event = DomainEvent::new(
             0,
             npc_id.to_string(),

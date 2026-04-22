@@ -15,13 +15,16 @@
 //! | `Unspecified` | Experienced | `None` | 일반 cause 미표기 변화 |
 //!
 //! **threshold 필터**: MEMORY_RELATIONSHIP_DELTA_THRESHOLD(0.05)보다 변화량 작으면 no-op.
-//! 한 이벤트로 3축(closeness/trust/power) 모두의 Δ 중 최대값이 threshold 미만이면 의미
-//! 없는 미세 변동으로 간주하고 기억을 남기지 않는다.
+//! 한 이벤트로 3축(closeness/trust/power) 모두의 Δ 중 **최대값**이 threshold 미만이면 의미
+//! 없는 미세 변동으로 간주하고 기억을 남기지 않는다. 어떤 축이 주도한 변화인지
+//! content에 추적용 라벨("[closeness Δ=0.34]" 등)로 포함한다 (리뷰 H4).
 //!
-//! **관점 분리**: owner → target 관점의 엔트리 하나만 생성한다. target 관점은 해당
-//! RelationshipAgent가 따로 발행하는 (owner 반전) 이벤트가 존재한다면 그 이벤트에서
-//! 같은 handler가 또 한 번 실행되어 생성된다. 현재 RelationshipAgent는 owner 관점만
-//! 발행하므로 이 handler도 owner 쪽 엔트리만 만든다.
+//! **관점 분리 (TODO step-f)**: 현재 owner → target 관점의 엔트리만 만든다. target 관점
+//! 엔트리는 target의 RelationshipAgent가 따로 `RelationshipUpdated`를 발행하는 경우에만
+//! 생기는데, 현재 RelationshipAgent는 owner 관점 이벤트 1개만 내보낸다. 스펙 §6.3 line
+//! 579("당사자 a, b 각각 별 엔트리")를 완전히 만족하려면 Step F에서 ①target 경로를
+//! 추가로 발행하거나 ②이 handler가 target 관점 엔트리도 미러 생성하도록 확장해야 한다.
+//! 후자는 "target이 이 변화를 실제로 느꼈는가"라는 도메인 판단이 필요하므로 Step F로 연기.
 //!
 //! **Inline 계약**: MemoryStore 에러는 로그만. 커맨드는 계속.
 
@@ -47,21 +50,33 @@ impl RelationshipMemoryHandler {
         Self { store }
     }
 
+    /// 결정적 엔트리 id — `(event.id, owner)` 쌍이 유일. 같은 `RelationshipUpdated` 이벤트
+    /// 가 replay되면 같은 id가 산출되며 MemoryStore가 overwrite-in-place (리뷰 M3).
     fn derive_entry_id(event_id: u64, owner: &str) -> String {
         format!("rel-{event_id:012}-{owner}")
     }
 
-    fn max_delta(
-        bc: f32,
-        bt: f32,
-        bp: f32,
-        ac: f32,
-        at: f32,
-        ap: f32,
-    ) -> f32 {
-        [(ac - bc).abs(), (at - bt).abs(), (ap - bp).abs()]
+    /// 세 축 중 가장 큰 변화량 + 그 축 이름 반환 (리뷰 H4).
+    ///
+    /// 모두 동률이면 closeness → trust → power 순으로 선점 (안정 정렬).
+    fn dominant_delta(
+        bc: f32, bt: f32, bp: f32,
+        ac: f32, at: f32, ap: f32,
+    ) -> (f32, &'static str) {
+        let deltas = [
+            ((ac - bc).abs(), "closeness"),
+            ((at - bt).abs(), "trust"),
+            ((ap - bp).abs(), "power"),
+        ];
+        deltas
             .into_iter()
-            .fold(0.0_f32, f32::max)
+            .fold((0.0_f32, "closeness"), |acc, cur| {
+                if cur.0 > acc.0 {
+                    cur
+                } else {
+                    acc
+                }
+            })
     }
 
     /// cause variant에 따른 (source, topic, content) 결정.
@@ -76,7 +91,11 @@ impl RelationshipMemoryHandler {
                 format!("장면에서 {target}과(와)의 관계 변화"),
             ),
             RelationshipChangeCause::InformationTold { origin_chain } => {
-                // 체인 길이 0/1 → Heard, 2+ → Rumor (§2.2 MemorySource::from_origin_chain)
+                // `MemorySource::from_origin_chain` 계약 (§2.2):
+                //   len=0 → Rumor (출처 불명), len=1 → Heard (직접 전해 들음),
+                //   len≥2 → Rumor (재전파). 여기는 관계 변화 원인으로 정보 전달이
+                //   명시된 경우이므로 정상 경로는 len≥1이지만, 만약 호출자가 빈
+                //   체인을 넘기면 아래 from_origin_chain이 Rumor로 수렴한다.
                 let source = MemorySource::from_origin_chain(origin_chain.len(), None);
                 (
                     source,
@@ -141,8 +160,8 @@ impl EventHandler for RelationshipMemoryHandler {
             return Ok(HandlerResult::default());
         };
 
-        // 미세 변동은 기록하지 않음
-        let delta = Self::max_delta(
+        // 미세 변동은 기록하지 않음. 또한 주도 축 라벨을 content에 포함해 추적성 확보.
+        let (delta, axis) = Self::dominant_delta(
             *before_closeness,
             *before_trust,
             *before_power,
@@ -154,7 +173,8 @@ impl EventHandler for RelationshipMemoryHandler {
             return Ok(HandlerResult::default());
         }
 
-        let (source, topic, content) = Self::derive_from_cause(cause, target_id);
+        let (source, topic, base_content) = Self::derive_from_cause(cause, target_id);
+        let content = format!("{base_content} [{axis} Δ={delta:.2}]");
 
         let id = Self::derive_entry_id(event.id, owner_id);
         #[allow(deprecated)] // Personal 투영 grand-father (§2.5 H10)
@@ -250,9 +270,34 @@ mod tests {
         }
         fn search(
             &self,
-            _q: crate::ports::MemoryQuery,
+            q: crate::ports::MemoryQuery,
         ) -> Result<Vec<crate::domain::memory::MemoryResult>, crate::ports::MemoryError> {
-            Ok(vec![])
+            // 리뷰 H3: scope_filter 준수 — 프로덕션 InMemoryMemoryStore와 의미 맞추기.
+            // RelationshipMemoryHandler 자체는 search를 쓰지 않지만, 같은 store가 다른
+            // 핸들러와 공유되는 상위 시나리오에서 spy가 거짓 empty를 반환하면 안 된다.
+            use crate::ports::MemoryScopeFilter;
+            let g = self.entries.lock().unwrap();
+            let out: Vec<_> = g
+                .iter()
+                .filter(|e| match &q.scope_filter {
+                    None | Some(MemoryScopeFilter::Any) => true,
+                    Some(MemoryScopeFilter::Exact(s)) => &e.scope == s,
+                    Some(MemoryScopeFilter::NpcAllowed(npc)) => match &e.scope {
+                        MemoryScope::Personal { npc_id } => npc_id == npc,
+                        MemoryScope::World { .. } => true,
+                        MemoryScope::Relationship { a, b } => a == npc || b == npc,
+                        _ => false,
+                    },
+                })
+                .filter(|e| q.layer_filter.map(|l| e.layer == l).unwrap_or(true))
+                .filter(|e| !q.exclude_superseded || e.superseded_by.is_none())
+                .filter(|e| !q.exclude_consolidated_source || e.consolidated_into.is_none())
+                .map(|e| crate::domain::memory::MemoryResult {
+                    entry: e.clone(),
+                    relevance_score: 1.0,
+                })
+                .collect();
+            Ok(out)
         }
         fn get_by_id(
             &self,
