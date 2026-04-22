@@ -3,6 +3,7 @@ import { api } from '../../api/client'
 import { useMemoryStore } from '../../stores/useMemoryStore'
 import { useUIStore } from '../../stores/useUIStore'
 import type { MemoryEntry, MemoryListResponse, MemoryScope, MemorySource, MemoryType, Npc } from '../../types'
+import TopicHistoryView from './TopicHistoryView'
 
 interface MemoryViewProps {
   npcs: Npc[]
@@ -78,8 +79,59 @@ export default function MemoryView({ npcs }: MemoryViewProps) {
     return { a, b, total: entries.length }
   }, [entries])
 
+  const mode = useMemoryStore((s) => s.mode)
+  const setMode = useMemoryStore((s) => s.setMode)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 8 }}>
+      {/* Mode toggle — NPC / Topic (Step E3.1). */}
+      <div style={{ display: 'flex', gap: 2 }}>
+        {(['npc', 'topic'] as const).map((m) => (
+          <button
+            key={m}
+            className={`btn small ${mode === m ? '' : 'ghost'}`}
+            style={{ fontSize: 10, padding: '2px 10px' }}
+            onClick={() => setMode(m)}
+          >
+            {m === 'npc' ? 'NPC별' : 'Topic별'}
+          </button>
+        ))}
+      </div>
+
+      {mode === 'topic' ? (
+        <TopicHistoryView />
+      ) : (
+        <NpcModeView
+          entries={entries}
+          filtered={filtered}
+          counts={counts}
+          loading={loading}
+          selectedNpcId={selectedNpcId}
+          layerFilter={layerFilter}
+          setSelectedNpcId={setSelectedNpcId}
+          setLayerFilter={setLayerFilter}
+          npcs={npcs}
+        />
+      )}
+    </div>
+  )
+}
+
+interface NpcModeProps {
+  entries: MemoryEntry[]
+  filtered: MemoryEntry[]
+  counts: { a: number; b: number; total: number }
+  loading: boolean
+  selectedNpcId: string | null
+  layerFilter: 'all' | 'A' | 'B'
+  setSelectedNpcId: (id: string | null) => void
+  setLayerFilter: (l: 'all' | 'A' | 'B') => void
+  npcs: Npc[]
+}
+
+function NpcModeView({ entries, filtered, counts, loading, selectedNpcId, layerFilter, setSelectedNpcId, setLayerFilter, npcs }: NpcModeProps) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, gap: 8 }}>
       {/* Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 11, color: 'var(--fg3)' }}>NPC</label>

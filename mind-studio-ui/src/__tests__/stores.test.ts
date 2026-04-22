@@ -397,4 +397,34 @@ describe('useMemoryStore', () => {
     expect(after.selectedNpcId).toBeNull()
     expect(after.layerFilter).toBe('all')
   })
+
+  // Step E3.1 — Topic 모드 상태
+  it('setMode / setTopicEntries / setSelectedTopic', () => {
+    const s = useMemoryStore.getState()
+    expect(s.mode).toBe('npc')
+    expect(s.selectedTopic).toBeNull()
+    expect(s.topicEntries).toEqual([])
+
+    s.setMode('topic')
+    s.setSelectedTopic('sect:leader')
+    s.setTopicEntries([mockMemoryEntry])
+
+    const after = useMemoryStore.getState()
+    expect(after.mode).toBe('topic')
+    expect(after.selectedTopic).toBe('sect:leader')
+    expect(after.topicEntries).toHaveLength(1)
+  })
+
+  it('clear()가 topic 상태도 리셋', () => {
+    const s = useMemoryStore.getState()
+    s.setMode('topic')
+    s.setSelectedTopic('sect:leader')
+    s.setTopicEntries([mockMemoryEntry])
+    s.clear()
+
+    const after = useMemoryStore.getState()
+    expect(after.mode).toBe('npc')
+    expect(after.selectedTopic).toBeNull()
+    expect(after.topicEntries).toEqual([])
+  })
 })
