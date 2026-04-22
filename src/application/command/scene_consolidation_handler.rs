@@ -413,6 +413,10 @@ mod tests {
         fn record_recall(&self, _id: &str, _now_ms: u64) -> Result<(), crate::ports::MemoryError> {
             Ok(())
         }
+        fn clear_all(&self) -> Result<(), crate::ports::MemoryError> {
+            self.entries.lock().unwrap().clear();
+            Ok(())
+        }
     }
 
     fn layer_a_turn(id: &str, npc: &str, content: &str, ts: u64) -> MemoryEntry {

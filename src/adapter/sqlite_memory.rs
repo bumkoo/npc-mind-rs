@@ -785,6 +785,36 @@ impl MemoryStore for SqliteMemoryStore {
         .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         Ok(())
     }
+
+    fn clear_all(&self) -> Result<(), MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        // 트랜잭션으로 세 테이블(+ FTS)을 일괄 비운다. FTS5는 external content가 아니므로
+        // 직접 DELETE. vec0는 DELETE가 지원되지만 빈 문자열·NULL 질의로 회피 어려움 —
+        // DROP + CREATE로 재생성하는 것이 안전.
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute("DELETE FROM memories", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute("DELETE FROM memories_fts", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute("DROP TABLE IF EXISTS memories_vec", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute(
+            &format!(
+                "CREATE VIRTUAL TABLE memories_vec USING vec0(
+                    partition_key TEXT partition key,
+                    embedding FLOAT[{}]
+                )",
+                self.dim
+            ),
+            [],
+        )
+        .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.commit()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

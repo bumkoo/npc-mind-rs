@@ -230,6 +230,11 @@ impl MemoryStore for InMemoryMemoryStore {
         }
         Ok(())
     }
+
+    fn clear_all(&self) -> Result<(), MemoryError> {
+        self.entries.write().unwrap().clear();
+        Ok(())
+    }
 }
 
 fn cosine_sim(a: &[f32], b: &[f32]) -> f32 {

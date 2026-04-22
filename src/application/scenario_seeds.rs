@@ -197,9 +197,16 @@ pub struct RumorSeedInput {
     pub seed_content: Option<String>,
     #[serde(default)]
     pub reach: RumorReachInput,
+    /// 소문 기원. 미지정 시 `Seeded`(= 작가 시드) 기본값 — `initial_rumors`는 본디
+    /// 작가가 선언하는 시드이므로 origin 누락이 흔한 실수. L4 개선.
+    #[serde(default = "default_rumor_origin")]
     pub origin: RumorOriginInput,
     #[serde(default)]
     pub created_at: Option<u64>,
+}
+
+fn default_rumor_origin() -> RumorOriginInput {
+    RumorOriginInput::Seeded
 }
 
 impl RumorSeedInput {
@@ -368,6 +375,14 @@ mod tests {
         assert_eq!(seeds.world_knowledge.len(), 1);
         assert_eq!(seeds.faction_knowledge.get("sect_yun").unwrap().len(), 1);
         assert!(seeds.family_facts.is_empty());
+    }
+
+    #[test]
+    fn rumor_seed_default_origin_is_seeded() {
+        // L4: origin 누락해도 기본 Seeded로 파싱되어 initial_rumors 전체 로드가 실패하지 않음.
+        let json = r#"{ "topic": "sect:leader" }"#;
+        let seed: RumorSeedInput = serde_json::from_str(json).unwrap();
+        assert!(matches!(seed.origin, RumorOriginInput::Seeded));
     }
 
     #[test]

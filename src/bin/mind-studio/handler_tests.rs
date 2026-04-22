@@ -2325,9 +2325,17 @@ mod memory_endpoints {
     // Step E3.2 — 시나리오 JSON seeding
     // -------------------------------------------------------------------
 
+    /// 시나리오 JSON을 tempfile에 써서 경로를 반환. TempDir은 호출자가 살아있게 소유.
+    fn write_scenario(tmp: &tempfile::TempDir, json: &serde_json::Value) -> std::path::PathBuf {
+        use std::io::Write;
+        let path = tmp.path().join("scenario.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        writeln!(f, "{}", json).unwrap();
+        path
+    }
+
     #[tokio::test]
     async fn load_scenario_seeds_memory_and_rumor_into_stores() {
-        use std::io::Write;
         let (app, _state) = seeded_app();
 
         // 시나리오 JSON 작성 — world_knowledge + faction_knowledge + initial_rumors.
@@ -2359,17 +2367,17 @@ mod memory_endpoints {
             ]
         });
 
-        // 임시 파일에 쓰고 /api/load 호출.
-        let tmp_dir = std::env::temp_dir().join(format!("npc-mind-seed-{}", std::process::id()));
-        std::fs::create_dir_all(&tmp_dir).unwrap();
-        let tmp_path = tmp_dir.join("scenario.json");
-        let mut f = std::fs::File::create(&tmp_path).unwrap();
-        writeln!(f, "{}", scenario_json).unwrap();
-        drop(f);
-
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = write_scenario(&tmp, &scenario_json);
         let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
         let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
+
+        // M1: load 응답이 warnings/applied count를 담는지 확인.
+        let body = body_json(resp).await;
+        assert_eq!(body["applied_rumors"], 1);
+        assert_eq!(body["applied_memories"], 2);
+        assert_eq!(body["warnings"].as_array().unwrap().len(), 0);
 
         // world_knowledge 검증 — canonical 조회.
         let resp = app
@@ -2386,8 +2394,7 @@ mod memory_endpoints {
         assert_eq!(entry["scope"]["kind"], "world");
         assert_eq!(entry["scope"]["world_id"], "jianghu");
 
-        // faction_knowledge 검증 — by-topic 조회가 sy-1을 포함해야 함. topic 미지정 엔트리는
-        // 검색되지 않으므로 search 엔드포인트로 source/scope 필터.
+        // faction_knowledge 검증 — search로 source/scope 필터.
         let resp = app
             .clone()
             .oneshot(get("/api/memory/search?source=experienced&limit=50"))
@@ -2407,15 +2414,10 @@ mod memory_endpoints {
             rumors.iter().any(|r| r["id"] == "r-seed-1"),
             "initial_rumors가 시딩되지 않음",
         );
-
-        // 정리.
-        let _ = std::fs::remove_file(&tmp_path);
-        let _ = std::fs::remove_dir(&tmp_dir);
     }
 
     #[tokio::test]
     async fn load_scenario_without_seed_sections_leaves_stores_empty() {
-        use std::io::Write;
         let (app, _state) = seeded_app();
 
         // 시드 섹션 전혀 없는 "기존 시나리오" 포맷 — 회귀 감시.
@@ -2427,13 +2429,8 @@ mod memory_endpoints {
             "scenario": { "name": "no-seed", "description": "" }
         });
 
-        let tmp_dir = std::env::temp_dir().join(format!("npc-mind-noseed-{}", std::process::id()));
-        std::fs::create_dir_all(&tmp_dir).unwrap();
-        let tmp_path = tmp_dir.join("scenario.json");
-        let mut f = std::fs::File::create(&tmp_path).unwrap();
-        writeln!(f, "{}", scenario_json).unwrap();
-        drop(f);
-
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = write_scenario(&tmp, &scenario_json);
         let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
         let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -2442,8 +2439,130 @@ mod memory_endpoints {
         let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
         let body = body_json(resp).await;
         assert_eq!(body["rumors"].as_array().unwrap().len(), 0);
+    }
 
-        let _ = std::fs::remove_file(&tmp_path);
-        let _ = std::fs::remove_dir(&tmp_dir);
+    // H1 회귀 — 두 시나리오 순차 로드 시 두 번째가 첫 번째의 시드를 덮어씀.
+    #[tokio::test]
+    async fn consecutive_scenario_loads_clear_previous_seeds() {
+        let (app, _state) = seeded_app();
+
+        let scenario_a = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "A", "description": "" },
+            "initial_rumors": [
+                {
+                    "id": "rumor-a",
+                    "topic": "a:topic",
+                    "reach": { "regions": [], "factions": [], "npc_ids": [], "min_significance": 0.0 },
+                    "origin": { "kind": "seeded" }
+                }
+            ]
+        });
+        let scenario_b = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "B", "description": "" },
+            "initial_rumors": [
+                {
+                    "id": "rumor-b",
+                    "topic": "b:topic",
+                    "reach": { "regions": [], "factions": [], "npc_ids": [], "min_significance": 0.0 },
+                    "origin": { "kind": "seeded" }
+                }
+            ]
+        });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let path_a = write_scenario(&tmp, &scenario_a);
+        let resp = app.clone().oneshot(json_post("/api/load", serde_json::json!({"path": path_a.to_string_lossy()}))).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // A 로드 직후 rumor-a만 존재.
+        let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
+        let body = body_json(resp).await;
+        let rumors = body["rumors"].as_array().unwrap();
+        assert_eq!(rumors.len(), 1);
+        assert_eq!(rumors[0]["id"], "rumor-a");
+
+        // B 로드 후 rumor-a는 사라지고 rumor-b만 남아야 함.
+        let path_b = write_scenario(&tmp, &scenario_b);
+        let resp = app.clone().oneshot(json_post("/api/load", serde_json::json!({"path": path_b.to_string_lossy()}))).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
+        let body = body_json(resp).await;
+        let rumors = body["rumors"].as_array().unwrap();
+        assert_eq!(rumors.len(), 1, "H1: 이전 시나리오의 rumor-a가 clear되지 않음");
+        assert_eq!(rumors[0]["id"], "rumor-b");
+    }
+
+    // L4 회귀 — origin 미지정도 기본 Seeded로 파싱되어 시딩 성공.
+    #[tokio::test]
+    async fn load_scenario_rumor_without_origin_defaults_to_seeded() {
+        let (app, _state) = seeded_app();
+
+        let scenario_json = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "no-origin", "description": "" },
+            "initial_rumors": [
+                { "id": "r-implicit", "topic": "t:x" }
+            ]
+        });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = write_scenario(&tmp, &scenario_json);
+        let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
+        let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["applied_rumors"], 1);
+        assert_eq!(body["warnings"].as_array().unwrap().len(), 0);
+
+        // 저장된 rumor의 origin이 seeded인지.
+        let resp = app.clone().oneshot(get("/api/rumors")).await.unwrap();
+        let body = body_json(resp).await;
+        let rumor = &body["rumors"][0];
+        assert_eq!(rumor["id"], "r-implicit");
+        assert_eq!(rumor["origin"]["kind"], "seeded");
+    }
+
+    // M1 회귀 — 잘못된 시드는 warnings에 수집되고 나머지 시드는 적용.
+    #[tokio::test]
+    async fn invalid_seed_is_reported_in_warnings() {
+        let (app, _state) = seeded_app();
+
+        // initial_rumors[0]: topic/seed_content 모두 없음 → OrphanRumorMissingSeed 에러.
+        // initial_rumors[1]: 정상 — 이 건은 적용돼야 함.
+        let scenario_json = serde_json::json!({
+            "format": "mind-studio/scenario",
+            "npcs": {},
+            "relationships": {},
+            "objects": {},
+            "scenario": { "name": "invalid", "description": "" },
+            "initial_rumors": [
+                { "id": "broken" },
+                { "id": "ok", "topic": "t:ok" }
+            ]
+        });
+
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_path = write_scenario(&tmp, &scenario_json);
+        let load_req = serde_json::json!({"path": tmp_path.to_string_lossy()});
+        let resp = app.clone().oneshot(json_post("/api/load", load_req)).await.unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["applied_rumors"], 1, "정상 시드는 적용");
+        let warnings = body["warnings"].as_array().unwrap();
+        assert!(!warnings.is_empty(), "잘못된 시드의 warning이 응답에 포함되어야 함");
+        let joined: String = warnings.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(" | ");
+        assert!(joined.contains("rumor[0]"), "warning 메시지에 실패한 index가 포함되어야 함");
     }
 }

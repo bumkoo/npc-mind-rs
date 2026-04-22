@@ -309,6 +309,10 @@ mod tests {
         fn record_recall(&self, _id: &str, _now_ms: u64) -> Result<(), crate::ports::MemoryError> {
             Ok(())
         }
+        fn clear_all(&self) -> Result<(), crate::ports::MemoryError> {
+            self.entries.lock().unwrap().clear();
+            Ok(())
+        }
     }
 
     fn occurred(event_id: u64, world_id: &str, topic: Option<&str>, fact: &str) -> DomainEvent {

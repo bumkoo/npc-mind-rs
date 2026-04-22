@@ -184,8 +184,23 @@ pub async fn save_dir(State(state): State<AppState>) -> Result<Json<SaveDirInfo>
     Ok(Json(info))
 }
 
+/// `POST /api/load` 응답 — Step E3.2에서 `warnings` 필드 추가. 기존 클라이언트는
+/// JSON body를 무시해도 200 OK만 보면 되므로 호환.
+#[derive(Serialize)]
+pub struct LoadResponse {
+    /// 시드 적용 중 발생한 경고 목록 (embed feature 경로에서만 채워짐).
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// 적용된 Rumor 수 (embed feature 경로).
+    #[serde(default)]
+    pub applied_rumors: usize,
+    /// 적용된 MemoryEntry 수 (embed feature 경로).
+    #[serde(default)]
+    pub applied_memories: usize,
+}
+
 /// POST /api/load
-pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<StatusCode, AppError> {
+pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<Json<LoadResponse>, AppError> {
     let resolved = resolve_data_path(&req.path);
     let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
     loaded.turn_history.clear();
@@ -203,14 +218,20 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
     // Step E3.2: 시나리오 JSON의 memory/rumor 시드를 Mind Studio store에 주입.
     // embed feature 비활성 경로에서는 저장소 자체가 없으므로 스킵.
     #[cfg(feature = "embed")]
-    apply_scenario_seeds(&state, &seeds);
+    let report = apply_scenario_seeds(&state, &seeds);
+    #[cfg(not(feature = "embed"))]
+    let report = SeedReport::default();
     if let Some(scene_val) = scene_cfg {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
         }
     }
     state.emit(StateEvent::ScenarioLoaded);
-    Ok(StatusCode::OK)
+    Ok(Json(LoadResponse {
+        warnings: report.warnings,
+        applied_rumors: report.applied_rumors,
+        applied_memories: report.applied_memories,
+    }))
 }
 
 /// POST /api/load-result
@@ -228,7 +249,12 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     }
     state.rebuild_repo_from_inner().await;
     #[cfg(feature = "embed")]
-    apply_scenario_seeds(&state, &seeds);
+    {
+        // load_result도 동일하게 시드 적용. warnings는 LoadResultResponse 스키마가
+        // turn_history만 돌려주므로 여기선 로그만 남기고 응답에 싣지 않는다 (파일 기반
+        // 복원이라 작가 편집 경로가 아님).
+        let _report = apply_scenario_seeds(&state, &seeds);
+    }
     if let Some(scene_val) = scene_cfg {
         if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
@@ -238,69 +264,126 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }
 
+/// Step E3.2 `apply_scenario_seeds` 결과 보고.
+///
+/// Mind Studio `load_state`가 UI 응답(`LoadResponse.warnings`)에 실어 작가에게
+/// 시드 빌드/저장 실패를 가시화한다. embed feature 비활성 경로에서도 default가
+/// 반환되므로 구조체는 cfg 게이트 없이 상시 컴파일.
+#[derive(Debug, Default, serde::Serialize)]
+pub struct SeedReport {
+    pub applied_rumors: usize,
+    pub applied_memories: usize,
+    pub warnings: Vec<String>,
+}
+
 /// Step E3.2: ScenarioSeeds를 Mind Studio의 memory_store/rumor_store에 인덱싱.
 ///
-/// best-effort — 개별 주입 실패는 `tracing::warn!`로 로그만 남긴다. store가 in-memory
-/// 이거나 SQLite 파일에 이미 같은 id가 있으면 index/save가 upsert로 동작하므로 중복
-/// 시딩도 안전.
+/// 먼저 **두 store를 전부 비운다** (시나리오 로드 = fresh slate). 그 뒤 시드를 주입.
+/// 개별 실패는 `SeedReport.warnings`에 수집되고 `tracing::warn!`에도 기록. clear 자체
+/// 실패는 fatal — warning으로 보고하지만 seed 주입은 계속 시도 (best-effort).
+///
+/// `MemoryEntry.created_seq`는 시드 간 안정적 정렬을 위해 배치 내에서 1..N으로 부여.
+/// 런타임 seq와 겹칠 수 있으나 id가 달라 `INSERT OR REPLACE` 충돌은 없음.
 #[cfg(feature = "embed")]
 fn apply_scenario_seeds(
     state: &AppState,
     seeds: &npc_mind::application::scenario_seeds::ScenarioSeeds,
-) {
+) -> SeedReport {
     use npc_mind::domain::memory::MemoryScope;
+    let mut report = SeedReport::default();
+
+    // H1: 이전 시나리오 잔존물 제거. 실패는 warning + 주입 계속 (store 상태가 나빠지지만
+    // seed를 완전히 누락시키는 것보단 낫다).
+    if let Err(e) = state.memory_store.clear_all() {
+        let msg = format!("memory_store.clear_all 실패: {e}");
+        tracing::warn!("{msg}");
+        report.warnings.push(msg);
+    }
+    if let Err(e) = state.rumor_store.clear_all() {
+        let msg = format!("rumor_store.clear_all 실패: {e}");
+        tracing::warn!("{msg}");
+        report.warnings.push(msg);
+    }
 
     if seeds.is_empty() {
-        return;
+        return report;
     }
 
     // Rumor 시드.
     for (idx, seed) in seeds.initial_rumors.iter().enumerate() {
         let fallback = format!("{idx}");
         match seed.clone().into_rumor(&fallback) {
-            Ok(rumor) => {
-                if let Err(e) = state.rumor_store.save(&rumor) {
-                    tracing::warn!("scenario seed rumor[{idx}] 저장 실패: {e}");
+            Ok(rumor) => match state.rumor_store.save(&rumor) {
+                Ok(()) => report.applied_rumors += 1,
+                Err(e) => {
+                    let msg = format!("scenario seed rumor[{idx}] 저장 실패: {e}");
+                    tracing::warn!("{msg}");
+                    report.warnings.push(msg);
                 }
-            }
+            },
             Err(e) => {
-                tracing::warn!("scenario seed rumor[{idx}] 빌드 실패: {e}");
+                let msg = format!("scenario seed rumor[{idx}] 빌드 실패: {e}");
+                tracing::warn!("{msg}");
+                report.warnings.push(msg);
             }
         }
     }
 
-    // World 지식.
+    // MemoryEntry 시드 — World → Faction → Family 순으로 created_seq 연속 부여.
+    let mut seq: u64 = 1;
+    let index_entry = |state: &AppState, mut entry: npc_mind::domain::memory::MemoryEntry,
+                        seq: &mut u64,
+                        report: &mut SeedReport,
+                        label: &str| {
+        entry.created_seq = *seq;
+        *seq += 1;
+        match state.memory_store.index(entry, None) {
+            Ok(()) => report.applied_memories += 1,
+            Err(e) => {
+                let msg = format!("scenario seed {label} 저장 실패: {e}");
+                tracing::warn!("{msg}");
+                report.warnings.push(msg);
+            }
+        }
+    };
+
     for (idx, seed) in seeds.world_knowledge.iter().enumerate() {
         let fallback = format!("world-{idx}");
         let entry = seed.clone().into_entry(&fallback);
-        if let Err(e) = state.memory_store.index(entry, None) {
-            tracing::warn!("scenario seed world_knowledge[{idx}] 저장 실패: {e}");
-        }
+        index_entry(state, entry, &mut seq, &mut report, &format!("world_knowledge[{idx}]"));
     }
 
-    // Faction 지식.
     for (faction_id, entries) in &seeds.faction_knowledge {
         for (idx, seed) in entries.iter().enumerate() {
             let fallback = format!("faction-{faction_id}-{idx}");
             let scope = MemoryScope::Faction { faction_id: faction_id.clone() };
             let entry = seed.clone().into_entry(scope, &fallback);
-            if let Err(e) = state.memory_store.index(entry, None) {
-                tracing::warn!("scenario seed faction_knowledge[{faction_id}][{idx}] 저장 실패: {e}");
-            }
+            index_entry(
+                state,
+                entry,
+                &mut seq,
+                &mut report,
+                &format!("faction_knowledge[{faction_id}][{idx}]"),
+            );
         }
     }
 
-    // Family 사실.
     for (family_id, entries) in &seeds.family_facts {
         for (idx, seed) in entries.iter().enumerate() {
             let fallback = format!("family-{family_id}-{idx}");
             let scope = MemoryScope::Family { family_id: family_id.clone() };
             let entry = seed.clone().into_entry(scope, &fallback);
-            if let Err(e) = state.memory_store.index(entry, None) {
-                tracing::warn!("scenario seed family_facts[{family_id}][{idx}] 저장 실패: {e}");
-            }
+            index_entry(
+                state,
+                entry,
+                &mut seq,
+                &mut report,
+                &format!("family_facts[{family_id}][{idx}]"),
+            );
         }
     }
+
+    report
 }
 
 /// GET /api/test-report

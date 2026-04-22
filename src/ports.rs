@@ -699,6 +699,13 @@ pub trait MemoryStore: Send + Sync {
 
     /// 회상 발생 기록 — `last_recalled_at` / `recall_count` 갱신.
     fn record_recall(&self, id: &str, now_ms: u64) -> Result<(), MemoryError>;
+
+    /// 저장된 모든 MemoryEntry 삭제 (Step E3.2 — 시나리오 로드 시 fresh start).
+    ///
+    /// dev tool(Mind Studio)의 `load_state` 경로에서 이전 시나리오 시드/런타임 엔트리를
+    /// 제거하기 위해 사용. 영구 저장소 사용자는 호출 여부를 결정해야 한다.
+    /// 벡터 인덱스(SQLite vec0)가 있다면 함께 비운다.
+    fn clear_all(&self) -> Result<(), MemoryError>;
 }
 
 /// 기억 저장소 오류
@@ -741,6 +748,11 @@ pub trait RumorStore: Send + Sync {
     ///
     /// UI 조회용 헬퍼. 정렬은 구현체 재량이지만 Sqlite 구현은 `created_at DESC`.
     fn list_all(&self) -> Result<Vec<Rumor>, MemoryError>;
+
+    /// 저장된 모든 Rumor (+ hops, distortions) 삭제 (Step E3.2 — 시나리오 로드 시 fresh start).
+    ///
+    /// Mind Studio의 `load_state`가 `MemoryStore::clear_all`과 쌍으로 호출한다.
+    fn clear_all(&self) -> Result<(), MemoryError>;
 }
 
 /// 기억 프레이밍 포트 (Step B — LLM 프롬프트 주입용).
