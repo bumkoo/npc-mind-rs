@@ -2,6 +2,19 @@
 
 `npc-mind`를 외부 프로젝트에 통합하는 단계별 가이드입니다.
 
+> ⚠️ **현행화 필요 (2026-04 기준)**: 본 가이드는 v0.3.0 이전 **v1 API** (`FormattedMindService`,
+> `MindService`)를 전제로 작성되었습니다. v0.3.0에서 v1 경로는 전부 제거되었고, 현재는
+> `CommandDispatcher::dispatch_v2` 단일 경로만 지원합니다. Memory Step A~D, Rumor Step C도
+> 구현 완료.
+>
+> **최신 v2 공개 API** (Command/Event/Handler/DTO): [`docs/api/api-reference.md`](api-reference.md)
+>
+> **최상위 개요**: [`CLAUDE.md`](../../CLAUDE.md) — 핵심 진입점, 빌더 체인
+> (`with_default_handlers()` + `with_memory_full()` + `with_rumor()`), 구현 현황 표.
+>
+> 아래 §5 이후 서비스 생성·Appraise·Stimulus 예시는 v1 시그니처라 그대로 컴파일되지 않습니다.
+> v2 마이그레이션 후 재작성 예정.
+
 ---
 
 ## 목차

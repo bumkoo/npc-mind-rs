@@ -17,7 +17,7 @@ use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
 use super::agents::{
     EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, SceneAgent,
-    StimulusAgent,
+    StimulusAgent, WorldOverlayAgent,
 };
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
@@ -25,9 +25,12 @@ use super::handler_v2::{
 use super::projection_handlers::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
+use super::relationship_memory_handler::RelationshipMemoryHandler;
 use super::rumor_distribution_handler::RumorDistributionHandler;
+use super::scene_consolidation_handler::SceneConsolidationHandler;
 use super::telling_ingestion_handler::TellingIngestionHandler;
 use super::types::Command;
+use super::world_overlay_handler::WorldOverlayHandler;
 use crate::domain::rumor::{ReachPolicy, RumorOrigin};
 use crate::ports::{MemoryStore, RumorStore};
 
@@ -124,22 +127,47 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self = self.register_transactional(Arc::new(GuideAgent::new()));
         self = self.register_transactional(Arc::new(RelationshipAgent::new()));
         self = self.register_transactional(Arc::new(InformationAgent::new()));
+        self = self.register_transactional(Arc::new(WorldOverlayAgent::new()));
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
         self
     }
 
-    /// Memory 저장소 연동용 Inline 핸들러 부착 (Step C2~).
+    /// Memory 저장소 연동 — **TellingIngestionHandler만** 부착 (Step C2 호환).
     ///
-    /// 현재 등록 대상: `TellingIngestionHandler` (`InformationTold` → `MemoryEntry`).
-    /// Step D에서 `SceneConsolidationHandler`·`WorldOverlayHandler` 등이 추가될 예정.
+    /// Step C2부터 존재한 lean 경로. `Command::TellInformation`으로 생성되는
+    /// `InformationTold` 이벤트를 받아 청자별 `MemoryEntry(Heard/Rumor)`를 저장한다.
+    ///
+    /// Step D의 추가 핸들러(WorldOverlay/RelationshipMemory/SceneConsolidation)는 이
+    /// 빌더가 **등록하지 않는다**. 해당 기능을 함께 쓰려면 `with_memory_full(store)`를
+    /// 대신 호출한다 (리뷰 H5: 기존 콜러의 semantic break 방지).
     ///
     /// MemoryStore가 없는 환경(테스트·단순 시나리오)에서는 이 빌더를 호출하지 않으면
     /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
-    /// 건너뛴다. EventBus 구독자(`MemoryAgent` 등)가 대체 저장을 할 수도 있다.
+    /// 건너뛴다.
     pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
         self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+        self
+    }
+
+    /// Memory 저장소 연동 — Step D 전체 번들 (Telling + WorldOverlay + RelationshipMemory
+    /// + SceneConsolidation).
+    ///
+    /// `with_memory`가 Step C2 동작만 유지하는 반면, 이 빌더는 Step D 기능 전체를 켠다.
+    /// 4종 Inline 핸들러가 `priority::inline::MEMORY_INGESTION`(40) → `WORLD_OVERLAY_INGESTION`(45)
+    /// → `RELATIONSHIP_MEMORY`(50) → `SCENE_CONSOLIDATION`(60) 순서로 실행된다.
+    ///
+    /// 부작용:
+    /// - `InformationTold` → 청자 `MemoryEntry(Heard/Rumor)`
+    /// - `WorldEventOccurred` → Canonical `MemoryEntry(World, Seeded)` + topic Canonical supersede
+    /// - `RelationshipUpdated` → `MemoryEntry(RelationshipChange)` (Δ ≥ 0.05)
+    /// - `SceneEnded` → 참여 NPC별 Layer B `SceneSummary` + Layer A `consolidated_into` 마킹
+    pub fn with_memory_full(mut self, store: Arc<dyn MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store.clone())));
+        self = self.register_inline(Arc::new(WorldOverlayHandler::new(store.clone())));
+        self = self.register_inline(Arc::new(RelationshipMemoryHandler::new(store.clone())));
+        self = self.register_inline(Arc::new(SceneConsolidationHandler::new(store)));
         self
     }
 
@@ -463,6 +491,30 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     extra_recipients: req.recipients.clone(),
                 },
             )),
+            Command::ApplyWorldEvent(req) => {
+                if req.world_id.is_empty() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "ApplyWorldEvent: world_id가 비어 있습니다".into(),
+                    ));
+                }
+                if req.fact.trim().is_empty() {
+                    return Err(DispatchV2Error::InvalidSituation(
+                        "ApplyWorldEvent: fact가 비어 있습니다".into(),
+                    ));
+                }
+                Ok(DomainEvent::new(
+                    0,
+                    req.world_id.clone(),
+                    0,
+                    EventPayload::ApplyWorldEventRequested {
+                        world_id: req.world_id.clone(),
+                        topic: req.topic.clone(),
+                        fact: req.fact.clone(),
+                        significance: req.significance.clamp(0.0, 1.0),
+                        witnesses: req.witnesses.clone(),
+                    },
+                ))
+            }
             Command::StartScene {
                 npc_id,
                 partner_id,

@@ -936,3 +936,34 @@ pub struct SpreadRumorResponse {
     /// 수신자별 생성된 `MemoryEntry.id` — MemoryStore 미부착이면 empty.
     pub memory_entry_ids: Vec<String>,
 }
+
+// ---------------------------------------------------------------------------
+// ApplyWorldEvent (Step D — Mind 컨텍스트 명령)
+// ---------------------------------------------------------------------------
+
+/// `Command::ApplyWorldEvent` 요청 DTO.
+///
+/// 세계 오버레이 사건을 적용한다. `topic`이 제공되면 기존 Canonical 엔트리를
+/// supersede하고, 없으면 독립 World MemoryEntry만 생성된다. `fact`는 엔트리
+/// `content`가 되며, `witnesses`는 현재 단계에서는 기록용(Step F에서 개별 Personal
+/// MemoryEntry 생성 예정).
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ApplyWorldEventRequest {
+    /// 세계 식별자 (예: `"jianghu"`). `AggregateKey::World` 라우팅에 쓰인다.
+    pub world_id: String,
+    /// Canonical 연결용 topic. None이면 supersede 없이 새 World 엔트리만 생성.
+    #[serde(default)]
+    pub topic: Option<String>,
+    /// 세계에 추가되는 사실 본문.
+    pub fact: String,
+    /// 사건 중요도 (0.0~1.0, 기본 0.5).
+    #[serde(default = "default_world_significance")]
+    pub significance: f32,
+    /// 목격자 NPC 목록. Step D 초기에는 메타로만 기록.
+    #[serde(default)]
+    pub witnesses: Vec<String>,
+}
+
+fn default_world_significance() -> f32 {
+    0.5
+}

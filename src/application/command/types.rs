@@ -64,6 +64,12 @@ pub enum Command {
     /// 기존 Rumor에 새 홉 추가. `RumorAgent`가 `RumorSpread` follow-up을 발행하고,
     /// Inline `RumorDistributionHandler`가 각 수신자에게 `MemoryEntry(Rumor)`를 생성한다.
     SpreadRumor(SpreadRumorRequest),
+    /// 세계 사건 적용 (Step D, Mind 컨텍스트)
+    ///
+    /// 세계에 새 사실을 추가한다. `WorldOverlayAgent`가 `WorldEventOccurred` follow-up을
+    /// 발행하고, Inline `WorldOverlayHandler`가 Canonical `MemoryEntry(scope=World,
+    /// provenance=Seeded)`를 생성하면서 같은 Topic의 기존 Canonical을 supersede한다.
+    ApplyWorldEvent(ApplyWorldEventRequest),
 }
 
 impl Command {
@@ -80,6 +86,8 @@ impl Command {
             // Rumor 커맨드는 NPC에 묶이지 않음 — 단일 스칼라로 근사값 제공.
             Command::SeedRumor(_) => "",
             Command::SpreadRumor(req) => &req.rumor_id,
+            // World 오버레이도 NPC에 묶이지 않음.
+            Command::ApplyWorldEvent(req) => &req.world_id,
         }
     }
 
@@ -102,7 +110,8 @@ impl Command {
             | Command::StartScene { partner_id, .. } => partner_id,
             Command::TellInformation(_)
             | Command::SeedRumor(_)
-            | Command::SpreadRumor(_) => "",
+            | Command::SpreadRumor(_)
+            | Command::ApplyWorldEvent(_) => "",
         }
     }
 
@@ -139,6 +148,7 @@ impl Command {
                 AggregateKey::Rumor(req.topic.clone().unwrap_or_else(|| "orphan".into()))
             }
             Command::SpreadRumor(req) => AggregateKey::Rumor(req.rumor_id.clone()),
+            Command::ApplyWorldEvent(req) => AggregateKey::World(req.world_id.clone()),
         }
     }
 }

@@ -200,3 +200,8 @@ pub const MEMORY_PROMPT_TOKEN_BUDGET: usize = 400;
 // === Rumor 감쇠 (Step C 이후 사용) ===
 pub const RUMOR_HOP_CONFIDENCE_DECAY: f32 = 0.8;
 pub const RUMOR_MIN_CONFIDENCE: f32 = 0.1;
+
+// === Memory 저장 필터 (Step D 이후 사용) ===
+/// 관계 변화 기록 하한 — closeness/trust/power 중 최대 Δ가 이 값 미만이면
+/// `RelationshipMemoryHandler`는 MemoryEntry를 남기지 않는다. 미세 변동 폭증 방지.
+pub const MEMORY_RELATIONSHIP_DELTA_THRESHOLD: f32 = 0.05;
