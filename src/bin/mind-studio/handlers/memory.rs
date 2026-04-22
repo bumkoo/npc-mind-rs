@@ -42,6 +42,11 @@ pub struct ByNpcQuery {
     pub layer: Option<String>,
 }
 
+#[derive(Deserialize, Default)]
+pub struct ByTopicQuery {
+    pub limit: Option<usize>,
+}
+
 #[derive(Serialize)]
 pub struct SearchResponse {
     pub entries: Vec<MemoryEntry>,
@@ -135,11 +140,13 @@ pub async fn by_npc(
     }))
 }
 
-/// `GET /api/memory/by-topic/:topic` — supersede 이력 전체 포함.
+/// `GET /api/memory/by-topic/:topic?limit=` — supersede 이력 전체 포함.
 pub async fn by_topic(
     State(state): State<AppState>,
     Path(topic): Path<String>,
+    Query(q): Query<ByTopicQuery>,
 ) -> Result<Json<SearchResponse>, AppError> {
+    let limit = q.limit.unwrap_or(50);
     let query = MemoryQuery {
         text: None,
         embedding: None,
@@ -151,7 +158,7 @@ pub async fn by_topic(
         exclude_consolidated_source: false,
         min_retention: None,
         current_pad: None,
-        limit: 50,
+        limit,
     };
     let results = state
         .memory_store
@@ -202,7 +209,7 @@ pub async fn tell(
     Json(req): Json<TellInformationRequest>,
 ) -> Result<Json<TellResponse>, AppError> {
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_tell_information(&state, &mut inner, req).await?;
+    let output = domain_sync::dispatch_tell_information(&state, &mut *inner, req).await?;
 
     let listeners_informed = output
         .events

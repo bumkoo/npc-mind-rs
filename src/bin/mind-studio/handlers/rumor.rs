@@ -33,7 +33,7 @@ pub async fn seed(
     Json(req): Json<SeedRumorRequest>,
 ) -> Result<Json<SeedResponse>, AppError> {
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_seed_rumor(&state, &mut inner, req).await?;
+    let output = domain_sync::dispatch_seed_rumor(&state, &mut *inner, req).await?;
 
     // 생성된 rumor_id를 RumorSeeded 이벤트에서 추출.
     let rumor_id = output
@@ -70,7 +70,7 @@ pub async fn spread(
     };
 
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_spread_rumor(&state, &mut inner, req).await?;
+    let output = domain_sync::dispatch_spread_rumor(&state, &mut *inner, req).await?;
 
     let (hop_index, spread_count) = output
         .events

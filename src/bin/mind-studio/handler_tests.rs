@@ -2167,6 +2167,18 @@ mod memory_endpoints {
         let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
         assert!(!entries.is_empty(), "mu_baek의 Heard 엔트리가 없음");
         assert_eq!(entries[0]["source"], "heard");
+
+        // `/api/memory/search`도 동일 엔트리를 필터로 잡아야 함 (M4 스모크).
+        let resp = app
+            .clone()
+            .oneshot(get("/api/memory/search?npc=mu_baek&source=heard"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let entries = body.get("entries").and_then(|e| e.as_array()).unwrap();
+        assert!(!entries.is_empty(), "search?source=heard 필터가 엔트리를 반환해야 함");
+        assert!(entries.iter().all(|e| e["source"] == "heard"));
     }
 
     #[tokio::test]

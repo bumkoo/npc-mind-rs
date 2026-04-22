@@ -21,10 +21,19 @@ pub async fn apply_event(
     State(state): State<AppState>,
     Json(req): Json<ApplyWorldEventRequest>,
 ) -> Result<Json<ApplyWorldEventResponse>, AppError> {
-    let had_topic = req.topic.is_some();
+    // Topic 있을 때만 supersede 판정에 필요. dispatch 전에 기존 Canonical을 조회해
+    // 둬야 "실제로 supersede가 일어났는지"를 SSE에 정확히 반영할 수 있다.
+    let pre_canonical_existed = match req.topic.as_deref() {
+        Some(topic) => state
+            .memory_store
+            .get_canonical_by_topic(topic)
+            .map_err(|e| AppError::Internal(format!("get_canonical_by_topic 실패: {}", e)))?
+            .is_some(),
+        None => false,
+    };
 
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_apply_world_event(&state, &mut inner, req).await?;
+    let output = domain_sync::dispatch_apply_world_event(&state, &mut *inner, req).await?;
 
     let world_event_seen = output
         .events
@@ -35,10 +44,9 @@ pub async fn apply_event(
 
     if world_event_seen {
         state.emit(StateEvent::MemoryCreated);
-        if had_topic {
-            // Canonical 한 건 supersede가 일반적 (WorldOverlayHandler 규칙).
-            // 실제 supersede 여부는 기존 Canonical 존재에 달려 있어 여기선
-            // best-effort로 SSE만 트리거.
+        if pre_canonical_existed {
+            // 기존 Canonical이 있었고 새 WorldEvent가 성공 → WorldOverlayHandler가
+            // 그 한 건을 supersede했음이 확정. false positive 없이 방출.
             state.emit(StateEvent::MemorySuperseded);
         }
     }
