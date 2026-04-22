@@ -119,6 +119,19 @@ describe('useStateSync', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  // Step E3.3 — scenario_loaded는 /api/scenario-seeds도 fetch.
+  it('scenario_loaded 이벤트 → /api/scenario-seeds fetch', async () => {
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('scenario_loaded') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/scenario-seeds')
+  })
+
   it('resync 이벤트 → 전체 refresh 호출', async () => {
     const useStateSync = await importHook()
     const refresh = vi.fn().mockResolvedValue(undefined)

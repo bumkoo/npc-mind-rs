@@ -56,6 +56,17 @@ pub async fn get_scenario_meta(State(state): State<AppState>) -> Json<ScenarioMe
     Json(inner.scenario.clone())
 }
 
+/// GET /api/scenario-seeds — 현재 시나리오 JSON에 선언된 memory/rumor 시드 (Step E3.3).
+///
+/// `inner.scenario_seeds`를 그대로 직렬화. 작가가 시나리오에 어떤 시드가 선언되어 있는지
+/// 확인하는 조회 전용 패널의 데이터 소스. 빈 시드면 빈 객체 `{}` 반환 (skip_serializing_if).
+pub async fn get_scenario_seeds(
+    State(state): State<AppState>,
+) -> Json<npc_mind::application::scenario_seeds::ScenarioSeeds> {
+    let inner = state.inner.read().await;
+    Json(inner.scenario_seeds.clone())
+}
+
 /// GET /api/scene-info — Scene 상태 조회 (B5.2 2/3: SceneService 직접 호출)
 pub async fn get_scene_info(State(state): State<AppState>) -> Json<SceneInfoResult> {
     let inner = state.inner.read().await;

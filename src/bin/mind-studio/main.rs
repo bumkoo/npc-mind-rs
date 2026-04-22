@@ -122,6 +122,7 @@ fn build_api_router(state: AppState) -> Router {
         // Scenario & Action
         .route("/api/scenarios", get(handlers::scenario::list_scenarios))
         .route("/api/scenario-meta", get(handlers::scenario::get_scenario_meta))
+        .route("/api/scenario-seeds", get(handlers::scenario::get_scenario_seeds))
         .route("/api/appraise", post(handlers::scenario::appraise))
         .route("/api/stimulus", post(handlers::scenario::stimulus))
         .route("/api/after-dialogue", post(handlers::scenario::after_dialogue))

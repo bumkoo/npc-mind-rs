@@ -363,3 +363,52 @@ export interface CanonicalResponse {
 export interface RumorListResponse {
   rumors: Rumor[]
 }
+
+// ---------------------------------------------------------------------------
+// Scenario Seeds (Step E3.3)
+// ---------------------------------------------------------------------------
+
+/** Rust `MemoryEntrySeedInput` 대응 — scope는 부모 컨텍스트가 결정. */
+export interface MemoryEntrySeedInput {
+  id?: string | null
+  topic?: string | null
+  content: string
+  memory_type?: MemoryType | null
+  source?: MemorySource | null
+  layer?: MemoryLayer | null
+  confidence?: number | null
+  acquired_by?: string | null
+  origin_chain?: string[]
+  emotional_context?: [number, number, number] | null
+  timestamp_ms?: number | null
+}
+
+/** Rust `WorldKnowledgeSeed` — `world_id` + flatten된 entry. */
+export interface WorldKnowledgeSeed extends MemoryEntrySeedInput {
+  world_id: string
+}
+
+/** Rust `RumorSeedInput`. */
+export interface RumorSeedInput {
+  id?: string | null
+  topic?: string | null
+  seed_content?: string | null
+  reach?: ReachPolicy
+  origin?: RumorOrigin
+  created_at?: number | null
+}
+
+/** `GET /api/scenario-seeds` 응답 — Rust `ScenarioSeeds`. 빈 섹션은 omitted. */
+export interface ScenarioSeeds {
+  initial_rumors?: RumorSeedInput[]
+  world_knowledge?: WorldKnowledgeSeed[]
+  faction_knowledge?: Record<string, MemoryEntrySeedInput[]>
+  family_facts?: Record<string, MemoryEntrySeedInput[]>
+}
+
+/** `POST /api/load` 응답 (Step E3.2 — warnings 필드 포함). */
+export interface LoadResponse {
+  warnings?: string[]
+  applied_rumors?: number
+  applied_memories?: number
+}

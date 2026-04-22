@@ -4,7 +4,7 @@ import { useEntityStore } from '../stores/useEntityStore'
 import { useSceneStore } from '../stores/useSceneStore'
 import { useResultStore } from '../stores/useResultStore'
 import { useMemoryStore } from '../stores/useMemoryStore'
-import type { Npc, Relationship, GameObject, TurnHistory, ScenarioEntry, ScenarioMeta, SceneInfo, Situation, MemoryListResponse, RumorListResponse } from '../types'
+import type { Npc, Relationship, GameObject, TurnHistory, ScenarioEntry, ScenarioMeta, SceneInfo, ScenarioSeeds, Situation, MemoryListResponse, RumorListResponse } from '../types'
 
 /**
  * SSE 기반 실시간 상태 동기화 훅.
@@ -102,6 +102,13 @@ export function useStateSync(refresh: () => Promise<void>) {
         }).catch(() => {})
       })
     }
+    function fetchScenarioSeeds() {
+      debounced('seeds', () => {
+        api.get<ScenarioSeeds>('/api/scenario-seeds').then((s) => {
+          useSceneStore.getState().setScenarioSeeds(s || {})
+        }).catch(() => {})
+      })
+    }
     function fetchSituation() {
       debounced('situation', () => {
         api.get<Situation | null>('/api/situation').then((s) => {
@@ -184,13 +191,16 @@ export function useStateSync(refresh: () => Promise<void>) {
       // 시나리오 라이프사이클 — 전체 상태 교체.
       // 기억/소문 스토어의 selectedNpcId·selectedTopic·entriesByNpc·topicEntries는
       // 이전 시나리오 컨텍스트라 반드시 리셋 (E3.1 리뷰 M1).
+      // Step E3.3: 새 시나리오의 시드 선언도 함께 fetch.
       es.addEventListener('scenario_loaded', () => {
         useMemoryStore.getState().clear()
         refreshRef.current()
+        fetchScenarioSeeds()
       })
       es.addEventListener('result_loaded', () => {
         useMemoryStore.getState().clear()
         refreshRef.current()
+        fetchScenarioSeeds()
       })
       es.addEventListener('scenario_saved', () => fetchScenarios())
 

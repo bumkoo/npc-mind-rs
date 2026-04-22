@@ -9,6 +9,7 @@ import HistoryView from './HistoryView'
 import ModelInfoView from './ModelInfoView'
 import MemoryView from './MemoryView'
 import RumorView from './RumorView'
+import ScenarioSeedsView from './ScenarioSeedsView'
 
 interface ResultPanelProps {
   result: AppraiseResult | null
@@ -66,11 +67,12 @@ export default function ResultPanel({
         <div className={`result-tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>히스토리 ({history.length})</div>
         <div className={`result-tab ${tab === 'memory' ? 'active' : ''}`} onClick={() => setTab('memory')}>기억</div>
         <div className={`result-tab ${tab === 'rumor' ? 'active' : ''}`} onClick={() => setTab('rumor')}>소문</div>
+        <div className={`result-tab ${tab === 'seeds' ? 'active' : ''}`} onClick={() => setTab('seeds')}>시드</div>
         <div className={`result-tab ${tab === 'model' ? 'active' : ''}`} onClick={() => setTab('model')}>LLM Model</div>
       </div>
       <div className="result-content">
         {tab === 'emotions' && <ScenePanel sceneInfo={sceneInfo} />}
-        {!result && tab !== 'history' && tab !== 'stimulus' && tab !== 'memory' && tab !== 'rumor' ? (
+        {!result && tab !== 'history' && tab !== 'stimulus' && tab !== 'memory' && tab !== 'rumor' && tab !== 'seeds' ? (
           <div className="empty">
             {!sceneInfo && <div style={{ fontSize: 24, marginBottom: 8 }}>🎭</div>}
             {!sceneInfo ? (
@@ -112,6 +114,7 @@ export default function ResultPanel({
             {tab === 'history' && <HistoryView history={history} />}
             {tab === 'memory' && <MemoryView npcs={npcs} />}
             {tab === 'rumor' && <RumorView />}
+            {tab === 'seeds' && <ScenarioSeedsView />}
             {tab === 'model' && <ModelInfoView info={llmModelInfo} />}
           </>
         )}

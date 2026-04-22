@@ -23,7 +23,7 @@ function resetAllStores() {
   })
   useChatStore.getState().reset()
   useSceneStore.setState({
-    scenarioMeta: null, savedSituation: null, sceneInfo: null,
+    scenarioMeta: null, savedSituation: null, sceneInfo: null, scenarioSeeds: {},
   })
   useMemoryStore.getState().clear()
 }
@@ -274,6 +274,19 @@ describe('useSceneStore', () => {
     expect(s.scenarioMeta).toBeNull()
     expect(s.savedSituation).toBeNull()
     expect(s.sceneInfo).toBeNull()
+    expect(s.scenarioSeeds).toEqual({})
+  })
+
+  // Step E3.3 — 시나리오 시드 조회 상태
+  it('setScenarioSeeds로 4 섹션 저장', () => {
+    useSceneStore.getState().setScenarioSeeds({
+      initial_rumors: [{ id: 'r1', topic: 'x' }],
+      world_knowledge: [{ world_id: 'jianghu', content: '본문' }],
+    })
+    const s = useSceneStore.getState()
+    expect(s.scenarioSeeds.initial_rumors).toHaveLength(1)
+    expect(s.scenarioSeeds.world_knowledge).toHaveLength(1)
+    expect(s.scenarioSeeds.faction_knowledge).toBeUndefined()
   })
 
   it('시나리오 메타 설정', () => {
