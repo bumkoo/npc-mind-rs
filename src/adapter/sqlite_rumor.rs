@@ -292,6 +292,23 @@ impl RumorStore for SqliteRumorStore {
         }
         Ok(out)
     }
+
+    fn clear_all(&self) -> Result<(), MemoryError> {
+        let conn = self.conn.lock().unwrap();
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        // rumor_hops와 rumor_distortions가 rumors의 id를 FK로 참조 — 자식 먼저 삭제.
+        tx.execute("DELETE FROM rumor_hops", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute("DELETE FROM rumor_distortions", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.execute("DELETE FROM rumors", [])
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        tx.commit()
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+        Ok(())
+    }
 }
 
 /// 단일 컬럼(id) 쿼리를 실행해 `Vec<String>`로 수집. 각 row 파싱 실패를 에러로 전파.

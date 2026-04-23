@@ -1,4 +1,4 @@
-import type { AppraiseResult, TurnHistory, TraceEntry, ChatMessage, SceneInfo, LlmModelInfo, Pad, ToastFn } from '../../types'
+import type { AppraiseResult, TurnHistory, TraceEntry, ChatMessage, SceneInfo, LlmModelInfo, Npc, Pad, ToastFn } from '../../types'
 import ScenePanel from './ScenePanel'
 import EmotionView from './EmotionView'
 import ContextView from './ContextView'
@@ -7,6 +7,9 @@ import TraceView from './TraceView'
 import ReportView from './ReportView'
 import HistoryView from './HistoryView'
 import ModelInfoView from './ModelInfoView'
+import MemoryView from './MemoryView'
+import RumorView from './RumorView'
+import ScenarioSeedsView from './ScenarioSeedsView'
 
 interface ResultPanelProps {
   result: AppraiseResult | null
@@ -25,6 +28,8 @@ interface ResultPanelProps {
   tab: string
   onTabChange: (tab: string) => void
   llmModelInfo: LlmModelInfo | null
+  /** Step E2: Memory 탭에서 NPC 선택 드롭다운에 쓰임. */
+  npcs: Npc[]
 }
 
 export default function ResultPanel({
@@ -32,7 +37,7 @@ export default function ResultPanel({
   onGuide, onStimulus, toast, sceneInfo,
   chatMessages, selectedMsgIdx,
   stimulusUtterance, onStimulusUtteranceChange,
-  tab, onTabChange, llmModelInfo,
+  tab, onTabChange, llmModelInfo, npcs,
 }: ResultPanelProps) {
   const setTab = onTabChange
 
@@ -60,11 +65,14 @@ export default function ResultPanel({
         <div className={`result-tab ${tab === 'trace' ? 'active' : ''}`} onClick={() => setTab('trace')}>Trace</div>
         <div className={`result-tab ${tab === 'report' ? 'active' : ''}`} onClick={() => setTab('report')}>보고서</div>
         <div className={`result-tab ${tab === 'history' ? 'active' : ''}`} onClick={() => setTab('history')}>히스토리 ({history.length})</div>
+        <div className={`result-tab ${tab === 'memory' ? 'active' : ''}`} onClick={() => setTab('memory')}>기억</div>
+        <div className={`result-tab ${tab === 'rumor' ? 'active' : ''}`} onClick={() => setTab('rumor')}>소문</div>
+        <div className={`result-tab ${tab === 'seeds' ? 'active' : ''}`} onClick={() => setTab('seeds')}>시드</div>
         <div className={`result-tab ${tab === 'model' ? 'active' : ''}`} onClick={() => setTab('model')}>LLM Model</div>
       </div>
       <div className="result-content">
         {tab === 'emotions' && <ScenePanel sceneInfo={sceneInfo} />}
-        {!result && tab !== 'history' && tab !== 'stimulus' ? (
+        {!result && tab !== 'history' && tab !== 'stimulus' && tab !== 'memory' && tab !== 'rumor' && tab !== 'seeds' ? (
           <div className="empty">
             {!sceneInfo && <div style={{ fontSize: 24, marginBottom: 8 }}>🎭</div>}
             {!sceneInfo ? (
@@ -104,6 +112,9 @@ export default function ResultPanel({
             )}
             {tab === 'report' && <ReportView content={testReport} onUpdate={onUpdateReport} />}
             {tab === 'history' && <HistoryView history={history} />}
+            {tab === 'memory' && <MemoryView npcs={npcs} />}
+            {tab === 'rumor' && <RumorView />}
+            {tab === 'seeds' && <ScenarioSeedsView />}
             {tab === 'model' && <ModelInfoView info={llmModelInfo} />}
           </>
         )}

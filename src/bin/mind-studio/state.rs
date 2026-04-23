@@ -310,6 +310,13 @@ pub struct StateInner {
     /// Scene 정보 (시나리오 JSON에 저장됨)
     #[serde(default)]
     pub scene: Option<serde_json::Value>,
+    /// 시나리오 JSON에 선언된 memory/rumor 시드 (Step E3.2).
+    ///
+    /// `#[serde(flatten)]`로 시나리오 JSON 최상위에 `initial_rumors` / `world_knowledge` /
+    /// `faction_knowledge` / `family_facts` 4개 필드가 평면 배치된다. 파싱만 수행하고
+    /// store 주입은 `load_state` 핸들러가 `apply_scenario_seeds`로 분리해 처리한다.
+    #[serde(default, flatten)]
+    pub scenario_seeds: npc_mind::application::scenario_seeds::ScenarioSeeds,
     /// Scene Focus 옵션 목록 (런타임 — 직렬화 제외)
     #[serde(skip)]
     pub scene_focuses: Vec<SceneFocus>,

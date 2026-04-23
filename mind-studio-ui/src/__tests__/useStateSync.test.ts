@@ -119,6 +119,31 @@ describe('useStateSync', () => {
     expect(refresh).toHaveBeenCalled()
   })
 
+  // Step E3.3 — scenario_loaded는 /api/scenario-seeds도 fetch.
+  it('scenario_loaded 이벤트 → /api/scenario-seeds fetch', async () => {
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('scenario_loaded') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/scenario-seeds')
+  })
+
+  // E3.3 follow-up M1 — useRefresh는 seeds를 fetch하지 않고, useStateSync가
+  // 최초 마운트 시 1회 fetch한다.
+  it('useStateSync mount → /api/scenario-seeds 1회 fetch', async () => {
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const seedCalls = urls.filter((u: string) => u === '/api/scenario-seeds')
+    expect(seedCalls.length).toBe(1)
+  })
+
   it('resync 이벤트 → 전체 refresh 호출', async () => {
     const useStateSync = await importHook()
     const refresh = vi.fn().mockResolvedValue(undefined)
@@ -216,5 +241,139 @@ describe('useStateSync', () => {
     act(() => { es._emit('scenario_saved') })
 
     expect(fetchMock).toHaveBeenCalledWith('/api/scenarios')
+  })
+
+  // ---------------------------------------------------------------------------
+  // Step E2 — Memory / Rumor SSE
+  // ---------------------------------------------------------------------------
+
+  it('rumor_seeded 이벤트 → /api/rumors fetch', async () => {
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('rumor_seeded') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/rumors')
+  })
+
+  it('rumor_spread 이벤트 → /api/rumors + selected NPC 기억 fetch', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('rumor_spread') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/rumors')
+    expect(urls).toContain('/api/memory/by-npc/mu_baek')
+  })
+
+  it('memory_created 이벤트 → selected NPC의 기억 fetch', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'gyo_ryong' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('memory_created') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/memory/by-npc/gyo_ryong')
+  })
+
+  it('selected NPC가 없으면 memory_* 이벤트는 기억 fetch를 skip', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: null })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('memory_created'); es._emit('memory_superseded'); es._emit('memory_consolidated') })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls.filter((u) => u.startsWith('/api/memory/by-npc/'))).toHaveLength(0)
+  })
+
+  it('memory_superseded / memory_consolidated 이벤트 → selected NPC 기억 fetch', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    // 동일 이벤트 연속 호출 시 debounce 우회를 위해 서로 다른 이벤트로.
+    act(() => { es._emit('memory_superseded') })
+
+    let urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/memory/by-npc/mu_baek')
+
+    fetchMock.mockClear()
+    // debounce 해제 대기.
+    act(() => { vi.advanceTimersByTime(150) })
+
+    act(() => { es._emit('memory_consolidated') })
+    urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    expect(urls).toContain('/api/memory/by-npc/mu_baek')
+  })
+
+  // M4 — leading+trailing 디바운스: 100ms 윈도우 안 후속 이벤트가 drop되지 않고
+  // trailing 타이머에 1회 추가 fetch.
+  it('memory 이벤트 버스트 → leading 1회 + trailing 1회 = 총 2회 fetch', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+
+    // 3개 이벤트를 연속 발행 (100ms 안).
+    act(() => {
+      es._emit('memory_created')
+      es._emit('memory_superseded')
+      es._emit('memory_consolidated')
+    })
+
+    // leading edge — 첫 이벤트에서 즉시 1회 fetch.
+    let urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const leadingCount = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(leadingCount).toBe(1)
+
+    // 윈도우 종료 후 trailing 1회 더 fetch.
+    act(() => { vi.advanceTimersByTime(150) })
+    urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const totalCount = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(totalCount).toBe(2)
+  })
+
+  it('memory 이벤트 단발 → leading 1회만 (trailing 생략)', async () => {
+    const { useMemoryStore } = await import('../stores/useMemoryStore')
+    useMemoryStore.setState({ selectedNpcId: 'mu_baek' })
+
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const es = MockEventSource.instances[0]
+    act(() => { es._emit('memory_created') })
+    act(() => { vi.advanceTimersByTime(150) })
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const count = urls.filter((u) => u === '/api/memory/by-npc/mu_baek').length
+    expect(count).toBe(1)
   })
 })

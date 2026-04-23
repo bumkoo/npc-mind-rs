@@ -101,7 +101,8 @@ mind-studio-ui/           ← 프론트엔드 프로젝트 루트
 | **useUIStore** | UI 탐색/선택 | `npcId`, `partnerId`, `modal`, `loading`, `connected`, `resultView*` |
 | **useResultStore** | 분석 결과 | `result`, `traceHistory`, `resultTab`, `testReport`, `stimulusUtterance`, `llmModelInfo` |
 | **useChatStore** | 대화 세션 | `chatMode`, `chatSessionId`, `chatMessages`, `chatScenarioTurns`, `chatEnded` |
-| **useSceneStore** | 시나리오 컨텍스트 | `scenarioMeta`, `savedSituation`, `sceneInfo` |
+| **useSceneStore** | 시나리오 컨텍스트 | `scenarioMeta`, `savedSituation`, `sceneInfo`, `scenarioSeeds` (E3.3) |
+| **useMemoryStore** (E2/E3.1) | 기억·소문 조회 상태 | `entriesByNpc`, `rumors`, `selectedNpcId`, `layerFilter`, `mode`('npc'\|'topic'), `selectedTopic`, `topicEntries` |
 
 ### 스토어 구독 패턴
 
@@ -197,17 +198,18 @@ POST /api/chat/message/stream
   → 이벤트 종류별 targeted re-fetch → Zustand 스토어 업데이트
 ```
 
-- **이벤트 종류**: `npc_changed`, `relationship_changed`, `object_changed`, `appraised`, `stimulus_applied`, `after_dialogue`, `scene_started`, `scene_info_changed`, `scenario_loaded`, `result_loaded`, `scenario_saved`, `situation_changed`, `test_report_changed`, `chat_started`, `chat_turn_completed`, `chat_ended`, `history_changed`
+- **이벤트 종류**: `npc_changed`, `relationship_changed`, `object_changed`, `appraised`, `stimulus_applied`, `after_dialogue`, `scene_started`, `scene_info_changed`, `scenario_loaded`, `result_loaded`, `scenario_saved`, `situation_changed`, `test_report_changed`, `chat_started`, `chat_turn_completed`, `chat_ended`, `history_changed`, `memory_created`, `memory_superseded`, `memory_consolidated`, `rumor_seeded`, `rumor_spread` (Step E1)
 - **디바운싱**: 100ms leading-edge — 빠른 연속 이벤트(예: `create_full_scenario`에서 NPC 다수 생성) 시 중복 fetch 방지
 - **재연결**: 연결 끊김 시 exponential backoff (1s → 30s)
 - **이벤트 누락**: `BroadcastStream` lagged 발생 시 `resync` → 전체 refresh
 - **전체 상태 교체**: `scenario_loaded`, `result_loaded`, `resync` → `refresh()` 호출
+- **시나리오 시드 fetch** (E3.3): `/api/scenario-seeds`는 시나리오 라이프사이클에서만 변하므로 `useRefresh`에 포함하지 않고, `useStateSync`가 최초 마운트 + `scenario_loaded`/`result_loaded`에서만 fetch해 `useSceneStore.scenarioSeeds`에 반영.
 
 ## 커스텀 훅
 
 | 훅 | 역할 | 트리거 |
 |----|------|--------|
-| **useRefresh** | 8개 API 병렬 fetch → 5개 스토어 동기화 | 마운트, CRUD 후, 대화 액션 후 |
+| **useRefresh** | 8개 API 병렬 fetch → 5개 스토어 동기화 (E3.3 이후 `/api/scenario-seeds`는 제외 — `useStateSync`로 이관) | 마운트, CRUD 후, 대화 액션 후 |
 | **useStateSync** | SSE `/api/events` 구독 → 이벤트별 targeted re-fetch | 마운트 시 연결, 자동 재연결 |
 | **useChatPolling** | 2초 간격 히스토리 폴링 (SSE 보조) | `chatMode === true` |
 | **useToast** | 알림 메시지 관리 (3초 자동 제거) | 핸들러에서 호출 |
@@ -251,6 +253,9 @@ App
 │       ├── ScenePanel (감정 탭 상단)
 │       ├── EmotionView / ContextView / StimulusView
 │       ├── TraceView / ReportView / HistoryView
+│       ├── MemoryView (E2: NPC 모드 / E3.1: Topic 모드 토글 → TopicHistoryView)
+│       ├── RumorView (E2 표시 + E3.1: SeedForm / SpreadForm)
+│       ├── ScenarioSeedsView (E3.3: 조회 전용 4 섹션 카드)
 │       └── ModelInfoView
 ├── NpcModal / RelModal / ObjModal (조건부)
 └── ToastContainer (고정 위치)

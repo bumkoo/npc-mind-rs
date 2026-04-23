@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../types'
+import { splitMemoryBlock } from './splitMemoryBlock'
 
 interface ContextViewProps {
   prompt: string
@@ -13,6 +14,7 @@ export default function ContextView({ prompt, chatMessages, selectedMsgIdx, onRe
   const isHistorical = selectedMsgIdx !== null && selectedMsgIdx !== undefined
   const selectedMsg = isHistorical && chatMessages ? chatMessages[selectedMsgIdx] : null
   const displayPrompt = (isHistorical && selectedMsg?.activePrompt) ? selectedMsg.activePrompt : prompt
+  const { memory, rest } = splitMemoryBlock(displayPrompt)
 
   const llmHistory = chatMessages
     ? (isHistorical
@@ -32,7 +34,28 @@ export default function ContextView({ prompt, chatMessages, selectedMsgIdx, onRe
         <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', marginBottom: 4 }}>
           System Prompt {isHistorical && '(해당 시점)'}
         </div>
-        <div className="prompt-box">{displayPrompt}</div>
+        {memory && (
+          <div
+            data-testid="memory-block"
+            title="DialogueAgent가 주입한 떠오르는 기억 블록 (Step B Framer)"
+            style={{
+              borderLeft: '3px solid var(--accent2)',
+              background: 'var(--bg4)',
+              padding: '6px 10px',
+              marginBottom: 6,
+              borderRadius: 'var(--radius)',
+              fontSize: 12,
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+            }}
+          >
+            <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent2)', marginBottom: 4 }}>
+              💭 주입된 기억 블록
+            </div>
+            {memory}
+          </div>
+        )}
+        <div className="prompt-box">{memory ? rest : displayPrompt}</div>
         <div className="btn-row" style={{ marginTop: 6 }}>
           <button
             className="btn small"

@@ -4,7 +4,8 @@ import { useUIStore } from '../stores/useUIStore'
 import { useResultStore } from '../stores/useResultStore'
 import { useChatStore } from '../stores/useChatStore'
 import { useSceneStore } from '../stores/useSceneStore'
-import type { Npc, Relationship, GameObject, AppraiseResult, ChatMessage, SceneInfo } from '../types'
+import { useMemoryStore } from '../stores/useMemoryStore'
+import type { Npc, Relationship, GameObject, AppraiseResult, ChatMessage, SceneInfo, MemoryEntry, Rumor } from '../types'
 
 // Helper to reset stores between tests
 function resetAllStores() {
@@ -22,8 +23,9 @@ function resetAllStores() {
   })
   useChatStore.getState().reset()
   useSceneStore.setState({
-    scenarioMeta: null, savedSituation: null, sceneInfo: null,
+    scenarioMeta: null, savedSituation: null, sceneInfo: null, scenarioSeeds: {},
   })
+  useMemoryStore.getState().clear()
 }
 
 const mockNpc: Npc = {
@@ -272,6 +274,19 @@ describe('useSceneStore', () => {
     expect(s.scenarioMeta).toBeNull()
     expect(s.savedSituation).toBeNull()
     expect(s.sceneInfo).toBeNull()
+    expect(s.scenarioSeeds).toEqual({})
+  })
+
+  // Step E3.3 — 시나리오 시드 조회 상태
+  it('setScenarioSeeds로 4 섹션 저장', () => {
+    useSceneStore.getState().setScenarioSeeds({
+      initial_rumors: [{ id: 'r1', topic: 'x' }],
+      world_knowledge: [{ world_id: 'jianghu', content: '본문' }],
+    })
+    const s = useSceneStore.getState()
+    expect(s.scenarioSeeds.initial_rumors).toHaveLength(1)
+    expect(s.scenarioSeeds.world_knowledge).toHaveLength(1)
+    expect(s.scenarioSeeds.faction_knowledge).toBeUndefined()
   })
 
   it('시나리오 메타 설정', () => {
@@ -303,5 +318,126 @@ describe('useSceneStore', () => {
       prev ? { ...prev, script_cursor: 1 } : null,
     )
     expect(useSceneStore.getState().sceneInfo).toBeNull()
+  })
+})
+
+// ===== MemoryStore (Step E2) =====
+const mockMemoryEntry: MemoryEntry = {
+  id: 'mem-000001',
+  created_seq: 1,
+  event_id: 1,
+  scope: { kind: 'personal', npc_id: 'mu_baek' },
+  source: 'experienced',
+  provenance: 'runtime',
+  memory_type: 'DialogueTurn',
+  layer: 'A',
+  content: '첫 만남의 기억',
+  topic: null,
+  emotional_context: null,
+  timestamp_ms: 1_700_000_000_000,
+  last_recalled_at: null,
+  recall_count: 0,
+  origin_chain: [],
+  confidence: 1.0,
+  acquired_by: null,
+  superseded_by: null,
+  consolidated_into: null,
+  npc_id: 'mu_baek',
+}
+
+const mockRumor: Rumor = {
+  id: 'rumor-000001',
+  topic: 'sect:leader',
+  seed_content: null,
+  origin: { kind: 'seeded' },
+  reach_policy: { regions: [], factions: [], npc_ids: [], min_significance: 0 },
+  hops: [],
+  distortions: [],
+  created_at: 1_700_000_000_000,
+  status: 'active',
+}
+
+describe('useMemoryStore', () => {
+  beforeEach(resetAllStores)
+
+  it('초기 상태는 빈 목록 + 선택 없음', () => {
+    const s = useMemoryStore.getState()
+    expect(s.entriesByNpc).toEqual([])
+    expect(s.rumors).toEqual([])
+    expect(s.selectedNpcId).toBeNull()
+    expect(s.layerFilter).toBe('all')
+    expect(s.loading).toBe(false)
+  })
+
+  it('setEntries로 기억 목록 설정', () => {
+    useMemoryStore.getState().setEntries([mockMemoryEntry])
+    expect(useMemoryStore.getState().entriesByNpc).toHaveLength(1)
+    expect(useMemoryStore.getState().entriesByNpc[0].id).toBe('mem-000001')
+  })
+
+  it('setRumors로 소문 목록 설정', () => {
+    useMemoryStore.getState().setRumors([mockRumor])
+    expect(useMemoryStore.getState().rumors).toHaveLength(1)
+    expect(useMemoryStore.getState().rumors[0].status).toBe('active')
+  })
+
+  it('setSelectedNpcId 후 null로 리셋 가능', () => {
+    useMemoryStore.getState().setSelectedNpcId('mu_baek')
+    expect(useMemoryStore.getState().selectedNpcId).toBe('mu_baek')
+    useMemoryStore.getState().setSelectedNpcId(null)
+    expect(useMemoryStore.getState().selectedNpcId).toBeNull()
+  })
+
+  it('setLayerFilter로 A/B/all 전환', () => {
+    useMemoryStore.getState().setLayerFilter('A')
+    expect(useMemoryStore.getState().layerFilter).toBe('A')
+    useMemoryStore.getState().setLayerFilter('B')
+    expect(useMemoryStore.getState().layerFilter).toBe('B')
+    useMemoryStore.getState().setLayerFilter('all')
+    expect(useMemoryStore.getState().layerFilter).toBe('all')
+  })
+
+  it('clear() 전체 리셋', () => {
+    const s = useMemoryStore.getState()
+    s.setEntries([mockMemoryEntry])
+    s.setRumors([mockRumor])
+    s.setSelectedNpcId('mu_baek')
+    s.setLayerFilter('A')
+    s.clear()
+    const after = useMemoryStore.getState()
+    expect(after.entriesByNpc).toEqual([])
+    expect(after.rumors).toEqual([])
+    expect(after.selectedNpcId).toBeNull()
+    expect(after.layerFilter).toBe('all')
+  })
+
+  // Step E3.1 — Topic 모드 상태
+  it('setMode / setTopicEntries / setSelectedTopic', () => {
+    const s = useMemoryStore.getState()
+    expect(s.mode).toBe('npc')
+    expect(s.selectedTopic).toBeNull()
+    expect(s.topicEntries).toEqual([])
+
+    s.setMode('topic')
+    s.setSelectedTopic('sect:leader')
+    s.setTopicEntries([mockMemoryEntry])
+
+    const after = useMemoryStore.getState()
+    expect(after.mode).toBe('topic')
+    expect(after.selectedTopic).toBe('sect:leader')
+    expect(after.topicEntries).toHaveLength(1)
+  })
+
+  it('clear()가 topic 상태도 리셋', () => {
+    const s = useMemoryStore.getState()
+    s.setMode('topic')
+    s.setSelectedTopic('sect:leader')
+    s.setTopicEntries([mockMemoryEntry])
+    s.clear()
+
+    const after = useMemoryStore.getState()
+    expect(after.mode).toBe('npc')
+    expect(after.selectedTopic).toBeNull()
+    expect(after.topicEntries).toEqual([])
   })
 })

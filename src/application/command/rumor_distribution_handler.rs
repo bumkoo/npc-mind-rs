@@ -264,6 +264,11 @@ mod tests {
         fn record_recall(&self, _id: &str, _now_ms: u64) -> Result<(), crate::ports::MemoryError> {
             Ok(())
         }
+        fn clear_all(&self) -> Result<(), crate::ports::MemoryError> {
+            self.inner.lock().unwrap().clear();
+            *self.canonical.lock().unwrap() = None;
+            Ok(())
+        }
     }
 
     #[derive(Default)]
@@ -295,6 +300,10 @@ mod tests {
         }
         fn list_all(&self) -> Result<Vec<Rumor>, crate::ports::MemoryError> {
             Ok(self.inner.lock().unwrap().iter().cloned().collect())
+        }
+        fn clear_all(&self) -> Result<(), crate::ports::MemoryError> {
+            self.inner.lock().unwrap().clear();
+            Ok(())
         }
     }
 

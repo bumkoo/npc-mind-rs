@@ -253,6 +253,11 @@ mod tests {
         ) -> Result<(), crate::ports::MemoryError> {
             Ok(())
         }
+
+        fn clear_all(&self) -> Result<(), crate::ports::MemoryError> {
+            self.inner.lock().unwrap().clear();
+            Ok(())
+        }
     }
 
     fn told_event(speaker: &str, listener: &str, chain_in: &[&str], stated: f32) -> DomainEvent {

@@ -1,5 +1,5 @@
 import { api } from '../api/client'
-import type { AppraiseResult, ChatMessage, TurnHistory, Situation, SceneInfo, LlmModelInfo, ToastFn, TraceEntry } from '../types'
+import type { AppraiseResult, ChatMessage, TurnHistory, Situation, SceneInfo, LlmModelInfo, LoadResponse, ToastFn, TraceEntry } from '../types'
 
 export async function loadScenario(
   scenPath: string,
@@ -19,7 +19,47 @@ export async function loadScenario(
     body: JSON.stringify({ path }),
   })
   if (res.ok) {
-    toast('시나리오 로드 완료', 'success')
+    // Step E3.3: 응답 본문에서 seed 적용 결과(M1) 추출. 구버전 백엔드(혹은 non-embed
+    // 빌드)는 빈 객체이거나 파싱 실패 — 그래도 로드 자체는 성공.
+    let report: LoadResponse | null = null
+    try {
+      report = await res.json()
+    } catch {
+      // 응답 body가 JSON이 아닐 수 있음 (기존 형태) — 기본 success 토스트만.
+    }
+    const applied =
+      (report?.applied_rumors ?? 0) + (report?.applied_memories ?? 0)
+    if (applied > 0) {
+      toast(
+        `시나리오 로드 완료 — Rumor ${report?.applied_rumors ?? 0}건, Memory ${report?.applied_memories ?? 0}건 시딩`,
+        'success',
+      )
+    } else {
+      toast('시나리오 로드 완료', 'success')
+    }
+    if (report?.warnings && report.warnings.length > 0) {
+      // E3.3 follow-up M2/L1: 시나리오가 크게 망가지면 warnings가 수십 개 쏟아져
+      // 토스트로 화면을 덮어버릴 수 있다. 3건 이하면 그대로 띄우고, 그 이상이면
+      // 첫 건 + 총 건수만 토스트 + 나머지는 console.warn으로 내린다.
+      // `String(w)` 방어로 서버가 비문자열을 보내도 크래시하지 않음.
+      const toMsg = (w: unknown) => {
+        const s = String(w)
+        return s.length > 200 ? s.slice(0, 200) + '…' : s
+      }
+      if (report.warnings.length <= 3) {
+        for (const w of report.warnings) {
+          toast(`시드 경고: ${toMsg(w)}`, 'error')
+        }
+      } else {
+        toast(
+          `시드 경고 ${report.warnings.length}건 — ${toMsg(report.warnings[0])} 외 (콘솔 참조)`,
+          'error',
+        )
+        for (const w of report.warnings) {
+          console.warn('[scenario seed]', String(w))
+        }
+      }
+    }
     setChatEnded(false)
     setResultView({ mode: false, active: false, turnHistory: [], messages: [], selectedIdx: null })
     await refresh()

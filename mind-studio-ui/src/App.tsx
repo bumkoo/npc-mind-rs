@@ -346,6 +346,7 @@ export default function App() {
           onStimulusUtteranceChange={setStimulusUtterance}
           tab={resultTab} onTabChange={setResultTab}
           llmModelInfo={llmModelInfo}
+          npcs={npcs}
         />
       </div>
 

@@ -1202,10 +1202,107 @@ NPC_MIND_MEMORY_DB=/path/to/studio.db   # 파일 SQLite (영속)
 두 store가 같은 DB 파일을 공유한다. `SqliteMemoryStore::init_schema`가 rumor 테이블을
 선제 생성하고 `SqliteRumorStore::init_schema`도 `IF NOT EXISTS`로 무충돌(§7.4).
 
-### 범위 외 (후속 스텝)
+### 범위 외 (E1 기준)
 
-- 프런트엔드 Memory/Rumor UI → Step E2
-- 시나리오 JSON `initial_rumors`/`world_knowledge` + 편집 GUI → Step E3
+- 프런트엔드 Memory/Rumor UI → Step E2 (완료, `aeb005c`)
+- Topic 히스토리 + 런타임 소문 편집 GUI → Step E3.1 (완료, `84b2510`)
+- 시나리오 JSON `initial_rumors`/`world_knowledge` seeding → Step E3.2 (완료, `8ff0829`)
+- 시드 조회 패널 + 로드 경고 가시화 → Step E3.3 (완료, `fcf50ec`)
 - `MemoryEntryCreated/Superseded/Consolidated` 이벤트 EventStore 팬아웃 → Step F
 - Semantic `q` 검색 (SqliteMemoryStore::search의 vec0 통합) → Step B 후속
 - `director_v2` 경로에 memory/rumor 배선 (E1은 shared_dispatcher만)
+
+## Step E3.2/E3.3 — 시나리오 JSON seeding + 조회 API
+
+시나리오 작가가 JSON 파일에 `initial_rumors` / `world_knowledge` /
+`faction_knowledge` / `family_facts` 4 섹션을 최상위 필드로 선언하면, 로드 시
+E1의 `memory_store` / `rumor_store`에 자동 주입된다. E3.3은 그 결과를 UI에
+가시화하는 조회 채널.
+
+### ScenarioSeeds 구조 (`src/application/scenario_seeds.rs`)
+
+```rust
+pub struct ScenarioSeeds {
+    pub initial_rumors: Vec<RumorSeedInput>,          // 소문 aggregate 시드
+    pub world_knowledge: Vec<WorldKnowledgeSeed>,     // Canonical World 엔트리
+    pub faction_knowledge: HashMap<String, Vec<MemoryEntrySeedInput>>,  // 문파별
+    pub family_facts: HashMap<String, Vec<MemoryEntrySeedInput>>,       // 가문별
+}
+```
+
+네 섹션 모두 optional (`#[serde(default, skip_serializing_if = ...)]`). 빈 섹션은
+직렬화에서 빠지므로 기존 시나리오 JSON 포맷과 호환.
+
+- **`MemoryEntrySeedInput`**: scope 무관 공통 필드 (`content` 필수, 나머지는
+  기본값 규칙). `into_entry(scope, fallback_id)`로 `MemoryEntry` 빌드. provenance는
+  항상 Seeded 강제. 미지정 기본값:
+  - `memory_type`: scope로부터 추론 (World→WorldEvent / Faction→FactionKnowledge /
+    Family→FamilyFact / Personal→DialogueTurn).
+  - `source`: `Experienced`, `layer`: `memory_type.initial_layer()`, `confidence`: `1.0`,
+    `timestamp_ms`: `0`, `id`: `seed-{fallback_id}`.
+- **`WorldKnowledgeSeed`**: `world_id: String` + `#[serde(flatten)] entry: MemoryEntrySeedInput`.
+- **`RumorSeedInput`**: `topic` / `seed_content` 조합에 따라 3-tier 해소 + 에러:
+  - `(topic, seed_content)` → `Rumor::with_forecast_content` (예보된 사실)
+  - `(topic, None)` → `Rumor::new` (Canonical 참조)
+  - `(None, seed_content)` → `Rumor::orphan` (고아)
+  - `(None, None)` → `RumorError::OrphanRumorMissingSeed`
+  - `origin` 미지정 시 `Seeded` 기본 주입.
+
+### `POST /api/load` — LoadResponse 확장 (E3.2)
+
+시나리오 로드 시 `apply_scenario_seeds`가 각 섹션을 순회하며 best-effort로
+MemoryStore/RumorStore에 저장. 개별 실패는 `SeedReport.warnings`에 수집되고
+`tracing::warn!`에도 기록.
+
+```json
+POST /api/load { "path": "data/sample.json" }
+→ 200 OK
+{
+  "applied_rumors": 3,
+  "applied_memories": 5,
+  "warnings": [
+    "rumor-seed-2: orphan rumor requires seed_content",
+    "world_knowledge[0]: topic mismatch with existing Canonical"
+  ]
+}
+```
+
+embed 미포함 빌드는 seeds 적용이 건너뛰어지므로 `applied_*=0`, `warnings=[]`.
+구 클라이언트는 모든 신규 필드를 무시하고 성공으로 처리.
+
+### `GET /api/scenario-seeds` — 현재 선언 조회 (E3.3, 읽기 전용)
+
+`StateInner.scenario_seeds`를 그대로 직렬화. 작가가 "현재 시나리오에 무엇이
+선언되어 있나" 확인하는 UI 조회 전용 채널. embed 무관하게 항상 활성 (필드가
+always-on). 빈 시드면 빈 객체 `{}` 반환 (섹션별 `skip_serializing_if`).
+
+```json
+GET /api/scenario-seeds
+→ 200 OK
+{
+  "initial_rumors": [
+    { "id": "r-1", "topic": "sword-of-north",
+      "seed_content": "북방의 검이 돌아왔다.",
+      "origin": { "kind": "seeded" },
+      "reach": { "regions": ["jianghu"], "factions": [], "npc_ids": [],
+                 "min_significance": 0.0 } }
+  ],
+  "world_knowledge": [
+    { "world_id": "jianghu", "topic": "sword-of-north",
+      "content": "북방의 검이 돌아왔다 — Canonical." }
+  ]
+}
+```
+
+### 적용 순서 (로드 핸들러)
+
+1. 시나리오 JSON 파일 읽기 → `StateInner` 대체 (4 seed 섹션은 flatten으로 흡수)
+2. `rebuild_repo_from_inner` (공유 repo 재구성)
+3. `apply_scenario_seeds` (embed gated, `SeedReport` 수집)
+4. scene 로드 (Focus 옵션 등)
+5. `StateEvent::ScenarioLoaded` SSE 방출
+
+프런트엔드(`loadHandlers.loadScenario`)는 `applied_*` count를 success 토스트에,
+`warnings`는 error 토스트(3건 초과 시 첫 건 + 총 건수 + `console.warn` 폴백)로
+노출. `useStateSync`는 `scenario_loaded`/`result_loaded` 이벤트 + 최초 마운트에서
+`/api/scenario-seeds`를 fetch해 "시드" 탭에 반영한다.

@@ -17,6 +17,10 @@ export function useRefresh() {
   const setTestReport = useResultStore((s) => s.setTestReport)
   const setConnected = useUIStore((s) => s.setConnected)
 
+  // NOTE (E3.3 follow-up M1): `/api/scenario-seeds`는 시나리오 라이프사이클(load/
+  // result_load)에서만 변하는 데이터라 빈번한 NPC·관계 CRUD refresh마다 fetch할
+  // 필요가 없다. useStateSync의 scenario_loaded/result_loaded 이벤트 + 최초
+  // 마운트(App.tsx)에서만 `fetchScenarioSeeds`를 호출한다.
   const refresh = useCallback(async () => {
     try {
       const [n, r, o, s, h, sm, si, tr] = await Promise.all([
