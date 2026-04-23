@@ -132,6 +132,18 @@ describe('useStateSync', () => {
     expect(urls).toContain('/api/scenario-seeds')
   })
 
+  // E3.3 follow-up M1 — useRefresh는 seeds를 fetch하지 않고, useStateSync가
+  // 최초 마운트 시 1회 fetch한다.
+  it('useStateSync mount → /api/scenario-seeds 1회 fetch', async () => {
+    const useStateSync = await importHook()
+    const refresh = vi.fn().mockResolvedValue(undefined)
+    renderHook(() => useStateSync(refresh))
+
+    const urls = fetchMock.mock.calls.map((c: string[]) => c[0])
+    const seedCalls = urls.filter((u: string) => u === '/api/scenario-seeds')
+    expect(seedCalls.length).toBe(1)
+  })
+
   it('resync 이벤트 → 전체 refresh 호출', async () => {
     const useStateSync = await importHook()
     const refresh = vi.fn().mockResolvedValue(undefined)

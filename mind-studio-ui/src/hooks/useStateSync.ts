@@ -240,6 +240,10 @@ export function useStateSync(refresh: () => Promise<void>) {
       }
     }
 
+    // 초기 마운트 시 seeds 1회 fetch. useRefresh는 라이프사이클과 무관한 CRUD
+    // refresh에서 매번 돌므로 거기서 빼고 여기서만 처리 (E3.3 follow-up M1).
+    fetchScenarioSeeds()
+
     connect()
     return () => {
       closed = true

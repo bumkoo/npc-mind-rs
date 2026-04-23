@@ -84,18 +84,31 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
+/**
+ * Rust `RumorSeedInput::into_rumor`의 3-tier + 에러 = 4종을 동일한 라벨로 표시.
+ *   - topic + seed_content → 예보된 사실
+ *   - topic only           → Canonical 참조
+ *   - seed_content only    → 고아
+ *   - 둘 다 없음           → 불완전 (E3.2 backend가 warnings로 걸러 실제로는 미도달 기대)
+ */
+function classifyRumor(seed: RumorSeedInput): { kind: string; color: string } {
+  const hasTopic = !!seed.topic
+  const hasContent = !!seed.seed_content
+  if (hasTopic && hasContent) return { kind: '예보', color: 'var(--accent2)' }
+  if (hasTopic) return { kind: 'Canonical 참조', color: 'var(--accent2)' }
+  if (hasContent) return { kind: '고아', color: 'var(--warning)' }
+  return { kind: '불완전', color: 'var(--warning)' }
+}
+
 function RumorSeedRow({ idx, seed }: { idx: number; seed: RumorSeedInput }) {
-  const isOrphan = !seed.topic
+  const cls = classifyRumor(seed)
   return (
     <div style={baseRowStyle}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
         <Badge color="var(--bg4)">#{idx}</Badge>
         {seed.id && <Badge color="var(--bg4)" title="id">{seed.id}</Badge>}
-        {isOrphan ? (
-          <Badge color="var(--warning)" title="topic 없음 — 고아">고아</Badge>
-        ) : (
-          <Badge color="var(--accent2)">🏷 {seed.topic}</Badge>
-        )}
+        <Badge color={cls.color} title={`변종: ${cls.kind}`}>{cls.kind}</Badge>
+        {seed.topic && <Badge color="var(--accent2)">🏷 {seed.topic}</Badge>}
         <Badge color="var(--bg4)">{describeOrigin(seed.origin)}</Badge>
       </div>
       <div style={contentStyle}>
@@ -177,6 +190,9 @@ function Badge({ color, title, children }: { color: string; title?: string; chil
 }
 
 function describeOrigin(o?: RumorOrigin): string {
+  // Rust `RumorSeedInput.origin`은 `default = "default_rumor_origin"`으로 항상
+  // 직렬화되므로 `o == null` 분기는 실질적으로 미도달이지만, TS optional 타입
+  // 정합을 위해 방어 코드를 남긴다.
   if (!o) return 'seeded (default)'
   switch (o.kind) {
     case 'seeded': return 'seeded'
