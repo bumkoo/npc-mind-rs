@@ -1125,7 +1125,7 @@ pub enum StateEvent {
   topic-less 후보가 단독 클러스터가 되어 source-priority 필터의 부당한 드롭을 방지 (리뷰
   대응). 엔트리 임베딩 전달은 `MemoryResult` 스키마 확장(Step C/D)에서 보강 예정.
 - Step B 범위 **외**:
-  - **Mind Studio 프롬프트 미리보기 UI** → Step E (Mind Studio 편집 기능)
+  - **Mind Studio 프롬프트 미리보기 UI** → Step E2 (완료, `aeb005c` — `ContextView`가 `LocaleMemoryFramer` 블록을 하이라이트)
   - **Pull 경로 (`recall_memory` tool)** + 매 turn 재주입 → Step F (Phase 5)
   - **`SqliteMemoryStore::search`의 vec0 통합** (현재 `relevance_score=1.0` 하드코딩,
     semantic 검증은 InMemoryStore에서만) → 후속 작업
@@ -1148,8 +1148,8 @@ pub enum StateEvent {
 - 단위 테스트 포함 총 40+ 테스트 green
 
 **범위 외 (본 Step에서 제외)**:
-- 시나리오 JSON `initial_rumors` 섹션 + `hearsay-chain.json`/`orphan-rumor.json` 샘플 → Step E 작가 도구와 묶기
-- Mind Studio 활성 소문 UI → Step E
+- 시나리오 JSON `initial_rumors` 섹션 + `hearsay-chain.json`/`orphan-rumor.json` 샘플 → Step E3.2 (완료, `8ff0829`)
+- Mind Studio 활성 소문 UI → Step E2/E3.1 (완료, `aeb005c`/`84b2510`)
 - Rumor.status(Fading/Faded) 전이 + `RumorDistorted`/`RumorFaded` 발행 → Step F
 - I-RU-5 크로스-store 완전 원자성(MemoryStore 포함) → Step F 재시도 큐
 - `RelationshipChangeCause::InformationTold` 분기 → Step D (`RelationshipMemoryHandler`)
@@ -1294,21 +1294,88 @@ pub enum StateEvent {
   - **M4**: `tell_creates_...` 테스트에 `search?npc=&source=heard` 스모크 assertion 추가.
   - **L5**: 4개 dispatch 헬퍼 호출부를 `&mut *inner` 명시 deref로 통일 (scenario.rs 관례).
 
-#### Step E2 — 프런트엔드 표시 UI (미구현)
+#### Step E2 — 프런트엔드 표시 UI ✅ 완료
 
-**범위**: NPC 상세 "기억" 탭 (Layer A/B, Scope/Source/Provenance/Type 뱃지, retention bar), 프롬프트 미리보기 주입 기억 하이라이트 + Ranker 점수 tooltip, Memory/Rumor Zustand 스토어, `useStateSync` 훅에 신규 5 StateEvent 분기.
+**범위 (E2)**: NPC 상세 "기억" 탭 (Layer A/B 필터 + Scope/Source/Provenance/Type 뱃지 + retention bar + recall count + origin chain tooltip), 소문 탭 (status 뱃지 + 고아 표시 + reach 요약 + hop·distortion 접이식 상세), ContextView의 "떠오르는 기억" 블록 하이라이트, Memory/Rumor Zustand 스토어, `useStateSync` 훅에 5 SSE 이벤트 분기.
 
-**가치**: 작가·디버거의 시각적 검증.
+**가치**: 작가·디버거의 시각적 검증. E1 REST + SSE를 소비하는 첫 클라이언트.
 
-**DoD**: Vitest 컴포넌트 테스트 + 수동 시나리오 로드 시 기억 탭 동작 확인.
+**DoD (달성)**:
+- Vitest 82 passed (기존 68 → 신규 14: MemoryStore 6 + SSE 이벤트 5 + skip 로직 3).
+- `npm run build` clean (260.79 kB / gzip 81.49 kB).
+- `npx tsc --noEmit` clean.
 
-#### Step E3 — 편집 GUI + 시나리오 JSON 확장 (미구현)
+**구현 결과 (커밋 `aeb005c` + 리뷰 대응 `2d468a7`)**:
+- 파일: `types/index.ts`, `stores/useMemoryStore.ts` (신규), `components/result/{MemoryView,RumorView,ContextView,ResultPanel}.tsx`, `hooks/useStateSync.ts`, `App.tsx`, `__tests__/{stores,useStateSync}.test.ts`.
+- 사후 리뷰 수정 7건(C1/C2/H1+H2/M1~M4) — `2d468a7` 참조.
 
-**범위**: Topic 히스토리 뷰어 (Canonical 강조), 소문 편집기 (seed_content·Reach·수동 확산·고아 Rumor 표시), 시나리오 JSON `initial_rumors`/`world_knowledge` 섹션 + GUI 편집기 (§17.3 결정 3과 함께).
+**범위 외 (Step E3)**:
+- Topic 히스토리 뷰어 (Canonical 강조) → E3.1
+- 소문 시드/확산 편집 GUI → E3.1
+- 시나리오 JSON `initial_rumors`/`world_knowledge` + 로드 시 seeding → E3.2
+- 시드 조회 전용 패널 + 로드 warnings 가시화 → E3.3
 
-**가치**: 작가 워크플로우 일체화.
+#### Step E3.1 — Topic 히스토리 + 런타임 소문 편집 GUI ✅ 완료
 
-**DoD**: 수동 시나리오 편집 → 저장 → 로드 → 재생 플로우 end-to-end.
+**범위 (E3.1)**: MemoryView에 NPC/Topic 모드 토글 추가. TopicHistoryView 신규 — `/api/memory/by-topic/{topic}` 조회, Canonical 엔트리를 상단 👑 배너로 강조, 나머지는 supersede 체인 시각화. RumorView에 `＋ 시드` 토글 + SeedForm (topic·seed_content·origin·reach 4필드) + 각 RumorCard에 `확산` 토글 + SpreadForm (recipients CSV + content_version distortion).
+
+**가치**: 작가가 런타임에 직접 소문을 주입·확산할 수 있고, Canonical/supersede 흐름을 한눈에 추적.
+
+**DoD (달성)**:
+- Vitest 96 passed (기존 94 + MemoryStore topic 상태 2).
+- `npx tsc --noEmit` / `npm run build` clean (272.96 kB / gz 84.27 kB).
+
+**구현 결과 (커밋 `84b2510` + 리뷰 대응 `7c4d6a9`)**:
+- 파일: `stores/useMemoryStore.ts` (mode/selectedTopic/topicEntries), `components/result/{TopicHistoryView(신규),MemoryView,RumorView}.tsx`.
+- 사후 리뷰 수정 3건 (C1+H1/M1/M4) — `7c4d6a9` 참조.
+
+**범위 외 (E3.2/E3.3)**: 시나리오 JSON 시딩, 시드 조회 UI, 컴포넌트 렌더 테스트 인프라(별도 작업).
+
+#### Step E3.2 — 시나리오 JSON seeding ✅ 완료
+
+**범위 (E3.2)**: 시나리오 작가가 JSON 최상위에 `initial_rumors` / `world_knowledge` / `faction_knowledge` / `family_facts` 4 섹션을 선언하면, 로드 시 MemoryStore/RumorStore에 주입. §17.3 결정 3의 구현 본체.
+
+- `src/application/scenario_seeds.rs` (신규): `ScenarioSeeds` (4 optional 섹션) · `WorldKnowledgeSeed` (world_id + flatten `MemoryEntrySeedInput`) · `MemoryEntrySeedInput` (scope 무관 공통 필드; `into_entry(scope, fallback_id)`) · `RumorSeedInput` (topic/seed_content 조합별 `Rumor::{new, with_forecast_content, orphan}` 분기; `OrphanRumorMissingSeed` 검증).
+- `StateInner`에 `#[serde(flatten)]`로 4 섹션 평면 배치 (빈 섹션은 `skip_serializing_if`으로 직렬화 생략 → 기존 시나리오 포맷 변화 없음).
+- `load_state` / `load_result` 핸들러에서 embed 활성 시 `apply_scenario_seeds` 호출. 개별 실패는 `SeedReport.warnings`에 수집 + `tracing::warn!` 로그.
+- `LoadResponse`에 `warnings`/`applied_rumors`/`applied_memories` 필드 추가 (기존 클라이언트는 미인지 필드 무시).
+
+**가치**: 작가가 "강호에 떠도는 소문"·"세계관 Canonical"을 시나리오 파일에 직접 기술할 수 있다.
+
+**DoD (달성)**:
+- 라이브러리 유닛 8 + 직렬화 생략 1 (총 `cargo test --lib` 206 passed).
+- embed gated 통합 테스트 2건: `load_scenario_seeds_memory_and_rumor_into_stores`, `load_scenario_without_seed_sections_leaves_stores_empty`.
+- `cargo build --features mind-studio --bin npc-mind-studio` clean.
+
+**구현 결과 (커밋 `8ff0829` + 리뷰 대응 `7be35bf`)**:
+- 사후 리뷰 수정 5건 (H1 topic 불일치 / M2 warnings 응답 노출 / M1 기본 rumor origin / L4 apply 순서 / L2 doc) — `7be35bf` 참조.
+
+**범위 외 (E3.3)**: 프런트엔드에서 적용 결과·경고 표시 + 선언 내용 조회 UI.
+
+#### Step E3.3 — 시드 조회 패널 + 로드 경고 가시화 ✅ 완료
+
+**범위 (E3.3)**: E3.2가 주입한 결과·경고를 작가 UI에 노출. 편집은 JSON 직접 수정 또는 E3.1의 런타임 시드 폼으로.
+
+- `GET /api/scenario-seeds` (신규, embed 무관): `StateInner.scenario_seeds`를 그대로 직렬화 반환.
+- `useSceneStore.scenarioSeeds` 필드 + `ScenarioSeedsView` (신규) — ResultPanel "시드" 탭. 4 섹션 read-only 카드 + `classifyRumor` 4-tier 변종 라벨 (`예보`/`Canonical 참조`/`고아`/`불완전`) + 메모리 메타 뱃지 (memory_type/source/layer/confidence/acquired_by) + 빈 상태 안내.
+- `loadHandlers.loadScenario`가 `LoadResponse.applied_*` count를 success 토스트에, `warnings`를 error 토스트 (3건 초과 시 첫 건 + 총 건수 묶음 + 나머지 `console.warn` 폴백, `String(w)` 비문자열 방어).
+- `useStateSync`가 최초 마운트 + `scenario_loaded`/`result_loaded` 이벤트에서 `/api/scenario-seeds` fetch. `useRefresh`에서는 제외 (CRUD refresh 오염 방지).
+
+**가치**: 작가가 "내가 시나리오에 선언한 게 무엇인가", "무엇이 적용됐고 무엇이 경고로 떨어졌나"를 한 번에 확인.
+
+**DoD (달성)**:
+- Vitest 99 passed (기존 96 + 신규 3: scenarioSeeds store 1 + scenario_loaded→seeds fetch 1 + mount→1회 fetch 1).
+- `cargo test --features mind-studio --bin npc-mind-studio`: 43 passed.
+- `npx tsc --noEmit` / `npm run build` clean (279.16 kB / gz 85.58 kB).
+
+**구현 결과 (커밋 `fcf50ec` + follow-up `780dbc7`)**:
+- 파일: `src/bin/mind-studio/handlers/scenario.rs` (`get_scenario_seeds`), `src/bin/mind-studio/main.rs`, `types/index.ts`, `stores/useSceneStore.ts`, `hooks/{useRefresh,useStateSync}.ts`, `handlers/loadHandlers.ts`, `components/result/{ScenarioSeedsView(신규),ResultPanel}.tsx`, `__tests__/{stores,useStateSync}.test.ts`.
+- 사후 리뷰 수정 5건 (M1 `/api/scenario-seeds` 이중 fetch / M2+L1 warnings 토스트 스팸 + `String()` 방어 / L3 `classifyRumor` 4-tier / L4 describeOrigin 주석 / L5 CLAUDE.md) — `780dbc7` 참조.
+
+**범위 외 (Step F·별도)**:
+- 시드 편집 GUI (작가 도구 — JSON 직접 편집 + E3.1 런타임 시드 폼으로 보완).
+- §17.3 결정 3의 정식 문서화 (스키마 examples + 작가 가이드).
+- 시나리오 JSON 편집 GUI 일체화.
 
 ### Step F — (향후) Pull 경로 활성, 백그라운드 Rumor 확산 틱
 
@@ -1405,6 +1472,8 @@ Phase 5 StoryAgent와 묶어 진행. 본 문서 범위 외.
 **질문**: `initial_rumors` / `world_knowledge` / `faction_knowledge` / `family_facts` 필드를 JSON 스키마로 언제 확정할지?
 
 **현재 임시 결정**: Step A는 `MemoryEntry` 구조만, 시나리오 JSON 섹션은 Step C 착수 시 함께 확정 (편집 GUI Step E).
+
+**구현 상태 (E3.2/E3.3 완료)**: 4 섹션 모두 Rust DTO(`src/application/scenario_seeds.rs`)로 확정. `ScenarioSeeds`가 `StateInner`에 `#[serde(flatten)]`되어 JSON 최상위에 평면 배치되고 빈 섹션은 `skip_serializing_if`로 생략. 로드 시 `apply_scenario_seeds`가 MemoryStore/RumorStore에 주입하고 `LoadResponse.warnings`로 실패를 노출. 조회는 `GET /api/scenario-seeds` + Mind Studio "시드" 탭. 편집 GUI는 아직 — 작가는 JSON 직접 편집 + E3.1 런타임 시드 폼으로 보완.
 
 **대안들**:
 
