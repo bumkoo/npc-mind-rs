@@ -1,7 +1,7 @@
 //! `ConversationPort` 테스트용 목(mock) 구현
 //!
 //! 고정 응답을 반환하고 호출 이력을 `Arc<Mutex>` 벡터에 기록해
-//! DialogueAgent가 올바른 순서로 ConversationPort를 호출하는지 검증한다.
+//! DialogueOrchestrator가 올바른 순서로 ConversationPort를 호출하는지 검증한다.
 
 #![cfg(feature = "chat")]
 

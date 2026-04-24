@@ -1,7 +1,7 @@
 //! 대화 테스트 DTO
 //!
 //! Mind Studio가 LLM 대화 루프에 주고받는 요청/응답 타입. 서비스 struct는 제거되었고
-//! 실제 오케스트레이션은 [`DialogueAgent`](crate::application::dialogue_agent::DialogueAgent)가
+//! 실제 오케스트레이션은 [`DialogueOrchestrator`](crate::application::dialogue_orchestrator::DialogueOrchestrator)가
 //! 담당한다.
 
 use crate::application::dto::{

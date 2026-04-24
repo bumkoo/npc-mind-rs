@@ -21,23 +21,23 @@ pub type EventId = u64;
 /// `payload_type()`은 문자열 기반 로깅 호환을 위해 별도로 유지한다.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub enum EventKind {
-    /// B1: Appraise 커맨드의 초기 이벤트 — EmotionAgent의 `EventHandler` 진입 트리거
+    /// B1: Appraise 커맨드의 초기 이벤트 — EmotionPolicy의 `EventHandler` 진입 트리거
     AppraiseRequested,
     EmotionAppraised,
-    /// B1: ApplyStimulus 커맨드의 초기 이벤트 — StimulusAgent의 `EventHandler` 진입 트리거
+    /// B1: ApplyStimulus 커맨드의 초기 이벤트 — StimulusPolicy의 `EventHandler` 진입 트리거
     StimulusApplyRequested,
     StimulusApplied,
     BeatTransitioned,
-    /// B4.1: StartScene 커맨드의 초기 이벤트 — SceneAgent 진입 트리거
+    /// B4.1: StartScene 커맨드의 초기 이벤트 — ScenePolicy 진입 트리거
     SceneStartRequested,
     SceneStarted,
     SceneEnded,
     RelationshipUpdated,
-    /// B4.1: UpdateRelationship 커맨드의 초기 이벤트 — RelationshipAgent 진입
+    /// B4.1: UpdateRelationship 커맨드의 초기 이벤트 — RelationshipPolicy 진입
     RelationshipUpdateRequested,
-    /// B4.1: EndDialogue 커맨드의 초기 이벤트 — RelationshipAgent 진입 (3 follow-ups 발행)
+    /// B4.1: EndDialogue 커맨드의 초기 이벤트 — RelationshipPolicy 진입 (3 follow-ups 발행)
     DialogueEndRequested,
-    /// B4.1: GenerateGuide 커맨드의 초기 이벤트 — GuideAgent 진입
+    /// B4.1: GenerateGuide 커맨드의 초기 이벤트 — GuidePolicy 진입
     GuideRequested,
     GuideGenerated,
     DialogueTurnCompleted,
@@ -69,7 +69,7 @@ pub enum EventKind {
 
     // ─── World 오버레이 (Step D, §3.1/§3.2) ─────────────────────────────────
     /// Mind 컨텍스트 — `Command::ApplyWorldEvent`의 초기 이벤트 (Step D).
-    /// `WorldOverlayAgent`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
+    /// `WorldOverlayPolicy`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
     ApplyWorldEventRequested,
     /// 세계 오버레이 사건 발생 — 메모리 레이어에 `MemoryEntry(scope=World)` +
     /// 기존 Canonical supersede를 트리거 (Step D).
@@ -112,8 +112,8 @@ pub struct EventMetadata {
 
 /// `RelationshipUpdated` 이벤트에 실리는 **귀속 원인** (Memory 시스템 §8.3 hook, A8).
 ///
-/// Step A에서는 모든 발행 지점이 `Unspecified`로 고정된다. Step C/D에서 InformationAgent/
-/// WorldOverlayAgent 추가 시 정식 variant로 채워진다. Memory 컨텍스트의
+/// Step A에서는 모든 발행 지점이 `Unspecified`로 고정된다. Step C/D에서 InformationPolicy/
+/// WorldOverlayPolicy 추가 시 정식 variant로 채워진다. Memory 컨텍스트의
 /// `RelationshipMemoryPolicy`가 이 값으로 content·source·topic을 분기한다.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -146,7 +146,7 @@ pub enum EventPayload {
     /// B1: Appraise 요청 (Command → 초기 이벤트)
     ///
     /// B3 `dispatch_v2()`에서 `Command::Appraise`가 이 이벤트로 변환되어
-    /// EmotionAgent의 `EventHandler::handle()` 진입점 역할을 한다.
+    /// EmotionPolicy의 `EventHandler::handle()` 진입점 역할을 한다.
     /// B1 단계에서는 변환 경로가 없으므로 L1 단위 테스트에서만 수동 생성.
     AppraiseRequested {
         npc_id: String,
@@ -158,7 +158,7 @@ pub enum EventPayload {
     /// B1: ApplyStimulus 요청 (Command → 초기 이벤트)
     ///
     /// B3 `dispatch_v2()`에서 `Command::ApplyStimulus`가 이 이벤트로 변환되어
-    /// StimulusAgent의 `EventHandler::handle()` 진입점 역할을 한다.
+    /// StimulusPolicy의 `EventHandler::handle()` 진입점 역할을 한다.
     StimulusApplyRequested {
         npc_id: String,
         partner_id: String,
@@ -166,33 +166,33 @@ pub enum EventPayload {
         situation_description: Option<String>,
     },
 
-    /// B4.1: GenerateGuide 커맨드 → GuideAgent 진입
+    /// B4.1: GenerateGuide 커맨드 → GuidePolicy 진입
     GuideRequested {
         npc_id: String,
         partner_id: String,
         situation_description: Option<String>,
     },
 
-    /// B4.1: UpdateRelationship 커맨드 → RelationshipAgent 진입
+    /// B4.1: UpdateRelationship 커맨드 → RelationshipPolicy 진입
     RelationshipUpdateRequested {
         npc_id: String,
         partner_id: String,
         significance: Option<f32>,
     },
 
-    /// B4.1: EndDialogue 커맨드 → RelationshipAgent 진입 (3 follow-ups: RelationshipUpdated
-    /// + EmotionCleared + SceneEnded). v1 `RelationshipAgent::handle_end_dialogue` 등가.
+    /// B4.1: EndDialogue 커맨드 → RelationshipPolicy 진입 (3 follow-ups: RelationshipUpdated
+    /// + EmotionCleared + SceneEnded). v1 `RelationshipPolicy::handle_end_dialogue` 등가.
     DialogueEndRequested {
         npc_id: String,
         partner_id: String,
         significance: Option<f32>,
     },
 
-    /// B4.1: StartScene 커맨드 → SceneAgent 진입
+    /// B4.1: StartScene 커맨드 → ScenePolicy 진입
     ///
     /// Dispatcher가 `SituationService`로 `SceneFocusInput` DTO를 resolved `SceneFocus` 도메인
     /// 객체로 변환한 뒤 `Scene::with_significance`로 빌드된 Scene을 `prebuilt_scene`에 담아
-    /// 전달. SceneAgent가 Scene 등록 + 초기 Focus appraise를 수행하고 `SceneStarted` +
+    /// 전달. ScenePolicy가 Scene 등록 + 초기 Focus appraise를 수행하고 `SceneStarted` +
     /// (옵션) `EmotionAppraised`를 follow-up으로 발행. focuses는 `prebuilt_scene.focuses()`
     /// 로 접근하며 별도 필드 중복 제거(B4.1 리뷰 M5).
     SceneStartRequested {
@@ -236,7 +236,7 @@ pub enum EventPayload {
     /// Beat 전환 발생
     ///
     /// B4 Session 3 (Option A): `partner_id` 필드 추가. 다중 Scene 환경에서
-    /// `RelationshipAgent`가 이 이벤트에 반응할 때 올바른 Scene의 관계를 갱신할 수 있도록
+    /// `RelationshipPolicy`가 이 이벤트에 반응할 때 올바른 Scene의 관계를 갱신할 수 있도록
     /// payload에서 직접 읽는다. 기존에는 `ctx.repo.get_scene()` fallback으로 추론했는데,
     /// `InMemoryRepository.last_scene_id`가 다른 Scene을 가리킬 때 **잘못된 관계를 갱신**
     /// 하는 multi-scene 오동작이 있었음.
@@ -272,8 +272,8 @@ pub enum EventPayload {
         after_trust: f32,
         after_power: f32,
         /// 갱신 원인 (Memory 시스템 §8.3 policy branching용, A8 hook).
-        /// Step A에서는 모든 발행 지점이 `Unspecified`로 고정. Step C/D에서 InformationAgent/
-        /// WorldOverlayAgent 등이 정식 variant를 채운다. serde default로 구 JSON 역호환.
+        /// Step A에서는 모든 발행 지점이 `Unspecified`로 고정. Step C/D에서 InformationPolicy/
+        /// WorldOverlayPolicy 등이 정식 variant를 채운다. serde default로 구 JSON 역호환.
         #[serde(default)]
         cause: RelationshipChangeCause,
     },
@@ -306,7 +306,7 @@ pub enum EventPayload {
     // Memory 컨텍스트 — Step C1 foundation (§3.1)
     //
     // Step C1에서는 variant 타입만 추가되며, 발행 handler는 Step C2/C3/D에서 연결된다.
-    // `MemoryAgent`·`TurnMemoryEvaluationHandler` 등이 Step D까지 완료되면 실제 흐름에 편입.
+    // `MemoryProjector`·`TurnMemoryEvaluationHandler` 등이 Step D까지 완료되면 실제 흐름에 편입.
     // ─────────────────────────────────────────────────────────────────────
 
     /// 새 `MemoryEntry` 생성됨 (Inline 핸들러가 발행).
@@ -347,7 +347,7 @@ pub enum EventPayload {
     // ─────────────────────────────────────────────────────────────────────
 
     /// Memory 컨텍스트 — `Command::SeedRumor`의 초기 이벤트.
-    /// `RumorAgent`가 소비해 `RumorSeeded` follow-up을 발행한다 (Step C3).
+    /// `RumorPolicy`가 소비해 `RumorSeeded` follow-up을 발행한다 (Step C3).
     ///
     /// `pending_id`는 dispatcher가 build 시점에 부여하는 **커맨드별 고유 aggregate**
     /// suffix로, `AggregateKey::Rumor("pending-<pending_id>")` 형태로 매핑된다.
@@ -410,7 +410,7 @@ pub enum EventPayload {
     // ─────────────────────────────────────────────────────────────────────
 
     /// Mind 컨텍스트 — `Command::TellInformation`의 초기 이벤트.
-    /// `InformationAgent`가 청자별로 `InformationTold` follow-up을 발행 (Step C2).
+    /// `InformationPolicy`가 청자별로 `InformationTold` follow-up을 발행 (Step C2).
     TellInformationRequested {
         speaker: String,
         listeners: Vec<String>,
@@ -442,7 +442,7 @@ pub enum EventPayload {
     // ─────────────────────────────────────────────────────────────────────
 
     /// Mind 컨텍스트 — `Command::ApplyWorldEvent`의 초기 이벤트.
-    /// `WorldOverlayAgent`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
+    /// `WorldOverlayPolicy`가 소비해 `WorldEventOccurred` follow-up을 발행한다.
     /// `AggregateKey::World(world_id)`로 라우팅.
     ApplyWorldEventRequested {
         /// 이벤트가 속한 World 식별자 (예: `"jianghu"`).

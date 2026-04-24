@@ -402,7 +402,7 @@ impl StudioService {
     /// 화자 PAD → 청자 관점 PAD 변환 (Phase 7).
     ///
     /// 도메인 헬퍼 `domain::listener_perspective::convert_or_fallback`에 위임.
-    /// DialogueAgent와 동일한 분기 로직 — drift 위험을 한 곳에서 차단한다.
+    /// DialogueOrchestrator와 동일한 분기 로직 — drift 위험을 한 곳에서 차단한다.
     /// 성공 시 변환된 PAD를 디버그 로그로 노출 (운영 가시성).
     #[cfg(feature = "chat")]
     fn convert_to_listener_pad(
@@ -595,7 +595,7 @@ pub struct SaveDirInfo {
 // ============================================================
 // resolve_pad / convert_to_listener_pad 단위 테스트 (Phase 7 Step 5)
 //
-// DialogueAgent 통합 테스트(`tests/dialogue_converter_integration.rs`)와
+// DialogueOrchestrator 통합 테스트(`tests/dialogue_converter_integration.rs`)와
 // 동일한 4-시나리오 매트릭스를 Mind Studio 경로에서도 검증한다.
 // 두 구현이 path-for-path로 분기되어 있어 drift 시 silent 회귀 위험이 있음.
 // ============================================================

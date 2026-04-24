@@ -1,8 +1,8 @@
-//! InformationAgent — 정보 전달 팬아웃 (Step C2, Mind 컨텍스트)
+//! InformationPolicy — 정보 전달 팬아웃 (Step C2, Mind 컨텍스트)
 //!
 //! `TellInformationRequested` 1개를 받아 listeners + overhearers 각각에 대해
 //! `InformationTold` follow-up 이벤트를 발행한다 (B5: 청자당 1 이벤트 패턴).
-//! 실제 `MemoryEntry` 생성은 Inline `TellingIngestionHandler`가 담당하며, 이 에이전트는
+//! 실제 `MemoryEntry` 생성은 Inline `TellingIngestionHandler`가 담당하며, 이 폴리시는
 //! 순수 팬아웃 오케스트레이터다.
 //!
 //! **왜 Transactional인가**: follow-up 이벤트를 발행해야 하고, 해당 이벤트가 같은
@@ -15,23 +15,23 @@ use crate::application::command::handler_v2::{
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload, ListenerRole};
 
-pub struct InformationAgent;
+pub struct InformationPolicy;
 
-impl InformationAgent {
+impl InformationPolicy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for InformationAgent {
+impl Default for InformationPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for InformationAgent {
+impl EventHandler for InformationPolicy {
     fn name(&self) -> &'static str {
-        "InformationAgent"
+        "InformationPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -48,7 +48,7 @@ impl EventHandler for InformationAgent {
     fn handle(
         &self,
         event: &DomainEvent,
-        // 의도적 미사용: InformationAgent는 순수 팬아웃이라 shared state/repo 조회 불필요.
+        // 의도적 미사용: InformationPolicy는 순수 팬아웃이라 shared state/repo 조회 불필요.
         // `prior_events`/`aggregate_key`도 현재 분기 로직에 쓸 일 없음.
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
@@ -152,11 +152,11 @@ mod tests {
 
     #[test]
     fn emits_one_information_told_per_listener_with_direct_role() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil-a", "pupil-b"], &[], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 2);
         for ev in &result.follow_up_events {
@@ -170,11 +170,11 @@ mod tests {
 
     #[test]
     fn overhearers_get_overhearer_role() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &["wanderer-a", "wanderer-b"], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 3);
         let roles: Vec<ListenerRole> = result
@@ -197,11 +197,11 @@ mod tests {
 
     #[test]
     fn information_told_aggregate_key_is_listener() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &[], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(
             result.follow_up_events[0].aggregate_key(),
@@ -212,11 +212,11 @@ mod tests {
 
     #[test]
     fn origin_chain_in_is_passed_through_untouched() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("relay", &["final"], &[], &["prior-a", "prior-b"]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         let EventPayload::InformationTold {
             origin_chain_in, ..
         } = &result.follow_up_events[0].payload
@@ -232,12 +232,12 @@ mod tests {
 
     #[test]
     fn duplicates_in_listeners_and_overhearers_are_deduped_direct_wins() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         // "pupil"이 listeners와 overhearers에 모두 있는 케이스 — Direct 하나만 발행.
         let event = request_event("sage", &["pupil", "pupil"], &["pupil", "other"], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         // pupil 1개 (Direct) + other 1개 (Overhearer) = 2개
         assert_eq!(result.follow_up_events.len(), 2);
@@ -267,16 +267,16 @@ mod tests {
 
     #[test]
     fn empty_listeners_and_overhearers_emit_no_follow_ups() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &[], &[], &[]);
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = InformationAgent::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = DomainEvent::new(
             0,
@@ -284,7 +284,7 @@ mod tests {
             0,
             EventPayload::EmotionCleared { npc_id: "x".into() },
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 }

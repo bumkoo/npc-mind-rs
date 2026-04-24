@@ -1,6 +1,6 @@
-//! `MemoryAgent` Stream 소비 로직 테스트
+//! `MemoryProjector` Stream 소비 로직 테스트
 //!
-//! 타이밍·실제 broadcast에 의존하지 않고 `MemoryAgent::consume_stream`에
+//! 타이밍·실제 broadcast에 의존하지 않고 `MemoryProjector::consume_stream`에
 //! 확정적 Stream을 주입해 검증한다.
 
 #![cfg(feature = "embed")]
@@ -11,7 +11,7 @@ use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::ports::{EmbedError, MemoryStore, TextEmbedder};
-use npc_mind::{EventStore, MemoryAgent};
+use npc_mind::{EventStore, MemoryProjector};
 
 use futures::stream;
 use std::sync::{Arc, Mutex};
@@ -43,23 +43,23 @@ fn dialogue_event(id: u64, utterance: &str) -> DomainEvent {
     )
 }
 
-/// 테스트용 agent + memory_store + event_store 번들 생성
+/// 테스트용 projector + memory_store + event_store 번들 생성
 fn setup() -> (
-    Arc<MemoryAgent>,
+    Arc<MemoryProjector>,
     Arc<InMemoryMemoryStore>,
     Arc<InMemoryEventStore>,
 ) {
     let memory_store: Arc<InMemoryMemoryStore> = Arc::new(InMemoryMemoryStore::new());
     let memory_store_dyn: Arc<dyn MemoryStore> = memory_store.clone();
     let embedder: Arc<Mutex<dyn TextEmbedder + Send>> = Arc::new(Mutex::new(MockEmbedder));
-    let agent = Arc::new(MemoryAgent::new(memory_store_dyn, embedder));
+    let projector = Arc::new(MemoryProjector::new(memory_store_dyn, embedder));
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
-    (agent, memory_store, event_store)
+    (projector, memory_store, event_store)
 }
 
 #[tokio::test]
 async fn consume_stream_indexes_ok_events() {
-    let (agent, memory_store, event_store) = setup();
+    let (projector, memory_store, event_store) = setup();
     let event_store_dyn: Arc<dyn EventStore> = event_store.clone();
 
     let items: Vec<Result<Arc<DomainEvent>, u64>> = (1..=3u64)
@@ -67,7 +67,7 @@ async fn consume_stream_indexes_ok_events() {
         .collect();
     let s = Box::pin(stream::iter(items));
 
-    agent.consume_stream(s, event_store_dyn).await;
+    projector.consume_stream(s, event_store_dyn).await;
 
     for i in 1..=3u64 {
         let hits = memory_store
@@ -79,7 +79,7 @@ async fn consume_stream_indexes_ok_events() {
 
 #[tokio::test]
 async fn consume_stream_ignores_unrelated_events() {
-    let (agent, memory_store, event_store) = setup();
+    let (projector, memory_store, event_store) = setup();
     let event_store_dyn: Arc<dyn EventStore> = event_store.clone();
 
     let unrelated = DomainEvent::new(
@@ -93,7 +93,7 @@ async fn consume_stream_ignores_unrelated_events() {
     );
     let s = Box::pin(stream::iter(vec![Ok(Arc::new(unrelated))]));
 
-    agent.consume_stream(s, event_store_dyn).await;
+    projector.consume_stream(s, event_store_dyn).await;
 
     assert_eq!(memory_store.count(), 0, "GuideGenerated는 무시");
 }
@@ -102,7 +102,7 @@ async fn consume_stream_ignores_unrelated_events() {
 async fn consume_stream_replays_from_event_store_on_lag() {
     // Err(Lagged) 수신 시 EventStore.get_events_after_id(last)로 replay하여
     // drop된 이벤트도 인덱싱되는지 검증.
-    let (agent, memory_store, event_store) = setup();
+    let (projector, memory_store, event_store) = setup();
     let event_store_dyn: Arc<dyn EventStore> = event_store.clone();
 
     // EventStore에 1~5 기록 (영속화 경로 시뮬레이션)
@@ -118,7 +118,7 @@ async fn consume_stream_replays_from_event_store_on_lag() {
     ];
     let s = Box::pin(stream::iter(items));
 
-    agent.consume_stream(s, event_store_dyn).await;
+    projector.consume_stream(s, event_store_dyn).await;
 
     // at-least-once: 1~5 모두 인덱싱돼야 함
     for i in 1..=5u64 {
@@ -133,7 +133,7 @@ async fn consume_stream_replays_from_event_store_on_lag() {
 async fn consume_stream_last_processed_id_is_monotonic() {
     // replay 이후 broadcast 잔여 이벤트가 뒤늦게 도착해도 이미 처리한
     // 이벤트는 건너뛰어야 한다(중복 인덱싱 방지 + 커서 역행 방지).
-    let (agent, memory_store, event_store) = setup();
+    let (projector, memory_store, event_store) = setup();
     let event_store_dyn: Arc<dyn EventStore> = event_store.clone();
 
     // EventStore에 1~5 기록
@@ -149,7 +149,7 @@ async fn consume_stream_last_processed_id_is_monotonic() {
     ];
     let s = Box::pin(stream::iter(items));
 
-    agent.consume_stream(s, event_store_dyn).await;
+    projector.consume_stream(s, event_store_dyn).await;
 
     // 각 발화당 정확히 1건만 존재 — 중복 인덱싱 없음
     for i in 1..=5u64 {
@@ -168,7 +168,7 @@ async fn consume_stream_last_processed_id_is_monotonic() {
 #[tokio::test]
 async fn consume_stream_handles_consecutive_lag_without_duplicates() {
     // 연속된 Err(Lagged) 통지에서도 replay로 중복되지 않는지 확인
-    let (agent, memory_store, event_store) = setup();
+    let (projector, memory_store, event_store) = setup();
     let event_store_dyn: Arc<dyn EventStore> = event_store.clone();
 
     for i in 1..=3u64 {
@@ -181,7 +181,7 @@ async fn consume_stream_handles_consecutive_lag_without_duplicates() {
     ];
     let s = Box::pin(stream::iter(items));
 
-    agent.consume_stream(s, event_store_dyn).await;
+    projector.consume_stream(s, event_store_dyn).await;
 
     for i in 1..=3u64 {
         let hits = memory_store

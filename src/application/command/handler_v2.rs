@@ -29,8 +29,8 @@ use crate::ports::MindRepository;
 /// Dispatcher는 핸들러의 `mode()`에 따라 실행 단계(트랜잭션 내부 / 커밋 후 동기 /
 /// 비동기 broadcast)를 결정하며, `interest()`로 관심 이벤트를 필터링한다.
 ///
-/// B0에서는 이 트레이트를 구현하는 타입이 아직 없다. B1에서 기존 Agent
-/// (EmotionAgent/GuideAgent/RelationshipAgent)가 이 트레이트를 추가 구현한다.
+/// B0에서는 이 트레이트를 구현하는 타입이 아직 없다. B1에서 기존 Policy
+/// (EmotionPolicy/GuidePolicy/RelationshipPolicy)가 이 트레이트를 추가 구현한다.
 pub trait EventHandler: Send + Sync {
     /// 트레이싱·로깅·디스패처 오류 리포팅용 식별자
     fn name(&self) -> &'static str;
@@ -100,7 +100,7 @@ pub enum DeliveryMode {
 
     /// 비동기 fan-out. 발행자는 구독자 처리를 기다리지 않는다.
     ///
-    /// 주로 MemoryAgent/StoryAgent/SSE 같은 외부 관찰자용.
+    /// 주로 MemoryProjector/StoryAgent/SSE 같은 외부 관찰자용.
     Fanout,
 }
 
@@ -152,7 +152,7 @@ pub struct HandlerShared {
     //
     // Option<T>/None은 "변화 없음"을 의미하므로 "clear" 액션을 표현할 수 없다.
     // Dispatcher가 transactional phase 종료 후 이 플래그들을 읽어 `repo.clear_*`를 호출.
-    // DialogueEndRequested 처리 시 RelationshipAgent가 이 필드들을 설정.
+    // DialogueEndRequested 처리 시 RelationshipPolicy가 이 필드들을 설정.
     /// 감정 상태를 clear할 NPC id (Some일 때만 clear 적용)
     pub clear_emotion_for: Option<String>,
     /// 활성 Scene을 clear할지 여부
@@ -213,7 +213,7 @@ pub enum HandlerError {
 
 /// L1 단위 테스트용 Harness — Dispatcher 없이 `EventHandler`를 직접 실행
 ///
-/// Agent별 L1 unit test가 공통으로 사용. 모든 field는 `pub`으로 노출되어
+/// Policy별 L1 unit test가 공통으로 사용. 모든 field는 `pub`으로 노출되어
 /// 테스트 코드가 필요 시 repo/event_store/shared를 직접 조작할 수 있다.
 #[cfg(test)]
 pub(crate) mod test_support {

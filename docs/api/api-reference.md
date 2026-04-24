@@ -615,7 +615,7 @@ pub enum MindServiceError {
 
 `docs/memory/03-implementation-design.md`의 Step A·B·C·D가 구현된 상태의 공개 API.
 **Step D (Consolidation & World Overlay)** 포함: `Command::ApplyWorldEvent`,
-`WorldOverlayAgent`/`WorldOverlayHandler`, `SceneConsolidationHandler`,
+`WorldOverlayPolicy`/`WorldOverlayHandler`, `SceneConsolidationHandler`,
 `RelationshipMemoryHandler`.
 
 ### MemoryEntry — 기억 항목
@@ -776,7 +776,7 @@ let ranked: Vec<RankedEntry> = ranker.rank(candidates, &query, now_ms);
 // 2단계: vec_similarity × retention × source_confidence × emotion_proximity × temporal_recency
 ```
 
-Step B에서 `DialogueAgent::with_memory(store, framer)`가 활성화되면
+Step B에서 `DialogueOrchestrator::with_memory(store, framer)`가 활성화되면
 `inject_memory_push`가 위 Ranker를 호출해 시스템 프롬프트 prepend용 블록을 만든다 (아래 참조).
 
 ### MemoryFramer — 기억 엔트리 → 프롬프트 블록 (Step B)
@@ -810,7 +810,7 @@ footer = "\n"
 
 영어 locale은 `[Experienced] / [Witnessed] / [Heard] / [Rumor]` + `# Recollections` 헤더.
 
-### DialogueAgent::with_memory — 프롬프트 주입 활성화 (Step B, [chat feature])
+### DialogueOrchestrator::with_memory — 프롬프트 주입 활성화 (Step B, [chat feature])
 
 ```rust
 use std::sync::Arc;
@@ -820,7 +820,7 @@ use npc_mind::presentation::memory_formatter::LocaleMemoryFramer;
 let store: Arc<dyn MemoryStore> = ...;
 let framer: Arc<dyn MemoryFramer> = Arc::new(LocaleMemoryFramer::new());
 
-let agent = DialogueAgent::new(dispatcher, chat, formatter)
+let agent = DialogueOrchestrator::new(dispatcher, chat, formatter)
     .with_memory(store, framer)              // Opt-in
     .with_memory_locale("ko");               // 기본 "ko"
 ```
@@ -856,7 +856,7 @@ pub enum RelationshipChangeCause {
 ```
 
 **Step D 현재 설정 지점**:
-- `RelationshipAgent.handle_relationship_update_with_cause` — `BeatTransitioned` 경로에서
+- `RelationshipPolicy.handle_relationship_update_with_cause` — `BeatTransitioned` 경로에서
   cause=`SceneInteraction { scene_id: SceneId::new(npc, partner) }` 자동 설정.
 - `DialogueEndRequested`/`RelationshipUpdateRequested` 경로는 여전히 `Unspecified`
   (TODO step-f: DialogueEnd는 scene_id 필드 추가 후 SceneInteraction 승격 예정).
@@ -890,7 +890,7 @@ pub struct TellInformationRequest {
 }
 ```
 
-→ `InformationAgent`가 listener + overhearer 각자에게 `InformationTold` follow-up 발행
+→ `InformationPolicy`가 listener + overhearer 각자에게 `InformationTold` follow-up 발행
 (listeners ∩ overhearers 중복은 Direct 우선으로 dedup).
 → `TellingIngestionHandler` (Inline)가 각 청자의 `MemoryEntry(Personal, source=Heard/Rumor)`
 생성. `confidence = stated × (trust.value()+1)/2`, 관계 부재 시 0.5. `origin_chain` 길이가
@@ -932,7 +932,7 @@ pub enum RumorOriginInput {
 }
 ```
 
-→ `RumorAgent`가 `Rumor` 애그리거트 생성/갱신 + `RumorStore.save` + `RumorSeeded`/`RumorSpread`
+→ `RumorPolicy`가 `Rumor` 애그리거트 생성/갱신 + `RumorStore.save` + `RumorSeeded`/`RumorSpread`
 follow-up. Seed의 커맨드별 고유 aggregate는 `SeedRumorRequested.pending_id` +
 dispatcher `command_seq` 조합 (여러 고아 Rumor가 같은 버킷 공유 방지).
 → `RumorDistributionHandler` (Inline)가 `RumorSpread` 수신자에게 `MemoryEntry(Rumor)` 생성.
@@ -992,10 +992,10 @@ composite (schema v3).
 
 ```rust
 let dispatcher = CommandDispatcher::new(repo, event_store, event_bus)
-    .with_default_handlers()                                          // 7 Agent + 3 Projection (Step D: +WorldOverlayAgent)
+    .with_default_handlers()                                          // 7 Policy + 3 Projection (Step D: +WorldOverlayPolicy)
     .with_memory(memory_store.clone())                                // lean: TellingIngestionHandler만 (Step C2 호환)
     // or: .with_memory_full(memory_store.clone())                    // Step D 번들: Telling + WorldOverlay + RelationshipMemory + SceneConsolidation
-    .with_rumor(memory_store.clone(), rumor_store.clone());           // + RumorAgent + RumorDistributionHandler (Step C3)
+    .with_rumor(memory_store.clone(), rumor_store.clone());           // + RumorPolicy + RumorDistributionHandler (Step C3)
 ```
 
 - **`with_memory(Arc<dyn MemoryStore>)`** — **lean** (Step C2 호환, 리뷰 H5).
@@ -1003,7 +1003,7 @@ let dispatcher = CommandDispatcher::new(repo, event_store, event_bus)
 - **`with_memory_full(Arc<dyn MemoryStore>)`** — **Step D 전체 번들**. 4개 Inline
   핸들러를 일괄 등록: `TellingIngestionHandler` (C2) + `WorldOverlayHandler` (D) +
   `RelationshipMemoryHandler` (D) + `SceneConsolidationHandler` (D).
-- **`with_rumor(Arc<dyn MemoryStore>, Arc<dyn RumorStore>)`** — `RumorAgent` (Transactional,
+- **`with_rumor(Arc<dyn MemoryStore>, Arc<dyn RumorStore>)`** — `RumorPolicy` (Transactional,
   priority 40) + `RumorDistributionHandler` (Inline) 일괄 등록.
 - 모든 빌더는 생략 가능 — 이벤트만 발행되고 실제 저장은 외부 구독자 책임.
 
@@ -1080,7 +1080,7 @@ EventPayload::ApplyWorldEventRequested {
     witnesses: Vec<String>,
 }
 
-// follow-up (WorldOverlayAgent가 발행)
+// follow-up (WorldOverlayPolicy가 발행)
 EventPayload::WorldEventOccurred {
     world_id: String,
     topic: Option<String>,
@@ -1096,7 +1096,7 @@ EventPayload::WorldEventOccurred {
 
 | 파일 | 이름 | Mode | Priority | 역할 |
 |---|---|---|---|---|
-| `agents/world_overlay_agent.rs` | `WorldOverlayAgent` | Transactional | 25 (WORLD_OVERLAY) | ApplyWorldEventRequested → WorldEventOccurred 1:1 |
+| `agents/world_overlay_policy.rs` | `WorldOverlayPolicy` | Transactional | 25 (WORLD_OVERLAY) | ApplyWorldEventRequested → WorldEventOccurred 1:1 |
 | `world_overlay_handler.rs` | `WorldOverlayHandler` | Inline | 45 (WORLD_OVERLAY_INGESTION) | Canonical `MemoryEntry(World, Seeded)` 생성 + 같은 topic **Canonical 1건** supersede |
 | `relationship_memory_handler.rs` | `RelationshipMemoryHandler` | Inline | 50 (RELATIONSHIP_MEMORY) | RelationshipUpdated.cause variant별 source/topic/content 분기 |
 | `scene_consolidation_handler.rs` | `SceneConsolidationHandler` | Inline | 60 (SCENE_CONSOLIDATION) | SceneEnded → 참여 NPC별 Personal SceneSummary + Layer A `consolidated_into` 마킹 |

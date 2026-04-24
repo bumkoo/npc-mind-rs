@@ -36,8 +36,8 @@ CommandDispatcher
 `Pipeline` stage는 동일한 이벤트에 반응하는 복수 핸들러가 아니라, **서로의 출력에 데이터 흐름으로 의존**한다.
 
 ```
-Stage 1 (EmotionAgent)  →  emotion_state: EmotionState
-Stage 2 (GuideAgent)    ←  emotion_state를 읽어 ActingGuide 생성
+Stage 1 (EmotionPolicy)  →  emotion_state: EmotionState
+Stage 2 (GuidePolicy)    ←  emotion_state를 읽어 ActingGuide 생성
 ```
 
 단순 priority-sort만으로는 아래가 깨진다.
@@ -77,7 +77,7 @@ pub enum DeliveryMode {
     Inline { priority: i32 },
 
     /// 비동기 fan-out. 실패가 생산자에 전파되지 않음.
-    /// MemoryAgent, SSE stream 등.
+    /// MemoryProjector, SSE stream 등.
     Fanout,
 }
 
@@ -178,7 +178,7 @@ fn dispatch(&self, cmd: Command) -> Result<CommandOutput, DispatchError> {
 외부에서 볼 땐 "단일 Bus", 내부는 2-tier 유지. 멘탈 모델 단순화 + 타입 안전 유지.
 
 ```rust
-impl EventHandler for EmotionAgent {
+impl EventHandler for EmotionPolicy {
     fn mode(&self) -> DeliveryMode {
         DeliveryMode::Transactional { priority: 10, can_emit_follow_up: true }
     }
@@ -188,7 +188,7 @@ impl EventHandler for EmotionProjection {
     fn mode(&self) -> DeliveryMode { DeliveryMode::Inline { priority: 100 } }
 }
 
-impl EventHandler for MemoryAgent {
+impl EventHandler for MemoryProjector {
     fn mode(&self) -> DeliveryMode { DeliveryMode::Fanout }
 }
 ```
@@ -231,7 +231,7 @@ impl EventHandler for MemoryAgent {
 
 현재는 C안(현상 유지)이 과투자 아님. 아래 신호가 보이면 B안으로 이동 권장.
 
-- Fanout 구독자가 3개 이상(MemoryAgent 외 StoryAgent/SummaryAgent/외부 MCP 브릿지 등)
+- Fanout 구독자가 3개 이상(MemoryProjector 외 StoryAgent/SummaryAgent/외부 MCP 브릿지 등)
 - Scenario별로 Transactional 핸들러 조합이 달라짐(예: 액션 씬 vs 대화 씬에서 다른 Guide 전략)
 - 디버깅 시 "이 Command가 어느 핸들러까지 돌았나"를 한 포인트에서 관측하고 싶다는 요구가 반복됨
 - 플러그인/외부 기여자가 핸들러를 주입하는 구조(예: Rhai/Lua 스크립트 핸들러)

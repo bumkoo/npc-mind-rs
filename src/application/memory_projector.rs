@@ -1,4 +1,4 @@
-//! MemoryAgent — EventBus 구독 기반 기억 인덱싱 에이전트
+//! MemoryProjector — EventBus 구독 기반 기억 인덱싱 프로젝터
 //!
 //! 도메인 이벤트를 Stream으로 수신하여 NPC 기억으로 변환·인덱싱한다.
 //! `embed` feature 필수 — TextEmbedder로 임베딩 생성.
@@ -31,17 +31,17 @@ use std::sync::{Arc, Mutex};
 /// 관계 변화 유의미 판단 임계값
 const RELATIONSHIP_CHANGE_THRESHOLD: f32 = 0.05;
 
-/// 기억 인덱싱 에이전트
+/// 기억 인덱싱 프로젝터
 ///
 /// EventBus Stream을 구독하여 관련 이벤트 발생 시 자동으로 기억을
 /// 생성·인덱싱한다. CommandHandler가 아닌 EventBus subscriber.
-pub struct MemoryAgent {
+pub struct MemoryProjector {
     memory_store: Arc<dyn MemoryStore>,
     embedder: Arc<Mutex<dyn TextEmbedder + Send>>,
     id_counter: Mutex<u64>,
 }
 
-impl MemoryAgent {
+impl MemoryProjector {
     pub fn new(
         memory_store: Arc<dyn MemoryStore>,
         embedder: Arc<Mutex<dyn TextEmbedder + Send>>,
@@ -64,8 +64,8 @@ impl MemoryAgent {
     /// 넘기면 된다.
     ///
     /// ```rust,ignore
-    /// let agent = Arc::new(MemoryAgent::new(store, embedder));
-    /// tokio::spawn(agent.run(bus.clone(), event_store));
+    /// let projector = Arc::new(MemoryProjector::new(store, embedder));
+    /// tokio::spawn(projector.run(bus.clone(), event_store));
     /// ```
     ///
     /// `event_store`는 broadcast lag 발생 시 놓친 이벤트를 replay하여
@@ -75,12 +75,12 @@ impl MemoryAgent {
         bus: EventBus,
         event_store: Arc<dyn EventStore>,
     ) -> impl Future<Output = ()> + Send + 'static {
-        let agent = self;
+        let projector = self;
         async move {
             // subscribe는 Future가 polled된 시점에 수행 — spawn 이후 publish
             // 된 이벤트는 모두 수신된다.
             let stream = Box::pin(bus.subscribe_with_lag());
-            agent.consume_stream(stream, event_store).await;
+            projector.consume_stream(stream, event_store).await;
         }
     }
 
@@ -115,7 +115,7 @@ impl MemoryAgent {
                     tracing::warn!(
                         skipped,
                         last_processed_id,
-                        "MemoryAgent: broadcast lag detected, replaying from event store"
+                        "MemoryProjector: broadcast lag detected, replaying from event store"
                     );
                     let missed = event_store.get_events_after_id(last_processed_id);
                     for ev in missed {
@@ -223,7 +223,7 @@ impl MemoryAgent {
     /// MemoryStore 저장 — 실패 시 로깅하여 디버깅 가시성 확보
     fn persist(&self, entry: MemoryEntry, embedding: Option<Vec<f32>>, event_id: u64) {
         if let Err(e) = self.memory_store.index(entry, embedding) {
-            tracing::warn!(event_id, error = ?e, "MemoryAgent: memory_store.index failed");
+            tracing::warn!(event_id, error = ?e, "MemoryProjector: memory_store.index failed");
         }
     }
 
@@ -256,14 +256,14 @@ impl MemoryAgent {
         let mut embedder = match self.embedder.lock() {
             Ok(e) => e,
             Err(e) => {
-                tracing::error!(error = ?e, "MemoryAgent: embedder mutex poisoned");
+                tracing::error!(error = ?e, "MemoryProjector: embedder mutex poisoned");
                 return None;
             }
         };
         match embedder.embed(&[text]) {
             Ok(v) => v.into_iter().next(),
             Err(e) => {
-                tracing::warn!(error = ?e, text_len = text.len(), "MemoryAgent: embedding failed");
+                tracing::warn!(error = ?e, text_len = text.len(), "MemoryProjector: embedding failed");
                 None
             }
         }

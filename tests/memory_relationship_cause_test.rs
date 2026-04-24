@@ -5,7 +5,7 @@
 //!   handler가 Experienced source로 MemoryEntry를 생성
 //! - cause variant별 source / topic 분기 (L1 단위 테스트와 병행)
 //!
-//! `InformationTold`·`Rumor` variant의 경로는 Step E/F에서 RelationshipAgent가 해당
+//! `InformationTold`·`Rumor` variant의 경로는 Step E/F에서 RelationshipPolicy가 해당
 //! cause로 이벤트를 발행하도록 통합되며, Step D는 `RelationshipMemoryHandler`가
 //! 이벤트 payload만 보고 올바르게 분기한다는 점만 검증한다.
 
@@ -47,7 +47,7 @@ fn personal_rel_entries(store: &dyn MemoryStore, owner: &str) -> Vec<npc_mind::M
 
 #[tokio::test]
 async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
-    // 현재 RelationshipAgent의 `handle_dialogue_end`는 cause=Unspecified로 발행한다.
+    // 현재 RelationshipPolicy의 `handle_dialogue_end`는 cause=Unspecified로 발행한다.
     // RelationshipMemoryHandler는 이를 Experienced source의 일반 엔트리로 기록해야 한다.
     let store = Arc::new(InMemoryMemoryStore::new());
     let mut repo = InMemoryRepository::new();
@@ -253,7 +253,7 @@ fn rumor_cause_sets_rumor_source_and_chain_marker() {
 #[tokio::test]
 async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_cause() {
     // Scene에 Beat 트리거 Focus를 넣고 ApplyStimulus로 Beat 전환을 유발하면,
-    // RelationshipAgent가 RelationshipUpdated를 cause=SceneInteraction으로 발행하고
+    // RelationshipPolicy가 RelationshipUpdated를 cause=SceneInteraction으로 발행하고
     // RelationshipMemoryHandler가 Experienced source + topic=None의 엔트리를 만든다.
     use npc_mind::domain::emotion::{
         ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, Scene,

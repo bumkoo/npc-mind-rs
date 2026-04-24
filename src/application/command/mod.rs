@@ -1,4 +1,4 @@
-pub mod agents;
+pub mod policies;
 pub mod dispatcher;
 pub mod handler_v2;
 pub mod priority;
@@ -10,8 +10,8 @@ pub mod telling_ingestion_handler;
 pub mod types;
 pub mod world_overlay_handler;
 
-pub use agents::{
-    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, WorldOverlayAgent,
+pub use policies::{
+    EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, RumorPolicy, WorldOverlayPolicy,
 };
 pub use dispatcher::CommandDispatcher;
 pub use projection_handlers::{

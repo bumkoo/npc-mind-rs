@@ -1,7 +1,7 @@
-//! RelationshipAgent — 관계 갱신 전담 (v2)
+//! RelationshipPolicy — 관계 갱신 전담 (v2)
 //!
 //! `BeatTransitioned` / `DialogueEndRequested` / `RelationshipUpdateRequested` 이벤트에
-//! 반응하여 관계를 갱신한다. `ctx.shared.emotion_state`(StimulusAgent가 merge 후 설정한
+//! 반응하여 관계를 갱신한다. `ctx.shared.emotion_state`(StimulusPolicy가 merge 후 설정한
 //! post-merge 감정)를 입력으로 받는다.
 
 use crate::application::command::handler_v2::{
@@ -11,24 +11,24 @@ use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::tuning::BEAT_DEFAULT_SIGNIFICANCE;
 
-/// 관계 갱신 에이전트
-pub struct RelationshipAgent;
+/// 관계 갱신 폴리시
+pub struct RelationshipPolicy;
 
-impl RelationshipAgent {
+impl RelationshipPolicy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for RelationshipAgent {
+impl Default for RelationshipPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for RelationshipAgent {
+impl EventHandler for RelationshipPolicy {
     fn name(&self) -> &'static str {
-        "RelationshipAgent"
+        "RelationshipPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -101,8 +101,8 @@ impl EventHandler for RelationshipAgent {
     }
 }
 
-// Helper methods for RelationshipAgent's EventHandler impl.
-impl RelationshipAgent {
+// Helper methods for RelationshipPolicy's EventHandler impl.
+impl RelationshipPolicy {
     /// 공용 관계 갱신 로직 — `RelationshipUpdateRequested` (cause 미확정) 경로용.
     fn handle_relationship_update(
         &self,
@@ -179,7 +179,7 @@ impl RelationshipAgent {
 
     /// DialogueEnd — 관계 갱신 + 감정 clear + scene clear. 3 follow-ups.
     ///
-    /// v1 `RelationshipAgent::handle_end_dialogue` 등가. 차이점:
+    /// v1 `RelationshipPolicy::handle_end_dialogue` 등가. 차이점:
     /// - v1: HandlerOutput의 `clear_emotion` / `clear_scene` 플래그로 Dispatcher에 지시
     /// - v2: `ctx.shared.clear_emotion_for` / `ctx.shared.clear_scene` 시그널 설정 →
     ///   Dispatcher의 `apply_shared_to_repository`가 commit phase 후 실행
@@ -222,7 +222,7 @@ impl RelationshipAgent {
 
         // 3 follow-ups: RelationshipUpdated + EmotionCleared + SceneEnded
         // SceneEnded는 터미널 이벤트 — 다른 transactional handler가 interest 가지지 않음
-        // (RelationshipAgent 본인도 interest에서 SceneEnded 제외했으므로 재진입 없음).
+        // (RelationshipPolicy 본인도 interest에서 SceneEnded 제외했으므로 재진입 없음).
         // TODO(step-f): DialogueEnd는 장면 종료 직전 관계 정산이므로 cause는 의미상
         // `SceneInteraction { scene_id }`에 가깝다. 다만 DialogueEndRequested 페이로드는
         // scene_id를 직접 운반하지 않고 (npc_id, partner_id)로부터 합성되며, 장면이
@@ -339,14 +339,14 @@ mod handler_v2_tests {
 
     #[test]
     fn dialogue_end_emits_three_follow_ups_and_sets_clear_signals() {
-        let agent = RelationshipAgent::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
             .with_relationship(rel)
             .with_shared_emotion_state(EmotionState::default());
 
         let event = make_dialogue_end("alice", "bob", Some(0.8));
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         // 3 follow-ups: RelationshipUpdated, EmotionCleared, SceneEnded
         assert_eq!(result.follow_up_events.len(), 3);
@@ -371,9 +371,9 @@ mod handler_v2_tests {
 
     #[test]
     fn scene_ended_no_longer_in_interest_produces_no_follow_ups() {
-        // B4.1: RelationshipAgent는 더 이상 SceneEnded에 반응하지 않는다
+        // B4.1: RelationshipPolicy는 더 이상 SceneEnded에 반응하지 않는다
         //       (DialogueEndRequested가 그 역할을 담당).
-        let agent = RelationshipAgent::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
             .with_relationship(rel)
@@ -381,14 +381,14 @@ mod handler_v2_tests {
 
         let event = make_scene_ended("alice", "bob");
         let result = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect("interest 밖 이벤트는 no-op");
         assert!(result.follow_up_events.is_empty());
     }
 
     #[test]
     fn beat_transitioned_uses_active_scene_for_partner_id() {
-        let agent = RelationshipAgent::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "charlie");
         // Scene의 partner_id="charlie"가 BeatTransitioned의 partner 도출원
         let scene = Scene::new(
@@ -404,7 +404,7 @@ mod handler_v2_tests {
 
         let event = make_beat_transitioned("alice", "charlie");
         let result = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect("should derive partner from scene");
 
         assert_eq!(result.follow_up_events.len(), 1);
@@ -418,14 +418,14 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_relationship_returns_precondition_error() {
-        let agent = RelationshipAgent::new();
+        let policy = RelationshipPolicy::new();
         // relationship 미주입
         let mut harness =
             HandlerTestHarness::new().with_shared_emotion_state(EmotionState::default());
 
         // B4.1: DialogueEndRequested로 변경 (SceneEnded는 이제 interest 밖)
         let event = make_dialogue_end("alice", "bob", None);
-        let err = harness.dispatch(&agent, event).expect_err("must fail");
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
 
         assert!(matches!(
             err,

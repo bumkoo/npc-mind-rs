@@ -1,6 +1,6 @@
-//! DialogueAgent ↔ ListenerPerspectiveConverter 통합 (Phase 7 Step 4)
+//! DialogueOrchestrator ↔ ListenerPerspectiveConverter 통합 (Phase 7 Step 4)
 //!
-//! `DialogueAgent.turn()`이 화자 PAD를 청자 PAD로 올바르게 변환하여
+//! `DialogueOrchestrator.turn()`이 화자 PAD를 청자 PAD로 올바르게 변환하여
 //! `Command::ApplyStimulus`로 dispatch하는지 검증한다.
 //!
 //! Mock 기반이라 임베딩 모델/실제 Converter 없이 변환 경로의 분기만 점검한다.
@@ -30,7 +30,7 @@ use npc_mind::domain::pad::{Pad, UtteranceEmbedding};
 use npc_mind::ports::{EmbedError, GuideFormatter, TextEmbedder, UtteranceAnalyzer};
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
-use npc_mind::{DialogueAgent, EventStore, InMemoryRepository};
+use npc_mind::{DialogueOrchestrator, EventStore, InMemoryRepository};
 
 // ============================================================
 // Mock — 발화당 임베딩 1회 + PAD 반환
@@ -135,7 +135,7 @@ fn betrayal_situation() -> SituationInput {
 }
 
 fn make_agent_base() -> (
-    DialogueAgent<InMemoryRepository, MockConversationPort>,
+    DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<InMemoryEventStore>,
 ) {
     let ctx = TestContext::new();
@@ -146,7 +146,7 @@ fn make_agent_base() -> (
         Arc::new(LocaleFormatter::from_toml(toml).expect("formatter"));
 
     let chat = MockConversationPort::new();
-    let agent = DialogueAgent::new(dispatcher, chat, formatter);
+    let agent = DialogueOrchestrator::new(dispatcher, chat, formatter);
     (agent, store)
 }
 

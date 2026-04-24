@@ -1,14 +1,14 @@
-//! WorldOverlayAgent — 세계 오버레이 사건 팬아웃 (Step D, Mind 컨텍스트)
+//! WorldOverlayPolicy — 세계 오버레이 사건 팬아웃 (Step D, Mind 컨텍스트)
 //!
 //! `ApplyWorldEventRequested`를 받아 `WorldEventOccurred` follow-up을 단일 발행한다.
 //! Canonical MemoryEntry 생성 / supersede 는 Inline `WorldOverlayHandler`가 처리하며,
-//! 이 에이전트는 순수 이벤트 변환 역할만 한다.
+//! 이 폴리시는 순수 이벤트 변환 역할만 한다.
 //!
-//! **왜 별도 Agent로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
+//! **왜 별도 Policy로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
 //! `build_initial_event`에서 바로 `WorldEventOccurred`를 발행하는 쪽이 cascade depth가
-//! 얕아지지만, 다음 이유로 Agent 단계를 유지한다:
+//! 얕아지지만, 다음 이유로 Policy 단계를 유지한다:
 //! 1. 다른 Command도 Transactional 체인을 통해 `*Requested → *Occurred` 흐름을 거친다
-//!    (`InformationAgent`, `SceneAgent` 등) — 일관된 대칭.
+//!    (`InformationPolicy`, `ScenePolicy` 등) — 일관된 대칭.
 //! 2. 향후 세계 사건 유효성 검증·Canonical 충돌 감지·다중 follow-up (예: 목격자 개별
 //!    이벤트)이 필요해지면 dispatcher를 건드리지 않고 여기서 확장 가능.
 //! 3. Event Sourcing 관점에서 `*Requested`와 `*Occurred`가 이벤트 스토어에 별도로 남아
@@ -22,23 +22,23 @@ use crate::application::command::handler_v2::{
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 
-pub struct WorldOverlayAgent;
+pub struct WorldOverlayPolicy;
 
-impl WorldOverlayAgent {
+impl WorldOverlayPolicy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for WorldOverlayAgent {
+impl Default for WorldOverlayPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for WorldOverlayAgent {
+impl EventHandler for WorldOverlayPolicy {
     fn name(&self) -> &'static str {
-        "WorldOverlayAgent"
+        "WorldOverlayPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -109,10 +109,10 @@ mod tests {
 
     #[test]
     fn emits_world_event_occurred_with_same_payload() {
-        let agent = WorldOverlayAgent::new();
+        let policy = WorldOverlayPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let result = harness
-            .dispatch(&agent, request_event("jianghu", Some("leader"), "새 맹주 등장"))
+            .dispatch(&policy, request_event("jianghu", Some("leader"), "새 맹주 등장"))
             .expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = WorldOverlayAgent::new();
+        let policy = WorldOverlayPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = DomainEvent::new(
             0,
@@ -145,7 +145,7 @@ mod tests {
             0,
             EventPayload::EmotionCleared { npc_id: "x".into() },
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 }

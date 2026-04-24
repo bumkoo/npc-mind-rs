@@ -385,13 +385,13 @@ async fn ending_one_scene_leaves_other_active() {
 }
 
 /// B4 Session 3 (Option A) 회귀 가드 — Beat 전환 시 BeatTransitioned.partner_id가 payload에
-/// 담겨있어 RelationshipAgent가 **올바른 Scene의 관계**를 갱신함을 확인.
+/// 담겨있어 RelationshipPolicy가 **올바른 Scene의 관계**를 갱신함을 확인.
 ///
 /// 시나리오:
 /// 1. Scene A (mu_baek↔gyo_ryong)와 Scene B (mu_baek↔su_ryeon)를 동시 활성화
 /// 2. Scene B를 먼저 시작하여 `InMemoryRepository.last_scene_id`를 B로 둠
 /// 3. Scene A에서 Beat 전환 유발 stimulus 실행
-/// 4. 이전 (Session 2) 구현에서는 RelationshipAgent가 `ctx.repo.get_scene()` →
+/// 4. 이전 (Session 2) 구현에서는 RelationshipPolicy가 `ctx.repo.get_scene()` →
 ///    last_scene_id가 가리키는 **Scene B의 partner_id(su_ryeon)** 를 읽어 잘못된 관계 갱신
 /// 5. 이번 수정 후에는 event.partner_id(gyo_ryong)을 직접 읽어 올바른 관계를 갱신
 #[tokio::test]
@@ -554,7 +554,7 @@ async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
     assert_eq!(
         (owner_id.as_str(), target_id.as_str()),
         ("mu_baek", "gyo_ryong"),
-        "RelationshipAgent는 Scene A의 관계(mu_baek→gyo_ryong)를 갱신해야 함 — \
+        "RelationshipPolicy는 Scene A의 관계(mu_baek→gyo_ryong)를 갱신해야 함 — \
          이전 버그에서는 last_scene_id(Scene B)의 su_ryeon을 target으로 잡았음"
     );
 }

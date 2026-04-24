@@ -206,7 +206,7 @@ pub async fn dispatch_generate_guide(
 
     let guide = output.shared.guide.clone().ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
-            "GuideAgent 실행 결과 없음".into(),
+            "GuidePolicy 실행 결과 없음".into(),
         ))
     })?;
 
@@ -412,7 +412,7 @@ fn build_stimulus_result_from_output(
     })?;
     let guide: ActingGuide = output.shared.guide.as_ref().cloned().ok_or_else(|| {
         AppError::V2Dispatch(DispatchV2Error::InvalidSituation(
-            "ActingGuide 재구성 실패 (GuideAgent 등록 확인)".into(),
+            "ActingGuide 재구성 실패 (GuidePolicy 등록 확인)".into(),
         ))
     })?;
 

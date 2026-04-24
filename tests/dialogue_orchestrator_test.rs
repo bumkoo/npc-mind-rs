@@ -1,9 +1,9 @@
-// B5.1: DialogueAgent가 v1 dispatch를 사용 → test에서도 allow 필요.
+// B5.1: DialogueOrchestrator가 v1 dispatch를 사용 → test에서도 allow 필요.
 #![allow(deprecated)]
 
-//! DialogueAgent 통합 테스트 (Phase 4)
+//! DialogueOrchestrator 통합 테스트 (Phase 4)
 //!
-//! DialogueAgent가 LLM(mock)과 CommandDispatcher를 올바르게 연결하여
+//! DialogueOrchestrator가 LLM(mock)과 CommandDispatcher를 올바르게 연결하여
 //! Event Sourcing 경로로 대화 턴을 발행하는지 검증한다.
 
 #![cfg(feature = "chat")]
@@ -24,7 +24,7 @@ use npc_mind::domain::pad::Pad;
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
 use npc_mind::ports::GuideFormatter;
-use npc_mind::{DialogueAgent, EventStore, InMemoryRepository};
+use npc_mind::{DialogueOrchestrator, EventStore, InMemoryRepository};
 
 use std::sync::Arc;
 
@@ -50,9 +50,9 @@ fn betrayal_situation() -> SituationInput {
     }
 }
 
-/// DialogueAgent + EventStore + ConversationPort mock 튜플 생성
+/// DialogueOrchestrator + EventStore + ConversationPort mock 튜플 생성
 fn setup() -> (
-    DialogueAgent<InMemoryRepository, MockConversationPort>,
+    DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<InMemoryEventStore>,
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
 ) {
@@ -66,8 +66,8 @@ fn setup() -> (
     let chat = MockConversationPort::new();
     let calls = chat.calls.clone();
 
-    let agent = DialogueAgent::new(dispatcher, chat, formatter);
-    (agent, store, calls)
+    let orchestrator = DialogueOrchestrator::new(dispatcher, chat, formatter);
+    (orchestrator, store, calls)
 }
 
 // ---------------------------------------------------------------------------
@@ -76,9 +76,9 @@ fn setup() -> (
 
 #[tokio::test]
 async fn start_session_emits_emotion_appraised_and_starts_llm() {
-    let (mut agent, store, calls) = setup();
+    let (mut orchestrator, store, calls) = setup();
 
-    let outcome = agent
+    let outcome = orchestrator
         .start_session(
             "session-1",
             "mu_baek",
@@ -117,7 +117,7 @@ async fn start_session_emits_emotion_appraised_and_starts_llm() {
         _ => panic!("첫 호출은 StartSession이어야 함"),
     }
 
-    assert_eq!(agent.session_count(), 1);
+    assert_eq!(orchestrator.session_count(), 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +126,9 @@ async fn start_session_emits_emotion_appraised_and_starts_llm() {
 
 #[tokio::test]
 async fn turn_emits_events_in_correct_order() {
-    let (mut agent, store, calls) = setup();
+    let (mut orchestrator, store, calls) = setup();
 
-    agent
+    orchestrator
         .start_session(
             "session-1",
             "mu_baek",
@@ -138,7 +138,7 @@ async fn turn_emits_events_in_correct_order() {
         .await
         .unwrap();
 
-    let outcome = agent
+    let outcome = orchestrator
         .turn(
             "session-1",
             "오랜만이군.",
@@ -254,9 +254,9 @@ async fn turn_emits_events_in_correct_order() {
 
 #[tokio::test]
 async fn turn_without_pad_skips_stimulus_dispatch() {
-    let (mut agent, store, _calls) = setup();
+    let (mut orchestrator, store, _calls) = setup();
 
-    agent
+    orchestrator
         .start_session(
             "session-1",
             "mu_baek",
@@ -268,7 +268,7 @@ async fn turn_without_pad_skips_stimulus_dispatch() {
 
     let pre_count = store.get_all_events().len();
 
-    let outcome = agent
+    let outcome = orchestrator
         .turn("session-1", "안녕", None, None)
         .await
         .expect("turn ok");
@@ -298,9 +298,9 @@ async fn turn_without_pad_skips_stimulus_dispatch() {
 
 #[tokio::test]
 async fn end_session_with_significance_dispatches_end_dialogue() {
-    let (mut agent, store, calls) = setup();
+    let (mut orchestrator, store, calls) = setup();
 
-    agent
+    orchestrator
         .start_session(
             "session-1",
             "mu_baek",
@@ -309,7 +309,7 @@ async fn end_session_with_significance_dispatches_end_dialogue() {
         )
         .await
         .unwrap();
-    agent
+    orchestrator
         .turn(
             "session-1",
             "그만 가보겠다",
@@ -323,7 +323,7 @@ async fn end_session_with_significance_dispatches_end_dialogue() {
         .await
         .unwrap();
 
-    let outcome = agent
+    let outcome = orchestrator
         .end_session("session-1", Some(0.5))
         .await
         .expect("end_session ok");
@@ -358,7 +358,7 @@ async fn end_session_with_significance_dispatches_end_dialogue() {
         "SceneEnded 발행"
     );
 
-    assert_eq!(agent.session_count(), 0, "세션 메타 정리");
+    assert_eq!(orchestrator.session_count(), 0, "세션 메타 정리");
 }
 
 // ---------------------------------------------------------------------------
@@ -367,9 +367,9 @@ async fn end_session_with_significance_dispatches_end_dialogue() {
 
 #[tokio::test]
 async fn end_session_without_significance_skips_dispatch() {
-    let (mut agent, store, _calls) = setup();
+    let (mut orchestrator, store, _calls) = setup();
 
-    agent
+    orchestrator
         .start_session(
             "session-1",
             "mu_baek",
@@ -381,7 +381,7 @@ async fn end_session_without_significance_skips_dispatch() {
 
     let pre = store.get_all_events().len();
 
-    let outcome = agent
+    let outcome = orchestrator
         .end_session("session-1", None)
         .await
         .expect("end_session ok");
@@ -392,7 +392,7 @@ async fn end_session_without_significance_skips_dispatch() {
         pre,
         "significance 없음 → 이벤트 추가 없음"
     );
-    assert_eq!(agent.session_count(), 0);
+    assert_eq!(orchestrator.session_count(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -401,11 +401,11 @@ async fn end_session_without_significance_skips_dispatch() {
 
 #[tokio::test]
 async fn turn_on_unknown_session_fails() {
-    let (mut agent, _store, _calls) = setup();
+    let (mut orchestrator, _store, _calls) = setup();
 
-    let result = agent.turn("missing", "안녕", None, None).await;
+    let result = orchestrator.turn("missing", "안녕", None, None).await;
     match result {
-        Err(npc_mind::DialogueAgentError::SessionNotFound(id)) => assert_eq!(id, "missing"),
+        Err(npc_mind::DialogueOrchestratorError::SessionNotFound(id)) => assert_eq!(id, "missing"),
         Err(other) => panic!("기대: SessionNotFound, 실제: {}", other),
         Ok(_) => panic!("세션이 없으므로 실패해야 함"),
     }
@@ -415,11 +415,11 @@ async fn turn_on_unknown_session_fails() {
 /// LLM도 호출되지 않아야 한다 (세션 메타 확인이 먼저).
 #[tokio::test]
 async fn end_session_on_unknown_session_fails() {
-    let (mut agent, _store, calls) = setup();
+    let (mut orchestrator, _store, calls) = setup();
 
-    let result = agent.end_session("missing", Some(0.5)).await;
+    let result = orchestrator.end_session("missing", Some(0.5)).await;
     match result {
-        Err(npc_mind::DialogueAgentError::SessionNotFound(id)) => assert_eq!(id, "missing"),
+        Err(npc_mind::DialogueOrchestratorError::SessionNotFound(id)) => assert_eq!(id, "missing"),
         Err(other) => panic!("기대: SessionNotFound, 실제: {}", other),
         Ok(_) => panic!("세션이 없으므로 실패해야 함"),
     }
@@ -435,13 +435,13 @@ async fn end_session_on_unknown_session_fails() {
 // 7. Beat 전환 시 ConversationPort.update_system_prompt 호출
 // ---------------------------------------------------------------------------
 
-/// Beat 전환이 발생하면 DialogueAgent는 새 프롬프트로 system prompt를 갱신해야 한다.
+/// Beat 전환이 발생하면 DialogueOrchestrator는 새 프롬프트로 system prompt를 갱신해야 한다.
 /// Scene 설정 전략은 application_test.rs::test_beat_transition_and_emotion_merging와 동일 —
 /// 교룡(gyo_ryong)은 감정 민감도가 높아 Joy가 쉽게 소멸하고,
 /// Joy absent 조건의 Focus로 바로 전환된다.
 #[tokio::test]
 async fn beat_transition_calls_update_system_prompt() {
-    let (mut agent, store, calls) = setup();
+    let (mut orchestrator, store, calls) = setup();
 
     // Scene 설정 — 두 Focus: 초기(약한 Joy) + 전환(Joy 소멸 시)
     let scene_cmd = Command::StartScene {
@@ -484,16 +484,16 @@ async fn beat_transition_calls_update_system_prompt() {
             },
         ],
     };
-    agent.dispatcher().dispatch_v2(scene_cmd).await.unwrap();
+    orchestrator.dispatcher().dispatch_v2(scene_cmd).await.unwrap();
 
     // LLM 세션 시작 (Scene의 active focus로 자동 appraise)
-    agent
+    orchestrator
         .start_session("s", "gyo_ryong", "mu_baek", None)
         .await
         .unwrap();
 
     // 교룡에게 강한 불쾌 자극 → Joy 소멸 → Beat 전환
-    let outcome = agent
+    let outcome = orchestrator
         .turn(
             "s",
             "원칙 타령은 지겹군.",
@@ -518,7 +518,7 @@ async fn beat_transition_calls_update_system_prompt() {
         "BeatTransitioned 이벤트 발행"
     );
 
-    // DialogueAgent가 update_system_prompt를 호출했는지 확인
+    // DialogueOrchestrator가 update_system_prompt를 호출했는지 확인
     let calls = calls.lock().unwrap();
     let update_call = calls
         .iter()
@@ -536,7 +536,7 @@ async fn beat_transition_calls_update_system_prompt() {
     }
 
     // 호출 순서: StartSession → UpdateSystemPrompt → SendMessage
-    // (DialogueAgent.turn 내부: stimulus → [beat이면 update_prompt] → send_message)
+    // (DialogueOrchestrator.turn 내부: stimulus → [beat이면 update_prompt] → send_message)
     let update_idx = calls
         .iter()
         .position(|c| matches!(c, ChatCall::UpdateSystemPrompt { .. }))
@@ -568,9 +568,9 @@ async fn dialogue_turn_events_are_published_to_event_bus() {
     let dispatcher = common::v2_dispatcher(ctx.repo, store_dyn, bus.clone());
     let toml = builtin_toml("ko").unwrap();
     let formatter: Arc<dyn GuideFormatter> = Arc::new(LocaleFormatter::from_toml(toml).unwrap());
-    let mut agent = DialogueAgent::new(dispatcher, MockConversationPort::new(), formatter);
+    let mut orchestrator = DialogueOrchestrator::new(dispatcher, MockConversationPort::new(), formatter);
 
-    agent
+    orchestrator
         .start_session(
             "s",
             "mu_baek",
@@ -579,7 +579,7 @@ async fn dialogue_turn_events_are_published_to_event_bus() {
         )
         .await
         .unwrap();
-    agent
+    orchestrator
         .turn(
             "s",
             "...",

@@ -1,6 +1,6 @@
 //! Memory framing formatter — Source별 라벨과 header/footer로 "떠오르는 기억" 블록 생성.
 //!
-//! Step B — `DialogueAgent.inject_memory_push`가 이 formatter를 사용해 MemoryRanker 결과를
+//! Step B — `DialogueOrchestrator.inject_memory_push`가 이 formatter를 사용해 MemoryRanker 결과를
 //! 시스템 프롬프트 prepend용 텍스트 블록으로 변환한다.
 
 use std::collections::HashMap;

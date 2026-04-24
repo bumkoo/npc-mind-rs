@@ -1,6 +1,6 @@
 # 부호 축 분류기 설계 — Listener-perspective 변환 (임베딩 기반)
 
-**상태**: Phase 1-4 설계 완료 (magnitude k-NN 81%) · **Phase 7 Step 1-5 프로덕션 통합 완료** (88% baseline, default-on, DialogueAgent · Mind Studio 적용)
+**상태**: Phase 1-4 설계 완료 (magnitude k-NN 81%) · **Phase 7 Step 1-5 프로덕션 통합 완료** (88% baseline, default-on, DialogueOrchestrator · Mind Studio 적용)
 **날짜**: 2026-04-19 (Phase 1-4 본문 2026-04-18 작성, Phase 7 완료로 상태 갱신)
 **작성자**: Bekay + Claude
 **관련 문서**: [`adr-pad-v2-redesign.md`](adr-pad-v2-redesign.md) (LLM 기반 PAD 추출, 장기 방향), [`phase7-converter-integration.md`](phase7-converter-integration.md) (프로덕션 통합 설계)

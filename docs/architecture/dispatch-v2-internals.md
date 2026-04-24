@@ -9,7 +9,7 @@
 > - `src/application/command/priority.rs` — 우선순위 상수 + 불변식 테스트
 > - `src/application/command/types.rs` — `Command` enum + `aggregate_key()`
 > - `src/domain/aggregate.rs` — `AggregateKey`
-> - `src/application/command/agents/emotion_agent.rs` — Transactional 핸들러 예시
+> - `src/application/command/policies/emotion_policy.rs` — Transactional 핸들러 예시
 > - `src/application/command/projection_handlers.rs` — Inline 핸들러 예시
 
 ---
@@ -73,7 +73,7 @@ dispatch_v2(cmd).await
 | `command/handler_v2.rs` | `test_support::HandlerTestHarness` | L1 단위 테스트 지원 |
 | `command/priority.rs` | `transactional::*` · `inline::*` + `invariants` 테스트 | 우선순위 상수 + 순서 회귀 방지 |
 | `command/types.rs` | `Command` · `Command::aggregate_key()` | 10종 커맨드 + 라우팅 키 |
-| `command/agents/*.rs` | 8 Transactional Agent | Appraise/Stimulus/Guide/Relationship/Scene/Information/Rumor/WorldOverlay |
+| `command/policies/*.rs` | 8 Transactional Policy | Appraise/Stimulus/Guide/Relationship/Scene/Information/Rumor/WorldOverlay |
 | `command/projection_handlers.rs` | 3 Inline Projection wrapper | Emotion/Relationship/Scene read-view 갱신 |
 | `command/{telling,rumor_distribution,world_overlay,relationship_memory,scene_consolidation}_handler.rs` | 5 Inline Ingestion handler | Memory 쓰기·흡수 |
 | `domain/aggregate.rs` | `AggregateKey` · `npc_id_hint()` | 이벤트·커맨드 라우팅 식별자 |
@@ -122,7 +122,7 @@ pub struct HandlerShared {
 ```
 
 - `Option<T>`는 "변화 없음 vs. 새로 세팅" 을 표현.
-- **삭제**는 `Option`으로 표현 불가 → 별도 불린/ID 플래그 2개. `DialogueEndRequested`를 `RelationshipAgent`가 처리할 때 이 두 필드를 세팅하면 ④ 단계에서 `clear_emotion_state` / `clear_scene` 이 호출된다.
+- **삭제**는 `Option`으로 표현 불가 → 별도 불린/ID 플래그 2개. `DialogueEndRequested`를 `RelationshipPolicy`가 처리할 때 이 두 필드를 세팅하면 ④ 단계에서 `clear_emotion_state` / `clear_scene` 이 호출된다.
 - 필드 추가는 **PR 리뷰 항목** (용어 drift 방지). 신규 도메인이 생기면 먼저 `HandlerShared` 필드부터 설계.
 
 ### 3.3 반환 타입
@@ -227,7 +227,7 @@ while let Some((depth, event)) = event_queue.pop_front() {
 - **BFS**: depth가 깊어지는 follow-up은 큐 **뒤** 에 붙는다. 같은 depth의 모든 이벤트를 먼저 소진한 뒤 다음 depth로 넘어간다.
 - **핸들러 정렬은 `register_*` 시점**에 `sort_by_key` 로 끝난다. 매 이벤트마다 정렬하지 않는다.
 - **`interest()` 필터**가 먼저 돌고, 그 다음 **`mode()` 이중 확인**. Inline 핸들러가 실수로 `transactional_handlers` 에 들어간 경우 `debug_assert!`로 감지하지만 release에서는 `continue`로 조용히 스킵.
-- **`prior_events`** 는 같은 커맨드 안에서 이미 지나간 이벤트 목록. 예: `GuideAgent`가 같은 커맨드 내 `EmotionAppraised`나 `StimulusApplied`를 조회할 수 있게 해주는 근거. 이게 없었다면 `HandlerShared`만으로는 "직전 감정 이벤트의 snapshot"을 얻기 어려웠다.
+- **`prior_events`** 는 같은 커맨드 안에서 이미 지나간 이벤트 목록. 예: `GuidePolicy`가 같은 커맨드 내 `EmotionAppraised`나 `StimulusApplied`를 조회할 수 있게 해주는 근거. 이게 없었다면 `HandlerShared`만으로는 "직전 감정 이벤트의 snapshot"을 얻기 어려웠다.
 - **`can_emit_follow_up = false`** 인 핸들러가 `follow_up_events` 를 돌려주면 `debug_assert!` 폭발. Release에선 조용히 무시되지만 테스트에서 잡는다.
 
 ### 4.4 ④ `apply_shared_to_repository`
@@ -248,7 +248,7 @@ fn apply_shared_to_repository(repo: &mut R, aggregate_key: &AggregateKey, shared
 }
 ```
 
-**순서 보장**: save → clear. 같은 커맨드에서 `emotion_state=Some(...)` 와 `clear_emotion_for=Some(npc)` 를 동시에 세팅하면 save가 먼저 찍히고 그 뒤에 clear가 지운다. `DialogueEndRequested`를 `RelationshipAgent`가 처리할 때 이 순서를 가정한다.
+**순서 보장**: save → clear. 같은 커맨드에서 `emotion_state=Some(...)` 와 `clear_emotion_for=Some(npc)` 를 동시에 세팅하면 save가 먼저 찍히고 그 뒤에 clear가 지운다. `DialogueEndRequested`를 `RelationshipPolicy`가 처리할 때 이 순서를 가정한다.
 
 `npc_id_hint()` 는 `Scene{npc}` / `Npc(id)` / `Relationship{owner}` / `Memory/Rumor/World(id)` 에서 문자열 하나를 뽑아주는 헬퍼. Memory/Rumor/World 키에서는 **실제 NPC id가 아니다** — 로그·저장소 키 계산용 식별자로만 써야 한다.
 
@@ -301,7 +301,7 @@ for event in &committed { self.event_bus.publish(event); }
 Ok(DispatchV2Output { events: committed, shared })
 ```
 
-- **lock을 먼저 놓는다**. fanout은 broadcast라서 구독자(MemoryAgent / SSE / 게임 엔진 등)가 repo를 읽으려 하면 데드락 위험이 있다. 순서가 중요.
+- **lock을 먼저 놓는다**. fanout은 broadcast라서 구독자(MemoryProjector / SSE / 게임 엔진 등)가 repo를 읽으려 하면 데드락 위험이 있다. 순서가 중요.
 - `event_bus.publish` 는 `tokio::broadcast::send` 로 귀결. 구독자 lag은 `subscribe_with_lag` 사용자가 replay로 복구.
 
 ---
@@ -330,7 +330,7 @@ pub enum DeliveryMode {
 
 1. `repo` 는 read-only. 변경은 `ctx.shared.*` 로만.
 2. `follow_up_events` 는 `can_emit_follow_up = true` 일 때만 반환.
-3. 자기 관심사 아니면 `HandlerInterest::Kinds` 에 없어야 함 — `interest().matches()` 가 먼저 걸러주지만, `handle` 안에서도 payload 패턴 매칭 + else 분기로 방어하는 패턴을 유지 (`EmotionAgent` 참고).
+3. 자기 관심사 아니면 `HandlerInterest::Kinds` 에 없어야 함 — `interest().matches()` 가 먼저 걸러주지만, `handle` 안에서도 payload 패턴 매칭 + else 분기로 방어하는 패턴을 유지 (`EmotionPolicy` 참고).
 4. 에러는 `커맨드 전체 중단`. 일상적 "이벤트가 내 관심 외" 상태를 에러로 만들지 말 것.
 
 **Inline 핸들러가 지켜야 할 계약**
@@ -363,14 +363,14 @@ pub struct EventHandlerContext<'a> {
 
 | 상수 | 값 | 핸들러 | 왜 이 순서 |
 |---|---|---|---|
-| `SCENE_START` | 5 | SceneAgent | 감정 평가의 전제 |
-| `EMOTION_APPRAISAL` | 10 | EmotionAgent | 자극/가이드가 emotion_state 의존 |
-| `STIMULUS_APPLICATION` | 15 | StimulusAgent | 자극 변동은 감정 평가 뒤 |
-| `GUIDE_GENERATION` | 20 | GuideAgent | 감정·자극 완료 후 가이드 작성 |
-| `WORLD_OVERLAY` | 25 | WorldOverlayAgent | Guide 이후, 관계 이전 |
-| `RELATIONSHIP_UPDATE` | 30 | RelationshipAgent | Scene/Beat 종료 시 |
-| `INFORMATION_TELLING` | 35 | InformationAgent | 청자의 현재 trust 반영 위해 관계 갱신 뒤 |
-| `RUMOR_SPREAD` | 40 | RumorAgent | 정보 전달 뒤 |
+| `SCENE_START` | 5 | ScenePolicy | 감정 평가의 전제 |
+| `EMOTION_APPRAISAL` | 10 | EmotionPolicy | 자극/가이드가 emotion_state 의존 |
+| `STIMULUS_APPLICATION` | 15 | StimulusPolicy | 자극 변동은 감정 평가 뒤 |
+| `GUIDE_GENERATION` | 20 | GuidePolicy | 감정·자극 완료 후 가이드 작성 |
+| `WORLD_OVERLAY` | 25 | WorldOverlayPolicy | Guide 이후, 관계 이전 |
+| `RELATIONSHIP_UPDATE` | 30 | RelationshipPolicy | Scene/Beat 종료 시 |
+| `INFORMATION_TELLING` | 35 | InformationPolicy | 청자의 현재 trust 반영 위해 관계 갱신 뒤 |
+| `RUMOR_SPREAD` | 40 | RumorPolicy | 정보 전달 뒤 |
 | `AUDIT` | 90 | (예약) | 마지막 감사 로깅용 자리 |
 
 ### 6.2 Inline (작은 값 먼저)
@@ -426,10 +426,10 @@ CommandDispatcher::new(repo, event_store, event_bus)
 
 | Builder | 등록하는 핸들러 | 용도 |
 |---|---|---|
-| `with_default_handlers()` | SceneAgent, EmotionAgent, StimulusAgent, GuideAgent, RelationshipAgent, InformationAgent, WorldOverlayAgent (Transactional) + 3 Projection (Inline) | 코어 Mind 엔진만 |
+| `with_default_handlers()` | ScenePolicy, EmotionPolicy, StimulusPolicy, GuidePolicy, RelationshipPolicy, InformationPolicy, WorldOverlayPolicy (Transactional) + 3 Projection (Inline) | 코어 Mind 엔진만 |
 | `with_memory(store)` | + `TellingIngestionHandler` (Inline) | Step C2 lean — 기존 콜러 호환용 |
 | `with_memory_full(store)` | + `TellingIngestion` + `WorldOverlay` + `RelationshipMemory` + `SceneConsolidation` (모두 Inline) | Step D 전체 번들 |
-| `with_rumor(memory, rumor)` | + `RumorAgent` (Transactional) + `RumorDistributionHandler` (Inline) | 소문 서브시스템 |
+| `with_rumor(memory, rumor)` | + `RumorPolicy` (Transactional) + `RumorDistributionHandler` (Inline) | 소문 서브시스템 |
 
 **중요**: `with_memory` / `with_memory_full` 는 **상호 배타가 아니다** — 같은 dispatcher에서 같은 `TellingIngestionHandler` 가 두 번 등록되어 중복 실행될 수 있다. `with_memory_full` 을 쓰려면 `with_memory` 는 호출하지 말 것. 현재 코드에 방어 장치는 없음 (리뷰 H5).
 
@@ -445,14 +445,14 @@ CommandDispatcher::new(repo, event_store, event_bus)
 2. `Command::aggregate_key()` · `npc_id()` · `partner_id()` 에 arm 추가.
 3. `dispatcher.rs::build_initial_event` 에 arm 추가 — `*Requested` 이벤트 생성.
 4. `domain/event.rs::EventPayload` 에 `*Requested` variant 추가 + `aggregate_key()` 에 매핑.
-5. 처리할 `Transactional` 핸들러가 없으면 Agent 새로 만들기 (§9.2).
-6. `with_default_handlers` 에 해당 Agent 등록할지, 별도 builder 만들지 결정.
+5. 처리할 `Transactional` 핸들러가 없으면 Policy 새로 만들기 (§9.2).
+6. `with_default_handlers` 에 해당 Policy 등록할지, 별도 builder 만들지 결정.
 7. DTO 필요하면 `application/dto.rs`.
 8. 통합 테스트: `tests/dispatch_v2_test.rs` 에 커맨드 호출 → 예상 이벤트 검증.
 
-### 9.2 새 Transactional Agent
+### 9.2 새 Transactional Policy
 
-1. `command/agents/your_agent.rs` 에 struct + `impl EventHandler`.
+1. `command/policies/your_agent.rs` 에 struct + `impl EventHandler`.
 2. `interest()` — `HandlerInterest::Kinds(vec![EventKind::...])`.
 3. `mode()` — `DeliveryMode::Transactional { priority: priority::transactional::YOUR_SLOT, can_emit_follow_up: true|false }`.
 4. `priority.rs::transactional` 에 상수 추가. `invariants` 모듈에 순서 테스트 추가.
@@ -496,13 +496,13 @@ Memory/Rumor/World 추가 전례 (Step C1). 필요한 경우:
 5. **새 이벤트의 `aggregate_key()` 가 커맨드와 다른 경우**, `commit_staging_buffer` 가 payload 기준으로 aggregate_id를 찍으므로 `EventStore.get_events_by_aggregate(id)` 질의가 예상과 다를 수 있다. 이건 버그가 아니라 의도된 설계지만, 테스트 작성 시 혼동 주의.
 6. **`InMemoryEventStore` 는 프로세스 수명 동안 누적**. Mind Studio 장기 실행 시 메모리·`next_sequence` O(N) scan 비용. 영구 store는 Phase 8+.
 7. **`set_correlation_id` 는 `&self` + `AtomicU64`** 이지만 값은 전역 (dispatcher 단위). 동시 여러 커맨드가 같은 dispatcher를 쓰면 상관관계 ID가 섞일 수 있다. 현재 Mind Studio는 repo lock이 커맨드를 직렬화하므로 실질적 충돌은 없다.
-8. **`Command::SeedRumor` 의 초기 aggregate_id는 `"pending-<seq>"`** — 실제 RumorId가 부여되기 전 임시값. 이 값으로 `EventStore` 를 질의하면 `SeedRumorRequested` 하나만 나온다. RumorAgent가 발행하는 `RumorSeeded` 는 진짜 RumorId로 찍혀 별도 aggregate로 저장된다.
+8. **`Command::SeedRumor` 의 초기 aggregate_id는 `"pending-<seq>"`** — 실제 RumorId가 부여되기 전 임시값. 이 값으로 `EventStore` 를 질의하면 `SeedRumorRequested` 하나만 나온다. RumorPolicy가 발행하는 `RumorSeeded` 는 진짜 RumorId로 찍혀 별도 aggregate로 저장된다.
 
 ---
 
 ## 11. 관련 문서
 
 - [`system-overview.md`](system-overview.md) — 전체 구조 개관 (이 문서의 부모)
-- [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) — EventBus / CQRS / Event Sourcing / Multi-Agent / RAG 상세 설계
+- [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) — EventBus / CQRS / Event Sourcing / Multi-Handler / RAG 상세 설계
 - [`b-plan-implementation.md`](b-plan-implementation.md) — B안 마이그레이션 단계별 설계 (B0 ~ B5.3)
 - 다음 Deep-Dive 후보: **#2 EventHandler 카탈로그** — 8 Transactional + 8 Inline 핸들러의 입력/출력/부수효과 매트릭스
