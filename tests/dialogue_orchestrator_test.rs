@@ -1,9 +1,9 @@
-// B5.1: DialogueAgent가 v1 dispatch를 사용 → test에서도 allow 필요.
+// B5.1: DialogueOrchestrator가 v1 dispatch를 사용 → test에서도 allow 필요.
 #![allow(deprecated)]
 
-//! DialogueAgent 통합 테스트 (Phase 4)
+//! DialogueOrchestrator 통합 테스트 (Phase 4)
 //!
-//! DialogueAgent가 LLM(mock)과 CommandDispatcher를 올바르게 연결하여
+//! DialogueOrchestrator가 LLM(mock)과 CommandDispatcher를 올바르게 연결하여
 //! Event Sourcing 경로로 대화 턴을 발행하는지 검증한다.
 
 #![cfg(feature = "chat")]
@@ -24,7 +24,7 @@ use npc_mind::domain::pad::Pad;
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
 use npc_mind::ports::GuideFormatter;
-use npc_mind::{DialogueAgent, EventStore, InMemoryRepository};
+use npc_mind::{DialogueOrchestrator, EventStore, InMemoryRepository};
 
 use std::sync::Arc;
 
@@ -50,9 +50,9 @@ fn betrayal_situation() -> SituationInput {
     }
 }
 
-/// DialogueAgent + EventStore + ConversationPort mock 튜플 생성
+/// DialogueOrchestrator + EventStore + ConversationPort mock 튜플 생성
 fn setup() -> (
-    DialogueAgent<InMemoryRepository, MockConversationPort>,
+    DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<InMemoryEventStore>,
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
 ) {
@@ -66,7 +66,7 @@ fn setup() -> (
     let chat = MockConversationPort::new();
     let calls = chat.calls.clone();
 
-    let agent = DialogueAgent::new(dispatcher, chat, formatter);
+    let agent = DialogueOrchestrator::new(dispatcher, chat, formatter);
     (agent, store, calls)
 }
 
@@ -405,7 +405,7 @@ async fn turn_on_unknown_session_fails() {
 
     let result = agent.turn("missing", "안녕", None, None).await;
     match result {
-        Err(npc_mind::DialogueAgentError::SessionNotFound(id)) => assert_eq!(id, "missing"),
+        Err(npc_mind::DialogueOrchestratorError::SessionNotFound(id)) => assert_eq!(id, "missing"),
         Err(other) => panic!("기대: SessionNotFound, 실제: {}", other),
         Ok(_) => panic!("세션이 없으므로 실패해야 함"),
     }
@@ -419,7 +419,7 @@ async fn end_session_on_unknown_session_fails() {
 
     let result = agent.end_session("missing", Some(0.5)).await;
     match result {
-        Err(npc_mind::DialogueAgentError::SessionNotFound(id)) => assert_eq!(id, "missing"),
+        Err(npc_mind::DialogueOrchestratorError::SessionNotFound(id)) => assert_eq!(id, "missing"),
         Err(other) => panic!("기대: SessionNotFound, 실제: {}", other),
         Ok(_) => panic!("세션이 없으므로 실패해야 함"),
     }
@@ -435,7 +435,7 @@ async fn end_session_on_unknown_session_fails() {
 // 7. Beat 전환 시 ConversationPort.update_system_prompt 호출
 // ---------------------------------------------------------------------------
 
-/// Beat 전환이 발생하면 DialogueAgent는 새 프롬프트로 system prompt를 갱신해야 한다.
+/// Beat 전환이 발생하면 DialogueOrchestrator는 새 프롬프트로 system prompt를 갱신해야 한다.
 /// Scene 설정 전략은 application_test.rs::test_beat_transition_and_emotion_merging와 동일 —
 /// 교룡(gyo_ryong)은 감정 민감도가 높아 Joy가 쉽게 소멸하고,
 /// Joy absent 조건의 Focus로 바로 전환된다.
@@ -518,7 +518,7 @@ async fn beat_transition_calls_update_system_prompt() {
         "BeatTransitioned 이벤트 발행"
     );
 
-    // DialogueAgent가 update_system_prompt를 호출했는지 확인
+    // DialogueOrchestrator가 update_system_prompt를 호출했는지 확인
     let calls = calls.lock().unwrap();
     let update_call = calls
         .iter()
@@ -536,7 +536,7 @@ async fn beat_transition_calls_update_system_prompt() {
     }
 
     // 호출 순서: StartSession → UpdateSystemPrompt → SendMessage
-    // (DialogueAgent.turn 내부: stimulus → [beat이면 update_prompt] → send_message)
+    // (DialogueOrchestrator.turn 내부: stimulus → [beat이면 update_prompt] → send_message)
     let update_idx = calls
         .iter()
         .position(|c| matches!(c, ChatCall::UpdateSystemPrompt { .. }))
@@ -568,7 +568,7 @@ async fn dialogue_turn_events_are_published_to_event_bus() {
     let dispatcher = common::v2_dispatcher(ctx.repo, store_dyn, bus.clone());
     let toml = builtin_toml("ko").unwrap();
     let formatter: Arc<dyn GuideFormatter> = Arc::new(LocaleFormatter::from_toml(toml).unwrap());
-    let mut agent = DialogueAgent::new(dispatcher, MockConversationPort::new(), formatter);
+    let mut agent = DialogueOrchestrator::new(dispatcher, MockConversationPort::new(), formatter);
 
     agent
         .start_session(

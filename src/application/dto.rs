@@ -773,7 +773,7 @@ pub struct FocusObjectInfo {
 ///
 /// 한 번의 발화로 `listeners`(직접 대상)와 `overhearers`(동석자 — 엿들은 자)에게
 /// 정보를 전달한다. Dispatcher는 `TellInformationRequested`를 초기 이벤트로 만들고,
-/// `InformationAgent`가 청자당 1개의 `InformationTold` follow-up을 팬아웃한다 (B5).
+/// `InformationPolicy`가 청자당 1개의 `InformationTold` follow-up을 팬아웃한다 (B5).
 ///
 /// **청자 수 상한**: `MAX_EVENTS_PER_COMMAND=20`에 맞춰 listeners + overhearers ≤ 15를
 /// 권장한다. 초과 시 `DispatchV2Error::EventBudgetExceeded`.

@@ -1,4 +1,4 @@
-//! InMemoryMemoryStore + MemoryAgent 통합 테스트 (feature flag 없이 실행 가능)
+//! InMemoryMemoryStore + MemoryProjector 통합 테스트 (feature flag 없이 실행 가능)
 
 // 이 파일은 Step B에서 deprecated된 레거시 MemoryStore 메서드(search_by_meaning/
 // search_by_keyword/get_recent)의 호환성을 계속 검증한다. 의도된 호출이므로 경고 무시.

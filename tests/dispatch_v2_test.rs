@@ -92,8 +92,8 @@ async fn v2_appraise_emits_request_appraised_guide_sequence() {
     );
 
     // HandlerShared에 전파된 상태 검증
-    assert!(out.shared.emotion_state.is_some(), "EmotionAgent가 shared에 emotion_state 주입");
-    assert!(out.shared.guide.is_some(), "GuideAgent가 shared에 guide 주입");
+    assert!(out.shared.emotion_state.is_some(), "EmotionPolicy가 shared에 emotion_state 주입");
+    assert!(out.shared.guide.is_some(), "GuidePolicy가 shared에 guide 주입");
 }
 
 // ---------------------------------------------------------------------------
@@ -205,7 +205,7 @@ async fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
     );
     assert!(
         kinds.contains(&EventKind::RelationshipUpdated),
-        "RelationshipAgent가 BeatTransitioned에 반응: {:?}",
+        "RelationshipPolicy가 BeatTransitioned에 반응: {:?}",
         kinds
     );
 
@@ -274,7 +274,7 @@ async fn v2_max_cascade_depth_is_enforced() {
         }
         fn mode(&self) -> DeliveryMode {
             DeliveryMode::Transactional {
-                priority: 5, // EmotionAgent보다 먼저 실행
+                priority: 5, // EmotionPolicy보다 먼저 실행
                 can_emit_follow_up: true,
             }
         }
@@ -324,7 +324,7 @@ async fn v2_max_cascade_depth_is_enforced() {
 // B5.3: v1/v2 parallel 테스트 및 shadow_v2 플래그 테스트는 v1 제거와 함께 삭제됨.
 
 /// C1 회귀 가드 — Beat 전환 후 **repo 측 Scene의 active_focus_id가 실제로 갱신**되는지.
-/// StimulusAgent가 `ctx.shared.scene`에 새 Scene을 넣지 않으면 Dispatcher write-back이
+/// StimulusPolicy가 `ctx.shared.scene`에 새 Scene을 넣지 않으면 Dispatcher write-back이
 /// 누락되어 다음 stimulus가 여전히 이전 focus를 보고 무한 Beat 재진입이 발생한다.
 #[tokio::test]
 async fn v2_beat_transition_persists_new_active_focus_to_repo() {
@@ -402,7 +402,7 @@ fn with_default_handlers_registers_expected_counts() {
     assert_eq!(
         d.transactional_handler_count(),
         7,
-        "Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay 7종 (Step D에서 WorldOverlayAgent 추가)"
+        "Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay 7종 (Step D에서 WorldOverlayPolicy 추가)"
     );
     assert_eq!(
         d.inline_handler_count(),
@@ -420,7 +420,7 @@ async fn v2_generate_guide_emits_requested_and_generated() {
     let ctx = TestContext::new();
     let dispatcher = make_dispatcher_v2(ctx.repo);
 
-    // seed: emotion_state가 repo에 있어야 GuideAgent fallback이 성공
+    // seed: emotion_state가 repo에 있어야 GuidePolicy fallback이 성공
     dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
 
     let out = dispatcher
@@ -569,8 +569,8 @@ async fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
         .expect("must succeed");
 
     // 기대 체인:
-    //   SceneStartRequested → SceneAgent → SceneStarted + EmotionAppraised
-    //   EmotionAppraised → GuideAgent → GuideGenerated
+    //   SceneStartRequested → ScenePolicy → SceneStarted + EmotionAppraised
+    //   EmotionAppraised → GuidePolicy → GuideGenerated
     let kinds = event_kinds(&out.events);
     assert!(kinds.contains(&EventKind::SceneStartRequested));
     assert!(kinds.contains(&EventKind::SceneStarted));

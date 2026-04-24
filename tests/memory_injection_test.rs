@@ -1,6 +1,6 @@
-//! Memory Step B — DialogueAgent 기억 주입 통합 테스트
+//! Memory Step B — DialogueOrchestrator 기억 주입 통합 테스트
 //!
-//! `DialogueAgent::with_memory(store, framer)`로 기억 시스템을 주입했을 때:
+//! `DialogueOrchestrator::with_memory(store, framer)`로 기억 시스템을 주입했을 때:
 //! - `start_session`이 시스템 프롬프트에 "떠오르는 기억" 블록을 prepend하는지
 //! - `with_memory` 미호출 시 기존 프롬프트 그대로 전달되는지
 //! - `BeatTransitioned` 시 `update_system_prompt` 프롬프트에도 기억 블록이 포함되는지
@@ -21,7 +21,7 @@ use npc_mind::ports::{GuideFormatter, MemoryStore};
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
 use npc_mind::presentation::memory_formatter::LocaleMemoryFramer;
-use npc_mind::{DialogueAgent, InMemoryRepository};
+use npc_mind::{DialogueOrchestrator, InMemoryRepository};
 
 use std::sync::Arc;
 
@@ -78,7 +78,7 @@ fn seed_store_with_memories(
 fn setup_with_memory(
     attach_memory: bool,
 ) -> (
-    DialogueAgent<InMemoryRepository, MockConversationPort>,
+    DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
     Arc<common::in_memory_store::InMemoryMemoryStore>,
 ) {
@@ -95,7 +95,7 @@ fn setup_with_memory(
     let memory_store = Arc::new(common::in_memory_store::InMemoryMemoryStore::new());
     seed_store_with_memories(&*memory_store, "mu_baek");
 
-    let mut agent = DialogueAgent::new(dispatcher, chat, formatter);
+    let mut agent = DialogueOrchestrator::new(dispatcher, chat, formatter);
     if attach_memory {
         let framer: Arc<dyn npc_mind::ports::MemoryFramer> = Arc::new(LocaleMemoryFramer::new());
         agent = agent.with_memory(memory_store.clone(), framer);

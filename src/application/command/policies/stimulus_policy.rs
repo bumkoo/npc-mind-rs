@@ -1,15 +1,15 @@
-//! StimulusAgent — PAD 자극 적용 + Beat 전환 판정 전담 (B안 B1)
+//! StimulusPolicy — PAD 자극 적용 + Beat 전환 판정 전담 (B안 B1)
 //!
-//! 기존 `EmotionAgent.handle_stimulus` 로직의 v2 포팅.
-//! 현재 Dispatcher는 여전히 `EmotionAgent.handle_stimulus`를 호출하며,
+//! 기존 `EmotionPolicy.handle_stimulus` 로직의 v2 포팅.
+//! 현재 Dispatcher는 여전히 `EmotionPolicy.handle_stimulus`를 호출하며,
 //! 이 Agent는 B3 `dispatch_v2()`가 생겨야 실제 호출된다. B1은 타입·테스트 준비 단계.
 //!
 //! **v1/v2 차이:**
-//! - v1: `EmotionAgent.handle_stimulus`가 Beat 전환 시점에 `RelationshipUpdated` 이벤트를 inline으로 발행.
+//! - v1: `EmotionPolicy.handle_stimulus`가 Beat 전환 시점에 `RelationshipUpdated` 이벤트를 inline으로 발행.
 //!   관계 갱신은 **pre-merge 감정(`stimulated`)** 기반.
-//! - v2: `StimulusAgent`는 `StimulusApplied` + `BeatTransitioned`만 follow_up으로 발행하고,
-//!   관계 갱신은 후속 `RelationshipAgent`(우선순위 30)가 `BeatTransitioned`를 받아 처리.
-//!   이때 `RelationshipAgent`는 `ctx.shared.emotion_state`(= **merged 감정**)을 입력으로 쓴다.
+//! - v2: `StimulusPolicy`는 `StimulusApplied` + `BeatTransitioned`만 follow_up으로 발행하고,
+//!   관계 갱신은 후속 `RelationshipPolicy`(우선순위 30)가 `BeatTransitioned`를 받아 처리.
+//!   이때 `RelationshipPolicy`는 `ctx.shared.emotion_state`(= **merged 감정**)을 입력으로 쓴다.
 //!
 //! **의도적 의미론 변경 (v2 개선):** Beat 전환 후 관계 갱신은 "전환 완료 후 최종 감정 상태"를
 //! 반영하는 것이 의미상 자연스러우므로 v2는 `merged` 기반을 채택. v1의 `stimulated` 기반은
@@ -34,12 +34,12 @@ use crate::ports::{Appraiser, StimulusProcessor};
 ///
 /// Appraisal/Stimulus/Scene 평가기를 모두 소유. Scene trigger 체크는 도메인
 /// `Scene::check_trigger`를 직접 호출(v1의 `SceneService` 래퍼 대신).
-pub struct StimulusAgent {
+pub struct StimulusPolicy {
     appraiser: AppraisalEngine,
     stimulus_processor: StimulusEngine,
 }
 
-impl StimulusAgent {
+impl StimulusPolicy {
     pub fn new() -> Self {
         Self {
             appraiser: AppraisalEngine,
@@ -48,15 +48,15 @@ impl StimulusAgent {
     }
 }
 
-impl Default for StimulusAgent {
+impl Default for StimulusPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for StimulusAgent {
+impl EventHandler for StimulusPolicy {
     fn name(&self) -> &'static str {
-        "StimulusAgent"
+        "StimulusPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -123,7 +123,7 @@ impl EventHandler for StimulusAgent {
                     HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
                 })?;
 
-                // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipAgent)
+                // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipPolicy)
                 let beat_rel = relationship.after_dialogue(&stimulated, BEAT_DEFAULT_SIGNIFICANCE);
                 let new_state = self.appraiser.appraise(
                     npc.personality(),
@@ -141,7 +141,7 @@ impl EventHandler for StimulusAgent {
                 let mut new_scene = scene.clone();
                 new_scene.set_active_focus(focus.id.clone());
 
-                // HandlerShared에 전파 (GuideAgent/Projection이 참조)
+                // HandlerShared에 전파 (GuidePolicy/Projection이 참조)
                 ctx.shared.emotion_state = Some(merged.clone());
                 ctx.shared.relationship = Some(relationship.clone());
                 ctx.shared.scene = Some(new_scene);
@@ -253,7 +253,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_without_scene_emits_single_stimulus_applied() {
-        let agent = StimulusAgent::new();
+        let agent = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
@@ -279,7 +279,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_with_triggered_scene_emits_stimulus_and_beat_transitioned() {
-        let agent = StimulusAgent::new();
+        let agent = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
 
@@ -349,7 +349,7 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_emotion_state_returns_precondition_error() {
-        let agent = StimulusAgent::new();
+        let agent = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         // emotion_state 미주입

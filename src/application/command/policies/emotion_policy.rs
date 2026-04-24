@@ -1,4 +1,4 @@
-//! EmotionAgent — 감정 평가 전담 (v2)
+//! EmotionPolicy — 감정 평가 전담 (v2)
 
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
@@ -9,11 +9,11 @@ use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::ports::Appraiser;
 
 /// 감정 평가 에이전트 (v2)
-pub struct EmotionAgent {
+pub struct EmotionPolicy {
     pub(crate) appraiser: AppraisalEngine,
 }
 
-impl EmotionAgent {
+impl EmotionPolicy {
     pub fn new() -> Self {
         Self {
             appraiser: AppraisalEngine,
@@ -21,15 +21,15 @@ impl EmotionAgent {
     }
 }
 
-impl Default for EmotionAgent {
+impl Default for EmotionPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for EmotionAgent {
+impl EventHandler for EmotionPolicy {
     fn name(&self) -> &'static str {
-        "EmotionAgent"
+        "EmotionPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -144,7 +144,7 @@ mod handler_v2_tests {
 
     #[test]
     fn appraise_request_emits_emotion_appraised_and_populates_shared() {
-        let agent = EmotionAgent::new();
+        let agent = EmotionPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let partner = NpcBuilder::new("bob", "Bob").build();
         let rel = Relationship::neutral("alice", "bob");
@@ -165,7 +165,7 @@ mod handler_v2_tests {
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = EmotionAgent::new();
+        let agent = EmotionPolicy::new();
         let mut harness = HandlerTestHarness::new();
 
         let event = DomainEvent::new(
@@ -185,7 +185,7 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_npc_returns_precondition_error() {
-        let agent = EmotionAgent::new();
+        let agent = EmotionPolicy::new();
         let mut harness = HandlerTestHarness::new();
 
         let event = make_request("ghost", "nobody", positive_situation());

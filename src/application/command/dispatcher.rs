@@ -15,9 +15,9 @@ use crate::ports::MindRepository;
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 use super::super::situation_service::SituationService;
-use super::agents::{
-    EmotionAgent, GuideAgent, InformationAgent, RelationshipAgent, RumorAgent, SceneAgent,
-    StimulusAgent, WorldOverlayAgent,
+use super::policies::{
+    EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, RumorPolicy, ScenePolicy,
+    StimulusPolicy, WorldOverlayPolicy,
 };
 use super::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
@@ -117,17 +117,17 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
     /// 6 Agent + 3 Projection wrapper를 기본 등록.
     ///
-    /// Step C2 이후: `InformationAgent`도 기본 포함. Memory 인덱싱 Inline 핸들러
+    /// Step C2 이후: `InformationPolicy`도 기본 포함. Memory 인덱싱 Inline 핸들러
     /// (`TellingIngestionHandler`)는 `MemoryStore` 주입이 필요하므로 `with_memory()`
     /// 빌더로 따로 부착한다.
     pub fn with_default_handlers(mut self) -> Self {
-        self = self.register_transactional(Arc::new(SceneAgent::new()));
-        self = self.register_transactional(Arc::new(EmotionAgent::new()));
-        self = self.register_transactional(Arc::new(StimulusAgent::new()));
-        self = self.register_transactional(Arc::new(GuideAgent::new()));
-        self = self.register_transactional(Arc::new(RelationshipAgent::new()));
-        self = self.register_transactional(Arc::new(InformationAgent::new()));
-        self = self.register_transactional(Arc::new(WorldOverlayAgent::new()));
+        self = self.register_transactional(Arc::new(ScenePolicy::new()));
+        self = self.register_transactional(Arc::new(EmotionPolicy::new()));
+        self = self.register_transactional(Arc::new(StimulusPolicy::new()));
+        self = self.register_transactional(Arc::new(GuidePolicy::new()));
+        self = self.register_transactional(Arc::new(RelationshipPolicy::new()));
+        self = self.register_transactional(Arc::new(InformationPolicy::new()));
+        self = self.register_transactional(Arc::new(WorldOverlayPolicy::new()));
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
@@ -174,7 +174,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
     /// 소문(Rumor) 서브시스템 연동 (Step C3~).
     ///
     /// 두 핸들러를 등록한다:
-    /// - **`RumorAgent`** (Transactional) — `Seed/SpreadRumorRequested` 처리,
+    /// - **`RumorPolicy`** (Transactional) — `Seed/SpreadRumorRequested` 처리,
     ///   `Rumor` 애그리거트를 `RumorStore`에 저장하고 `RumorSeeded`/`RumorSpread`
     ///   follow-up을 발행.
     /// - **`RumorDistributionHandler`** (Inline) — `RumorSpread` 구독해 각 수신자에게
@@ -187,7 +187,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         memory_store: Arc<dyn MemoryStore>,
         rumor_store: Arc<dyn RumorStore>,
     ) -> Self {
-        self = self.register_transactional(Arc::new(RumorAgent::new(rumor_store.clone())));
+        self = self.register_transactional(Arc::new(RumorPolicy::new(rumor_store.clone())));
         self = self.register_inline(Arc::new(RumorDistributionHandler::new(
             memory_store,
             rumor_store,

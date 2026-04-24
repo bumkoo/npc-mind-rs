@@ -1,4 +1,4 @@
-//! InformationAgent — 정보 전달 팬아웃 (Step C2, Mind 컨텍스트)
+//! InformationPolicy — 정보 전달 팬아웃 (Step C2, Mind 컨텍스트)
 //!
 //! `TellInformationRequested` 1개를 받아 listeners + overhearers 각각에 대해
 //! `InformationTold` follow-up 이벤트를 발행한다 (B5: 청자당 1 이벤트 패턴).
@@ -15,23 +15,23 @@ use crate::application::command::handler_v2::{
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload, ListenerRole};
 
-pub struct InformationAgent;
+pub struct InformationPolicy;
 
-impl InformationAgent {
+impl InformationPolicy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for InformationAgent {
+impl Default for InformationPolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for InformationAgent {
+impl EventHandler for InformationPolicy {
     fn name(&self) -> &'static str {
-        "InformationAgent"
+        "InformationPolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -48,7 +48,7 @@ impl EventHandler for InformationAgent {
     fn handle(
         &self,
         event: &DomainEvent,
-        // 의도적 미사용: InformationAgent는 순수 팬아웃이라 shared state/repo 조회 불필요.
+        // 의도적 미사용: InformationPolicy는 순수 팬아웃이라 shared state/repo 조회 불필요.
         // `prior_events`/`aggregate_key`도 현재 분기 로직에 쓸 일 없음.
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn emits_one_information_told_per_listener_with_direct_role() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil-a", "pupil-b"], &[], &[]);
 
@@ -170,7 +170,7 @@ mod tests {
 
     #[test]
     fn overhearers_get_overhearer_role() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &["wanderer-a", "wanderer-b"], &[]);
 
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn information_told_aggregate_key_is_listener() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &[], &[]);
 
@@ -212,7 +212,7 @@ mod tests {
 
     #[test]
     fn origin_chain_in_is_passed_through_untouched() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("relay", &["final"], &[], &["prior-a", "prior-b"]);
 
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn duplicates_in_listeners_and_overhearers_are_deduped_direct_wins() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         // "pupil"이 listeners와 overhearers에 모두 있는 케이스 — Direct 하나만 발행.
         let event = request_event("sage", &["pupil", "pupil"], &["pupil", "other"], &[]);
@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn empty_listeners_and_overhearers_emit_no_follow_ups() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &[], &[], &[]);
         let result = harness.dispatch(&agent, event).expect("must succeed");
@@ -276,7 +276,7 @@ mod tests {
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = InformationAgent::new();
+        let agent = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = DomainEvent::new(
             0,

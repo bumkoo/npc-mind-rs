@@ -20,8 +20,8 @@
 //! content에 추적용 라벨("[closeness Δ=0.34]" 등)로 포함한다 (리뷰 H4).
 //!
 //! **관점 분리 (TODO step-f)**: 현재 owner → target 관점의 엔트리만 만든다. target 관점
-//! 엔트리는 target의 RelationshipAgent가 따로 `RelationshipUpdated`를 발행하는 경우에만
-//! 생기는데, 현재 RelationshipAgent는 owner 관점 이벤트 1개만 내보낸다. 스펙 §6.3 line
+//! 엔트리는 target의 RelationshipPolicy가 따로 `RelationshipUpdated`를 발행하는 경우에만
+//! 생기는데, 현재 RelationshipPolicy는 owner 관점 이벤트 1개만 내보낸다. 스펙 §6.3 line
 //! 579("당사자 a, b 각각 별 엔트리")를 완전히 만족하려면 Step F에서 ①target 경로를
 //! 추가로 발행하거나 ②이 handler가 target 관점 엔트리도 미러 생성하도록 확장해야 한다.
 //! 후자는 "target이 이 변화를 실제로 느꼈는가"라는 도메인 판단이 필요하므로 Step F로 연기.

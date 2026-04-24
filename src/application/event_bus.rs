@@ -14,7 +14,7 @@
 //! `broadcast` 채널은 capacity를 초과하면 가장 오래된 이벤트를 덮어쓴다.
 //! `subscribe()`가 돌려주는 Stream은 `Lagged` 통지를 삼키므로 엄밀한
 //! at-least-once가 필요한 소비자는 `EventStore::get_events_after_id`로
-//! 마지막 처리 id 이후 이벤트를 replay해야 한다. (MemoryAgent 참조)
+//! 마지막 처리 id 이후 이벤트를 replay해야 한다. (MemoryProjector 참조)
 
 use crate::domain::event::DomainEvent;
 use futures::{Stream, StreamExt};

@@ -510,7 +510,7 @@ impl SceneStore for InMemoryRepository {
     }
 
     /// B4 Session 3: 다중 Scene 직접 조회 — `last_scene_id`를 거치지 않고 HashMap에서
-    /// scene_id 키로 바로 lookup. `StimulusAgent`/`RelationshipAgent`가 올바른 Scene을
+    /// scene_id 키로 바로 lookup. `StimulusPolicy`/`RelationshipPolicy`가 올바른 Scene을
     /// 식별하는 데 필수.
     fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
         self.scenes.get(scene_id).cloned()

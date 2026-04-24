@@ -1,6 +1,6 @@
 //! MemoryRanker — 2단계 랭킹 (Source 우선 필터 + 5요소 가중 점수)
 //!
-//! Step A에서는 순수 함수로 구현하고 단위 테스트만 제공. 실제 호출 경로(DialogueAgent 주입 등)는
+//! Step A에서는 순수 함수로 구현하고 단위 테스트만 제공. 실제 호출 경로(DialogueOrchestrator 주입 등)는
 //! Step B 이후에 연결된다.
 
 use super::{MemoryEntry, MemorySource, MemoryType, Provenance};

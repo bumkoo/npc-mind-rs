@@ -16,7 +16,7 @@
 pub mod transactional {
     /// Scene 시작 — 감정 평가보다 먼저 (초기 Focus의 appraise가 EmotionAppraised를 cascade).
     ///
-    /// B4.1: 현재 `SceneAgent`만 이 priority를 쓰며, `SceneStartRequested` interest가
+    /// B4.1: 현재 `ScenePolicy`만 이 priority를 쓰며, `SceneStartRequested` interest가
     /// 배타적이라 실행 순서에는 영향이 없다. 그러나 broadcast interest 도입 시나
     /// 같은 이벤트를 여럿이 소비하게 될 때 의미가 명확해지도록 상수로 고정.
     pub const SCENE_START: i32 = 5;
@@ -41,7 +41,7 @@ pub mod transactional {
     /// 관계 갱신(30) 이후에 실행되어야 청자의 현재 trust 값을 반영할 수 있다 (§6.5, B6).
     pub const INFORMATION_TELLING: i32 = 35;
 
-    /// 소문 확산 — TellInformation 이후(§6.5 B6). `RumorAgent`가
+    /// 소문 확산 — TellInformation 이후(§6.5 B6). `RumorPolicy`가
     /// `RumorSeeded`/`RumorSpread` follow-up을 발행하고 `RumorStore`에 저장한다.
     pub const RUMOR_SPREAD: i32 = 40;
 

@@ -170,7 +170,7 @@ pub trait UtteranceAnalyzer {
     /// `UtteranceEmbedding` newtype은 임의 `Vec<f32>`와 구분되며, `Deref<[f32]>` /
     /// `AsRef<[f32]>` 구현으로 분류기 호출 시 `&[f32]`로 강제 변환된다.
     ///
-    /// 사용 예: `DialogueAgent`가 PAD 분석 결과의 임베딩을
+    /// 사용 예: `DialogueOrchestrator`가 PAD 분석 결과의 임베딩을
     /// `ListenerPerspectiveConverter`에 재사용하여 발화당 임베딩 1회를 보장.
     fn analyze_with_embedding(
         &mut self,
@@ -219,7 +219,7 @@ pub trait SceneStore {
     /// 기본 구현은 `get_scene()`이 일치하는 scene_id를 반환할 때만 Some. 단일 Scene
     /// 저장소는 이 기본 구현으로 충분. 다중 Scene 저장소(`InMemoryRepository`)는
     /// 오버라이드하여 HashMap 조회를 수행 — multi-scene 환경에서 **올바른** Scene을
-    /// 반환함을 보장하도록 `StimulusAgent` 등이 이 메서드를 사용.
+    /// 반환함을 보장하도록 `StimulusPolicy` 등이 이 메서드를 사용.
     fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
         self.get_scene().filter(|s| {
             s.npc_id() == scene_id.npc_id && s.partner_id() == scene_id.partner_id
@@ -619,7 +619,7 @@ pub enum MemoryScopeFilter {
 /// Ranker 이전 단계에서 `MemoryStore`에 넘길 질의 DTO.
 ///
 /// Step A에서는 필드만 정의하고, `SqliteMemoryStore::search`가 SQL WHERE로 변환한다.
-/// Ranker 호출은 Step B `DialogueAgent.inject_memory_push`에서 연결한다.
+/// Ranker 호출은 Step B `DialogueOrchestrator.inject_memory_push`에서 연결한다.
 #[derive(Debug, Clone, Default)]
 pub struct MemoryQuery {
     pub text: Option<String>,
@@ -726,7 +726,7 @@ use crate::domain::rumor::{ReachPolicy, Rumor};
 /// 소문 애그리거트 저장/검색 포트.
 ///
 /// Step C1에서는 trait 시그니처만 정의하고 `SqliteRumorStore` 어댑터가 구현한다.
-/// 실제 호출 경로(`RumorAgent`, `RumorDistributionHandler`)는 Step C3에서 연결된다.
+/// 실제 호출 경로(`RumorPolicy`, `RumorDistributionHandler`)는 Step C3에서 연결된다.
 pub trait RumorStore: Send + Sync {
     /// 신규 또는 기존 rumor upsert. `Rumor.validate()`로 이미 검증된 값을 받는다.
     fn save(&self, rumor: &Rumor) -> Result<(), MemoryError>;
@@ -741,7 +741,7 @@ pub trait RumorStore: Send + Sync {
     ///
     /// reach 규칙: reach.regions/factions/npc_ids는 "이 축 중 하나라도 겹치면 도달"로
     /// 해석한다(설계 §2.6). min_significance는 하한 필터.
-    /// Step C1에서는 후보 필터만 제공하고 최종 정책은 Step C3 `RumorAgent`가 결정.
+    /// Step C1에서는 후보 필터만 제공하고 최종 정책은 Step C3 `RumorPolicy`가 결정.
     fn find_active_in_reach(&self, reach: &ReachPolicy) -> Result<Vec<Rumor>, MemoryError>;
 
     /// 저장된 모든 rumor 목록 (status 필터 없음 — Active/Fading/Faded 전부 포함).
@@ -758,7 +758,7 @@ pub trait RumorStore: Send + Sync {
 /// 기억 프레이밍 포트 (Step B — LLM 프롬프트 주입용).
 ///
 /// `MemoryEntry`를 Source별 라벨(예: `[겪음]`/`[목격]`/`[전해 들음]`/`[강호에 떠도는 소문]`)로
-/// 포맷해 "떠오르는 기억" 블록을 구성한다. `DialogueAgent.inject_memory_push`가
+/// 포맷해 "떠오르는 기억" 블록을 구성한다. `DialogueOrchestrator.inject_memory_push`가
 /// `MemoryRanker` 결과를 이 포트로 프레이밍한다.
 pub trait MemoryFramer: Send + Sync {
     /// 단일 엔트리를 source별 라벨로 포맷 (예: `"[겪음] content"`).

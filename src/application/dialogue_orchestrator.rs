@@ -1,4 +1,4 @@
-//! DialogueAgent — LLM 대사 생성 + EventBus 통합 오케스트레이터 (Phase 4)
+//! DialogueOrchestrator — LLM 대사 생성 + EventBus 통합 오케스트레이터 (Phase 4)
 //!
 //! **B5.2 (1/3):** 내부 dispatch 호출을 v2 경로(`dispatch_v2().await`)로 완전 이관.
 //! 외부 API(start_session/turn/end_session) 시그니처는 변경 없음.
@@ -8,7 +8,7 @@
 //! 각 턴마다 `DialogueTurnCompleted` 이벤트를 EventBus에 발행한다.
 //!
 //! `DialogueTestService`는 `FormattedMindService` 기반의 얇은 래퍼였지만,
-//! `DialogueAgent`는 Command/Event 경로로 동작하므로 `MemoryAgent` 같은
+//! `DialogueOrchestrator`는 Command/Event 경로로 동작하므로 `MemoryProjector` 같은
 //! broadcast 구독자가 대화를 RAG에 인덱싱할 수 있다.
 //!
 //! # 대화 흐름
@@ -34,15 +34,15 @@
 //! # DialogueTurnCompleted 이벤트 직접 발행
 //!
 //! 현재 Command enum에는 대화 턴 기록 전용 variant가 없으므로,
-//! DialogueAgent는 `CommandDispatcher::event_store()` / `event_bus()`를 통해
+//! DialogueOrchestrator는 `CommandDispatcher::event_store()` / `event_bus()`를 통해
 //! dispatcher와 동일한 발행 경로를 재사용한다. 순서: append → broadcast publish.
 //! (v2 inline handler들은 DialogueTurnCompleted에 관심 없으므로 생략됨.)
 //!
 //! # 동시성
 //!
-//! `CommandDispatcher::dispatch_v2`는 `&self`이지만 DialogueAgent는 `sessions` HashMap
+//! `CommandDispatcher::dispatch_v2`는 `&self`이지만 DialogueOrchestrator는 `sessions` HashMap
 //! 접근 때문에 `&mut self` 메서드를 유지한다. 동일 session에 대한 동시 턴은 허용하지
-//! 않는다. 서로 다른 세션을 병렬 실행하려면 별도 DialogueAgent 인스턴스를 생성한다.
+//! 않는다. 서로 다른 세션을 병렬 실행하려면 별도 DialogueOrchestrator 인스턴스를 생성한다.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -102,7 +102,7 @@ pub struct DialogueEndOutcome {
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
-pub enum DialogueAgentError {
+pub enum DialogueOrchestratorError {
     #[error("CommandDispatcher 에러: {0}")]
     DispatchV2(#[from] DispatchV2Error),
     #[error("ConversationPort 에러: {0}")]
@@ -127,14 +127,14 @@ struct SessionMeta {
 }
 
 // ---------------------------------------------------------------------------
-// DialogueAgent
+// DialogueOrchestrator
 // ---------------------------------------------------------------------------
 
 /// LLM 대사 생성 에이전트
 ///
 /// - `R`: 도메인 저장소 (MindRepository)
 /// - `C`: LLM 어댑터 (ConversationPort). `RigChatAdapter` 또는 테스트용 mock.
-pub struct DialogueAgent<R: MindRepository + Send + Sync + 'static, C: ConversationPort> {
+pub struct DialogueOrchestrator<R: MindRepository + Send + Sync + 'static, C: ConversationPort> {
     dispatcher: CommandDispatcher<R>,
     chat: C,
     formatter: Arc<dyn GuideFormatter>,
@@ -150,14 +150,14 @@ pub struct DialogueAgent<R: MindRepository + Send + Sync + 'static, C: Conversat
     sessions: HashMap<String, SessionMeta>,
 }
 
-impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAgent<R, C> {
+impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrchestrator<R, C> {
     /// 기본 생성자.
     ///
     /// **전제**: 전달받는 `dispatcher`는 `.with_default_handlers()`가 호출된 상태여야 한다.
-    /// DialogueAgent는 내부적으로 `dispatcher.dispatch_v2(Command::Appraise / ApplyStimulus /
+    /// DialogueOrchestrator는 내부적으로 `dispatcher.dispatch_v2(Command::Appraise / ApplyStimulus /
     /// EndDialogue)`를 호출하며, 결과를 `HandlerShared` 기반으로 재구성한다. 기본 핸들러(Emotion /
     /// Stimulus / Guide / Relationship / Scene Agent + 3 inline projection)가 등록되어 있지
-    /// 않으면 `DialogueAgentError::ResultReconstruction`이 반환된다.
+    /// 않으면 `DialogueOrchestratorError::ResultReconstruction`이 반환된다.
     pub fn new(
         dispatcher: CommandDispatcher<R>,
         chat: C,
@@ -258,7 +258,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         npc_id: &str,
         partner_id: &str,
         situation: Option<SituationInput>,
-    ) -> Result<DialogueStartOutcome, DialogueAgentError> {
+    ) -> Result<DialogueStartOutcome, DialogueOrchestratorError> {
         let cmd = Command::Appraise {
             npc_id: npc_id.to_string(),
             partner_id: partner_id.to_string(),
@@ -338,12 +338,12 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         user_utterance: &str,
         pad_hint: Option<Pad>,
         situation_description: Option<String>,
-    ) -> Result<DialogueTurnOutcome, DialogueAgentError> {
+    ) -> Result<DialogueTurnOutcome, DialogueOrchestratorError> {
         let meta = self
             .sessions
             .get(session_id)
             .cloned()
-            .ok_or_else(|| DialogueAgentError::SessionNotFound(session_id.to_string()))?;
+            .ok_or_else(|| DialogueOrchestratorError::SessionNotFound(session_id.to_string()))?;
 
         // ① user 턴 이벤트 발행 (stimulus 적용 이전의 감정 스냅샷)
         let user_snapshot = self.current_emotion_snapshot(&meta.npc_id);
@@ -358,7 +358,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
                     Some(analyzer) => {
                         let (p, emb) = analyzer
                             .analyze_with_embedding(user_utterance)
-                            .map_err(|e| DialogueAgentError::Analysis(e.to_string()))?;
+                            .map_err(|e| DialogueOrchestratorError::Analysis(e.to_string()))?;
                         (Some(p), emb)
                     }
                     None => (None, None),
@@ -434,11 +434,11 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         &mut self,
         session_id: &str,
         significance: Option<f32>,
-    ) -> Result<DialogueEndOutcome, DialogueAgentError> {
+    ) -> Result<DialogueEndOutcome, DialogueOrchestratorError> {
         let meta = self
             .sessions
             .remove(session_id)
-            .ok_or_else(|| DialogueAgentError::SessionNotFound(session_id.to_string()))?;
+            .ok_or_else(|| DialogueOrchestratorError::SessionNotFound(session_id.to_string()))?;
 
         let dialogue_history = self.chat.end_session(session_id).await?;
 
@@ -493,7 +493,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
             Some(a) => match a.analyze_with_embedding(query) {
                 Ok((_pad, emb)) => emb.map(|e| e.to_vec()),
                 Err(e) => {
-                    tracing::debug!("DialogueAgent.inject_memory_push: embedding 실패 {:?}", e);
+                    tracing::debug!("DialogueOrchestrator.inject_memory_push: embedding 실패 {:?}", e);
                     None
                 }
             },
@@ -518,7 +518,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         let results = match store.search(mem_query) {
             Ok(r) => r,
             Err(e) => {
-                tracing::warn!("DialogueAgent.inject_memory_push: store.search 실패 {:?}", e);
+                tracing::warn!("DialogueOrchestrator.inject_memory_push: store.search 실패 {:?}", e);
                 return String::new();
             }
         };
@@ -562,7 +562,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         for r in &ranked {
             if let Err(e) = store.record_recall(&r.entry.id, now_ms) {
                 tracing::debug!(
-                    "DialogueAgent.inject_memory_push: record_recall({}) 실패 {:?}",
+                    "DialogueOrchestrator.inject_memory_push: record_recall({}) 실패 {:?}",
                     r.entry.id,
                     e
                 );
@@ -596,7 +596,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
                 _utterance_embedding,
             );
             tracing::debug!(
-                "DialogueAgent.turn: PAD {{ P: {:.3}, A: {:.2}, D: {:.2} }} (converter on)",
+                "DialogueOrchestrator.turn: PAD {{ P: {:.3}, A: {:.2}, D: {:.2} }} (converter on)",
                 listener.pleasure,
                 listener.arousal,
                 listener.dominance
@@ -651,7 +651,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     // -----------------------------------------------------------------------
     // v2 mapping helpers — DispatchV2Output → v1 DTO 재구성
     //
-    // dispatch_v2는 HandlerShared + 이벤트 목록을 반환하므로, DialogueAgent의 기존
+    // dispatch_v2는 HandlerShared + 이벤트 목록을 반환하므로, DialogueOrchestrator의 기존
     // 반환 DTO (AppraiseResult / StimulusResult / AfterDialogueResponse)를
     // 만들려면 여기서 재조립한다. NPC/Partner 이름과 Relationship은 repo에서 조회.
     // -----------------------------------------------------------------------
@@ -662,12 +662,12 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         output: &DispatchV2Output,
         npc_id: &str,
         partner_id: &str,
-    ) -> Result<AppraiseResult, DialogueAgentError> {
+    ) -> Result<AppraiseResult, DialogueOrchestratorError> {
         let state = output
             .shared
             .emotion_state
             .as_ref()
-            .ok_or(DialogueAgentError::ResultReconstruction("EmotionState"))?;
+            .ok_or(DialogueOrchestratorError::ResultReconstruction("EmotionState"))?;
 
         let (npc, partner_name, rel) = self.fetch_npc_partner_rel(npc_id, partner_id)?;
 
@@ -695,24 +695,24 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     /// `dispatch_v2(Command::ApplyStimulus)` 결과 → `StimulusResult`
     ///
     /// beat_changed는 `output.events`에 `BeatTransitioned`가 있는지로 판정 (v2 진실).
-    /// EmotionState는 EmotionAgent가, ActingGuide는 GuideAgent가 `shared`에 설정한다.
+    /// EmotionState는 EmotionPolicy가, ActingGuide는 GuidePolicy가 `shared`에 설정한다.
     /// 둘 중 하나가 None이면 `ResultReconstruction` 에러 — 보통 dispatcher에
     /// `with_default_handlers()`가 호출되지 않은 경우다.
     fn build_stimulus_from_v2(
         &self,
         output: &DispatchV2Output,
         input_pad: Pad,
-    ) -> Result<StimulusResult, DialogueAgentError> {
+    ) -> Result<StimulusResult, DialogueOrchestratorError> {
         let state = output
             .shared
             .emotion_state
             .as_ref()
-            .ok_or(DialogueAgentError::ResultReconstruction(
-                "EmotionState (EmotionAgent/StimulusAgent 등록 확인 필요)",
+            .ok_or(DialogueOrchestratorError::ResultReconstruction(
+                "EmotionState (EmotionPolicy/StimulusPolicy 등록 확인 필요)",
             ))?;
         let guide = output.shared.guide.as_ref().cloned().ok_or(
-            DialogueAgentError::ResultReconstruction(
-                "ActingGuide (GuideAgent 등록 확인 — with_default_handlers() 호출했는지)",
+            DialogueOrchestratorError::ResultReconstruction(
+                "ActingGuide (GuidePolicy 등록 확인 — with_default_handlers() 호출했는지)",
             ),
         )?;
 
@@ -751,7 +751,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
     fn build_end_dialogue_from_v2(
         &self,
         output: &DispatchV2Output,
-    ) -> Result<AfterDialogueResponse, DialogueAgentError> {
+    ) -> Result<AfterDialogueResponse, DialogueOrchestratorError> {
         output
             .events
             .iter()
@@ -778,7 +778,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
                 }),
                 _ => None,
             })
-            .ok_or(DialogueAgentError::ResultReconstruction(
+            .ok_or(DialogueOrchestratorError::ResultReconstruction(
                 "RelationshipUpdated event",
             ))
     }
@@ -788,11 +788,11 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueAge
         &self,
         npc_id: &str,
         partner_id: &str,
-    ) -> Result<(Npc, String, Option<Relationship>), DialogueAgentError> {
+    ) -> Result<(Npc, String, Option<Relationship>), DialogueOrchestratorError> {
         let guard = self.dispatcher.repository_guard();
         let npc = guard
             .get_npc(npc_id)
-            .ok_or(DialogueAgentError::ResultReconstruction("Npc"))?;
+            .ok_or(DialogueOrchestratorError::ResultReconstruction("Npc"))?;
         let partner_name = guard
             .get_npc(partner_id)
             .map(|p| p.name().to_string())

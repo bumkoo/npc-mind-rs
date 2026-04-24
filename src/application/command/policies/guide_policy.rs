@@ -1,4 +1,4 @@
-//! GuideAgent — 연기 가이드 생성 전담 (v2)
+//! GuidePolicy — 연기 가이드 생성 전담 (v2)
 //!
 //! `EmotionAppraised` / `StimulusApplied` / `GuideRequested` 이벤트에 자동 반응하여
 //! 가이드를 생성한다. `ctx.shared.emotion_state`가 설정돼 있으면 이를 참조.
@@ -11,23 +11,23 @@ use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::guide::ActingGuide;
 
 /// 연기 가이드 생성 에이전트
-pub struct GuideAgent;
+pub struct GuidePolicy;
 
-impl GuideAgent {
+impl GuidePolicy {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl Default for GuideAgent {
+impl Default for GuidePolicy {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl EventHandler for GuideAgent {
+impl EventHandler for GuidePolicy {
     fn name(&self) -> &'static str {
-        "GuideAgent"
+        "GuidePolicy"
     }
 
     fn interest(&self) -> HandlerInterest {
@@ -168,7 +168,7 @@ mod handler_v2_tests {
 
     #[test]
     fn emotion_appraised_event_generates_guide_and_populates_shared() {
-        let agent = GuideAgent::new();
+        let agent = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let partner = NpcBuilder::new("bob", "Bob").build();
         let rel = Relationship::neutral("alice", "bob");
@@ -188,7 +188,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_applied_event_also_triggers_guide() {
-        let agent = GuideAgent::new();
+        let agent = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
@@ -205,7 +205,7 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_shared_emotion_state_returns_precondition_error() {
-        let agent = GuideAgent::new();
+        let agent = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         // shared.emotion_state 미주입
         let mut harness = HandlerTestHarness::new().with_npc(npc);

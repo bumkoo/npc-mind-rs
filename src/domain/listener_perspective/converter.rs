@@ -290,7 +290,7 @@ impl EmbeddedConverter {
 
 /// Converter 변환을 시도하고 실패/입력 부족 시 화자 PAD를 그대로 반환.
 ///
-/// DialogueAgent와 Mind Studio(StudioService)가 동일 분기 로직을 가져 path-for-path
+/// DialogueOrchestrator와 Mind Studio(StudioService)가 동일 분기 로직을 가져 path-for-path
 /// drift 위험이 있던 부분을 도메인 레벨 단일 헬퍼로 통합한다.
 ///
 /// 변환 조건: `converter`와 `embedding`이 모두 `Some`일 때만 변환 시도.

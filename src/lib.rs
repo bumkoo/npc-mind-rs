@@ -37,10 +37,10 @@ pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 
 // --- CQRS Command / Agent (v2) ---
 pub use application::command::{
-    Command, CommandDispatcher, EmotionAgent, EmotionProjectionHandler, GuideAgent,
-    InformationAgent, RelationshipAgent, RelationshipMemoryHandler, RelationshipProjectionHandler,
-    RumorAgent, RumorDistributionHandler, SceneConsolidationHandler, SceneProjectionHandler,
-    TellingIngestionHandler, WorldOverlayAgent, WorldOverlayHandler,
+    Command, CommandDispatcher, EmotionPolicy, EmotionProjectionHandler, GuidePolicy,
+    InformationPolicy, RelationshipPolicy, RelationshipMemoryHandler, RelationshipProjectionHandler,
+    RumorPolicy, RumorDistributionHandler, SceneConsolidationHandler, SceneProjectionHandler,
+    TellingIngestionHandler, WorldOverlayPolicy, WorldOverlayHandler,
 };
 
 // --- Memory / RAG ---
@@ -58,13 +58,13 @@ pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
 #[cfg(feature = "embed")]
 pub use adapter::sqlite_rumor::SqliteRumorStore;
 #[cfg(feature = "embed")]
-pub use application::memory_agent::MemoryAgent;
+pub use application::memory_projector::MemoryProjector;
 
 #[cfg(feature = "chat")]
 pub use adapter::rig_chat::RigChatAdapter;
 #[cfg(feature = "chat")]
-pub use application::dialogue_agent::{
-    DialogueAgent, DialogueAgentError, DialogueEndOutcome, DialogueStartOutcome,
+pub use application::dialogue_orchestrator::{
+    DialogueOrchestrator, DialogueOrchestratorError, DialogueEndOutcome, DialogueStartOutcome,
     DialogueTurnOutcome,
 };
 #[cfg(feature = "chat")]

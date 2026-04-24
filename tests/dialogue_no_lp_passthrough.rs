@@ -29,7 +29,7 @@ use npc_mind::domain::pad::Pad;
 use npc_mind::ports::{EmbedError, GuideFormatter, UtteranceAnalyzer};
 use npc_mind::presentation::builtin_toml;
 use npc_mind::presentation::formatter::LocaleFormatter;
-use npc_mind::{DialogueAgent, EventStore};
+use npc_mind::{DialogueOrchestrator, EventStore};
 
 /// 정해진 PAD를 반환하는 mock analyzer.
 ///
@@ -78,7 +78,7 @@ async fn dialogue_agent_passes_speaker_pad_through_when_lp_off() {
 
     // LP off 빌드에서는 `with_converter` 메서드 자체가 컴파일에서 제외 →
     // analyzer만 주입된 상태에서 변환 우회 동작이 invariant.
-    let mut agent = DialogueAgent::new(dispatcher, chat, formatter)
+    let mut agent = DialogueOrchestrator::new(dispatcher, chat, formatter)
         .with_analyzer(ScriptedAnalyzer {
             pad: Pad::new(0.6, 0.3, 0.1),
         });

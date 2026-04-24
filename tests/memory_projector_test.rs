@@ -1,6 +1,6 @@
-//! `MemoryAgent` Stream 소비 로직 테스트
+//! `MemoryProjector` Stream 소비 로직 테스트
 //!
-//! 타이밍·실제 broadcast에 의존하지 않고 `MemoryAgent::consume_stream`에
+//! 타이밍·실제 broadcast에 의존하지 않고 `MemoryProjector::consume_stream`에
 //! 확정적 Stream을 주입해 검증한다.
 
 #![cfg(feature = "embed")]
@@ -11,7 +11,7 @@ use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::{DomainEvent, EventPayload};
 use npc_mind::ports::{EmbedError, MemoryStore, TextEmbedder};
-use npc_mind::{EventStore, MemoryAgent};
+use npc_mind::{EventStore, MemoryProjector};
 
 use futures::stream;
 use std::sync::{Arc, Mutex};
@@ -45,14 +45,14 @@ fn dialogue_event(id: u64, utterance: &str) -> DomainEvent {
 
 /// 테스트용 agent + memory_store + event_store 번들 생성
 fn setup() -> (
-    Arc<MemoryAgent>,
+    Arc<MemoryProjector>,
     Arc<InMemoryMemoryStore>,
     Arc<InMemoryEventStore>,
 ) {
     let memory_store: Arc<InMemoryMemoryStore> = Arc::new(InMemoryMemoryStore::new());
     let memory_store_dyn: Arc<dyn MemoryStore> = memory_store.clone();
     let embedder: Arc<Mutex<dyn TextEmbedder + Send>> = Arc::new(Mutex::new(MockEmbedder));
-    let agent = Arc::new(MemoryAgent::new(memory_store_dyn, embedder));
+    let agent = Arc::new(MemoryProjector::new(memory_store_dyn, embedder));
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     (agent, memory_store, event_store)
 }

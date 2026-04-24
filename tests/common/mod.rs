@@ -350,7 +350,7 @@ use npc_mind::application::event_store::{EventStore, InMemoryEventStore};
 
 /// `with_default_handlers()`가 적용된 v2 CommandDispatcher 생성.
 ///
-/// DialogueAgent / Director / 기타 v2 dispatch_v2를 호출하는 컴포넌트의 테스트 setup에서 사용.
+/// DialogueOrchestrator / Director / 기타 v2 dispatch_v2를 호출하는 컴포넌트의 테스트 setup에서 사용.
 /// `EventStore`/`EventBus`는 외부에서 만들어 전달 — 테스트가 직접 구독하거나 store에서 조회하기 위함.
 pub fn v2_dispatcher(
     repo: InMemoryRepository,

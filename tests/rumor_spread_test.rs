@@ -242,7 +242,7 @@ async fn spread_unknown_rumor_fails() {
             handler,
             source: HandlerError::InvalidInput(msg),
         } => {
-            assert_eq!(handler, "RumorAgent");
+            assert_eq!(handler, "RumorPolicy");
             assert!(
                 msg.contains("ghost"),
                 "error should mention missing rumor_id: {msg}"
@@ -282,7 +282,7 @@ async fn spread_dedupes_repeated_recipients() {
 
 #[tokio::test]
 async fn successive_seeds_produce_distinct_rumor_ids_in_same_dispatcher() {
-    // RumorAgent가 event.id(=0)를 쓰던 버그의 회귀 가드 — 같은 dispatcher로 두 번 시드하면
+    // RumorPolicy가 event.id(=0)를 쓰던 버그의 회귀 가드 — 같은 dispatcher로 두 번 시드하면
     // 두 Rumor가 서로 다른 id로 저장되어야 한다.
     let (dispatcher, _, _, rumor_store) = build_dispatcher();
 
