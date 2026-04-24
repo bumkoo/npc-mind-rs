@@ -2750,6 +2750,87 @@ mod projection_drift {
         );
     }
 
+    /// SceneEnded drift 대칭 체크: scene 시작 → after_dialogue → projection이 비활성으로 돌아와야.
+    ///
+    /// `SceneProjection`은 `SceneEnded`에서 `active=None`으로 clear된다
+    /// (`projection.rs` L164-166). `after_dialogue`가 `DialogueEndRequested` → `SceneEnded`
+    /// follow-up을 발행하므로, Inline phase에서 같은 Arc의 Projection이 비워져야 한다.
+    /// Arc가 분리되어 있으면 active 상태가 남아 이 테스트가 실패.
+    #[tokio::test]
+    async fn scene_projection_clears_after_dialogue_end() {
+        let (app, _state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        // Scene 시작
+        let scene_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "description": "대화 장면",
+            "significance": 0.5,
+            "focuses": [
+                {
+                    "id": "focus-init",
+                    "description": "첫 접촉",
+                    "trigger": null,
+                    "event": {
+                        "description": "조우",
+                        "desirability_for_self": -0.2,
+                        "other": null,
+                        "prospect": null
+                    },
+                    "action": null,
+                    "object": null
+                }
+            ]
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/scene", scene_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // pre-condition: projection 활성
+        let body = body_json(
+            app.clone()
+                .oneshot(get("/api/projection/scene"))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(body["is_active"], true, "pre-condition: scene active");
+
+        // after_dialogue → SceneEnded → projection clear
+        let after_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "significance": 0.6
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/after-dialogue", after_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // post-condition: projection 비활성
+        let body = body_json(
+            app.clone()
+                .oneshot(get("/api/projection/scene"))
+                .await
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(
+            body["is_active"], false,
+            "scene projection must clear after after_dialogue (SceneEnded)"
+        );
+        assert!(
+            body["active_focus_id"].is_null(),
+            "active_focus_id must be null after scene ended"
+        );
+    }
+
     /// Relationship projection drift: after_dialogue 후 닫힌 값을 /api/projection/relationship이 반환.
     /// drift가 발생하면 `closeness=null`이 돌아오므로 즉시 실패한다.
     #[tokio::test]

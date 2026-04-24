@@ -6,6 +6,13 @@
 //! 모든 핸들러는 `AppState`가 보관한 Projection `Arc<std::sync::Mutex<T>>`에서
 //! read-only로 lock을 획득하고, 다른 thread의 poison은 `AppError::Internal`로
 //! 매핑한다 (`EmotionProjectionHandler::handle`의 Infrastructure 패턴과 동일).
+//!
+//! ## 범위 제한
+//!
+//! 본 엔드포인트는 **`shared_dispatcher`의 Projection만 반영한다**. `/api/v2/*`
+//! Director 경로는 별도 `CommandDispatcher` 인스턴스를 쓰며 내부적으로 독립된
+//! Projection Arc를 가지므로 여기서 조회되지 않는다 (director_v2 노출은 별도
+//! 태스크, task 명세 §10 참조).
 
 use axum::{
     Json,

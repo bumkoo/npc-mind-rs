@@ -103,16 +103,21 @@ pub struct AppState {
     #[cfg(feature = "embed")]
     pub rumor_store: Arc<dyn RumorStore>,
 
-    /// Read Side — Projection 공유 핸들.
-    ///
-    /// `shared_dispatcher`의 Inline Projection Handler와 **동일한 `Arc<Mutex<T>>`**를
-    /// 공유한다. `/api/projection/*` Query 핸들러가 이 Arc를 lock하여 읽으며,
-    /// dispatch_v2 Inline phase가 같은 Arc를 통해 write한다.
-    ///
-    /// Mutex 종류는 `EmotionProjectionHandler::from_shared`의 시그니처에 맞춰
-    /// `std::sync::Mutex`를 사용한다 (tokio::sync::Mutex 아님).
+    // ---- Read Side — Projection 공유 핸들 ----
+    //
+    // 아래 3개 필드는 `shared_dispatcher`의 Inline Projection Handler와
+    // **동일한 `Arc<Mutex<T>>`**를 공유한다. `/api/projection/*` Query 핸들러가
+    // 이 Arc를 lock하여 읽으며, dispatch_v2 Inline phase가 같은 Arc를 통해 write
+    // 한다. Mutex 종류는 `*ProjectionHandler::from_shared`의 시그니처에 맞춰
+    // `std::sync::Mutex`를 사용한다 (tokio::sync::Mutex 아님).
+    //
+    // director_v2는 별개 Projection을 내부 소유하며 이 필드들과 분리됨 —
+    // `/api/projection/*`는 shared_dispatcher 경로만 반영 (task 명세 §10).
+    /// NPC별 mood / dominant / snapshot 뷰 (EmotionAppraised·StimulusApplied·EmotionCleared 구독).
     pub emotion_projection: Arc<StdMutex<EmotionProjection>>,
+    /// (owner, target) 쌍의 closeness/trust/power 뷰 (RelationshipUpdated 구독).
     pub relationship_projection: Arc<StdMutex<RelationshipProjection>>,
+    /// 활성 Scene 상태 뷰 (SceneStarted·BeatTransitioned·SceneEnded 구독).
     pub scene_projection: Arc<StdMutex<SceneProjection>>,
 }
 
