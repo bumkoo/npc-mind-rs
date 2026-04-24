@@ -2,7 +2,7 @@
 //!
 //! 기존 `EmotionPolicy.handle_stimulus` 로직의 v2 포팅.
 //! 현재 Dispatcher는 여전히 `EmotionPolicy.handle_stimulus`를 호출하며,
-//! 이 Agent는 B3 `dispatch_v2()`가 생겨야 실제 호출된다. B1은 타입·테스트 준비 단계.
+//! 이 Policy는 B3 `dispatch_v2()`가 생겨야 실제 호출된다. B1은 타입·테스트 준비 단계.
 //!
 //! **v1/v2 차이:**
 //! - v1: `EmotionPolicy.handle_stimulus`가 Beat 전환 시점에 `RelationshipUpdated` 이벤트를 inline으로 발행.
@@ -253,7 +253,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_without_scene_emits_single_stimulus_applied() {
-        let agent = StimulusPolicy::new();
+        let policy = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
@@ -262,7 +262,7 @@ mod handler_v2_tests {
             .with_emotion_state("alice", seed_emotion_state());
 
         let event = make_stim_request("alice", "bob");
-        let result = harness.dispatch(&agent, event).expect("handler must succeed");
+        let result = harness.dispatch(&policy, event).expect("handler must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::StimulusApplied);
@@ -279,7 +279,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_with_triggered_scene_emits_stimulus_and_beat_transitioned() {
-        let agent = StimulusPolicy::new();
+        let policy = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
 
@@ -323,7 +323,7 @@ mod handler_v2_tests {
 
         let event = make_stim_request("alice", "bob");
         let result = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect("beat transition should succeed");
 
         // StimulusApplied (beat=true) + BeatTransitioned
@@ -349,7 +349,7 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_emotion_state_returns_precondition_error() {
-        let agent = StimulusPolicy::new();
+        let policy = StimulusPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         // emotion_state 미주입
@@ -359,7 +359,7 @@ mod handler_v2_tests {
 
         let event = make_stim_request("alice", "bob");
         let err = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect_err("must fail without emotion state");
 
         assert!(matches!(

@@ -168,7 +168,7 @@ mod handler_v2_tests {
 
     #[test]
     fn emotion_appraised_event_generates_guide_and_populates_shared() {
-        let agent = GuidePolicy::new();
+        let policy = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let partner = NpcBuilder::new("bob", "Bob").build();
         let rel = Relationship::neutral("alice", "bob");
@@ -179,7 +179,7 @@ mod handler_v2_tests {
             .with_shared_emotion_state(EmotionState::default());
 
         let event = make_emotion_appraised("alice", "bob");
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::GuideGenerated);
@@ -188,7 +188,7 @@ mod handler_v2_tests {
 
     #[test]
     fn stimulus_applied_event_also_triggers_guide() {
-        let agent = GuidePolicy::new();
+        let policy = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
@@ -197,7 +197,7 @@ mod handler_v2_tests {
             .with_shared_emotion_state(EmotionState::default());
 
         let event = make_stimulus_applied("alice", "bob");
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::GuideGenerated);
@@ -205,13 +205,13 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_shared_emotion_state_returns_precondition_error() {
-        let agent = GuidePolicy::new();
+        let policy = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         // shared.emotion_state 미주입
         let mut harness = HandlerTestHarness::new().with_npc(npc);
 
         let event = make_emotion_appraised("alice", "bob");
-        let err = harness.dispatch(&agent, event).expect_err("must fail");
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
 
         // B4.1: shared 비어있으면 repo fallback → repo에도 없으면 EmotionStateNotFound
         assert!(matches!(

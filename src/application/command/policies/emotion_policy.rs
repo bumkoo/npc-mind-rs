@@ -144,7 +144,7 @@ mod handler_v2_tests {
 
     #[test]
     fn appraise_request_emits_emotion_appraised_and_populates_shared() {
-        let agent = EmotionPolicy::new();
+        let policy = EmotionPolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let partner = NpcBuilder::new("bob", "Bob").build();
         let rel = Relationship::neutral("alice", "bob");
@@ -155,7 +155,7 @@ mod handler_v2_tests {
             .with_relationship(rel);
 
         let event = make_request("alice", "bob", positive_situation());
-        let result = harness.dispatch(&agent, event).expect("handler must succeed");
+        let result = harness.dispatch(&policy, event).expect("handler must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::EmotionAppraised);
@@ -165,7 +165,7 @@ mod handler_v2_tests {
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = EmotionPolicy::new();
+        let policy = EmotionPolicy::new();
         let mut harness = HandlerTestHarness::new();
 
         let event = DomainEvent::new(
@@ -178,18 +178,18 @@ mod handler_v2_tests {
             },
         );
 
-        let result = harness.dispatch(&agent, event).expect("unrelated event should no-op");
+        let result = harness.dispatch(&policy, event).expect("unrelated event should no-op");
         assert!(result.follow_up_events.is_empty());
         assert!(harness.shared.emotion_state.is_none());
     }
 
     #[test]
     fn missing_npc_returns_precondition_error() {
-        let agent = EmotionPolicy::new();
+        let policy = EmotionPolicy::new();
         let mut harness = HandlerTestHarness::new();
 
         let event = make_request("ghost", "nobody", positive_situation());
-        let err = harness.dispatch(&agent, event).expect_err("must fail without npc");
+        let err = harness.dispatch(&policy, event).expect_err("must fail without npc");
 
         assert!(matches!(err, HandlerError::NpcNotFound(ref id) if id == "ghost"));
     }

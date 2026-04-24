@@ -306,12 +306,12 @@ mod tests {
     #[test]
     fn seed_with_topic_creates_canonical_linked_rumor() {
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let result = harness
             .dispatch(
-                &agent,
+                &policy,
                 seed_req_event(42, Some("moorim-leader-change"), None, RumorOrigin::Seeded),
             )
             .expect("seed must succeed");
@@ -340,11 +340,11 @@ mod tests {
     #[test]
     fn seed_orphan_requires_seed_content() {
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store);
+        let policy = RumorPolicy::new(store);
         let mut harness = HandlerTestHarness::new();
 
         let err = harness
-            .dispatch(&agent, seed_req_event(1, None, None, RumorOrigin::Seeded))
+            .dispatch(&policy, seed_req_event(1, None, None, RumorOrigin::Seeded))
             .expect_err("orphan without seed_content must fail");
         assert!(matches!(err, HandlerError::InvalidInput(_)));
     }
@@ -360,12 +360,12 @@ mod tests {
     #[test]
     fn seed_orphan_with_seed_content_succeeds() {
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let result = harness
             .dispatch(
-                &agent,
+                &policy,
                 seed_req_event(7, None, Some("떠도는 얘기"), RumorOrigin::Authored { by: None }),
             )
             .expect("must succeed");
@@ -378,12 +378,12 @@ mod tests {
     #[test]
     fn seed_forecast_has_both_topic_and_seed() {
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let result = harness
             .dispatch(
-                &agent,
+                &policy,
                 seed_req_event(
                     10,
                     Some("master-change"),
@@ -405,14 +405,14 @@ mod tests {
         // 핵심 회귀 가드 — `event.id=0`을 쓰던 버그를 방지. 두 번 시드하면 서로 다른
         // rumor_id가 나와야 한다.
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let r1 = harness
-            .dispatch(&agent, seed_req_event(0, Some("t1"), None, RumorOrigin::Seeded))
+            .dispatch(&policy, seed_req_event(0, Some("t1"), None, RumorOrigin::Seeded))
             .unwrap();
         let r2 = harness
-            .dispatch(&agent, seed_req_event(0, Some("t2"), None, RumorOrigin::Seeded))
+            .dispatch(&policy, seed_req_event(0, Some("t2"), None, RumorOrigin::Seeded))
             .unwrap();
 
         let id1 = rumor_id_of(&r1);
@@ -425,11 +425,11 @@ mod tests {
     #[test]
     fn spread_unknown_rumor_returns_invalid_input() {
         let store = Arc::new(SpyRumorStore::default());
-        let agent = RumorPolicy::new(store);
+        let policy = RumorPolicy::new(store);
         let mut harness = HandlerTestHarness::new();
 
         let err = harness
-            .dispatch(&agent, spread_req_event(1, "ghost", &["a"]))
+            .dispatch(&policy, spread_req_event(1, "ghost", &["a"]))
             .expect_err("must fail");
         assert!(matches!(err, HandlerError::InvalidInput(_)));
     }
@@ -447,12 +447,12 @@ mod tests {
         );
         store.save(&seeded).unwrap();
 
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let result = harness
             .dispatch(
-                &agent,
+                &policy,
                 spread_req_event(99, "rumor-seed", &["npc-a", "npc-b"]),
             )
             .expect("must succeed");
@@ -488,12 +488,12 @@ mod tests {
                 0,
             ))
             .unwrap();
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let result = harness
             .dispatch(
-                &agent,
+                &policy,
                 spread_req_event(1, "r", &["a", "b", "a"]),
             )
             .unwrap();
@@ -517,14 +517,14 @@ mod tests {
                 0,
             ))
             .unwrap();
-        let agent = RumorPolicy::new(store.clone());
+        let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
         let r1 = harness
-            .dispatch(&agent, spread_req_event(1, "r", &["a"]))
+            .dispatch(&policy, spread_req_event(1, "r", &["a"]))
             .unwrap();
         let r2 = harness
-            .dispatch(&agent, spread_req_event(2, "r", &["b"]))
+            .dispatch(&policy, spread_req_event(2, "r", &["b"]))
             .unwrap();
 
         let h1 = match &r1.follow_up_events[0].payload {

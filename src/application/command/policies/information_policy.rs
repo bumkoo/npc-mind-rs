@@ -152,11 +152,11 @@ mod tests {
 
     #[test]
     fn emits_one_information_told_per_listener_with_direct_role() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil-a", "pupil-b"], &[], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 2);
         for ev in &result.follow_up_events {
@@ -170,11 +170,11 @@ mod tests {
 
     #[test]
     fn overhearers_get_overhearer_role() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &["wanderer-a", "wanderer-b"], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 3);
         let roles: Vec<ListenerRole> = result
@@ -197,11 +197,11 @@ mod tests {
 
     #[test]
     fn information_told_aggregate_key_is_listener() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &["pupil"], &[], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(
             result.follow_up_events[0].aggregate_key(),
@@ -212,11 +212,11 @@ mod tests {
 
     #[test]
     fn origin_chain_in_is_passed_through_untouched() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("relay", &["final"], &[], &["prior-a", "prior-b"]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         let EventPayload::InformationTold {
             origin_chain_in, ..
         } = &result.follow_up_events[0].payload
@@ -232,12 +232,12 @@ mod tests {
 
     #[test]
     fn duplicates_in_listeners_and_overhearers_are_deduped_direct_wins() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         // "pupil"이 listeners와 overhearers에 모두 있는 케이스 — Direct 하나만 발행.
         let event = request_event("sage", &["pupil", "pupil"], &["pupil", "other"], &[]);
 
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         // pupil 1개 (Direct) + other 1개 (Overhearer) = 2개
         assert_eq!(result.follow_up_events.len(), 2);
@@ -267,16 +267,16 @@ mod tests {
 
     #[test]
     fn empty_listeners_and_overhearers_emit_no_follow_ups() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = request_event("sage", &[], &[], &[]);
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = InformationPolicy::new();
+        let policy = InformationPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = DomainEvent::new(
             0,
@@ -284,7 +284,7 @@ mod tests {
             0,
             EventPayload::EmotionCleared { npc_id: "x".into() },
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 }

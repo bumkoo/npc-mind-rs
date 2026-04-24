@@ -35,7 +35,7 @@ pub use application::event_bus::EventBus;
 pub use application::event_store::{EventStore, InMemoryEventStore};
 pub use domain::event::{DomainEvent, EventMetadata, EventPayload};
 
-// --- CQRS Command / Agent (v2) ---
+// --- CQRS Command / Policy (v2) ---
 pub use application::command::{
     Command, CommandDispatcher, EmotionPolicy, EmotionProjectionHandler, GuidePolicy,
     InformationPolicy, RelationshipPolicy, RelationshipMemoryHandler, RelationshipProjectionHandler,

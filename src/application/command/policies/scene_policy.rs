@@ -7,7 +7,7 @@
 //! v1이 side-effect flag로 scene 저장을 지시했던 부분이 v2에서는 `ctx.shared.scene`으로,
 //! 초기 감정도 `ctx.shared.emotion_state`로 전파되어 Dispatcher가 write-back.
 //!
-//! 가이드 생성은 이 agent 책임 밖 — GuidePolicy가 `EmotionAppraised`에 반응해 자동 생성.
+//! 가이드 생성은 이 policy 책임 밖 — GuidePolicy가 `EmotionAppraised`에 반응해 자동 생성.
 
 use crate::application::command::handler_v2::{
     DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
@@ -209,7 +209,7 @@ mod handler_v2_tests {
 
     #[test]
     fn scene_start_with_initial_focus_emits_scene_started_and_emotion_appraised() {
-        let agent = ScenePolicy::new();
+        let policy = ScenePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let partner = NpcBuilder::new("bob", "Bob").build();
         let rel = Relationship::neutral("alice", "bob");
@@ -223,7 +223,7 @@ mod handler_v2_tests {
             "bob",
             vec![make_focus("initial", FocusTrigger::Initial)],
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         // 순서 고정: SceneStarted → EmotionAppraised (ScenePolicy가 한 트랜잭션에서 2 follow-ups)
         // SceneStarted가 먼저 나와야 Projection/downstream이 Scene 등록을 인지한 뒤
@@ -243,7 +243,7 @@ mod handler_v2_tests {
 
     #[test]
     fn scene_start_without_initial_focus_only_emits_scene_started() {
-        let agent = ScenePolicy::new();
+        let policy = ScenePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new().with_npc(npc).with_relationship(rel);
@@ -254,7 +254,7 @@ mod handler_v2_tests {
             "bob",
             vec![make_focus("pending", FocusTrigger::Conditions(vec![]))],
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::SceneStarted);
@@ -264,7 +264,7 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_npc_returns_precondition_error() {
-        let agent = ScenePolicy::new();
+        let policy = ScenePolicy::new();
         let mut harness = HandlerTestHarness::new(); // repo 비어있음
 
         let event = make_scene_start_req(
@@ -272,7 +272,7 @@ mod handler_v2_tests {
             "nobody",
             vec![make_focus("initial", FocusTrigger::Initial)],
         );
-        let err = harness.dispatch(&agent, event).expect_err("must fail");
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
 
         assert!(matches!(
             err,

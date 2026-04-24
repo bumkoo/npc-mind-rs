@@ -29,7 +29,7 @@ use crate::ports::MindRepository;
 /// Dispatcher는 핸들러의 `mode()`에 따라 실행 단계(트랜잭션 내부 / 커밋 후 동기 /
 /// 비동기 broadcast)를 결정하며, `interest()`로 관심 이벤트를 필터링한다.
 ///
-/// B0에서는 이 트레이트를 구현하는 타입이 아직 없다. B1에서 기존 Agent
+/// B0에서는 이 트레이트를 구현하는 타입이 아직 없다. B1에서 기존 Policy
 /// (EmotionPolicy/GuidePolicy/RelationshipPolicy)가 이 트레이트를 추가 구현한다.
 pub trait EventHandler: Send + Sync {
     /// 트레이싱·로깅·디스패처 오류 리포팅용 식별자
@@ -213,7 +213,7 @@ pub enum HandlerError {
 
 /// L1 단위 테스트용 Harness — Dispatcher 없이 `EventHandler`를 직접 실행
 ///
-/// Agent별 L1 unit test가 공통으로 사용. 모든 field는 `pub`으로 노출되어
+/// Policy별 L1 unit test가 공통으로 사용. 모든 field는 `pub`으로 노출되어
 /// 테스트 코드가 필요 시 repo/event_store/shared를 직접 조작할 수 있다.
 #[cfg(test)]
 pub(crate) mod test_support {

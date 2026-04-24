@@ -4,9 +4,9 @@
 //! Canonical MemoryEntry 생성 / supersede 는 Inline `WorldOverlayHandler`가 처리하며,
 //! 이 폴리시는 순수 이벤트 변환 역할만 한다.
 //!
-//! **왜 별도 Agent로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
+//! **왜 별도 Policy로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
 //! `build_initial_event`에서 바로 `WorldEventOccurred`를 발행하는 쪽이 cascade depth가
-//! 얕아지지만, 다음 이유로 Agent 단계를 유지한다:
+//! 얕아지지만, 다음 이유로 Policy 단계를 유지한다:
 //! 1. 다른 Command도 Transactional 체인을 통해 `*Requested → *Occurred` 흐름을 거친다
 //!    (`InformationPolicy`, `ScenePolicy` 등) — 일관된 대칭.
 //! 2. 향후 세계 사건 유효성 검증·Canonical 충돌 감지·다중 follow-up (예: 목격자 개별
@@ -109,10 +109,10 @@ mod tests {
 
     #[test]
     fn emits_world_event_occurred_with_same_payload() {
-        let agent = WorldOverlayPolicy::new();
+        let policy = WorldOverlayPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let result = harness
-            .dispatch(&agent, request_event("jianghu", Some("leader"), "새 맹주 등장"))
+            .dispatch(&policy, request_event("jianghu", Some("leader"), "새 맹주 등장"))
             .expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn ignores_unrelated_event_kind() {
-        let agent = WorldOverlayPolicy::new();
+        let policy = WorldOverlayPolicy::new();
         let mut harness = HandlerTestHarness::new();
         let event = DomainEvent::new(
             0,
@@ -145,7 +145,7 @@ mod tests {
             0,
             EventPayload::EmotionCleared { npc_id: "x".into() },
         );
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 }

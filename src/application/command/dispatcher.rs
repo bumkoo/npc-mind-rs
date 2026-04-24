@@ -1,4 +1,4 @@
-//! CommandDispatcher — v2 전용 Agent 오케스트레이터
+//! CommandDispatcher — v2 전용 Policy 오케스트레이터
 //!
 //! `dispatch_v2(cmd)`로 Command → 초기 *Requested 이벤트 → Transactional BFS →
 //! HandlerShared write-back → Commit → Inline projection → Fanout 순서로 처리합니다.
@@ -115,7 +115,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         }
     }
 
-    /// 6 Agent + 3 Projection wrapper를 기본 등록.
+    /// 6 Policy + 3 Projection wrapper를 기본 등록.
     ///
     /// Step C2 이후: `InformationPolicy`도 기본 포함. Memory 인덱싱 Inline 핸들러
     /// (`TellingIngestionHandler`)는 `MemoryStore` 주입이 필요하므로 `with_memory()`

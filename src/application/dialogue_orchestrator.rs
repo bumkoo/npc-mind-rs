@@ -156,7 +156,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
     /// **전제**: 전달받는 `dispatcher`는 `.with_default_handlers()`가 호출된 상태여야 한다.
     /// DialogueOrchestrator는 내부적으로 `dispatcher.dispatch_v2(Command::Appraise / ApplyStimulus /
     /// EndDialogue)`를 호출하며, 결과를 `HandlerShared` 기반으로 재구성한다. 기본 핸들러(Emotion /
-    /// Stimulus / Guide / Relationship / Scene Agent + 3 inline projection)가 등록되어 있지
+    /// Stimulus / Guide / Relationship / Scene Policy + 3 inline projection)가 등록되어 있지
     /// 않으면 `DialogueOrchestratorError::ResultReconstruction`이 반환된다.
     pub fn new(
         dispatcher: CommandDispatcher<R>,

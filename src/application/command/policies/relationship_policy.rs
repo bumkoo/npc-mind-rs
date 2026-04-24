@@ -339,14 +339,14 @@ mod handler_v2_tests {
 
     #[test]
     fn dialogue_end_emits_three_follow_ups_and_sets_clear_signals() {
-        let agent = RelationshipPolicy::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
             .with_relationship(rel)
             .with_shared_emotion_state(EmotionState::default());
 
         let event = make_dialogue_end("alice", "bob", Some(0.8));
-        let result = harness.dispatch(&agent, event).expect("must succeed");
+        let result = harness.dispatch(&policy, event).expect("must succeed");
 
         // 3 follow-ups: RelationshipUpdated, EmotionCleared, SceneEnded
         assert_eq!(result.follow_up_events.len(), 3);
@@ -373,7 +373,7 @@ mod handler_v2_tests {
     fn scene_ended_no_longer_in_interest_produces_no_follow_ups() {
         // B4.1: RelationshipPolicy는 더 이상 SceneEnded에 반응하지 않는다
         //       (DialogueEndRequested가 그 역할을 담당).
-        let agent = RelationshipPolicy::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
             .with_relationship(rel)
@@ -381,14 +381,14 @@ mod handler_v2_tests {
 
         let event = make_scene_ended("alice", "bob");
         let result = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect("interest 밖 이벤트는 no-op");
         assert!(result.follow_up_events.is_empty());
     }
 
     #[test]
     fn beat_transitioned_uses_active_scene_for_partner_id() {
-        let agent = RelationshipPolicy::new();
+        let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "charlie");
         // Scene의 partner_id="charlie"가 BeatTransitioned의 partner 도출원
         let scene = Scene::new(
@@ -404,7 +404,7 @@ mod handler_v2_tests {
 
         let event = make_beat_transitioned("alice", "charlie");
         let result = harness
-            .dispatch(&agent, event)
+            .dispatch(&policy, event)
             .expect("should derive partner from scene");
 
         assert_eq!(result.follow_up_events.len(), 1);
@@ -418,14 +418,14 @@ mod handler_v2_tests {
 
     #[test]
     fn missing_relationship_returns_precondition_error() {
-        let agent = RelationshipPolicy::new();
+        let policy = RelationshipPolicy::new();
         // relationship 미주입
         let mut harness =
             HandlerTestHarness::new().with_shared_emotion_state(EmotionState::default());
 
         // B4.1: DialogueEndRequested로 변경 (SceneEnded는 이제 interest 밖)
         let event = make_dialogue_end("alice", "bob", None);
-        let err = harness.dispatch(&agent, event).expect_err("must fail");
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
 
         assert!(matches!(
             err,
