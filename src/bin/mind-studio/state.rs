@@ -2,15 +2,25 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::events::StateEvent;
 use crate::trace_collector::AppraisalCollector;
 use npc_mind::application::command::dispatcher::CommandDispatcher;
+use npc_mind::application::command::policies::{
+    EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, ScenePolicy,
+    StimulusPolicy, WorldOverlayPolicy,
+};
+use npc_mind::application::command::{
+    EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
+};
 use npc_mind::application::director::{Director, Spawner};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
+use npc_mind::application::projection::{
+    EmotionProjection, RelationshipProjection, SceneProjection,
+};
 use futures::future::BoxFuture;
 use npc_mind::domain::emotion::EmotionState;
 use npc_mind::domain::emotion::SceneFocus;
@@ -92,6 +102,60 @@ pub struct AppState {
     /// Step E1: Rumor 저장소. `embed` feature 활성 시에만 존재하며 같은 DB 파일을 공유.
     #[cfg(feature = "embed")]
     pub rumor_store: Arc<dyn RumorStore>,
+
+    // ---- Read Side — Projection 공유 핸들 ----
+    //
+    // 아래 3개 필드는 `shared_dispatcher`의 Inline Projection Handler와
+    // **동일한 `Arc<Mutex<T>>`**를 공유한다. `/api/projection/*` Query 핸들러가
+    // 이 Arc를 lock하여 읽으며, dispatch_v2 Inline phase가 같은 Arc를 통해 write
+    // 한다. Mutex 종류는 `*ProjectionHandler::from_shared`의 시그니처에 맞춰
+    // `std::sync::Mutex`를 사용한다 (tokio::sync::Mutex 아님).
+    //
+    // director_v2는 별개 Projection을 내부 소유하며 이 필드들과 분리됨 —
+    // `/api/projection/*`는 shared_dispatcher 경로만 반영 (task 명세 §10).
+    /// NPC별 mood / dominant / snapshot 뷰 (EmotionAppraised·StimulusApplied·EmotionCleared 구독).
+    pub emotion_projection: Arc<StdMutex<EmotionProjection>>,
+    /// (owner, target) 쌍의 closeness/trust/power 뷰 (RelationshipUpdated 구독).
+    pub relationship_projection: Arc<StdMutex<RelationshipProjection>>,
+    /// 활성 Scene 상태 뷰 (SceneStarted·BeatTransitioned·SceneEnded 구독).
+    pub scene_projection: Arc<StdMutex<SceneProjection>>,
+}
+
+/// `CommandDispatcher::with_default_handlers`를 **수동으로 재현**하되 Projection은
+/// 외부에서 주입받은 Arc로 교체하는 헬퍼.
+///
+/// - Transactional 7종: Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay
+///   (library core의 `with_default_handlers`와 동일한 순서·구성)
+/// - Inline 3종: `from_shared(arc)`로 주입 — dispatcher가 업데이트하는 projection과
+///   `/api/projection/*` 쿼리가 읽는 projection이 **같은 Arc**가 되도록 보장한다.
+///
+/// `with_default_handlers`를 그대로 쓰면 내부 `::new()`로 별도 Arc가 생성되어 중복
+/// 등록이 되므로 본 헬퍼로 치환한다. Library core는 무변경.
+fn build_shared_dispatcher(
+    repo: InMemoryRepository,
+    store: Arc<InMemoryEventStore>,
+    bus: Arc<EventBus>,
+    emotion_projection: Arc<StdMutex<EmotionProjection>>,
+    relationship_projection: Arc<StdMutex<RelationshipProjection>>,
+    scene_projection: Arc<StdMutex<SceneProjection>>,
+) -> CommandDispatcher<InMemoryRepository> {
+    CommandDispatcher::new(repo, store, bus)
+        .register_transactional(Arc::new(ScenePolicy::new()))
+        .register_transactional(Arc::new(EmotionPolicy::new()))
+        .register_transactional(Arc::new(StimulusPolicy::new()))
+        .register_transactional(Arc::new(GuidePolicy::new()))
+        .register_transactional(Arc::new(RelationshipPolicy::new()))
+        .register_transactional(Arc::new(InformationPolicy::new()))
+        .register_transactional(Arc::new(WorldOverlayPolicy::new()))
+        .register_inline(Arc::new(EmotionProjectionHandler::from_shared(
+            emotion_projection,
+        )))
+        .register_inline(Arc::new(RelationshipProjectionHandler::from_shared(
+            relationship_projection,
+        )))
+        .register_inline(Arc::new(SceneProjectionHandler::from_shared(
+            scene_projection,
+        )))
 }
 
 impl AppState {
@@ -115,6 +179,19 @@ impl AppState {
             });
             Arc::new(Director::new(dispatcher, spawner))
         };
+
+        // Read Side Activation: Projection Arc를 **선행 생성**하고
+        // dispatcher의 Inline handler와 AppState 필드가 같은 Arc를 공유하도록 주입한다.
+        // 이 Arc들은 `with_default_handlers()`가 내부 생성하는 Projection과는 별개이므로,
+        // default helper를 그대로 쓰면 중복 등록이 된다. 따라서 아래에서는
+        // `with_default_handlers()` 대신 policy 7종을 수동 등록하고,
+        // projection 3종만 `from_shared(arc)`로 주입한다 (library core 무변경).
+        let emotion_projection: Arc<StdMutex<EmotionProjection>> =
+            Arc::new(StdMutex::new(EmotionProjection::new()));
+        let relationship_projection: Arc<StdMutex<RelationshipProjection>> =
+            Arc::new(StdMutex::new(RelationshipProjection::new()));
+        let scene_projection: Arc<StdMutex<SceneProjection>> =
+            Arc::new(StdMutex::new(SceneProjection::new()));
 
         // Step E1: embed feature 활성 시 MemoryStore/RumorStore를 먼저 초기화한 뒤
         // 공유 dispatcher에 with_memory_full + with_rumor로 부착한다.
@@ -150,21 +227,34 @@ impl AppState {
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
             let dispatcher = Arc::new(
-                CommandDispatcher::new(repo, store, bus)
-                    .with_default_handlers()
-                    .with_memory_full(mem.clone())
-                    .with_rumor(mem.clone(), rum.clone()),
+                build_shared_dispatcher(
+                    repo,
+                    store,
+                    bus,
+                    emotion_projection.clone(),
+                    relationship_projection.clone(),
+                    scene_projection.clone(),
+                )
+                .with_memory_full(mem.clone())
+                .with_rumor(mem.clone(), rum.clone()),
             );
             (dispatcher, mem, rum)
         };
 
-        // embed 미활성 — 기존 구성 그대로.
+        // embed 미활성 — memory/rumor 빌더 없이 같은 구성.
         #[cfg(not(feature = "embed"))]
         let shared_dispatcher = {
             let repo = InMemoryRepository::new();
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
-            Arc::new(CommandDispatcher::new(repo, store, bus).with_default_handlers())
+            Arc::new(build_shared_dispatcher(
+                repo,
+                store,
+                bus,
+                emotion_projection.clone(),
+                relationship_projection.clone(),
+                scene_projection.clone(),
+            ))
         };
 
         Self {
@@ -190,6 +280,9 @@ impl AppState {
             memory_store,
             #[cfg(feature = "embed")]
             rumor_store,
+            emotion_projection,
+            relationship_projection,
+            scene_projection,
         }
     }
 
