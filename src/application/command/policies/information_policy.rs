@@ -2,7 +2,7 @@
 //!
 //! `TellInformationRequested` 1개를 받아 listeners + overhearers 각각에 대해
 //! `InformationTold` follow-up 이벤트를 발행한다 (B5: 청자당 1 이벤트 패턴).
-//! 실제 `MemoryEntry` 생성은 Inline `TellingIngestionHandler`가 담당하며, 이 에이전트는
+//! 실제 `MemoryEntry` 생성은 Inline `TellingIngestionHandler`가 담당하며, 이 폴리시는
 //! 순수 팬아웃 오케스트레이터다.
 //!
 //! **왜 Transactional인가**: follow-up 이벤트를 발행해야 하고, 해당 이벤트가 같은

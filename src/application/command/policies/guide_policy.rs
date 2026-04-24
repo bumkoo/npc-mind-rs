@@ -10,7 +10,7 @@ use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::guide::ActingGuide;
 
-/// 연기 가이드 생성 에이전트
+/// 연기 가이드 생성 폴리시
 pub struct GuidePolicy;
 
 impl GuidePolicy {

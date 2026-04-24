@@ -11,7 +11,7 @@ use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::tuning::BEAT_DEFAULT_SIGNIFICANCE;
 
-/// 관계 갱신 에이전트
+/// 관계 갱신 폴리시
 pub struct RelationshipPolicy;
 
 impl RelationshipPolicy {

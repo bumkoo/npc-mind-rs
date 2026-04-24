@@ -14,7 +14,7 @@
 ## 1. 한 문장 요약
 
 **NPC Mind Engine은 HEXACO 성격이 OCC 감정을 생성하고, 이를 LLM이 "연기"할 수 있도록 가이드·대사·기억 주입을 관리하는 Rust 라이브러리**다.
-라이브러리는 `Director` / `CommandDispatcher::dispatch_v2` 를 유일한 진입점으로 하여, EventBus · CQRS · Event Sourcing · Multi-Agent 아키텍처 위에서 동작한다. Mind Studio(Axum + React)는 이 엔진을 사람이 직접 구동·관찰할 수 있도록 감싸놓은 개발 도구다.
+라이브러리는 `Director` / `CommandDispatcher::dispatch_v2` 를 유일한 진입점으로 하여, EventBus · CQRS · Event Sourcing · Multi-Handler 아키텍처 위에서 동작한다. Mind Studio(Axum + React)는 이 엔진을 사람이 직접 구동·관찰할 수 있도록 감싸놓은 개발 도구다.
 
 ---
 
@@ -23,7 +23,7 @@
 | 원칙 | 의도 | 현재 구현상의 귀결 |
 |---|---|---|
 | **Hexagonal + DDD** | 도메인(감정·관계·기억)을 외부 I/O(LLM·DB·웹)로부터 격리 | `domain/`은 외부 deps 없음. `ports.rs`가 경계. adapter/presentation/bin만 바깥 세계에 닿음 |
-| **CQRS + Event Sourcing** | 상태 변화를 "무엇이 일어났는가"로 표현해 재현·디버깅·멀티 에이전트 연결을 쉽게 | 단 하나의 write 경로 `dispatch_v2`. 모든 상태 변화는 `DomainEvent`로 append. Projection은 별개 |
+| **CQRS + Event Sourcing** | 상태 변화를 "무엇이 일어났는가"로 표현해 재현·디버깅·멀티 핸들러 연결을 쉽게 | 단 하나의 write 경로 `dispatch_v2`. 모든 상태 변화는 `DomainEvent`로 append. Projection은 별개 |
 | **Runtime-agnostic core** | 엔진이 Bevy·async-std 등 임의 게임 런타임에 얹힐 수 있어야 함 | 코어는 `tokio::sync::broadcast`만 내부 사용. 공개 API는 `futures::Stream`. `Spawner` trait으로 task 생성 주입. `tokio::spawn` 금지 |
 | **Observable-by-default** | 심리 엔진은 "왜 이런 감정이 나왔는지" 설명되어야 함 | Event Log 보존 + SSE fan-out + Mind Studio UI로 실시간 관찰 |
 | **Feature gating** | 임베딩·LLM·웹 서버는 선택적 비용 | `embed` / `chat` / `mind-studio` / `listener_perspective` feature로 분할 |
@@ -42,13 +42,13 @@
 │ Application (조립·흐름 제어)  —  라이브러리 사용자의 진입점              │
 │   Director                (multi-scene facade, Spawner 주입)            │
 │   CommandDispatcher       (dispatch_v2 = 유일 write 경로)              │
-│   DialogueAgent [chat]    (LLM 다턴 오케스트레이터)                     │
+│   DialogueOrchestrator [chat]    (LLM 다턴 오케스트레이터)                     │
 │   EventBus / EventStore   (broadcast fan-out / append-only log)        │
-│   MemoryAgent [embed]     (broadcast 구독 → 임베딩 → RAG 저장)          │
-│   Handler Agents          : SceneAgent / EmotionAgent / StimulusAgent /│
-│                             GuideAgent / RelationshipAgent /           │
-│                             InformationAgent / RumorAgent /            │
-│                             WorldOverlayAgent                          │
+│   MemoryProjector [embed]     (broadcast 구독 → 임베딩 → RAG 저장)          │
+│   Handler Agents          : ScenePolicy / EmotionPolicy / StimulusPolicy /│
+│                             GuidePolicy / RelationshipPolicy /           │
+│                             InformationPolicy / RumorPolicy /            │
+│                             WorldOverlayPolicy                          │
 │   Inline Projection/      : Emotion·Relationship·Scene Projection +    │
 │   Ingestion Handlers        TellingIngestion·RumorDistribution·        │
 │                             WorldOverlay·RelationshipMemory·           │
@@ -87,7 +87,7 @@
 |---|---|---|
 | `src/domain/` | 순수 도메인 로직 (성격·감정·PAD·관계·Scene·기억·이벤트 타입) | 불가 — std + serde 수준 |
 | `src/ports.rs` | 헥사고날 경계 trait 정의 | 불가 |
-| `src/application/` | 도메인 조립, CQRS dispatcher, EventBus, Handler, DialogueAgent, Director | 가능(도메인/포트 경유) |
+| `src/application/` | 도메인 조립, CQRS dispatcher, EventBus, Handler, DialogueOrchestrator, Director | 가능(도메인/포트 경유) |
 | `src/adapter/` | 포트 구현체 | 외부 라이브러리 OK |
 | `src/presentation/` | locale formatter, memory framer | 표준 라이브러리 위주 |
 | `src/bin/mind-studio/` | Axum REST + SSE 서버 + static UI | 전체 deps 허용 |
@@ -133,12 +133,12 @@ Inline handlers:
   │ Fanout phase
   ▼
 EventBus.publish → tokio::broadcast → subscribe() 스트림
-                   ├─ MemoryAgent [embed] (임베딩 + RAG 색인)
+                   ├─ MemoryProjector [embed] (임베딩 + RAG 색인)
                    ├─ Mind Studio SSE (/api/events)
                    └─ 사용자 정의 구독자 (게임 엔진 등)
 ```
 
-### 4.2 LLM 대화 루프 (`DialogueAgent`, `chat` feature)
+### 4.2 LLM 대화 루프 (`DialogueOrchestrator`, `chat` feature)
 
 ```
 start_session(sid, npc, partner, situation?)
@@ -202,13 +202,13 @@ format!("{block}{system_prompt}") → ConversationPort
 각 항목의 상세는 CLAUDE.md의 "구현 현황" 표와 해당 doc 링크 참조. 여기는 **어떤 블록이 어느 상태인지** 를 한 눈에 보기 위함.
 
 ### 5.1 핵심 엔진 (완료)
-- **Phase 1–4**: EventBus / EventStore / Projection / CQRS Agent(Emotion/Stimulus/Guide/Relationship) / MemoryAgent / DialogueAgent
+- **Phase 1–4**: EventBus / EventStore / Projection / CQRS Policy(Emotion/Stimulus/Guide/Relationship) / MemoryProjector / DialogueOrchestrator
 - **B안 B0–B4 S4**: EventHandler trait → v2 단일 경로 완성. Director(multi-scene facade) + Spawner 추상화로 런타임 중립
 - **B안 B5.1–B5.3**: v1 전면 제거. `shared_dispatcher`로 Mind Studio 동기화 모델 통일
 
 ### 5.2 Memory/Rumor 서브시스템 (완료 + 일부 진행)
 - **Step A (foundation)**: Scope/Source/Provenance/Layer + Ranker 2단계 + SQLite v2 마이그레이션
-- **Step B (push 주입)**: `DialogueAgent::with_memory`, `BeatTransitioned` 재주입, 라벨링된 framer
+- **Step B (push 주입)**: `DialogueOrchestrator::with_memory`, `BeatTransitioned` 재주입, 라벨링된 framer
 - **Step C1 (Rumor 도메인)**: Rumor aggregate, RumorStore, 불변식 I-RU-1~6
 - **Step C2 (TellInformation)**: 화자→청자 정보 전달 → `InformationTold` + `MemoryEntry(Heard/Rumor)`
 - **Step C3 (Rumor 확산)**: Seed/Spread, Canonical 3-tier 해소, 홉 감쇠
@@ -220,7 +220,7 @@ format!("{block}{system_prompt}") → ConversationPort
 ### 5.3 Listener-Perspective Converter (Phase 7, 완료)
 - default-on feature(`listener_perspective`). 88% baseline
 - 한국어 정규식 프리필터 → sign/magnitude k-NN → 화자 PAD를 청자 관점으로 변환
-- DialogueAgent · Mind Studio 양쪽에서 자동 적용
+- DialogueOrchestrator · Mind Studio 양쪽에서 자동 적용
 
 ### 5.4 Mind Studio (dev tool, 완료)
 - 백엔드: Axum REST + SSE + MCP 서버, `/api/*` (메인) + `/api/v2/*` (Director shadow)
@@ -242,7 +242,7 @@ format!("{block}{system_prompt}") → ConversationPort
 |---|---|---|
 | `dispatch_v2` 단일 write 경로 | v1과의 이중 경로가 drift·테스트 분열을 유발 | 마이그레이션 비용(B5.1–B5.3) 치렀고 이제 우회로 없음 |
 | BFS 캐스케이드 (깊이·이벤트 수 가드) | handler 간 follow-up 체인이 무한 증식 가능 | `MAX_CASCADE_DEPTH=4` / `MAX_EVENTS_PER_COMMAND=20` — 초과 시 `CascadeTooDeep`·`EventBudgetExceeded` |
-| tokio::broadcast (at-most-once + Lagged 복구) | 낮은 지연 + 다수 구독자 | 느린 구독자는 lag 가능. MemoryAgent는 `subscribe_with_lag + EventStore.get_events_after_id`로 replay |
+| tokio::broadcast (at-most-once + Lagged 복구) | 낮은 지연 + 다수 구독자 | 느린 구독자는 lag 가능. MemoryProjector는 `subscribe_with_lag + EventStore.get_events_after_id`로 replay |
 | `Spawner` trait로 task 생성 주입 | 코어가 tokio/rt에 강결합되면 Bevy 등 불가 | 호출자가 클로저(`Arc::new(|fut| tokio::spawn(fut))`)를 직접 제공해야 함 |
 | SQLite FTS5 trigram + sqlite-vec vec0 | 한글 FTS(단어 경계 문제) + 임베딩 ANN을 한 파일에 | vec0 스키마에 차원 고정 → 모델 교체 시 DB 재생성 필요 |
 | `InMemoryEventStore` 프로세스 수명 누적 | 단순·빠름, 개발 툴 용도 | 장기 실행 시 메모리·`next_sequence` O(N) scan 부담. 영구 store는 Phase 8+ |
@@ -258,10 +258,10 @@ format!("{block}{system_prompt}") → ConversationPort
 | # | 주제 | 이유 / 담을 내용 | 관련 코드·기존 문서 |
 |---|---|---|---|
 | 1 | **dispatch_v2 내부 동작** ✅ | BFS 캐스케이드 / HandlerShared / 가드·에러 / 이벤트 라우팅 키 | [`dispatch-v2-internals.md`](dispatch-v2-internals.md) · `application/command/dispatcher.rs`, `handler_v2.rs`, `priority.rs` |
-| 2 | **EventHandler 카탈로그** ✅ | 8 transactional + 8 inline handler의 입력/출력/부수효과 매트릭스 | [`event-handler-catalog.md`](event-handler-catalog.md) · `application/command/agents/*`, `application/command/*_handler.rs` |
+| 2 | **EventHandler 카탈로그** ✅ | 8 transactional + 8 inline handler의 입력/출력/부수효과 매트릭스 | [`event-handler-catalog.md`](event-handler-catalog.md) · `application/command/policies/*`, `application/command/*_handler.rs` |
 | 3 | **Memory Ranker + Framer 파이프라인** | Scope filter, 5요소 점수, Source 우선, framer locale 전략, 회귀 실패 패턴 | `domain/memory/*`, `presentation/memory_formatter.rs` · `docs/memory/03-implementation-design.md` |
-| 4 | **Rumor 수명주기** | Seed/Spread/Distort/Fade 불변식, Canonical 3-tier 해소, aggregate key 라우팅 | `domain/rumor.rs`, `agents/rumor_agent.rs`, `rumor_distribution_handler.rs` |
-| 5 | **Scene · Beat · Focus Trigger 엔진** | 상태기계, `check_trigger`, `merge_from_beat`, B4 S3 Option A partner_id 분리 | `domain/scene/*`, `agents/stimulus_agent.rs`, `agents/scene_agent.rs` |
+| 4 | **Rumor 수명주기** | Seed/Spread/Distort/Fade 불변식, Canonical 3-tier 해소, aggregate key 라우팅 | `domain/rumor.rs`, `agents/rumor_policy.rs`, `rumor_distribution_handler.rs` |
+| 5 | **Scene · Beat · Focus Trigger 엔진** | 상태기계, `check_trigger`, `merge_from_beat`, B4 S3 Option A partner_id 분리 | `domain/scene/*`, `agents/stimulus_policy.rs`, `agents/scene_policy.rs` |
 | 6 | **감정 appraisal 내부 구조** | event/action/object 축, compound 결합, 성격 가중치 패턴, 관계 변조 | `domain/emotion/*` · `docs/emotion/*` |
 | 7 | **Listener-Perspective Converter (Phase 7)** | 프리필터 → sign/magnitude k-NN → register 전략, 88% baseline의 한계 | `domain/listener_perspective/*` · `docs/emotion/phase7-converter-integration.md`, `sign-classifier-design.md` |
 | 8 | **LLM 어댑터 레이어** | rig-core 통합, `TimingsCapturingClient`, `LlamaServerMonitor`, 커넥션 풀 공유 | `adapter/rig_chat.rs`, `adapter/llama_timings.rs` |
@@ -281,7 +281,7 @@ format!("{block}{system_prompt}") → ConversationPort
 **아키텍처 계열**
 - [`architecture-v2.md`](architecture-v2.md) — v2 전반 구조 (B안 이전)
 - [`b-plan-implementation.md`](b-plan-implementation.md) — B안 단계별 설계
-- [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) — EventBus / CQRS / Event Sourcing / Multi-Agent / RAG 상세
+- [`system-design-eventbus-cqrs.md`](system-design-eventbus-cqrs.md) — EventBus / CQRS / Event Sourcing / Multi-Handler / RAG 상세
 - [`frontend-architecture.md`](frontend-architecture.md) — Mind Studio UI 구조
 - [`adr-001-rig-agent-integration.md`](adr-001-rig-agent-integration.md) — rig 통합 결정
 - [`unified-event-protocol-analysis.md`](unified-event-protocol-analysis.md), [`situation-structure.md`](situation-structure.md), [`npc-tool-memory-design.md`](npc-tool-memory-design.md), [`system-design-review-2026-04.md`](system-design-review-2026-04.md)

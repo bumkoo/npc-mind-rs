@@ -17,7 +17,7 @@ use crate::domain::emotion::AppraisalEngine;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::ports::Appraiser;
 
-/// Scene 시작 전담 에이전트
+/// Scene 시작 전담 폴리시
 pub struct ScenePolicy {
     appraiser: AppraisalEngine,
 }

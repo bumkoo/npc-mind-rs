@@ -237,7 +237,7 @@ pub trait MindRepository: NpcWorld + EmotionStore + SceneStore {}
 impl<T: NpcWorld + EmotionStore + SceneStore> MindRepository for T {}
 
 // ---------------------------------------------------------------------------
-// 대화 에이전트 포트 (chat feature)
+// 대화 오케스트레이터 포트 (chat feature)
 // ---------------------------------------------------------------------------
 
 /// 대화 턴 — 세션 내 한 턴의 발화
@@ -300,7 +300,7 @@ pub struct ChatResponse {
     pub timings: Option<LlamaTimings>,
 }
 
-/// 대화 에이전트 오류
+/// 대화 오케스트레이터 오류
 #[cfg(feature = "chat")]
 #[derive(Debug, thiserror::Error)]
 pub enum ConversationError {
@@ -312,7 +312,7 @@ pub enum ConversationError {
     InferenceError(String),
 }
 
-/// 대화 에이전트 포트 — LLM과의 다턴 대화 세션을 추상화
+/// 대화 오케스트레이터 포트 — LLM과의 다턴 대화 세션을 추상화
 ///
 /// Mind Engine이 생성한 프롬프트를 system prompt로 사용하여
 /// LLM과 다턴 대화를 수행한다.

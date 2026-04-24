@@ -9,7 +9,7 @@
 
 ## 1. 설계 원칙
 
-1. **기존 테스트·시나리오를 깨지 않는다**: `MemoryEntry`·`MemoryStore`·`MemoryAgent`의 공개 API는 호환 가능한 확장으로만 수정한다.
+1. **기존 테스트·시나리오를 깨지 않는다**: `MemoryEntry`·`MemoryStore`·`MemoryProjector`의 공개 API는 호환 가능한 확장으로만 수정한다.
 2. **Event Sourcing 정합**: 모든 상태 변경은 `CommandDispatcher::dispatch_v2` 파이프라인을 경유한다. append-only, Replay 복원 가능.
 3. **런타임 중립**: 코어 로직은 tokio에 직접 의존하지 않는다. `broadcast`/`Stream` 인프라만 이용.
 4. **저장소 단일화**: 별도 `WorldKnowledgeStore`를 만들지 않고 기존 `SqliteMemoryStore`에 Scope로 구분한다. 임베딩 파이프라인 통합 유지.
@@ -372,7 +372,7 @@ pub enum RelationshipChangeCause {
 }
 ```
 
-기존 `RelationshipUpdated`에 `cause: RelationshipChangeCause` 필드가 추가된다. 기존 발행 지점(RelationshipAgent)은 Step A 단계에서 일괄 `Unspecified`로, Step B 이후 원인을 식별 가능한 지점부터 정식 variant로 채운다.
+기존 `RelationshipUpdated`에 `cause: RelationshipChangeCause` 필드가 추가된다. 기존 발행 지점(RelationshipPolicy)은 Step A 단계에서 일괄 `Unspecified`로, Step B 이후 원인을 식별 가능한 지점부터 정식 variant로 채운다.
 
 ### 3.2 신규 `*Requested` variants (v2 초기 이벤트)
 
@@ -380,7 +380,7 @@ pub enum RelationshipChangeCause {
 pub enum EventPayload {
     // ...
     /// Mind 컨텍스트 — Command::TellInformation의 초기 이벤트.
-    /// InformationAgent가 처리하여 청자별 InformationTold follow-up을 발행.
+    /// InformationPolicy가 처리하여 청자별 InformationTold follow-up을 발행.
     TellInformationRequested {
         speaker: String,
         listeners: Vec<String>,       // Direct
@@ -541,13 +541,13 @@ pub trait RumorStore: Send + Sync {
 
 LLM tool binding이 필요한 경우만. 기본 구현은 `CommandDispatcher`가 직접 처리.
 
-## 6. Agent / Handler 확장
+## 6. Policy / Handler 확장
 
 2차 §6.2/§6.3 컨텍스트 분리를 코드 배치로 투영한다.
 
-### 6.1 기존 `MemoryAgent` 역할 재정의 — `src/application/memory_agent.rs`
+### 6.1 기존 `MemoryProjector` 역할 재정의 — `src/application/memory_projector.rs`
 
-기존 `MemoryAgent`는 **EventBus 구독자 + 인덱싱 전담자**로 역할을 좁힌다. 정책·판정 로직은 §6.3 Inline 핸들러들로 이전.
+기존 `MemoryProjector`는 **EventBus 구독자 + 인덱싱 전담자**로 역할을 좁힌다. 정책·판정 로직은 §6.3 Inline 핸들러들로 이전.
 
 유지:
 - `DialogueTurnCompleted`, `RelationshipUpdated`, `BeatTransitioned`, `SceneEnded` broadcast 구독.
@@ -556,17 +556,17 @@ LLM tool binding이 필요한 경우만. 기본 구현은 `CommandDispatcher`가
 
 확장:
 - `MemoryEntryCreated` 이벤트 수신 시 임베딩만 담당 (MemoryEntry 자체 저장은 Inline 핸들러가 이미 수행).
-- 즉, MemoryAgent는 **EventBus 계층**에서 동작하는 비동기 인덱싱 워커이지, Transactional EventHandler 체인의 일원은 아니다.
+- 즉, MemoryProjector는 **EventBus 계층**에서 동작하는 비동기 인덱싱 워커이지, Transactional EventHandler 체인의 일원은 아니다.
 
-### 6.2 신규 Transactional EventHandler — `src/application/command/agents/`
+### 6.2 신규 Transactional EventHandler — `src/application/command/policies/`
 
 v2 `EventHandler` trait 구현체. Transactional 단계에서 실행된다.
 
-| 파일 | Agent | 컨텍스트 | 처리 이벤트 | follow-up 이벤트 |
+| 파일 | Policy | 컨텍스트 | 처리 이벤트 | follow-up 이벤트 |
 |---|---|---|---|---|
-| `information_agent.rs` | `InformationAgent` | **Mind** | `TellInformationRequested` | 청자별 `InformationTold { listener, listener_role }` N개 (B5) |
-| `world_overlay_agent.rs` | `WorldOverlayAgent` | **Mind** | `ApplyWorldEventRequested` | `WorldEventOccurred` |
-| `rumor_agent.rs` | `RumorAgent` | **Memory** | `SeedRumorRequested`, `SpreadRumorRequested` | `RumorSeeded`, `RumorSpread`, `RumorDistorted` |
+| `information_policy.rs` | `InformationPolicy` | **Mind** | `TellInformationRequested` | 청자별 `InformationTold { listener, listener_role }` N개 (B5) |
+| `world_overlay_policy.rs` | `WorldOverlayPolicy` | **Mind** | `ApplyWorldEventRequested` | `WorldEventOccurred` |
+| `rumor_policy.rs` | `RumorPolicy` | **Memory** | `SeedRumorRequested`, `SpreadRumorRequested` | `RumorSeeded`, `RumorSpread`, `RumorDistorted` |
 
 ### 6.3 신규 Inline EventHandler (Memory 컨텍스트 정책 투영)
 
@@ -896,10 +896,10 @@ pub const RUMOR_MIN_CONFIDENCE: f32 = 0.1;
 
 ## 10. LLM 주입 통합
 
-### 10.1 `DialogueAgent` 확장 — `src/application/dialogue_agent.rs`
+### 10.1 `DialogueOrchestrator` 확장 — `src/application/dialogue_orchestrator.rs`
 
 ```rust
-impl<R, C> DialogueAgent<R, C> where R: MindRepository, C: ConversationPort {
+impl<R, C> DialogueOrchestrator<R, C> where R: MindRepository, C: ConversationPort {
     pub fn with_memory(self, store: Arc<dyn MemoryStore>, framer: Arc<dyn MemoryFramer>) -> Self { ... }
 
     async fn inject_memory_push(&self, npc: &str, pad: Option<(f32,f32,f32)>, query: &str)
@@ -1039,7 +1039,7 @@ pub enum StateEvent {
 | `rumor_spread_test.rs` | SpreadRumor → N 수신자 MemoryEntry 생성(I-RU-5 트랜잭션 일관성), hop 증가, 신뢰도 기하 감소 |
 | `rumor_canonical_resolution_test.rs` | Topic 있음/없음/Canonical 없음 3가지 경우 콘텐츠 해소 |
 | `memory_ranker_source_priority_test.rs` | 같은 Topic에 Experienced + Heard 동시 존재 → Experienced만 살아남음 |
-| `memory_injection_test.rs` (chat feature) | DialogueAgent start_session에서 기억 블록 주입 검증 |
+| `memory_injection_test.rs` (chat feature) | DialogueOrchestrator start_session에서 기억 블록 주입 검증 |
 
 ### 12.3 회귀 테스트
 
@@ -1092,14 +1092,14 @@ pub enum StateEvent {
   Faction/Family 소속 Join은 Step C에서 `NpcWorld` 도입과 함께 확장 예정.
 - `partition_key` 포맷(`"personal:<id>"` 등)은 NPC/Faction/Family/World ID에 `:` 문자가
   없다고 가정 (호출자 책임, 런타임 강제는 Step C에서).
-- Step A 범위 **외**: `MemoryRanker` 호출 경로 (Step B에서 `DialogueAgent` 주입 시 연결),
+- Step A 범위 **외**: `MemoryRanker` 호출 경로 (Step B에서 `DialogueOrchestrator` 주입 시 연결),
   `RumorStore`·Rumor 애그리거트 (Step C), `Command::TellInformation`·`SeedRumor`·`SpreadRumor`
-  (Step C), `SceneConsolidationHandler`·`WorldOverlayAgent` (Step D), 이벤트 신규 variant
+  (Step C), `SceneConsolidationHandler`·`WorldOverlayPolicy` (Step D), 이벤트 신규 variant
   (`MemoryEntryCreated` 등 — Step C/D), Rumor 테이블은 빈 상태로 선제 생성만.
 
 ### Step B — Injection & Framing ✅ 완료 (Core only)
 
-**범위**: `MemoryFramer` + locale 섹션 추가, `DialogueAgent.inject_memory_push()`, Push 경로 온. Pull(`recall_memory` tool)은 feature-gated off. 구 `search_by_meaning`/`search_by_keyword` deprecated 마킹.
+**범위**: `MemoryFramer` + locale 섹션 추가, `DialogueOrchestrator.inject_memory_push()`, Push 경로 온. Pull(`recall_memory` tool)은 feature-gated off. 구 `search_by_meaning`/`search_by_keyword` deprecated 마킹.
 
 **가치**: NPC가 자신의 경험·세계관을 프롬프트로 실제로 보게 된다. 연기 품질 체감 상승. Source별 어투 차이 확인.
 
@@ -1112,7 +1112,7 @@ pub enum StateEvent {
 - 구현 파일: `src/ports.rs`(MemoryFramer trait + 구 메서드 deprecation),
   `src/presentation/memory_formatter.rs`(신규 LocaleMemoryFramer),
   `locales/ko.toml` + `locales/en.toml`([memory.framing] 섹션),
-  `src/application/dialogue_agent.rs`(with_memory + inject_memory_push + 훅),
+  `src/application/dialogue_orchestrator.rs`(with_memory + inject_memory_push + 훅),
   `tests/memory_injection_test.rs`(신규).
 - 사용자 승인 결정: 범위는 **Core only** (Mind Studio UI는 Step E로 분리).
   재주입 시점은 `start_session` 1회 + `BeatTransitioned` 발생 시 (매 turn 옵션은 Step F).
@@ -1136,7 +1136,7 @@ pub enum StateEvent {
 
 **범위**:
 - `Command::TellInformation`, `Command::SeedRumor`, `Command::SpreadRumor`.
-- `InformationAgent` (Mind), `RumorAgent` (Memory).
+- `InformationPolicy` (Mind), `RumorPolicy` (Memory).
 - `Rumor` 애그리거트 + `RumorStore`.
 - Inline 핸들러: `TellingIngestionHandler`, `RumorDistributionHandler`.
 - `InformationTold` 청자당 1 이벤트 패턴 (B5).
@@ -1165,25 +1165,25 @@ pub enum StateEvent {
 
 - **Step C2 — TellInformation 커맨드 경로** (커밋 `f410e74` + 사후 `ff3d032`):
   - `TellInformationRequest { speaker, listeners, overhearers, claim, stated_confidence, origin_chain_in, topic }` DTO + `Command::TellInformation` variant.
-  - `InformationAgent` (Transactional, `priority::INFORMATION_TELLING = 35`) — `TellInformationRequested` 수신 후 listeners + overhearers 각자에게 `InformationTold` follow-up 발행 (B5 청자당 1 이벤트). Direct/Overhearer role 분기.
+  - `InformationPolicy` (Transactional, `priority::INFORMATION_TELLING = 35`) — `TellInformationRequested` 수신 후 listeners + overhearers 각자에게 `InformationTold` follow-up 발행 (B5 청자당 1 이벤트). Direct/Overhearer role 분기.
   - `TellingIngestionHandler` (Inline, Memory) — `InformationTold` 구독해 각 청자의 `MemoryEntry(Personal + Heard/Rumor)` 생성. `confidence = stated_confidence × normalized_trust` (`normalized_trust = (trust.value()+1)/2`, 관계 부재 시 0.5). `origin_chain = [speaker, ...inherited]` → len=1 → Heard, len ≥ 2 → Rumor (`MemorySource::from_origin_chain`).
   - `CommandDispatcher::with_memory(Arc<dyn MemoryStore>)` 빌더 추가.
   - **사후 리뷰 수정 5건**: ① `commit_staging_buffer`가 커맨드 키로 모든 이벤트 aggregate_id를 덮어쓰던 버그 → 이벤트별 `payload.aggregate_key().npc_id_hint()` 보존 (§3.3 B5 라우팅 정상화), ② listeners ∩ overhearers 중복 제거, ③ MemoryEntry id 결정적 생성 (`mem-{event.id:012}-{listener}`), ④ `topic` 필드 DTO → 이벤트 → MemoryEntry 일관 전달 (Step D Canonical 연결 대비), ⑤ MAX_EVENTS_PER_COMMAND=20 경계 테스트 추가.
 
 - **Step C3 — SeedRumor/SpreadRumor 확산** (커밋 `d088470` + 사후 `8413857` + `5ebf37f`):
   - `SeedRumorRequest { topic, seed_content, reach, origin }` + `SpreadRumorRequest { rumor_id, recipients, content_version }` DTO + 해당 `Command` variant 2종. `RumorReachInput`/`RumorOriginInput` serde tag 패턴.
-  - `RumorAgent` (Transactional, `priority::RUMOR_SPREAD = 40`) — Seed는 topic/seed 조합에 따라 `Rumor::new`/`with_forecast_content`/`orphan` 분기해 `RumorStore.save`, Spread는 `Rumor.add_hop` 단조성 강제 + 수신자 dedup 후 `RumorSpread` follow-up. 자체 `AtomicU64` counter로 `rumor-{n:012}` 결정적 id 생성.
+  - `RumorPolicy` (Transactional, `priority::RUMOR_SPREAD = 40`) — Seed는 topic/seed 조합에 따라 `Rumor::new`/`with_forecast_content`/`orphan` 분기해 `RumorStore.save`, Spread는 `Rumor.add_hop` 단조성 강제 + 수신자 dedup 후 `RumorSpread` follow-up. 자체 `AtomicU64` counter로 `rumor-{n:012}` 결정적 id 생성.
   - `RumorDistributionHandler` (Inline) — `RumorSpread` 구독해 각 수신자의 `MemoryEntry(source=Rumor)` 생성. 콘텐츠 해소 3-tier: `content_version`(Distortion) → topic Canonical (`MemoryStore::get_canonical_by_topic`) → `rumor.seed_content` → `"[내용 없음]"`. Confidence = `RUMOR_HOP_CONFIDENCE_DECAY^hop_index` (floor `RUMOR_MIN_CONFIDENCE`).
-  - `CommandDispatcher::with_rumor(memory_store, rumor_store)` 빌더 — `RumorAgent` + `RumorDistributionHandler` 일괄 등록.
-  - **사후 리뷰 수정 5건 + Step F 명기**: ① `rumor_id`가 `event.id=0`으로 충돌하던 버그 (전 SeedRumor가 같은 id로 귀결) → `RumorAgent` 자체 counter, ② 고아 Rumor들이 `"orphan"` 공용 event_store aggregate 버킷 공유하던 문제 → `SeedRumorRequested.pending_id` 필드 + dispatcher `command_seq: AtomicU64`로 커맨드별 고유 `pending-<id>`, ③ `InMemoryRumorStore` 테스트 헬퍼가 프로덕션 대비 느슨 → status 필터 추가, ④ dead Response export 제거, ⑤ 설계 §14 "원자적 commit" 문구를 "Rumor aggregate + RumorSpread 이벤트까지 원자, MemoryStore 쓰기는 Inline best-effort"로 재정의. `RumorDistorted`/`RumorFaded` 및 Fading/Faded spread 가드에 `TODO(step-f):` 명기.
+  - `CommandDispatcher::with_rumor(memory_store, rumor_store)` 빌더 — `RumorPolicy` + `RumorDistributionHandler` 일괄 등록.
+  - **사후 리뷰 수정 5건 + Step F 명기**: ① `rumor_id`가 `event.id=0`으로 충돌하던 버그 (전 SeedRumor가 같은 id로 귀결) → `RumorPolicy` 자체 counter, ② 고아 Rumor들이 `"orphan"` 공용 event_store aggregate 버킷 공유하던 문제 → `SeedRumorRequested.pending_id` 필드 + dispatcher `command_seq: AtomicU64`로 커맨드별 고유 `pending-<id>`, ③ `InMemoryRumorStore` 테스트 헬퍼가 프로덕션 대비 느슨 → status 필터 추가, ④ dead Response export 제거, ⑤ 설계 §14 "원자적 commit" 문구를 "Rumor aggregate + RumorSpread 이벤트까지 원자, MemoryStore 쓰기는 Inline best-effort"로 재정의. `RumorDistorted`/`RumorFaded` 및 Fading/Faded spread 가드에 `TODO(step-f):` 명기.
 
 ### Step D — Consolidation & World Overlay ✅ 완료
 
 **범위**:
 - `SceneConsolidationHandler` (SceneEnded → Layer B 생성).
-- `WorldOverlayAgent` (Mind, Transactional) + `WorldOverlayHandler` (Memory Inline) + `Command::ApplyWorldEvent`.
+- `WorldOverlayPolicy` (Mind, Transactional) + `WorldOverlayHandler` (Memory Inline) + `Command::ApplyWorldEvent`.
 - `RelationshipMemoryHandler` — `RelationshipUpdated.cause` variant별 분기.
-- `RelationshipAgent` BeatTransitioned 경로에서 cause=`SceneInteraction { scene_id }` 설정.
+- `RelationshipPolicy` BeatTransitioned 경로에서 cause=`SceneInteraction { scene_id }` 설정.
 
 **가치**: 장기 플레이에서 기억 폭증 방지. 세계관이 살아 진화.
 
@@ -1199,7 +1199,7 @@ pub enum StateEvent {
 - 목격자(`witnesses`) 개별 Personal MemoryEntry 생성 — Step F 예정. 이벤트 payload에는 필드로 유지.
 - Target 관점 Relationship MemoryEntry — `RelationshipMemoryHandler`는 현재 owner 관점 엔트리만 생성한다. Target이 같은 변화를 "느꼈다"는 도메인 판단이 필요하므로 Step F로 연기 (§6.3 line 579 완전 충족은 후속 과제).
 - `DialogueEndRequested` → cause=`SceneInteraction` 승격 — payload에 scene_id를 명시 추가하는 스키마 변경이 필요해 Step F에서 처리. 현재는 `Unspecified`.
-- `RelationshipAgent`의 나머지 cause variant 자동 채우기 (`InformationTold`/`Rumor`/`WorldEventOverlay` 계열) — 해당 경로가 실제로 관계 갱신을 트리거하게 되는 Step F 이후에 연결. 현재 `RelationshipMemoryHandler`는 cause를 입력만 받으면 올바르게 분기함 (단위 테스트로 검증).
+- `RelationshipPolicy`의 나머지 cause variant 자동 채우기 (`InformationTold`/`Rumor`/`WorldEventOverlay` 계열) — 해당 경로가 실제로 관계 갱신을 트리거하게 되는 Step F 이후에 연결. 현재 `RelationshipMemoryHandler`는 cause를 입력만 받으면 올바르게 분기함 (단위 테스트로 검증).
 
 **리뷰 후 수정사항 (2차 파이프라인 통과)**:
 - **B1**: `WorldOverlayHandler` supersede 정책 좁힘 — `get_canonical_by_topic` 단건만 supersede. 다른 NPC의 Personal Heard/Rumor는 보존.
@@ -1220,8 +1220,8 @@ pub enum StateEvent {
   - `tuning::MEMORY_RELATIONSHIP_DELTA_THRESHOLD = 0.05` (관계 변화 기록 하한).
   - `priority::transactional::WORLD_OVERLAY = 25`, `priority::inline::{WORLD_OVERLAY_INGESTION=45, RELATIONSHIP_MEMORY=50, SCENE_CONSOLIDATION=60}`.
 
-- **Agent / Handler 추가**:
-  - `WorldOverlayAgent` (Transactional, `priority::WORLD_OVERLAY`) — `ApplyWorldEventRequested → WorldEventOccurred` 1:1 변환. Inline 핸들러가 실제 영속화 담당.
+- **Policy / Handler 추가**:
+  - `WorldOverlayPolicy` (Transactional, `priority::WORLD_OVERLAY`) — `ApplyWorldEventRequested → WorldEventOccurred` 1:1 변환. Inline 핸들러가 실제 영속화 담당.
   - `WorldOverlayHandler` (Inline, `priority::WORLD_OVERLAY_INGESTION`) — Canonical `MemoryEntry(scope=World, provenance=Seeded, type=WorldEvent)` 생성 + `topic` 있을 때 기존 유효 엔트리 **모두** supersede (Canonical 여부 불문 — 새 세계 오버레이가 모든 기존 해석을 덮는 정책).
   - `SceneConsolidationHandler` (Inline, `priority::SCENE_CONSOLIDATION`) — `SceneEnded` 수신 시 NpcAllowed 필터로 두 NPC의 Layer A 엔트리 수집 → `MemoryType::{DialogueTurn, BeatTransition}` 만 흡수 → `SceneSummary` Layer B 엔트리 생성 + `mark_consolidated`. 휴리스틱 요약(첫·끝 content 조합).
   - `RelationshipMemoryHandler` (Inline, `priority::RELATIONSHIP_MEMORY`) — `RelationshipUpdated.cause` variant별 분기:
@@ -1231,10 +1231,10 @@ pub enum StateEvent {
     - `Rumor { rumor_id }` → `Rumor`, `origin_chain=[rumor:{rumor_id}]`
     - `Unspecified` → `Experienced`, 일반 content
     - `MEMORY_RELATIONSHIP_DELTA_THRESHOLD=0.05` 미만 미세 변동은 skip.
-  - `RelationshipAgent.handle_relationship_update_with_cause` 도입 — `BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id: SceneId::new(npc, partner) }` 설정.
+  - `RelationshipPolicy.handle_relationship_update_with_cause` 도입 — `BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id: SceneId::new(npc, partner) }` 설정.
 
 - **Dispatcher 통합**:
-  - `with_default_handlers()`에 `WorldOverlayAgent` 추가 (transactional 7종: Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay).
+  - `with_default_handlers()`에 `WorldOverlayPolicy` 추가 (transactional 7종: Scene/Emotion/Stimulus/Guide/Relationship/Information/WorldOverlay).
   - `with_memory(store)` 빌더가 Step D Inline 3종 (`WorldOverlayHandler`/`RelationshipMemoryHandler`/`SceneConsolidationHandler`)을 `TellingIngestionHandler`와 함께 일괄 등록.
   - `Command::ApplyWorldEvent` 초기 이벤트 빌더 + `world_id`/`fact` 비어 있으면 `InvalidSituation` 조기 reject, `significance` [0,1] clamp.
 
@@ -1244,7 +1244,7 @@ pub enum StateEvent {
   - `memory_consolidation_test` (3): 다턴 Scene 후 Layer A → Layer B 흡수, no-entries no-op, RelationshipChange 타입 제외 검증.
   - `memory_world_overlay_test` (6): Request/Occurred 이벤트 쌍, Canonical 생성, 기존 supersede, topic=None non-supersede, invalid 입력 reject, significance clamp.
   - `memory_relationship_cause_test` (6): EndDialogue 경로 Unspecified → Experienced, 5개 cause variant별 source/topic/chain 분기.
-  - 신규 lib 단위 테스트 14개 (WorldOverlayAgent 2 + WorldOverlayHandler 3 + SceneConsolidationHandler 3 + RelationshipMemoryHandler 6).
+  - 신규 lib 단위 테스트 14개 (WorldOverlayPolicy 2 + WorldOverlayHandler 3 + SceneConsolidationHandler 3 + RelationshipMemoryHandler 6).
   - 기존 `dispatch_v2_test::with_default_handlers_registers_expected_counts` 업데이트 (6→7).
 
 ### Step E — Mind Studio 통합 (3 서브-PR로 분할)
@@ -1284,7 +1284,7 @@ pub enum StateEvent {
 
 **구현 결과 (커밋 `3356675` + 리뷰 대응 `e63d638`)**:
 - 파일: `src/ports.rs`(list_all), `src/adapter/sqlite_rumor.rs`(list_all impl),
-  `src/application/command/{agents/rumor_agent.rs,rumor_distribution_handler.rs}`(SpyRumorStore list_all),
+  `src/application/command/{agents/rumor_policy.rs,rumor_distribution_handler.rs}`(SpyRumorStore list_all),
   `tests/common/in_memory_rumor.rs`(list_all),
   `src/bin/mind-studio/{state.rs,events.rs,domain_sync.rs,main.rs,handler_tests.rs}`,
   `src/bin/mind-studio/handlers/{mod.rs,memory.rs,rumor.rs,world.rs}`.
@@ -1390,9 +1390,9 @@ Phase 5 StoryAgent와 묶어 진행. 본 문서 범위 외.
 | LLM 기반 Consolidation 비용 | 비동기 배치 처리 필요 | Step D 초기에는 단순 휴리스틱(첫 문장 + 마지막 감정 태그) 요약 → 후속 개선 |
 | Heard/Rumor 자동 추출이 어려운 LLM 품질 | Heard 생성 누락 | `Command::TellInformation` 명시 호출 경로를 기본으로(판정 경로 (a), A11). 자동 추출((b)(c))은 향후 확장 |
 | 기존 `MemoryEntry::npc_id` 필드와 `MemoryScope` 중복 | 코드 복잡도 | Step A에서 `npc_id`를 `scope.owner_a()`의 Personal-경로 투영으로 grand-father (H10). `#[deprecated]` 주석 + 신규 코드는 `entry.scope` 사용 |
-| **Rumor 확산과 MemoryEntry 생성의 부분적 원자성** | 소문 aggregate는 갱신됐는데 일부 수신자 기억이 유실될 가능성 | **Rumor aggregate + RumorSpread 이벤트까지만 원자적**: `SpreadRumor` 커맨드의 Transactional phase에서 `RumorAgent`가 `Rumor.add_hop` → `RumorStore.save` → `RumorSpread` commit까지 한 단위로 롤백 가능. **수신자 `MemoryEntry` 쓰기는 Inline best-effort**: Inline phase가 commit 이후에 돌기 때문에 `MemoryStore.index` 실패는 `tracing::warn!`만 남기고 커맨드 전체는 성공으로 마무리된다. 완전한 cross-store 원자성(MemoryStore 포함)은 분산 트랜잭션 없이 불가능하므로 Step F 이후 별도 재시도 큐/ sidecar로 해소 예정. I-RU-5는 "aggregate 일관성" 수준으로 재정의됨. |
+| **Rumor 확산과 MemoryEntry 생성의 부분적 원자성** | 소문 aggregate는 갱신됐는데 일부 수신자 기억이 유실될 가능성 | **Rumor aggregate + RumorSpread 이벤트까지만 원자적**: `SpreadRumor` 커맨드의 Transactional phase에서 `RumorPolicy`가 `Rumor.add_hop` → `RumorStore.save` → `RumorSpread` commit까지 한 단위로 롤백 가능. **수신자 `MemoryEntry` 쓰기는 Inline best-effort**: Inline phase가 commit 이후에 돌기 때문에 `MemoryStore.index` 실패는 `tracing::warn!`만 남기고 커맨드 전체는 성공으로 마무리된다. 완전한 cross-store 원자성(MemoryStore 포함)은 분산 트랜잭션 없이 불가능하므로 Step F 이후 별도 재시도 큐/ sidecar로 해소 예정. I-RU-5는 "aggregate 일관성" 수준으로 재정의됨. |
 | InformationTold N개 이벤트가 `MAX_EVENTS_PER_COMMAND=20` 초과 | 커맨드 실패 | N명 청자에 대해 이벤트 1개씩 발행되므로 청자 수를 감시. 초기 한도 N≤15로 가이드, 필요 시 한도 상향 또는 청자 일괄 이벤트 분리 검토 |
-| `RelationshipUpdated.cause` = `Unspecified` 잔존 | RelationshipMemoryHandler 분기 불능 → 기본 branch로만 기억 | Step A에서 기존 RelationshipAgent 발행 지점을 `Unspecified`로 두고, Step B/C에서 원인 소스 추가 시점마다 variant 채우기. 테스트로 감시 |
+| `RelationshipUpdated.cause` = `Unspecified` 잔존 | RelationshipMemoryHandler 분기 불능 → 기본 branch로만 기억 | Step A에서 기존 RelationshipPolicy 발행 지점을 `Unspecified`로 두고, Step B/C에서 원인 소스 추가 시점마다 variant 채우기. 테스트로 감시 |
 
 ## 15. 결정 유보 (3차 이후)
 
@@ -1425,8 +1425,8 @@ Phase 5 StoryAgent와 묶어 진행. 본 문서 범위 외.
 | B1 — 트랜잭션 경계 완화(Supersede/Consolidation 원자성) | §12.2 `memory_consolidation_test`, §14 리스크 행 |
 | B3 — Faction/Family Scope 단순화 + acquired_by | §2.1 (npc_id 제거), §2.5 `acquired_by`, §7.2 `acquired_by` 컬럼 |
 | B4 — I-RU-5 aggregate 일관성(수신자 MemoryEntry는 best-effort로 축소) | §14 리스크 행(Rumor 원자성), §12.2 `rumor_spread_test` |
-| B5 — InformationTold 청자당 1 이벤트 | §3.1 InformationTold(listener 단일), §3.3 AggregateKey `Npc(listener)`, §6.2 InformationAgent follow-up 설명 |
-| B6 — Agent 우선순위 | §6.5 priority 상수 (C11 잠정 결정) |
+| B5 — InformationTold 청자당 1 이벤트 | §3.1 InformationTold(listener 단일), §3.3 AggregateKey `Npc(listener)`, §6.2 InformationPolicy follow-up 설명 |
+| B6 — Policy 우선순위 | §6.5 priority 상수 (C11 잠정 결정) |
 | B7 — PadSnapshot Shared Kernel | §2.5 `emotional_context` 주석 |
 | B8 — Confidence 불변 | §2.5, §8.2 `source_confidence`, §9 튜닝 상수 |
 | B9/B10/B11 — 결정 유보 | §15에 각 항목 명시 |

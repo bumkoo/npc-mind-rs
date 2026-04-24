@@ -11,7 +11,7 @@
 //! **Rumor id 생성**: `rumor-{event.id:012}` — 결정적(Event Sourcing replay 안전).
 //!
 //! **불변식**: Rumor 자체의 I-RU-1~6은 `Rumor::add_hop`/`add_distortion`/`transition_to`가
-//! 방어한다. 본 에이전트는 저장소 오류를 `HandlerError::Infrastructure`로 전파한다.
+//! 방어한다. 본 폴리시는 저장소 오류를 `HandlerError::Infrastructure`로 전파한다.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;

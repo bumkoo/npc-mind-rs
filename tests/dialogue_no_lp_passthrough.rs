@@ -66,7 +66,7 @@ fn betrayal_situation() -> SituationInput {
 /// LP off 빌드에서 `convert_to_listener_pad`의 not-feature impl이
 /// 컴파일 + 동작하여 speaker PAD를 그대로 ApplyStimulus에 dispatch한다.
 #[tokio::test]
-async fn dialogue_agent_passes_speaker_pad_through_when_lp_off() {
+async fn dialogue_orchestrator_passes_speaker_pad_through_when_lp_off() {
     let ctx = TestContext::new();
     let (dispatcher, store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 

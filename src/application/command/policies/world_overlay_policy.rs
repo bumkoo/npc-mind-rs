@@ -2,7 +2,7 @@
 //!
 //! `ApplyWorldEventRequested`를 받아 `WorldEventOccurred` follow-up을 단일 발행한다.
 //! Canonical MemoryEntry 생성 / supersede 는 Inline `WorldOverlayHandler`가 처리하며,
-//! 이 에이전트는 순수 이벤트 변환 역할만 한다.
+//! 이 폴리시는 순수 이벤트 변환 역할만 한다.
 //!
 //! **왜 별도 Agent로 유지하나** (리뷰 M1): 1:1 passthrough라 dispatcher의
 //! `build_initial_event`에서 바로 `WorldEventOccurred`를 발행하는 쪽이 cascade depth가

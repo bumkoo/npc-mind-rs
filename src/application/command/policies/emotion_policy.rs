@@ -8,7 +8,7 @@ use crate::domain::emotion::AppraisalEngine;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::ports::Appraiser;
 
-/// 감정 평가 에이전트 (v2)
+/// 감정 평가 폴리시 (v2)
 pub struct EmotionPolicy {
     pub(crate) appraiser: AppraisalEngine,
 }

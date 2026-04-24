@@ -130,7 +130,7 @@ struct SessionMeta {
 // DialogueOrchestrator
 // ---------------------------------------------------------------------------
 
-/// LLM 대사 생성 에이전트
+/// LLM 대사 생성 오케스트레이터
 ///
 /// - `R`: 도메인 저장소 (MindRepository)
 /// - `C`: LLM 어댑터 (ConversationPort). `RigChatAdapter` 또는 테스트용 mock.

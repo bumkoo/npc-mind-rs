@@ -39,7 +39,7 @@ pub struct AppState {
     pub locale_overrides: Arc<RwLock<Option<String>>>,
     /// 실시간 상태 변경 이벤트 브로드캐스트 채널
     pub event_tx: tokio::sync::broadcast::Sender<StateEvent>,
-    /// LLM 대화 에이전트 (chat feature 활성 시에만 Some)
+    /// LLM 대화 오케스트레이터 (chat feature 활성 시에만 Some)
     #[cfg(feature = "chat")]
     pub chat: Option<Arc<dyn npc_mind::ports::ConversationPort>>,
     /// LLM 메타데이터 제공자
@@ -241,7 +241,7 @@ impl AppState {
         self
     }
 
-    /// LLM 대화 에이전트를 설정한다 (chat feature 활성 시).
+    /// LLM 대화 오케스트레이터를 설정한다 (chat feature 활성 시).
     #[cfg(feature = "chat")]
     pub fn with_chat(mut self, chat: Arc<dyn npc_mind::ports::ConversationPort>) -> Self {
         self.chat = Some(chat);

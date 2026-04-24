@@ -7,7 +7,7 @@
 > - 2차: DDD 모델링 (애그리거트·엔티티·밸류 오브젝트·도메인 이벤트)
 > - 3차: 구현 설계 (스키마·이벤트 페이로드·포트·튜닝 상수)
 >
-> 본 설계는 기존 `MemoryAgent` + `SqliteMemoryStore` (FTS5 + sqlite-vec vec0) 위에 **확장하는 방향**을 전제로 한다.
+> 본 설계는 기존 `MemoryProjector` + `SqliteMemoryStore` (FTS5 + sqlite-vec vec0) 위에 **확장하는 방향**을 전제로 한다.
 
 ## 1. 개요 — 기억이 다루는 세 축
 

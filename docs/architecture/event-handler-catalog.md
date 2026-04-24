@@ -3,8 +3,8 @@
 > **Deep-Dive #2.** [`system-overview.md` §7](system-overview.md) 의 2번 항목.
 > [`dispatch-v2-internals.md`](dispatch-v2-internals.md) 가 "dispatcher가 어떻게 동작하는가" 를 다뤘다면, 이 문서는 **어떤 핸들러들이 등록되어 있으며 각각 무엇을 먹고 무엇을 뱉는가** 를 카탈로그 형태로 정리한다.
 >
-> 대상 핸들러: 8 Transactional Agent + 8 Inline Handler (Projection 3 + Memory Ingestion 5) = **총 16개**.
-> 근거 파일 위치: `src/application/command/agents/*.rs` · `src/application/command/*_handler.rs` · `src/application/command/projection_handlers.rs`.
+> 대상 핸들러: 8 Transactional Policy + 8 Inline Handler (Projection 3 + Memory Ingestion 5) = **총 16개**.
+> 근거 파일 위치: `src/application/command/policies/*.rs` · `src/application/command/*_handler.rs` · `src/application/command/projection_handlers.rs`.
 
 ---
 
@@ -45,14 +45,14 @@
 ### 2.1 Transactional (작은 값 먼저, 커맨드 안에서 BFS)
 
 ```
-5   SceneAgent             — SCENE_START
-10  EmotionAgent           — EMOTION_APPRAISAL
-15  StimulusAgent          — STIMULUS_APPLICATION
-20  GuideAgent             — GUIDE_GENERATION
-25  WorldOverlayAgent      — WORLD_OVERLAY
-30  RelationshipAgent      — RELATIONSHIP_UPDATE
-35  InformationAgent       — INFORMATION_TELLING
-40  RumorAgent             — RUMOR_SPREAD
+5   ScenePolicy             — SCENE_START
+10  EmotionPolicy           — EMOTION_APPRAISAL
+15  StimulusPolicy          — STIMULUS_APPLICATION
+20  GuidePolicy             — GUIDE_GENERATION
+25  WorldOverlayPolicy      — WORLD_OVERLAY
+30  RelationshipPolicy      — RELATIONSHIP_UPDATE
+35  InformationPolicy       — INFORMATION_TELLING
+40  RumorPolicy             — RUMOR_SPREAD
 (90 AUDIT — 예약)
 ```
 
@@ -73,7 +73,7 @@
 
 ## 3. Transactional Agents (8)
 
-### 3.1 SceneAgent (`agents/scene_agent.rs`)
+### 3.1 ScenePolicy (`agents/scene_policy.rs`)
 
 ```
 priority      : priority::transactional::SCENE_START      (5)
@@ -90,11 +90,11 @@ follow-ups    : SceneStarted (항상),
 Step          : C1 (Scene 시작)
 ```
 
-**포인트**: `Command::StartScene` 이 dispatcher의 `build_initial_event` 에서 **이미 `Scene` 도메인 객체를 빌드해 payload에 넣어둔 상태**로 이 핸들러에 도착한다 (`dispatch-v2-internals.md` §4.1). 그래서 SceneAgent는 focus 빌드에 실패할 걱정 없이 그냥 `ctx.shared.scene = Some(prebuilt_scene)` 만 하면 됨.
+**포인트**: `Command::StartScene` 이 dispatcher의 `build_initial_event` 에서 **이미 `Scene` 도메인 객체를 빌드해 payload에 넣어둔 상태**로 이 핸들러에 도착한다 (`dispatch-v2-internals.md` §4.1). 그래서 ScenePolicy는 focus 빌드에 실패할 걱정 없이 그냥 `ctx.shared.scene = Some(prebuilt_scene)` 만 하면 됨.
 
 **초기 focus의 즉시 appraise** 덕분에 `StartScene` 한 번으로 `SceneStarted → EmotionAppraised → (depth 2로) GuideGenerated` 체인이 같은 트랜잭션에 포함된다.
 
-### 3.2 EmotionAgent (`agents/emotion_agent.rs`)
+### 3.2 EmotionPolicy (`agents/emotion_policy.rs`)
 
 ```
 priority      : priority::transactional::EMOTION_APPRAISAL (10)
@@ -111,9 +111,9 @@ follow-ups    : EmotionAppraised { npc_id, partner_id, situation_description,
 Step          : C1
 ```
 
-**포인트**: `Command::Appraise` 직접 호출 + `SceneAgent`의 cascade 둘 다에서 트리거된다. 후자의 경우 Scene 내부에서 이미 검증된 NPC/관계이므로 실패 확률이 낮지만, `Appraise` 커맨드 직접 호출 시에는 repo lookup 실패가 흔한 400/404 원인.
+**포인트**: `Command::Appraise` 직접 호출 + `ScenePolicy`의 cascade 둘 다에서 트리거된다. 후자의 경우 Scene 내부에서 이미 검증된 NPC/관계이므로 실패 확률이 낮지만, `Appraise` 커맨드 직접 호출 시에는 repo lookup 실패가 흔한 400/404 원인.
 
-### 3.3 StimulusAgent (`agents/stimulus_agent.rs`)
+### 3.3 StimulusPolicy (`agents/stimulus_policy.rs`)
 
 ```
 priority      : priority::transactional::STIMULUS_APPLICATION (15)
@@ -139,7 +139,7 @@ Step          : C1
 
 **B4 S3 Option A 이력**: `BeatTransitioned` payload에 `partner_id` 가 **필수 필드**로 포함된다. multi-scene 환경에서 어떤 파트너와의 Beat 전환인지 라우팅 정확성을 위해 추가된 것 (B4 S3 회귀 가드 테스트 `dispatch_v2_test.rs`).
 
-### 3.4 GuideAgent (`agents/guide_agent.rs`)
+### 3.4 GuidePolicy (`agents/guide_policy.rs`)
 
 ```
 priority      : priority::transactional::GUIDE_GENERATION (20)
@@ -156,11 +156,11 @@ follow-ups    : GuideGenerated { npc_id, partner_id }
 Step          : C1
 ```
 
-**포인트**: 같은 커맨드 안에서 **앞선 핸들러가 HandlerShared에 쓴 emotion_state를 읽는** 대표 사례. 만약 SceneAgent → EmotionAgent → GuideAgent 체인이라면 GuideAgent는 repo를 안 건드리고 scratchpad만 참조하므로 빠르다. 단독 `Command::GenerateGuide` 호출 시에는 scratchpad가 비어있어 repo에서 읽음.
+**포인트**: 같은 커맨드 안에서 **앞선 핸들러가 HandlerShared에 쓴 emotion_state를 읽는** 대표 사례. 만약 ScenePolicy → EmotionPolicy → GuidePolicy 체인이라면 GuidePolicy는 repo를 안 건드리고 scratchpad만 참조하므로 빠르다. 단독 `Command::GenerateGuide` 호출 시에는 scratchpad가 비어있어 repo에서 읽음.
 
 Interest가 세 종류인 이유: EmotionAppraised / StimulusApplied는 cascade로 자동 가이드 갱신, GuideRequested는 수동 요청. 결과 이벤트는 모두 `GuideGenerated` 하나로 단일화.
 
-### 3.5 RelationshipAgent (`agents/relationship_agent.rs`)
+### 3.5 RelationshipPolicy (`agents/relationship_policy.rs`)
 
 ```
 priority      : priority::transactional::RELATIONSHIP_UPDATE (30)
@@ -180,11 +180,11 @@ follow-ups    : RelationshipUpdated (3종 모두),
 Step          : D (cause variant별 RelationshipMemory 트리거의 근거)
 ```
 
-**포인트**: 이 프로젝트에서 **한 Agent가 세 가지 이벤트를 처리하는 유일한 사례**. 세 분기가 "관계가 갱신되는 상황"이라는 공통점으로 묶여있지만, 각기 다른 맥락(Beat 안 · 명시적 갱신 · 대화 종료)을 표현.
+**포인트**: 이 프로젝트에서 **한 Policy가 세 가지 이벤트를 처리하는 유일한 사례**. 세 분기가 "관계가 갱신되는 상황"이라는 공통점으로 묶여있지만, 각기 다른 맥락(Beat 안 · 명시적 갱신 · 대화 종료)을 표현.
 
 **DialogueEnd의 follow-up 3종**은 이 프로젝트에서 **한 핸들러가 가장 많은 follow-up을 발행하는 사례**. `HandlerShared.clear_emotion_for` / `clear_scene` 플래그가 같이 세팅되어 `apply_shared_to_repository` 가 save + clear 순서로 repo에 반영.
 
-### 3.6 WorldOverlayAgent (`agents/world_overlay_agent.rs`)
+### 3.6 WorldOverlayPolicy (`agents/world_overlay_policy.rs`)
 
 ```
 priority      : priority::transactional::WORLD_OVERLAY (25)
@@ -202,7 +202,7 @@ Step          : D
 
 **포인트**: 왜 그냥 passthrough인가? 대칭성 유지 — 다른 커맨드가 `*Requested → *Handled/*Occurred` 패턴을 따르므로 WorldOverlay도 같은 경로로 두어 구독자 관점 일관성을 확보. 실제 비즈니스 로직(Canonical MemoryEntry 생성 + topic supersede) 은 Inline 단에서 처리하는데, 이는 외부 저장소 쓰기이므로 Transactional에 두면 실패 시 전체 커맨드 롤백이 과도하기 때문.
 
-### 3.7 RumorAgent (`agents/rumor_agent.rs`)
+### 3.7 RumorPolicy (`agents/rumor_policy.rs`)
 
 ```
 priority      : priority::transactional::RUMOR_SPREAD (40)
@@ -225,9 +225,9 @@ Step          : C3
 
 **포인트**: `Command::SeedRumor` 의 초기 aggregate_id는 `"pending-<seq>"` 임시 값이지만 (dispatcher가 발급), 이 핸들러가 **실제 rumor_id** 를 배정하고 `RumorSeeded.rumor_id` 에 담아 follow-up으로 돌려준다. 이후 구독자·Inline `RumorDistributionHandler` 가 진짜 id를 본다.
 
-**rumor_id 전략**: Transactional 핸들러가 상태를 갖는 드문 사례. `next_rumor_id: AtomicU64` 를 RumorAgent 자체가 소유 (dispatcher의 `command_seq`와 별개). Step C3 사후 리뷰 M1 에서 결정된 설계.
+**rumor_id 전략**: Transactional 핸들러가 상태를 갖는 드문 사례. `next_rumor_id: AtomicU64` 를 RumorPolicy 자체가 소유 (dispatcher의 `command_seq`와 별개). Step C3 사후 리뷰 M1 에서 결정된 설계.
 
-### 3.8 InformationAgent (`agents/information_agent.rs`)
+### 3.8 InformationPolicy (`agents/information_policy.rs`)
 
 ```
 priority      : priority::transactional::INFORMATION_TELLING (35)
@@ -310,7 +310,7 @@ interest      : Kinds([InformationTold])
 Step          : C2
 ```
 
-**포인트**: 한 커맨드(TellInformation)가 InformationAgent에서 **청자 수만큼 이벤트를 만들고**, 이 핸들러가 **각 이벤트마다 MemoryEntry 하나씩** 저장하므로 실제 DB 쓰기는 N회. store I/O가 실패해도 로그만 남기는 이유는 Inline 계약 — 저장소 장애로 대화 커맨드 자체를 실패시키지 않기 위함.
+**포인트**: 한 커맨드(TellInformation)가 InformationPolicy에서 **청자 수만큼 이벤트를 만들고**, 이 핸들러가 **각 이벤트마다 MemoryEntry 하나씩** 저장하므로 실제 DB 쓰기는 N회. store I/O가 실패해도 로그만 남기는 이유는 Inline 계약 — 저장소 장애로 대화 커맨드 자체를 실패시키지 않기 위함.
 
 **Source 분기의 의미**: Alice가 직접 목격한 사실을 Bob에게 말하면 origin_chain = [Alice], len=1 → Bob의 기억은 Heard. Bob이 Carol에게 다시 전하면 origin_chain = [Alice, Bob], len=2 → Carol의 기억은 Rumor. Memory Ranker가 Source 우선순위로 정렬할 때 이 차이가 작동.
 
@@ -332,7 +332,7 @@ interest      : Kinds([RumorSpread])
 Step          : C3
 ```
 
-**포인트**: `RumorSpread` 이벤트는 한 번에 여러 수신자를 담고 있고, 이 핸들러가 각 수신자별로 MemoryEntry를 만든다. 따라서 한 `Command::SpreadRumor` 가 들어오면 "RumorAgent가 1개 RumorSpread 발행 → 이 핸들러가 수신자 N명에게 N개 MemoryEntry 저장" 패턴.
+**포인트**: `RumorSpread` 이벤트는 한 번에 여러 수신자를 담고 있고, 이 핸들러가 각 수신자별로 MemoryEntry를 만든다. 따라서 한 `Command::SpreadRumor` 가 들어오면 "RumorPolicy가 1개 RumorSpread 발행 → 이 핸들러가 수신자 N명에게 N개 MemoryEntry 저장" 패턴.
 
 **Content 3-tier 해소**가 핵심 설계 — 소문은 "누가 전달하느냐"가 아니라 "그 topic에 대한 현재 세계의 canonical 사실이 뭐냐"가 중요하기 때문. Canonical이 갱신되면(WorldOverlayHandler) 이후의 소문 전파가 그 갱신을 반영.
 
@@ -413,16 +413,16 @@ Step          : D
 
 ### 5.1 Transactional — 입력 → 출력 매트릭스
 
-| 에이전트 | 구독 EventKind | 쓰는 HandlerShared | 발행 follow-ups |
+| 핸들러 | 구독 EventKind | 쓰는 HandlerShared | 발행 follow-ups |
 |---|---|---|---|
-| SceneAgent | SceneStartRequested | scene, emotion_state*, relationship* | SceneStarted + EmotionAppraised* |
-| EmotionAgent | AppraiseRequested | emotion_state, relationship | EmotionAppraised |
-| StimulusAgent | StimulusApplyRequested | emotion_state, relationship, scene | StimulusApplied + BeatTransitioned* |
-| GuideAgent | EmotionAppraised / StimulusApplied / GuideRequested | guide | GuideGenerated |
-| WorldOverlayAgent | ApplyWorldEventRequested | — | WorldEventOccurred |
-| RelationshipAgent | BeatTransitioned / RelationshipUpdateRequested / DialogueEndRequested | relationship, clear_emotion_for*, clear_scene* | RelationshipUpdated + EmotionCleared* + SceneEnded* |
-| InformationAgent | TellInformationRequested | — | InformationTold × N |
-| RumorAgent | SeedRumorRequested / SpreadRumorRequested | — (자체 카운터) | RumorSeeded / RumorSpread |
+| ScenePolicy | SceneStartRequested | scene, emotion_state*, relationship* | SceneStarted + EmotionAppraised* |
+| EmotionPolicy | AppraiseRequested | emotion_state, relationship | EmotionAppraised |
+| StimulusPolicy | StimulusApplyRequested | emotion_state, relationship, scene | StimulusApplied + BeatTransitioned* |
+| GuidePolicy | EmotionAppraised / StimulusApplied / GuideRequested | guide | GuideGenerated |
+| WorldOverlayPolicy | ApplyWorldEventRequested | — | WorldEventOccurred |
+| RelationshipPolicy | BeatTransitioned / RelationshipUpdateRequested / DialogueEndRequested | relationship, clear_emotion_for*, clear_scene* | RelationshipUpdated + EmotionCleared* + SceneEnded* |
+| InformationPolicy | TellInformationRequested | — | InformationTold × N |
+| RumorPolicy | SeedRumorRequested / SpreadRumorRequested | — (자체 카운터) | RumorSeeded / RumorSpread |
 
 `*` = 조건부 / optional.
 
@@ -445,15 +445,15 @@ Step          : D
 
 | EventKind | Transactional 소비 | Inline 소비 |
 |---|---|---|
-| `EmotionAppraised` | GuideAgent | EmotionProjection |
-| `StimulusApplied` | GuideAgent | EmotionProjection |
-| `BeatTransitioned` | RelationshipAgent | SceneProjection |
+| `EmotionAppraised` | GuidePolicy | EmotionProjection |
+| `StimulusApplied` | GuidePolicy | EmotionProjection |
+| `BeatTransitioned` | RelationshipPolicy | SceneProjection |
 | `RelationshipUpdated` | — | RelationshipProjection, **RelationshipMemory** |
 | `SceneStarted` | — | SceneProjection |
 | `SceneEnded` | — | SceneProjection, **SceneConsolidation** |
 | `EmotionCleared` | — | EmotionProjection |
 | `GuideGenerated` | — | — (구독자 없음, fanout만) |
-| `DialogueTurnCompleted` | — | — (MemoryAgent가 broadcast로 받음) |
+| `DialogueTurnCompleted` | — | — (MemoryProjector가 broadcast로 받음) |
 | `InformationTold` | — | **TellingIngestion** |
 | `RumorSeeded` | — | — (broadcast만) |
 | `RumorSpread` | — | **RumorDistribution** |
@@ -471,7 +471,7 @@ Step          : D
 2. **repo는 read-only로만**: 쓰기는 `ctx.shared` 에만. 실수로 `RefCell` 같은 우회로 뚫으면 `apply_shared_to_repository` 와 충돌.
 3. **follow-up은 payload만 채우고 id/seq는 0**: `DomainEvent::new(0, npc_id, 0, payload)`. 실제 id/seq는 dispatcher의 `commit_staging_buffer` 가 할당.
 4. **HandlerError variant 선택**: NPC/관계 부재 → `*NotFound` (404), 입력 검증 실패 → `InvalidInput` (400), store 장애 → `Infrastructure` (500).
-5. **테스트는 `HandlerTestHarness`**: dispatcher 없이 Agent 하나만 격리 테스트. `harness.with_npc(...).with_relationship(...).dispatch(&agent, event)`.
+5. **테스트는 `HandlerTestHarness`**: dispatcher 없이 Policy 하나만 격리 테스트. `harness.with_npc(...).with_relationship(...).dispatch(&agent, event)`.
 
 ### 6.2 자주 마주치는 함정
 
@@ -485,7 +485,7 @@ Step          : D
 | InformationTold follow-up의 aggregate_id를 speaker로 | 청자 기반 쿼리 실패 | listener로 설정 (Step C2 B5 결정) |
 | Inline 핸들러의 심각한 invariant 위반을 warn으로만 처리 | 사일런트 데이터 손실 | `Infrastructure(static_str)` 로 에스컬레이트, dispatcher가 로그 레벨 결정 |
 
-### 6.3 확장 체크리스트 (새 Agent 추가 시)
+### 6.3 확장 체크리스트 (새 Policy 추가 시)
 
 [`dispatch-v2-internals.md §9.2`](dispatch-v2-internals.md) 의 7단계 + 이 카탈로그에서 추가로 고려할 것:
 
@@ -503,14 +503,14 @@ Step          : D
 
 | 핸들러 | `default` | `with_memory` | `with_memory_full` | `with_rumor` |
 |---|---|---|---|---|
-| SceneAgent | ✓ | | | |
-| EmotionAgent | ✓ | | | |
-| StimulusAgent | ✓ | | | |
-| GuideAgent | ✓ | | | |
-| RelationshipAgent | ✓ | | | |
-| InformationAgent | ✓ | | | |
-| WorldOverlayAgent | ✓ | | | |
-| RumorAgent | | | | ✓ |
+| ScenePolicy | ✓ | | | |
+| EmotionPolicy | ✓ | | | |
+| StimulusPolicy | ✓ | | | |
+| GuidePolicy | ✓ | | | |
+| RelationshipPolicy | ✓ | | | |
+| InformationPolicy | ✓ | | | |
+| WorldOverlayPolicy | ✓ | | | |
+| RumorPolicy | | | | ✓ |
 | EmotionProjectionHandler | ✓ | | | |
 | RelationshipProjectionHandler | ✓ | | | |
 | SceneProjectionHandler | ✓ | | | |

@@ -1,36 +1,36 @@
-# NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Agent 시스템 디자인
+# NPC Mind Engine v3 — EventBus · CQRS · Event Sourcing · Multi-Handler 시스템 디자인
 
 > **Status**: In Progress (Phase 1-4 + Pipeline + EventBus v2 + Memory Step A/B/C/D 완료)  
 > **Date**: 2026-04-16 (최종 업데이트: 2026-04-22 — Memory Step D (Consolidation & World Overlay) + 리뷰 수정 17건)  
 > **Scope**: 엔진 전체 리팩토링 — 현재 헥사고날 아키텍처를 이벤트 기반으로 전환  
-> **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 에이전트, 게임 히스토리 RAG
+> **Key Decisions**: EventBus 중심 통신, CQRS 분리, Event Sourcing 도입, 기능별 핸들러, 게임 히스토리 RAG
 >
 > ### 구현 현황
 >
 > | 단계 | 상태 | 구현 내용 |
 > |------|------|----------|
 > | **Phase 1** | ✅ 완료 | `DomainEvent`(9 variants, emotion_snapshot 포함), `InMemoryEventStore`, `EventBus`, `EventAwareMindService`(Strangler Fig), `Projection` 3종 |
-> | **Phase 2** | ✅ 완료 | `Command`(6 variants), `CommandDispatcher`(Orchestrator), `EmotionAgent`, `GuideAgent`, `RelationshipAgent`, `HandlerContext`/`HandlerOutput` |
-> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `SqliteMemoryStore`(FTS5 trigram + sqlite-vec vec0) [embed], `MemoryAgent`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트. 테스트 전용 `InMemoryMemoryStore`는 `tests/common/in_memory_store.rs`로 분리(public API 미노출) |
-> | **Pipeline** | ✅ 완료 | `Pipeline`(순차 에이전트 체인, `PipelineState` 컨텍스트 전파) |
+> | **Phase 2** | ✅ 완료 | `Command`(6 variants), `CommandDispatcher`(Orchestrator), `EmotionPolicy`, `GuidePolicy`, `RelationshipPolicy`, `HandlerContext`/`HandlerOutput` |
+> | **Phase 3** | ✅ 완료 | `MemoryStore` 포트, `SqliteMemoryStore`(FTS5 trigram + sqlite-vec vec0) [embed], `MemoryProjector`(broadcast subscriber) [embed], `DialogueTurnCompleted` 이벤트. 테스트 전용 `InMemoryMemoryStore`는 `tests/common/in_memory_store.rs`로 분리(public API 미노출) |
+> | **Pipeline** | ✅ 완료 | `Pipeline`(순차 핸들러 체인, `PipelineState` 컨텍스트 전파) |
 > | **EventBus v2** | ✅ 완료 | `tokio::sync::broadcast` 기반 단일화. `subscribe()` → `impl Stream<Arc<DomainEvent>>` (runtime-agnostic). L1 `ProjectionRegistry`(Dispatcher 내부, 동기 쓰기 경로)로 쿼리 일관성 보장. `TieredEventBus`/`StdThreadSink`/`TokioSink` 삭제. |
-> | **Phase 4** | ✅ 완료 | `DialogueAgent<R, C>` — `CommandDispatcher` + `ConversationPort` 통합 orchestrator (`src/application/dialogue_agent.rs`, chat feature). `start_session`/`turn`/`end_session` async API로 LLM 다턴 대화 + Event Sourcing 경로 일원화. `DialogueTurnCompleted` 이벤트(user/assistant)를 EventBus에 발행하여 MemoryAgent 자동 인덱싱 가능 |
+> | **Phase 4** | ✅ 완료 | `DialogueOrchestrator<R, C>` — `CommandDispatcher` + `ConversationPort` 통합 orchestrator (`src/application/dialogue_orchestrator.rs`, chat feature). `start_session`/`turn`/`end_session` async API로 LLM 다턴 대화 + Event Sourcing 경로 일원화. `DialogueTurnCompleted` 이벤트(user/assistant)를 EventBus에 발행하여 MemoryProjector 자동 인덱싱 가능 |
 > | **Memory Step A** | ✅ 완료 | `MemoryScope`/`Source`/`Provenance`/`Layer` VO, `MemoryEntry` 13 필드 확장, `MemoryRanker` 2단계, SQLite v2 마이그레이션, `MemoryStore` 7 신규 메서드. 행동 변화 없이 foundation만. |
-> | **Memory Step B** | ✅ 완료 | `MemoryFramer` trait + `LocaleMemoryFramer` + `DialogueAgent::with_memory` 프롬프트 주입. Source별 라벨로 "떠오르는 기억" 블록 prepend. |
-> | **Memory Step C** | ✅ 완료 | Step C1 (Rumor 도메인 foundation — `Rumor` 애그리거트 + `RumorStore` + `EventPayload` 11 신규 variant + `AggregateKey::Memory/Rumor/World`) + Step C2 (`Command::TellInformation` + `InformationAgent` Transactional priority 35 + `TellingIngestionHandler` Inline) + Step C3 (`Command::SeedRumor`/`SpreadRumor` + `RumorAgent` Transactional priority 40 + `RumorDistributionHandler` Inline). `CommandDispatcher::with_memory(store)` / `with_rumor(mem, rumor)` 빌더. 40+ 통합 테스트. |
-> | **Memory Step D** | ✅ 완료 (+리뷰 반영) | `Command::ApplyWorldEvent` + `WorldOverlayAgent` Transactional priority 25 + `WorldOverlayHandler` Inline priority 45 — Canonical `MemoryEntry(World, Seeded)` 생성 + 같은 topic Canonical 1건만 supersede (다른 NPC Heard/Rumor 보존, 리뷰 B1). `SceneConsolidationHandler` Inline priority 60 — SceneEnded 수신 시 **참여 NPC별** Personal SceneSummary 생성 + Layer A `consolidated_into` 마킹 (리뷰 B3). `RelationshipMemoryHandler` Inline priority 50 — `RelationshipUpdated.cause` 5 variant별 source/topic/content 분기, 주도 축 라벨 content에 포함 (리뷰 H4). `RelationshipAgent.BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id }` 설정. Builder 분리: `with_memory(store)` lean(Telling만) / `with_memory_full(store)` 번들(Step D 4종). 16 통합 + 17 단위 테스트. |
+> | **Memory Step B** | ✅ 완료 | `MemoryFramer` trait + `LocaleMemoryFramer` + `DialogueOrchestrator::with_memory` 프롬프트 주입. Source별 라벨로 "떠오르는 기억" 블록 prepend. |
+> | **Memory Step C** | ✅ 완료 | Step C1 (Rumor 도메인 foundation — `Rumor` 애그리거트 + `RumorStore` + `EventPayload` 11 신규 variant + `AggregateKey::Memory/Rumor/World`) + Step C2 (`Command::TellInformation` + `InformationPolicy` Transactional priority 35 + `TellingIngestionHandler` Inline) + Step C3 (`Command::SeedRumor`/`SpreadRumor` + `RumorPolicy` Transactional priority 40 + `RumorDistributionHandler` Inline). `CommandDispatcher::with_memory(store)` / `with_rumor(mem, rumor)` 빌더. 40+ 통합 테스트. |
+> | **Memory Step D** | ✅ 완료 (+리뷰 반영) | `Command::ApplyWorldEvent` + `WorldOverlayPolicy` Transactional priority 25 + `WorldOverlayHandler` Inline priority 45 — Canonical `MemoryEntry(World, Seeded)` 생성 + 같은 topic Canonical 1건만 supersede (다른 NPC Heard/Rumor 보존, 리뷰 B1). `SceneConsolidationHandler` Inline priority 60 — SceneEnded 수신 시 **참여 NPC별** Personal SceneSummary 생성 + Layer A `consolidated_into` 마킹 (리뷰 B3). `RelationshipMemoryHandler` Inline priority 50 — `RelationshipUpdated.cause` 5 variant별 source/topic/content 분기, 주도 축 라벨 content에 포함 (리뷰 H4). `RelationshipPolicy.BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id }` 설정. Builder 분리: `with_memory(store)` lean(Telling만) / `with_memory_full(store)` 번들(Step D 4종). 16 통합 + 17 단위 테스트. |
 > | **Memory Step E** | ✅ 완료 | Step E1 (Mind Studio REST 10 + SSE 5 variant + `AppState` memory/rumor_store 자동 부착) · Step E2 (프런트엔드 Memory/Rumor 탭 + `ContextView` 주입 기억 하이라이트) · Step E3.1 (Topic 히스토리 + 런타임 소문 SeedForm/SpreadForm) · Step E3.2 (시나리오 JSON `initial_rumors`/`world_knowledge`/`faction_knowledge`/`family_facts` seeding + `LoadResponse.warnings`) · Step E3.3 (`GET /api/scenario-seeds` + 시드 조회 전용 탭 + 로드 warnings 토스트). 99 vitest + 206 rustlib + 43 mind-studio handler 테스트 green. |
 > | **Phase 5+** | 미구현 | Step F (Rumor status 전이 + Pull 경로 + 재시도 큐 + witness 개별 MemoryEntry + target 관점 Relationship 엔트리 + DialogueEnd cause=SceneInteraction 승격 + Memory 이벤트 EventStore 팬아웃), StoryAgent, SummaryAgent, Tool 시스템, WorldKnowledgeStore |
 >
 > ### 설계 문서와 구현의 차이
 >
 > - **EventBus**: 문서 원안(`tokio::broadcast`) 채택. `EventBus v2`에서 `tokio::sync::broadcast::Sender` 내부 구현 + `tokio_stream::wrappers::BroadcastStream`으로 공개 API를 `futures::Stream`으로 감쌈. 호출자는 tokio deps 불요.
-> - **Projection 위치**: 문서는 "모든 소비자가 EventBus 구독" 전제 → 구현은 **B-lite**: Projection은 bus 밖 L1, Agent/SSE는 broadcast 구독 L2. Projection을 broadcast 구독자로 두면 race·lag 시 상태 손상 위험이 있어 쿼리 일관성을 위해 분리.
-> - **Agent 통신**: Command 처리는 Orchestrator 패턴(`CommandDispatcher`가 직접 호출, 순서 보장), 이벤트 후속 소비는 broadcast Stream 기반.
+> - **Projection 위치**: 문서는 "모든 소비자가 EventBus 구독" 전제 → 구현은 **B-lite**: Projection은 bus 밖 L1, Handler/SSE는 broadcast 구독 L2. Projection을 broadcast 구독자로 두면 race·lag 시 상태 손상 위험이 있어 쿼리 일관성을 위해 분리.
+> - **핸들러 통신**: Command 처리는 Orchestrator 패턴(`CommandDispatcher`가 직접 호출, 순서 보장), 이벤트 후속 소비는 broadcast Stream 기반.
 > - **RAG 저장소**: 문서는 SQLite + LanceDB 하이브리드 → 구현은 단일 SQLite 파일에 FTS5(trigram) + sqlite-vec vec0 가상 테이블을 함께 둔다. LanceDB async-only 제약 회피 + sqlite-vec은 순수 C 확장이라 tokio 런타임 미요구. 벡터 BLOB 자체 구현도 제거되고 vec0가 ANN을 대신한다.
 > - **Pipeline**: 문서에 없던 개념. Tier 1(커맨드 내부 순차 동기) 역할 담당. EventBus v2 이후 "Tier"라는 분류 체계는 Pipeline(동기) vs EventBus(비동기)로 자연 정렬됨.
 > - **Lag 복구**: broadcast capacity 초과 시 `subscribe_with_lag()`의 `Lagged(n)` 통지를 받고 `EventStore::get_events_after_id()`로 replay하여 at-least-once 유지.
-> - **DialogueAgent 형태**: 문서 §7.4 원안은 `GuideGenerated` 구독 subscriber → 구현은 **explicit orchestrator**(`start_session`/`turn`/`end_session` async API)로 전환. LLM 호출 타이밍이 user utterance 주도이고 세션 시작/종료는 외부 제어가 필요하기 때문. `DialogueTurnCompleted`는 dispatcher의 `event_store()`/`event_bus()`/`projections()` 노출 훅을 통해 dispatcher와 동일한 경로로 직접 발행한다(§7.6 참조).
+> - **DialogueOrchestrator 형태**: 문서 §7.4 원안은 `GuideGenerated` 구독 subscriber → 구현은 **explicit orchestrator**(`start_session`/`turn`/`end_session` async API)로 전환. LLM 호출 타이밍이 user utterance 주도이고 세션 시작/종료는 외부 제어가 필요하기 때문. `DialogueTurnCompleted`는 dispatcher의 `event_store()`/`event_bus()`/`projections()` 노출 훅을 통해 dispatcher와 동일한 경로로 직접 발행한다(§7.6 참조).
 
 ---
 
@@ -67,7 +67,7 @@ MindService<R, A, S>  ← God Object (appraise + stimulus + scene + guide + rela
 │                      Game Runtime                             │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
 │  │ Dialogue │  │  Story   │  │ Memory   │  │   SSE    │      │
-│  │  Agent   │  │  Agent   │  │  Agent   │  │  Bridge  │      │
+│  │  Handler │  │  Handler │  │  Handler │  │  Bridge  │      │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
 │       │ .next().await (futures::Stream, runtime-agnostic)    │
 │  ═════╪══════════════╪══════════════╪══════════════╪══════    │
@@ -79,7 +79,7 @@ MindService<R, A, S>  ← God Object (appraise + stimulus + scene + guide + rela
 │  │         CommandDispatcher (Write Side)             │       │
 │  │  ┌──────────┐  ┌──────────┐  ┌──────────┐          │       │
 │  │  │ Emotion  │  │  Guide   │  │   Rel    │ 직접 호출 │       │
-│  │  │  Agent   │  │  Agent   │  │  Agent   │ (Pipeline)│       │
+│  │  │  Handler │  │  Handler │  │  Handler │ (Pipeline)│       │
 │  │  └──────────┘  └──────────┘  └──────────┘          │       │
 │  │                      │                              │       │
 │  │  (1) Repository write-back                          │       │
@@ -95,7 +95,7 @@ MindService<R, A, S>  ← God Object (appraise + stimulus + scene + guide + rela
 │  └─────────────┘    └────────────────────┘                    │
 │        ▲                                                      │
 │        │ replay on Lagged(n)                                  │
-│   (MemoryAgent at-least-once 복구)                            │
+│   (MemoryProjector at-least-once 복구)                            │
 └───────────────────────────────────────────────────────────────┘
 ```
 
@@ -103,7 +103,7 @@ MindService<R, A, S>  ← God Object (appraise + stimulus + scene + guide + rela
 
 1. **모든 상태 변경은 Command → Event → Store** 경로만 허용
 2. **Projection은 쓰기 경로 일부** — Dispatcher가 `apply_all()` 동기 호출 (L1). 쿼리 일관성 보장
-3. **후속 소비자는 EventBus broadcast** — Agent, SSE, 외부 도구 (L2). 독립 async 실행
+3. **후속 소비자는 EventBus broadcast** — Handler, SSE, 외부 도구 (L2). 독립 async 실행
 4. **Event Store는 append-only** — 삭제/수정 없음. broadcast lag 복구용 replay 소스
 5. **공개 API는 runtime-agnostic** — `futures::Stream`만 노출. 호출자 tokio 인식 불요 (Bevy 등에서 직접 소비 가능)
 
@@ -239,7 +239,7 @@ pub enum RelationshipCause {
 pub struct EventMetadata {
     pub causation_id: Option<EventId>,  // 이 이벤트를 발생시킨 Command ID
     pub correlation_id: CorrelationId,  // 같은 요청에서 파생된 이벤트 묶음
-    pub agent_id: Option<String>,       // 어떤 에이전트가 발생시켰는가
+    pub agent_id: Option<String>,       // 어떤 핸들러가 발생시켰는가
 }
 ```
 
@@ -504,16 +504,16 @@ impl EventBus {
 
 ```
 CommandDispatcher.dispatch(cmd)                      ← sync 진입
-  → Agent.handle_*() → HandlerOutput
+  → Handler.handle() → HandlerResult
   → repository write-back (emotion_state, relationship, scene)
   → EventStore.append(&[event])                      ← 영속화
   → ProjectionRegistry.apply_all(&event)             ← L1 동기 (쿼리 일관성)
   → EventBus.publish(&event)                         ← L2 broadcast
        ↓  fan-out (런타임-무관 Stream)
-  [MemoryAgent] [StoryAgent] [SSE]                    ← L2 독립 async 소비
+  [MemoryProjector] [StoryAgent] [SSE]                    ← L2 독립 async 소비
 ```
 
-※ DialogueAgent는 L2 구독자가 아니라 dispatch 경로 상위에 위치한 orchestrator다(§7.6). `DialogueTurnCompleted`를 발행하는 쪽이며, 그 이벤트는 MemoryAgent 등 L2 구독자가 받는다.
+※ DialogueOrchestrator는 L2 구독자가 아니라 dispatch 경로 상위에 위치한 orchestrator다(§7.6). `DialogueTurnCompleted`를 발행하는 쪽이며, 그 이벤트는 MemoryProjector 등 L2 구독자가 받는다.
 
 **핵심 포인트**:
 
@@ -542,38 +542,38 @@ while let Some(item) = stream.next().await {
 }
 ```
 
-`MemoryAgent::run()`이 이 패턴을 구현한다 (중복 인덱싱은 허용, 유실은 금지).
+`MemoryProjector::run()`이 이 패턴을 구현한다 (중복 인덱싱은 허용, 유실은 금지).
 
 ### 6.4 구독자 유형별 선택 기준
 
 | 유형 | API | 사용처 |
 |------|-----|--------|
 | 일반 반응형 | `subscribe() -> Stream<Arc<DomainEvent>>` | SSE 브릿지, UI 업데이트, 로깅. Lag 시 이벤트 일부 유실 수용 |
-| At-least-once | `subscribe_with_lag() -> Stream<Result<_, u64>>` + EventStore replay | MemoryAgent, 향후 SummaryAgent 등 데이터 무결성 필요 |
+| At-least-once | `subscribe_with_lag() -> Stream<Result<_, u64>>` + EventStore replay | MemoryProjector, 향후 SummaryAgent 등 데이터 무결성 필요 |
 | 쿼리 일관성 | bus 구독 금지. L1 Projection으로 등록 | EmotionProjection, RelationshipProjection, SceneProjection |
 
 ---
 
-## 7. Multi-Agent 아키텍처
+## 7. Multi-Handler 아키텍처
 
-### 7.1 에이전트 설계 원칙
+### 7.1 핸들러 설계 원칙
 
-Phase 2~3 + Memory Step C/D 구현은 두 가지 에이전트 유형을 구분한다:
+Phase 2~3 + Memory Step C/D 구현은 두 가지 핸들러 유형을 구분한다:
 
-**Write-side Agent** — `CommandDispatcher`가 Command enum으로 라우팅해 **직접 호출**하는
+**Write-side Policy** — `CommandDispatcher`가 Command enum으로 라우팅해 **직접 호출**하는
 Transactional `EventHandler`. 순서는 `priority` 상수(§6.5)로 보장되며, Command 처리 중에는
 단일 task — 동시 발행 없음.
 
-| Agent | Priority | 담당 이벤트 | 추가 시기 |
+| Handler | Priority | 담당 이벤트 | 추가 시기 |
 |---|---|---|---|
-| `SceneAgent` | 5 | `SceneStartRequested` → `SceneStarted/EmotionAppraised` | B4.1 |
-| `EmotionAgent` | 10 | `AppraiseRequested` → `EmotionAppraised` | Phase 2 |
-| `StimulusAgent` | 15 | `StimulusApplyRequested` → `StimulusApplied`/`BeatTransitioned` | B1 |
-| `GuideAgent` | 20 | `EmotionAppraised`/`StimulusApplied`/`GuideRequested` → `GuideGenerated` | Phase 2 |
-| **`WorldOverlayAgent`** | **25** | **`ApplyWorldEventRequested` → `WorldEventOccurred`** | **Step D** |
-| `RelationshipAgent` | 30 | `BeatTransitioned`/`RelationshipUpdateRequested`/`DialogueEndRequested` → `RelationshipUpdated` (BeatTransitioned에서 cause=`SceneInteraction` 설정 — Step D) | Phase 2 (Step D 확장) |
-| **`InformationAgent`** | **35** | **`TellInformationRequested` → 청자별 `InformationTold`** | **Step C2** |
-| **`RumorAgent`** | **40** | **`Seed/SpreadRumorRequested` → `RumorSeeded`/`RumorSpread` + `RumorStore` 연동** | **Step C3** |
+| `ScenePolicy` | 5 | `SceneStartRequested` → `SceneStarted/EmotionAppraised` | B4.1 |
+| `EmotionPolicy` | 10 | `AppraiseRequested` → `EmotionAppraised` | Phase 2 |
+| `StimulusPolicy` | 15 | `StimulusApplyRequested` → `StimulusApplied`/`BeatTransitioned` | B1 |
+| `GuidePolicy` | 20 | `EmotionAppraised`/`StimulusApplied`/`GuideRequested` → `GuideGenerated` | Phase 2 |
+| **`WorldOverlayPolicy`** | **25** | **`ApplyWorldEventRequested` → `WorldEventOccurred`** | **Step D** |
+| `RelationshipPolicy` | 30 | `BeatTransitioned`/`RelationshipUpdateRequested`/`DialogueEndRequested` → `RelationshipUpdated` (BeatTransitioned에서 cause=`SceneInteraction` 설정 — Step D) | Phase 2 (Step D 확장) |
+| **`InformationPolicy`** | **35** | **`TellInformationRequested` → 청자별 `InformationTold`** | **Step C2** |
+| **`RumorPolicy`** | **40** | **`Seed/SpreadRumorRequested` → `RumorSeeded`/`RumorSpread` + `RumorStore` 연동** | **Step C3** |
 
 **Inline Handler** — commit 후 동기 실행. 쿼리 일관성 프로젝션 + Memory 인덱싱에 사용.
 Step D에서 Memory 계열 Inline이 4개로 늘어나 priority 축 재정비
@@ -590,47 +590,47 @@ Step D에서 Memory 계열 Inline이 4개로 늘어나 priority 축 재정비
 | **`RelationshipMemoryHandler`** | **50** | **`RelationshipUpdated`** | **cause variant별 source/topic/content 분기 + 주도 축 라벨** | **Step D** |
 | **`SceneConsolidationHandler`** | **60** | **`SceneEnded`** | **참여 NPC별 Personal `SceneSummary` Layer B + Layer A `consolidated_into` 마킹** | **Step D** |
 
-**Read-side / Reactive Agent** (MemoryAgent, 향후 StoryAgent/SummaryAgent)
+**Read-side / Reactive Projector** (MemoryProjector, 향후 StoryAgent/SummaryAgent)
 - `EventBus::subscribe()` Stream을 자기 async task에서 소비
 - Side-effect (RAG 인덱싱, 서사 판단) 수행
 - At-least-once 필요 시 `subscribe_with_lag()` + EventStore replay
 
-**Orchestrator Agent** (DialogueAgent — Phase 4에서 도입)
+**Orchestrator** (DialogueOrchestrator — Phase 4에서 도입)
 - 원안은 Read-side 구독자였으나(§7.4), 실제 구현은 explicit orchestrator로 변경(§7.6)
 - `CommandDispatcher`를 소유하고 외부에서 호출되는 async API(`start_session`/`turn`/`end_session`) 제공
 - 내부에서 Command dispatch + LLM 호출을 조합하며 `DialogueTurnCompleted`를 직접 발행
 
 공통 원칙:
-1. **단일 목표(Single Goal)**: 각 에이전트는 하나의 도메인 책임만 담당
+1. **단일 목표(Single Goal)**: 각 핸들러는 하나의 도메인 책임만 담당
 2. **Tool 사용**: 외부 리소스(LLM, 임베딩, RAG) 접근은 Tool/포트 인터페이스로 추상화
-3. **Repository는 진실의 원천** — Projection은 파생 뷰. Write-side Agent는 repository 상태를 읽고 HandlerOutput으로 변경 의도만 반환
+3. **Repository는 진실의 원천** — Projection은 파생 뷰. Write-side Policy는 repository 상태를 읽고 HandlerOutput으로 변경 의도만 반환
 4. **이벤트는 발생 결과** — Command의 직접 결과는 `CommandResult`, 이후 부수 소비는 broadcast로 전파
 
-### 7.2 에이전트 카탈로그
+### 7.2 핸들러 카탈로그
 
-> DialogueAgent 행은 원안(subscriber) 분류. 실제 구현은 orchestrator이며 상위 코드가 직접 호출한다(§7.6).
+> DialogueOrchestrator 행은 원안(subscriber) 분류. 실제 구현은 orchestrator이며 상위 코드가 직접 호출한다(§7.6).
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Agent Registry                        │
+│                    Handler Registry                        │
 ├──────────────┬──────────────────┬────────────────────────┤
-│   Agent      │   Single Goal   │   Subscribes To        │
+│   Handler    │   Single Goal   │   Subscribes To        │
 ├──────────────┼──────────────────┼────────────────────────┤
-│ EmotionAgent │ 감정 평가/변동   │ SceneStarted,          │
+│ EmotionPolicy │ 감정 평가/변동   │ SceneStarted,          │
 │              │                  │ DialogueTurnCompleted   │
 ├──────────────┼──────────────────┼────────────────────────┤
-│ DialogueAgent│ NPC 대사 생성    │ (원안) GuideGenerated  │
+│ DialogueOrchestrator│ NPC 대사 생성    │ (원안) GuideGenerated  │
 │  — §7.6 참조 │                  │ 실제: orchestrator API │
 ├──────────────┼──────────────────┼────────────────────────┤
 │ StoryAgent   │ 서사 진행 판단   │ BeatTransitioned,      │
 │              │                  │ RelationshipUpdated,    │
 │              │                  │ SceneEnded             │
 ├──────────────┼──────────────────┼────────────────────────┤
-│ MemoryAgent  │ 기억 저장/검색   │ DialogueTurnCompleted, │
+│ MemoryProjector  │ 기억 저장/검색   │ DialogueTurnCompleted, │
 │              │                  │ RelationshipUpdated,    │
 │              │                  │ SceneEnded             │
 ├──────────────┼──────────────────┼────────────────────────┤
-│ GuideAgent   │ 연기 가이드 생성 │ EmotionAppraised,      │
+│ GuidePolicy   │ 연기 가이드 생성 │ EmotionAppraised,      │
 │              │                  │ StimulusApplied,        │
 │              │                  │ BeatTransitioned       │
 ├──────────────┼──────────────────┼────────────────────────┤
@@ -642,12 +642,12 @@ Step D에서 Memory 계열 Inline이 4개로 늘어나 priority 축 재정비
 └──────────────┴──────────────────┴────────────────────────┘
 ```
 
-### 7.3 에이전트 트레이트
+### 7.3 핸들러 트레이트
 
 ```rust
 #[async_trait]
-pub trait Agent: Send + Sync {
-    /// 에이전트 이름 (로깅/디버그)
+pub trait EventHandler: Send + Sync {
+    /// 핸들러 이름 (로깅/디버그)
     fn name(&self) -> &str;
     
     /// 관심 이벤트 필터
@@ -662,7 +662,7 @@ pub trait Agent: Send + Sync {
     ) -> Result<Vec<Command>, AgentError>;
 }
 
-/// 에이전트가 사용할 수 있는 컨텍스트
+/// 핸들러가 사용할 수 있는 컨텍스트
 pub struct AgentContext {
     pub projections: Arc<ProjectionStore>,   // Read-only 뷰
     pub tools: Arc<ToolRegistry>,            // LLM, 임베딩 등
@@ -670,18 +670,18 @@ pub struct AgentContext {
 }
 ```
 
-### 7.4 에이전트 상세 설계
+### 7.4 핸들러 상세 설계
 
-#### EmotionAgent — 감정 평가 전담
+#### EmotionPolicy — 감정 평가 전담
 
 ```rust
-pub struct EmotionAgent {
+pub struct EmotionPolicy {
     appraisal_engine: AppraisalEngine,
     stimulus_engine: StimulusEngine,
 }
 
-impl Agent for EmotionAgent {
-    fn name(&self) -> &str { "EmotionAgent" }
+impl EventHandler for EmotionPolicy {
+    fn name(&self) -> &str { "EmotionPolicy" }
     
     fn event_filter(&self) -> EventFilter {
         EventFilter::types(&["SceneStarted", "DialogueTurnCompleted"])
@@ -719,15 +719,15 @@ impl Agent for EmotionAgent {
 }
 ```
 
-#### DialogueAgent — NPC 대사 생성 전담
+#### DialogueOrchestrator — NPC 대사 생성 전담
 
-> **구현 주의**: 아래는 원안(subscriber 형태) 스케치이며, 실제 구현은 explicit orchestrator로 변경되었다. 현행 API와 플로우는 [§7.6 DialogueAgent 현행 구현](#76-dialogueagent-현행-구현-phase-4) 참조.
+> **구현 주의**: 아래는 원안(subscriber 형태) 스케치이며, 실제 구현은 explicit orchestrator로 변경되었다. 현행 API와 플로우는 [§7.6 DialogueOrchestrator 현행 구현](#76-dialogueagent-현행-구현-phase-4) 참조.
 
 ```rust
-pub struct DialogueAgent;
+pub struct DialogueOrchestrator;
 
-impl Agent for DialogueAgent {
-    fn name(&self) -> &str { "DialogueAgent" }
+impl EventHandler for DialogueOrchestrator {
+    fn name(&self) -> &str { "DialogueOrchestrator" }
     
     fn event_filter(&self) -> EventFilter {
         // GuideGenerated를 받으면 → LLM으로 대사 생성
@@ -800,13 +800,13 @@ impl Agent for StoryAgent {
 }
 ```
 
-#### MemoryAgent — 기억 관리 (RAG 인덱싱)
+#### MemoryProjector — 기억 관리 (RAG 인덱싱)
 
 ```rust
-pub struct MemoryAgent;
+pub struct MemoryProjector;
 
-impl Agent for MemoryAgent {
-    fn name(&self) -> &str { "MemoryAgent" }
+impl EventHandler for MemoryProjector {
+    fn name(&self) -> &str { "MemoryProjector" }
     
     fn event_filter(&self) -> EventFilter {
         EventFilter::types(&[
@@ -858,19 +858,19 @@ impl Agent for MemoryAgent {
 }
 ```
 
-### 7.5 에이전트 순차 도입 계획
+### 7.5 핸들러 순차 도입 계획
 
 ```
-Phase 1: EmotionAgent + GuideAgent
+Phase 1: EmotionPolicy + GuidePolicy
   - 현재 MindService.appraise() + apply_stimulus() + generate_guide() 분리
   - InMemoryEventStore + 기본 Projections
   - 기존 테스트 통과 확인
 
-Phase 2: + MemoryAgent + RAG
+Phase 2: + MemoryProjector + RAG
   - DialogueHistoryProjection → RAG 인덱스 연동
-  - 에이전트 간 이벤트 흐름 검증
+  - 핸들러 간 이벤트 흐름 검증
 
-Phase 3: + DialogueAgent
+Phase 3: + DialogueOrchestrator
   - LLM 대화를 이벤트 기반으로 전환
   - ConversationPort를 Tool로 래핑
 
@@ -879,11 +879,11 @@ Phase 4: + StoryAgent
   - 다중 NPC 관점 지원
 ```
 
-### 7.6 DialogueAgent 현행 구현 (Phase 4)
+### 7.6 DialogueOrchestrator 현행 구현 (Phase 4)
 
-§7.4의 `DialogueAgent` 원안은 `GuideGenerated` 이벤트 구독자였지만, 실제 LLM 호출은 user utterance가 주도하고 세션 시작/종료에 외부 제어가 필요해 **explicit orchestrator**로 바꾸어 구현했다. 파일: `src/application/dialogue_agent.rs` (chat feature gate).
+§7.4의 `DialogueOrchestrator` 원안은 `GuideGenerated` 이벤트 구독자였지만, 실제 LLM 호출은 user utterance가 주도하고 세션 시작/종료에 외부 제어가 필요해 **explicit orchestrator**로 바꾸어 구현했다. 파일: `src/application/dialogue_orchestrator.rs` (chat feature gate).
 
-**구성**: `DialogueAgent<R, C>`는 `CommandDispatcher<R>`와 `C: ConversationPort`를 소유하고, 세션별 `(npc_id, partner_id)` 메타를 `HashMap`으로 추적한다. `GuideFormatter`로 프롬프트를 포맷팅하고, 선택적으로 `UtteranceAnalyzer`로 대사→PAD 자동 분석을 수행한다.
+**구성**: `DialogueOrchestrator<R, C>`는 `CommandDispatcher<R>`와 `C: ConversationPort`를 소유하고, 세션별 `(npc_id, partner_id)` 메타를 `HashMap`으로 추적한다. `GuideFormatter`로 프롬프트를 포맷팅하고, 선택적으로 `UtteranceAnalyzer`로 대사→PAD 자동 분석을 수행한다.
 
 **공개 API** (모두 `async fn`):
 
@@ -909,7 +909,7 @@ turn(session_id, user_utterance, pad_hint?)
 
 **`DialogueTurnCompleted` 직접 발행**: `Command` enum에 대화 턴 전용 variant를 추가하지 않고, dispatcher가 노출한 `event_store()`/`event_bus()`/`projections()` 훅으로 dispatcher와 동일한 발행 시퀀스(`append → apply_all → publish`)를 재사용한다. 새 Command variant 없이 `CommandDispatcher` 표면을 보존한다.
 
-**Event Sourcing 일원화 효과**: `MemoryAgent`는 이미 `DialogueTurnCompleted`를 구독하므로, DialogueAgent가 발행하는 user/assistant 양쪽 턴이 자동으로 RAG에 인덱싱된다. `DialogueTestService`(`FormattedMindService` 기반 얇은 래퍼)는 프롬프트 품질 테스트 등 Event Sourcing 경로가 필요 없는 용도로 유지된다.
+**Event Sourcing 일원화 효과**: `MemoryProjector`는 이미 `DialogueTurnCompleted`를 구독하므로, DialogueOrchestrator가 발행하는 user/assistant 양쪽 턴이 자동으로 RAG에 인덱싱된다. `DialogueTestService`(`FormattedMindService` 기반 얇은 래퍼)는 프롬프트 품질 테스트 등 Event Sourcing 경로가 필요 없는 용도로 유지된다.
 
 **한계**:
 - `send_message_stream` 경로 미지원 (스트리밍이 필요한 경우 `DialogueTestService` 또는 `ConversationPort` 직접 호출).
@@ -923,7 +923,7 @@ turn(session_id, user_utterance, pad_hint?)
 ### 8.1 Tool 트레이트
 
 ```rust
-/// 에이전트가 사용하는 외부 도구 추상화
+/// 핸들러가 사용하는 외부 도구 추상화
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -935,7 +935,7 @@ pub trait Tool: Send + Sync {
     ) -> Result<ToolOutput, ToolError>;
 }
 
-/// 도구 레지스트리 — 에이전트에게 주입
+/// 도구 레지스트리 — 핸들러에게 주입
 pub struct ToolRegistry {
     tools: HashMap<String, Arc<dyn Tool>>,
 }
@@ -964,12 +964,12 @@ impl ToolRegistry {
 
 ## 9. RAG 설계 (게임 내 히스토리)
 
-> **구현 현황 (2026-04 기준)**: Phase 3(MemoryAgent + SqliteMemoryStore + FTS5 + sqlite-vec
+> **구현 현황 (2026-04 기준)**: Phase 3(MemoryProjector + SqliteMemoryStore + FTS5 + sqlite-vec
 > vec0) + **Memory Step A Foundation** + **Memory Step B Injection** 완료.
 > Step A에서 `MemoryScope`/`MemorySource`/`Provenance`/`MemoryLayer` VO, `MemoryEntry`
 > 13 필드 확장, `MemoryRanker` 2단계 랭커, SQLite v2 자동 마이그레이션이 추가됐고,
 > **Step B**에서 `MemoryFramer` trait + `LocaleMemoryFramer` + `[memory.framing]` locale
-> 섹션 + `DialogueAgent::with_memory()` opt-in이 추가되어 LLM 시스템 프롬프트에
+> 섹션 + `DialogueOrchestrator::with_memory()` opt-in이 추가되어 LLM 시스템 프롬프트에
 > "떠오르는 기억" 블록이 prepend된다 (Source별 라벨 차등 + Top-K Ranker 적용).
 > 본 §9의 초기 `MemoryEntry`/`MemoryStore` 스케치(§9.2)는 역사 문서로 남기고, **실제
 > 시그니처는 [`docs/api/api-reference.md`의 Memory API 섹션](../api/api-reference.md#memory-api-step-a-foundation--step-b-injection)**과
@@ -1134,7 +1134,7 @@ NPC가 대사를 생성할 때:
 ```
 동적 데이터 (Event Store + HybridMemoryStore):
   "턴 15에서 무림맹주가 배신 암시에 Fear가 올랐다"
-  → 게임 중에 생김. 이벤트로 기록. MemoryAgent가 인덱싱.
+  → 게임 중에 생김. 이벤트로 기록. MemoryProjector가 인덱싱.
 
 정적 데이터 (WorldKnowledgeStore):
   "무림맹주는 중원 무림을 총괄하는 최고 직위이다"
@@ -1174,7 +1174,7 @@ WorldKnowledgeStore:
 
 게임 내 기억과 다른 점:
 - `category`, `tags`, `related` 등 구조화된 메타데이터 (사전 정리 가능)
-- 불변 — MemoryAgent가 인덱싱하지 않음. 게임 개발 시 사전 구축
+- 불변 — MemoryProjector가 인덱싱하지 않음. 게임 개발 시 사전 구축
 - 관련 항목 링크로 그래프 탐색 가능
 
 ### 10.4 WorldKnowledgeTool
@@ -1220,7 +1220,7 @@ impl WorldKnowledgeTool {
 │  검색: Projection 직접 읽기                                 │
 ├─────────────────────────────────────────────────────────────┤
 │  Layer 3: 관계 기억 (HybridMemoryStore)                     │
-│  "왜" 관계가 변했는지의 맥락. MemoryAgent가 인덱싱.         │
+│  "왜" 관계가 변했는지의 맥락. MemoryProjector가 인덱싱.         │
 │  "3일 전 약속을 어겨서 trust가 떨어졌다"                    │
 │  검색: RagTool.search("신뢰")                               │
 └─────────────────────────────────────────────────────────────┘
@@ -1239,9 +1239,9 @@ WorldKnowledge — 관계 카테고리:
 
 **Layer 2**는 현재 `Relationship` 도메인 모델(closeness, trust, power)이다. v3에서 도메인 로직은 그대로 유지. 저장소만 `InMemoryRepository`에서 `Event Store + RelationshipProjection`으로 전환.
 
-**Layer 3**는 MemoryAgent가 `RelationshipUpdated` 이벤트에서 의미 있는 변화(변동량 > 0.1)만 골라서 인덱싱한 것이다.
+**Layer 3**는 MemoryProjector가 `RelationshipUpdated` 이벤트에서 의미 있는 변화(변동량 > 0.1)만 골라서 인덱싱한 것이다.
 
-DialogueAgent가 대사를 만들 때 세 층을 합친다:
+DialogueOrchestrator가 대사를 만들 때 세 층을 합친다:
 ```
 "장무기"와 대화 중인 NPC:
   Layer 1 (세계관): "이 사람은 내 사제(師弟)다"
@@ -1249,12 +1249,12 @@ DialogueAgent가 대사를 만들 때 세 층을 합친다:
   Layer 3 (기억):   "약속을 어겼다", "하지만 위기에서 구해줬다"
 ```
 
-### 10.6 에이전트 활용
+### 10.6 핸들러 활용
 
-DialogueAgent가 대사를 만들 때 **네 가지 소스**에서 맥락을 조합한다.
+DialogueOrchestrator가 대사를 만들 때 **네 가지 소스**에서 맥락을 조합한다.
 
 ```
-DialogueAgent 대사 생성 시:
+DialogueOrchestrator 대사 생성 시:
   1. RAG (게임 내 기억): "이 상대와 과거에 무슨 일이 있었지?"
      → "3일 전 약속을 어긴 적 있다"
 
@@ -1292,7 +1292,7 @@ StoryAgent도 서사 방향 판단 시 세계관을 참조한다.
 
 게임 실행 시:
   WorldKnowledgeStore → 읽기 전용으로 로드
-  에이전트들이 WorldKnowledgeTool로 조회
+  핸들러들이 WorldKnowledgeTool로 조회
 ```
 
 입력 자료의 위치와 형식은 프로젝트 진행 시 별도 결정한다.
@@ -1333,10 +1333,10 @@ Event Store (append-only, 원본 유지):
   #341: ContextSummarized { turns: 1..11, summary: "3년 만에 재회..." }  ← 요약 이벤트
 ```
 
-요약이 적용되는 곳은 **ContextProjection** — DialogueAgent가 LLM에게 보낼 컨텍스트를 조립할 때 사용한다.
+요약이 적용되는 곳은 **ContextProjection** — DialogueOrchestrator가 LLM에게 보낼 컨텍스트를 조립할 때 사용한다.
 
 ```
-LLM 컨텍스트 조립 (DialogueAgent):
+LLM 컨텍스트 조립 (DialogueOrchestrator):
   ┌──────────────────────────────────────┐
   │ System Prompt (ActingGuide)   ~1.5K  │
   │ 세계관 (WorldKnowledge)       ~0.5K  │
@@ -1389,21 +1389,21 @@ pub struct ContextSummary {
   │
   ├─ CommandHandler → SceneStarted 이벤트 저장 + 발행
   │
-  ├─ EmotionAgent (SceneStarted 수신)
+  ├─ EmotionPolicy (SceneStarted 수신)
   │    → Appraise 커맨드 발행
   │    → CommandHandler → EmotionAppraised 이벤트
   │
-  ├─ GuideAgent (EmotionAppraised 수신)
+  ├─ GuidePolicy (EmotionAppraised 수신)
   │    → GenerateGuide 커맨드 발행
   │    → CommandHandler → GuideGenerated 이벤트
   │
-  ├─ DialogueAgent (GuideGenerated 수신)
+  ├─ DialogueOrchestrator (GuideGenerated 수신)
   │    → RAG로 관련 기억 검색
   │    → LLM으로 NPC 첫 대사 생성
   │    → CompleteTurn 커맨드 발행
   │    → CommandHandler → DialogueTurnCompleted 이벤트
   │
-  └─ MemoryAgent (DialogueTurnCompleted 수신)
+  └─ MemoryProjector (DialogueTurnCompleted 수신)
        → RAG 인덱스에 대사 기록
 ```
 
@@ -1414,24 +1414,24 @@ pub struct ContextSummary {
   │
   ├─ DialogueTurnCompleted(User, "너를 믿어도 되겠냐?") 이벤트
   │
-  ├─ EmotionAgent 수신
+  ├─ EmotionPolicy 수신
   │    → UtteranceAnalyzer Tool로 PAD 분석: (P:-0.2, A:0.3, D:0.4)
   │    → ApplyStimulus 커맨드 발행
   │    → StimulusApplied 이벤트 (Fear↑, Hope↓)
   │    → [Beat 조건 미충족 → 전환 없음]
   │
-  ├─ GuideAgent 수신 (StimulusApplied)
+  ├─ GuidePolicy 수신 (StimulusApplied)
   │    → 감정 변화가 GUIDE_REGEN_THRESHOLD 초과 시
   │    → GenerateGuide 커맨드 → GuideGenerated 이벤트
   │
-  ├─ DialogueAgent 수신 (GuideGenerated)
+  ├─ DialogueOrchestrator 수신 (GuideGenerated)
   │    → RAG: "신뢰" 관련 과거 기억 검색
   │      "3일 전 이 사람이 약속을 지킨 적 있다"
   │    → LLM: 갱신된 프롬프트 + 기억으로 대사 생성
   │      "...전에 약속을 지켰으니, 한 번 더 믿어보겠다."
   │    → DialogueTurnCompleted(Assistant) 이벤트
   │
-  └─ MemoryAgent: 양쪽 대사 모두 인덱싱
+  └─ MemoryProjector: 양쪽 대사 모두 인덱싱
 ```
 
 ---
@@ -1477,15 +1477,15 @@ Step 2: Projection 도입
   - EmotionProjection, RelationshipProjection
   - 기존 InMemoryRepository와 병행 — 결과 일치 검증
 
-Step 3: EmotionAgent 추출
-  - appraise/stimulus를 에이전트로 이관
+Step 3: EmotionPolicy 추출
+  - appraise/stimulus를 핸들러로 이관
   - MindService에서 해당 로직 제거
 
-Step 4: 나머지 에이전트 순차 추출
-  - GuideAgent → DialogueAgent → MemoryAgent → StoryAgent
+Step 4: 나머지 핸들러 순차 추출
+  - GuidePolicy → DialogueOrchestrator → MemoryProjector → StoryAgent
 
 Step 5: MindService 제거
-  - 모든 로직이 에이전트로 이관 완료
+  - 모든 로직이 핸들러로 이관 완료
   - EventAwareMindService → 순수 Command Dispatcher로 전환
 ```
 
@@ -1497,11 +1497,11 @@ Step 5: MindService 제거
 
 | 장점 | 단점 |
 |------|------|
-| 에이전트 간 완전한 디커플링 | 디버깅 복잡도 증가 (이벤트 추적 필요) |
-| 새 에이전트 추가 시 기존 코드 무수정 | 이벤트 순서 보장이 중요한 경우 복잡 |
+| 핸들러 간 완전한 디커플링 | 디버깅 복잡도 증가 (이벤트 추적 필요) |
+| 새 핸들러 추가 시 기존 코드 무수정 | 이벤트 순서 보장이 중요한 경우 복잡 |
 | 비동기 처리로 병렬성 확보 | 최종 일관성(eventual consistency) |
 
-**위험 완화**: correlation_id로 이벤트 체인 추적, tracing span으로 에이전트별 로깅
+**위험 완화**: correlation_id로 이벤트 체인 추적, tracing span으로 핸들러별 로깅
 
 ### 14.2 CQRS
 
@@ -1523,15 +1523,15 @@ Step 5: MindService 제거
 
 **핵심 가치**: NPC 게임에서 "과거에 무슨 일이 있었는가"는 게임플레이의 핵심. Event Sourcing이 자연스러운 선택.
 
-### 14.4 Multi-Agent
+### 14.4 Multi-Handler
 
 | 장점 | 단점 |
 |------|------|
-| 각 에이전트 독립 테스트 가능 | 에이전트 간 협업 프로토콜 설계 필요 |
-| 에이전트별 LLM 교체/튜닝 | 전체 시스템 동작 파악이 어려움 |
+| 각 핸들러 독립 테스트 가능 | 핸들러 간 협업 프로토콜 설계 필요 |
+| 핸들러별 LLM 교체/튜닝 | 전체 시스템 동작 파악이 어려움 |
 | 순차 도입으로 리스크 분산 | 오버엔지니어링 위험 |
 
-**1인 개발자 고려**: Phase 1 (EmotionAgent + GuideAgent)만으로도 충분한 가치. 나머지는 필요 시 추가.
+**1인 개발자 고려**: Phase 1 (EmotionPolicy + GuidePolicy)만으로도 충분한 가치. 나머지는 필요 시 추가.
 
 ### 14.5 RAG
 
@@ -1566,7 +1566,7 @@ Step 5: MindService 제거
 ### 유지되는 포트
 
 - `AppraisalWeights`, `StimulusWeights` — 순수 도메인, 변경 없음
-- `Appraiser`, `StimulusProcessor` — 에이전트 내부에서 사용
+- `Appraiser`, `StimulusProcessor` — 핸들러 내부에서 사용
 - `GuideFormatter` — Tool로 래핑되지만 트레이트는 유지
 - `TextEmbedder`, `UtteranceAnalyzer`, `PadAnchorSource` — Tool로 래핑
 
@@ -1582,7 +1582,7 @@ Step 5: MindService 제거
 
 - `EventStore` — 이벤트 영속화
 - `MemoryStore` — RAG 인덱스
-- `Agent` — 에이전트 트레이트
+- `EventHandler` — 핸들러 트레이트
 - `Tool` — 도구 추상화
 
 ---
@@ -1592,11 +1592,11 @@ Step 5: MindService 제거
 1. ~~**Phase 1 구현 시작**~~ ✅ 완료
 2. ~~**EventAwareMindService 래퍼**~~ ✅ 완료
 3. ~~**EmotionProjection + RelationshipProjection**~~ ✅ 완료
-4. ~~**EmotionAgent + GuideAgent 추출**~~ ✅ 완료
-5. ~~**MemoryAgent + RAG**~~ ✅ 완료
-6. ~~**DialogueAgent** (Phase 4)~~ ✅ 완료
+4. ~~**EmotionPolicy + GuidePolicy 추출**~~ ✅ 완료
+5. ~~**MemoryProjector + RAG**~~ ✅ 완료
+6. ~~**DialogueOrchestrator** (Phase 4)~~ ✅ 완료
 7. **Phase 5 StoryAgent**: `BeatTransitioned` / `RelationshipUpdated` / `SceneEnded` 구독으로 서사 분석
-8. **Phase 6 Tool 시스템**: `ToolRegistry` 도입으로 Agent의 외부 리소스 접근 통일
+8. **Phase 6 Tool 시스템**: `ToolRegistry` 도입으로 Handler의 외부 리소스 접근 통일
 9. **Phase 7 WorldKnowledgeStore**: 정적 세계관 지식 (3계층 관계 Layer 1 포함)
 10. **Phase 8 SummaryAgent**: 컨텍스트 윈도우 관리 (ContextProjection + 요약 이벤트)
 
@@ -1626,7 +1626,7 @@ pub trait Upcaster {
 ```
 [EventInspector UI]
   - 이벤트 스트림 실시간 뷰 (Mind Studio SSE 확장)
-  - 에이전트별 이벤트 처리 현황
+  - 핸들러별 이벤트 처리 현황
   - Projection 상태 스냅샷
   - correlation_id로 이벤트 체인 시각화
 ```

@@ -30,7 +30,7 @@ use crate::domain::scene_id::SceneId;
 use crate::domain::tuning::{BEAT_DEFAULT_SIGNIFICANCE, BEAT_MERGE_THRESHOLD};
 use crate::ports::{Appraiser, StimulusProcessor};
 
-/// PAD 자극 적용 + Beat 전환 판정 에이전트
+/// PAD 자극 적용 + Beat 전환 판정 폴리시
 ///
 /// Appraisal/Stimulus/Scene 평가기를 모두 소유. Scene trigger 체크는 도메인
 /// `Scene::check_trigger`를 직접 호출(v1의 `SceneService` 래퍼 대신).
