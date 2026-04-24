@@ -140,6 +140,15 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/load-result", post(handlers::scenario::load_result))
         // 실시간 상태 변경 이벤트 스트림
         .route("/api/events", get(handlers::events::sse_events))
+        // Read Side Activation — Projection 기반 조회 (StateInner 조회와 병렬).
+        // dispatch_v2 Inline phase가 `AppState`의 공유 Projection Arc를 업데이트하고,
+        // 아래 세 엔드포인트가 같은 Arc를 읽어 반환한다 (drift 불가능).
+        .route("/api/projection/emotion/{npc_id}", get(handlers::query::get_emotion))
+        .route(
+            "/api/projection/relationship/{owner}/{target}",
+            get(handlers::query::get_relationship),
+        )
+        .route("/api/projection/scene", get(handlers::query::get_scene))
         // B4 Session 3 Option B-Mini: v2 dispatch shadow path (Director 경유)
         // 기존 v1 경로(/api/scene, /api/appraise 등)와 분리된 별도 Repository
         .route("/api/v2/scenes", get(handlers::v2_scenes::list_active_scenes))

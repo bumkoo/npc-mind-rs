@@ -97,6 +97,7 @@ pub mod relationship;
 pub mod object;
 pub mod scenario;
 pub mod events;
+pub mod query;
 pub mod v2_scenes;
 #[cfg(feature = "chat")]
 pub mod chat;

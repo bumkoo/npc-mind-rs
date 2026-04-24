@@ -2566,3 +2566,298 @@ mod memory_endpoints {
         assert!(joined.contains("rumor[0]"), "warning 메시지에 실패한 index가 포함되어야 함");
     }
 }
+
+// =========================================================================
+// Read Side Activation — Projection 기반 쿼리 drift 감지
+// =========================================================================
+//
+// `/api/appraise`·`/api/scene` 같은 Write 경로가 실행된 뒤, `/api/projection/*`
+// Read 경로가 **같은 값**을 돌려준다는 것을 보증한다. dispatcher Inline phase가
+// 업데이트하는 Projection과 query 핸들러가 읽는 Projection이 동일한 Arc여야
+// 테스트가 통과하므로, Arc 불일치(= silent drift)가 발생하면 즉시 실패한다.
+
+mod projection_drift {
+    use super::*;
+
+    /// state를 유지한 채 Router를 생성하는 헬퍼 (appraise 후 projection 직접 검증용)
+    fn app_with_state() -> (axum::Router, AppState) {
+        let state = test_state();
+        let app = crate::build_api_router(state.clone());
+        (app, state)
+    }
+
+    async fn seed_two_npcs_and_rel(app: &axum::Router) {
+        app.clone()
+            .oneshot(json_post("/api/npcs", mu_baek_profile()))
+            .await
+            .unwrap();
+        app.clone()
+            .oneshot(json_post("/api/npcs", gyo_ryong_profile()))
+            .await
+            .unwrap();
+        app.clone()
+            .oneshot(json_post("/api/relationships", relationship_data()))
+            .await
+            .unwrap();
+    }
+
+    /// Write: `/api/appraise` → Read: `/api/projection/emotion/:id`
+    ///
+    /// `AppraiseResponse.mood`와 `EmotionProjection.get_mood`가 일치해야 한다.
+    /// Arc가 분리되어 있으면 Projection 쪽이 `None`을 반환하여 이 테스트가 실패.
+    #[tokio::test]
+    async fn emotion_projection_matches_appraise_response() {
+        let (app, _state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "교룡이 마을 사람들의 식량을 약탈했다",
+                "event": {
+                    "description": "약탈 사건",
+                    "desirability_for_self": -0.7,
+                    "other": null,
+                    "prospect": null
+                },
+                "action": {
+                    "description": "교룡의 약탈 행위",
+                    "agent_id": "gyo_ryong",
+                    "praiseworthiness": -0.8
+                },
+                "object": null
+            }
+        });
+
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let write_body = body_json(resp).await;
+        let expected_mood = write_body["mood"].as_f64().expect("mood must be f64") as f32;
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/emotion/mu_baek"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let read_body = body_json(resp).await;
+
+        assert_eq!(read_body["npc_id"], "mu_baek");
+        let projection_mood = read_body["mood"]
+            .as_f64()
+            .expect("projection mood must be populated after appraise")
+            as f32;
+
+        assert!(
+            (expected_mood - projection_mood).abs() < 1e-5,
+            "drift detected: appraise.mood={expected_mood}, projection.mood={projection_mood}"
+        );
+
+        // dominant/snapshot도 비어 있지 않아야 — Arc가 공유되어 이벤트가 도달했다는 증거.
+        assert!(
+            !read_body["dominant"].is_null(),
+            "projection dominant must be populated after appraise"
+        );
+        let snapshot = read_body["snapshot"]
+            .as_array()
+            .expect("projection snapshot must be an array");
+        assert!(!snapshot.is_empty(), "projection snapshot must not be empty");
+    }
+
+    /// appraise 전에는 projection이 비어 있어야 — 초기 상태 sanity check.
+    #[tokio::test]
+    async fn emotion_projection_empty_before_any_command() {
+        let (app, _state) = app_with_state();
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/emotion/mu_baek"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert!(body["mood"].is_null());
+        assert!(body["dominant"].is_null());
+        assert!(body["snapshot"].is_null());
+    }
+
+    /// Scene projection drift: `/api/scene` 시작 → `/api/projection/scene`이
+    /// `is_active=true`·`active_focus_id`를 반환.
+    #[tokio::test]
+    async fn scene_projection_reflects_scene_start() {
+        let (app, _state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        // 초기 상태: 비활성
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/scene"))
+            .await
+            .unwrap();
+        let body = body_json(resp).await;
+        assert_eq!(body["is_active"], false);
+        assert!(body["active_focus_id"].is_null());
+
+        // Scene 시작 — trigger=null은 Initial focus로 간주된다 (SceneFocusInput::trigger).
+        let scene_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "description": "첫 접촉 장면",
+            "significance": 0.5,
+            "focuses": [
+                {
+                    "id": "focus-init",
+                    "description": "첫 접촉",
+                    "trigger": null,
+                    "event": {
+                        "description": "조우",
+                        "desirability_for_self": -0.2,
+                        "other": null,
+                        "prospect": null
+                    },
+                    "action": null,
+                    "object": null
+                }
+            ]
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/scene", scene_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // Read: projection이 활성이어야 함 + focus_id 노출
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/scene"))
+            .await
+            .unwrap();
+        let body = body_json(resp).await;
+        assert_eq!(
+            body["is_active"], true,
+            "scene projection must be active after /api/scene"
+        );
+        assert_eq!(
+            body["active_focus_id"].as_str(),
+            Some("focus-init"),
+            "projection must expose initial focus id"
+        );
+    }
+
+    /// Relationship projection drift: after_dialogue 후 닫힌 값을 /api/projection/relationship이 반환.
+    /// drift가 발생하면 `closeness=null`이 돌아오므로 즉시 실패한다.
+    #[tokio::test]
+    async fn relationship_projection_reflects_after_dialogue() {
+        let (app, _state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        // appraise → after_dialogue 파이프라인을 태워 RelationshipUpdated를 강제.
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "짧은 조우",
+                "event": {
+                    "description": "조우",
+                    "desirability_for_self": -0.2,
+                    "other": null,
+                    "prospect": null
+                }
+            }
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let after_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "significance": 0.6
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/after-dialogue", after_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let after_body = body_json(resp).await;
+        let expected_closeness = after_body["after"]["closeness"]
+            .as_f64()
+            .expect("after.closeness must exist") as f32;
+        let expected_trust = after_body["after"]["trust"]
+            .as_f64()
+            .expect("after.trust must exist") as f32;
+
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/relationship/mu_baek/gyo_ryong"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        let proj_closeness = body["closeness"]
+            .as_f64()
+            .expect("projection closeness must be populated after RelationshipUpdated")
+            as f32;
+        let proj_trust = body["trust"]
+            .as_f64()
+            .expect("projection trust must be populated")
+            as f32;
+
+        assert!(
+            (expected_closeness - proj_closeness).abs() < 1e-5,
+            "closeness drift: after_dialogue={expected_closeness}, projection={proj_closeness}"
+        );
+        assert!(
+            (expected_trust - proj_trust).abs() < 1e-5,
+            "trust drift: after_dialogue={expected_trust}, projection={proj_trust}"
+        );
+    }
+
+    /// AppState 필드를 직접 lock해도 같은 값이 보여야 — Arc 공유의 가장 강한 증거.
+    /// HTTP 경로를 통하지 않는 raw access 검증.
+    #[tokio::test]
+    async fn appstate_projection_handle_shares_arc_with_dispatcher() {
+        let (app, state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "평범한 대화",
+                "event": {
+                    "description": "대화",
+                    "desirability_for_self": 0.1,
+                    "other": null,
+                    "prospect": null
+                }
+            }
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let http_mood = body_json(resp).await["mood"].as_f64().unwrap() as f32;
+
+        let proj = state.emotion_projection.lock().unwrap();
+        let direct_mood = proj
+            .get_mood("mu_baek")
+            .expect("Arc must be shared: projection must have mood after dispatch");
+        assert!(
+            (http_mood - direct_mood).abs() < 1e-5,
+            "direct Arc access and HTTP appraise diverge: http={http_mood}, direct={direct_mood}"
+        );
+    }
+}
