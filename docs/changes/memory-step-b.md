@@ -33,7 +33,7 @@ tests/memory_injection_test.rs            # 신규 (3 테스트)
 tests/memory_test.rs · sqlite_memory_test.rs  # #![allow(deprecated)] 추가
 ```
 
-## 동작 요약
+## 동작 요약 *(commit `2ba2766` 시점 코드 기준 — 변경 시 동기화 책임은 다음 Step 카드)*
 
 ```
 start_session(npc, partner, situation?)
@@ -57,9 +57,8 @@ turn(utterance, pad_hint?, ...)
 
 ## 검증
 
-- 7 단위 테스트 (`LocaleMemoryFramer`): ko/en source variants · block empty/assemble · fallback 경로
-- 3 통합 테스트 (`memory_injection_test`): start_session prepend / 미부착 no-op / Beat 전환 재주입
-- 전체 500+ 테스트 green (default · chat · mind-studio 조합)
+- 신규 테스트 **10건**: `LocaleMemoryFramer` 7개 (ko/en source variants · block empty/assemble · fallback 경로) + `memory_injection_test` 3개 (start_session prepend · 미부착 no-op · Beat 전환 재주입)
+- 전체 테스트 green: default **380** · chat+mind-studio **479** (2026-04 측정)
 
 ## 리뷰 후속 수정 (`17f0cd7`)
 

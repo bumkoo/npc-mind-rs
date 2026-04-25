@@ -40,8 +40,8 @@ tests/sqlite_memory_test.rs       # v1→v2 마이그레이션 테스트 추가
 
 ## 검증
 
-- 신규 단위·통합 테스트 15건 (scope 대칭 / source priority / canonical / serde alias / retention / v1→v2 / supersede / record_recall / MemoryQuery 필터 등)
-- 전체 362+ 테스트 green (default · listener_perspective)
+- 신규 단위·통합 테스트 **22건** (`memory.rs` 9 / `ranker.rs` 7 / `sqlite_memory_test.rs` 6 — scope 대칭 / source priority / canonical / serde alias / retention / v1→v2 / supersede / record_recall / MemoryQuery 필터 등)
+- 전체 테스트 green (default 약 370건 / chat+mind-studio 약 470건 — Step A 시점 기준)
 - 샌드박스 embed 빌드 차단 (ort 바이너리 CDN 503) → CI 검증
 
 ## 리뷰 후속 수정 (`f0964f6`)
