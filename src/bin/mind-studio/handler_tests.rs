@@ -2941,4 +2941,79 @@ mod projection_drift {
             "direct Arc access and HTTP appraise diverge: http={http_mood}, direct={direct_mood}"
         );
     }
+
+    /// 6.4 (선택): GET /api/projection/trace/{cid} 가 실제 묶음을 반환한다.
+    ///
+    /// /api/appraise 한 번 → EventStore에서 cid 추출 → trace 엔드포인트로 같은 묶음 회수.
+    /// HTTP 200 + JSON 형태(correlation_id/event_count/events) + 묶음 무결성을 검증한다.
+    #[tokio::test]
+    async fn trace_endpoint_returns_correlation_bundle() {
+        let (app, state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "교룡 등장",
+                "event": {
+                    "description": "사건",
+                    "desirability_for_self": -0.5,
+                    "other": null,
+                    "prospect": null
+                }
+            }
+        });
+        let resp = app
+            .clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        // EventStore에서 직접 cid 추출 (HTTP 응답이 cid를 노출하지 않으므로).
+        let store = state.shared_dispatcher.event_store();
+        let all_events = store.get_all_events();
+        assert!(!all_events.is_empty(), "appraise should have emitted events");
+        let cid = all_events
+            .last()
+            .expect("at least one event")
+            .metadata
+            .correlation_id
+            .expect("dispatch_v2 must attach correlation_id");
+        let expected_count = store.get_events_by_correlation(cid).len();
+        assert!(expected_count > 0, "expected non-empty bundle for cid={cid}");
+
+        // /api/projection/trace/{cid} 호출
+        let resp = app
+            .clone()
+            .oneshot(get(&format!("/api/projection/trace/{cid}")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "trace endpoint must return 200");
+        let body = body_json(resp).await;
+
+        assert_eq!(body["correlation_id"].as_u64().unwrap(), cid);
+        assert_eq!(body["event_count"].as_u64().unwrap() as usize, expected_count);
+        let events = body["events"].as_array().expect("events must be array");
+        assert_eq!(events.len(), expected_count);
+        for ev in events {
+            assert_eq!(
+                ev["metadata"]["correlation_id"].as_u64().unwrap(),
+                cid,
+                "every event in the bundle must carry the same cid"
+            );
+        }
+
+        // 존재하지 않는 cid는 빈 묶음으로 200 응답.
+        let resp = app
+            .clone()
+            .oneshot(get("/api/projection/trace/999999999"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+        assert_eq!(body["event_count"].as_u64().unwrap(), 0);
+        assert!(body["events"].as_array().unwrap().is_empty());
+    }
 }

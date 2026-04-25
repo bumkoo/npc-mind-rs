@@ -583,3 +583,141 @@ async fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
 }
 
 // B5.3: v1/v2 parallel 테스트는 v1 제거와 함께 삭제됨.
+
+// ---------------------------------------------------------------------------
+// correlation_id activation (Stage 1, docs/tasks/correlation-id-activation.md §6.1·6.2)
+// ---------------------------------------------------------------------------
+
+/// 6.1: dispatch_v2 한 호출이 만든 모든 이벤트가 같은 cid로 묶인다.
+#[tokio::test]
+async fn dispatch_v2_attaches_correlation_id_to_all_events() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    let result = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+
+    assert!(!result.events.is_empty(), "expected at least one event");
+    let first_cid = result.events[0]
+        .metadata
+        .correlation_id
+        .expect("first event must have correlation_id");
+
+    for ev in &result.events {
+        assert_eq!(
+            ev.metadata.correlation_id,
+            Some(first_cid),
+            "all events of one dispatch must share the same correlation_id"
+        );
+    }
+}
+
+/// 6.2: 서로 다른 dispatch_v2 호출은 서로 다른 cid를 갖고, 단조 증가한다.
+#[tokio::test]
+async fn distinct_dispatch_calls_get_distinct_correlation_ids() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    let r1 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+    let r2 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+
+    let cid1 = r1.events[0].metadata.correlation_id.expect("r1 cid");
+    let cid2 = r2.events[0].metadata.correlation_id.expect("r2 cid");
+
+    assert_ne!(cid1, cid2, "different dispatch calls must have different cids");
+    assert!(cid2 > cid1, "cid must be monotonically increasing: {cid1} → {cid2}");
+}
+
+/// 6.3: EventStore::get_events_by_correlation는 그 cid로 묶인 이벤트만 정확히 반환한다.
+///
+/// Appraise → Stimulus → Appraise 3 dispatch를 실행해 다중 이벤트 묶음을 확인하고,
+/// 각 dispatch의 cid로 조회한 묶음이 서로 섞이지 않음을 검증한다.
+#[tokio::test]
+async fn event_store_returns_correct_correlation_bundle() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    // Appraise로 emotion_state seed
+    let r0 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    // Stimulus는 cascade가 더 길어 묶음 검증에 적합
+    let r1 = dispatcher.dispatch_v2(stimulus_cmd()).await.expect("r1");
+    let r2 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("r2");
+
+    let cid0 = r0.events[0].metadata.correlation_id.unwrap();
+    let cid1 = r1.events[0].metadata.correlation_id.unwrap();
+    let cid2 = r2.events[0].metadata.correlation_id.unwrap();
+
+    let bundle0 = dispatcher.event_store().get_events_by_correlation(cid0);
+    let bundle1 = dispatcher.event_store().get_events_by_correlation(cid1);
+    let bundle2 = dispatcher.event_store().get_events_by_correlation(cid2);
+
+    assert_eq!(bundle0.len(), r0.events.len(), "bundle0 size mismatch");
+    assert_eq!(bundle1.len(), r1.events.len(), "bundle1 size mismatch");
+    assert_eq!(bundle2.len(), r2.events.len(), "bundle2 size mismatch");
+
+    for ev in &bundle0 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid0));
+    }
+    for ev in &bundle1 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid1));
+    }
+    for ev in &bundle2 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid2));
+    }
+
+    // 묶음 합 = 전체 이벤트 수 (다른 묶음으로의 누수 없음)
+    let total = dispatcher.event_store().get_all_events().len();
+    assert_eq!(bundle0.len() + bundle1.len() + bundle2.len(), total);
+
+    // sentinel: cid 0은 매치되는 이벤트 없음.
+    let empty = dispatcher.event_store().get_events_by_correlation(0);
+    assert!(empty.is_empty(), "cid 0 is reserved sentinel — no events should match");
+}
+
+/// 6.5: 동시 dispatch_v2 호출 N개가 모두 distinct cid를 받고, 각 묶음 안에서는
+/// cid가 균일하다 (cross-contamination 없음).
+///
+/// task 명세 §12.1 — per-call 격리가 동시 호출에서도 보장된다는 핵심 개선점의
+/// 회귀 가드. 현재 dispatch_v2는 repository mutex로 직렬화되지만 그 제약이 풀려도
+/// cid 계약이 유지되어야 한다.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_dispatch_calls_get_distinct_correlation_ids() {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    let ctx = TestContext::new();
+    let dispatcher = Arc::new(make_dispatcher_v2(ctx.repo));
+
+    const N: usize = 16;
+    let mut handles = Vec::with_capacity(N);
+    for _ in 0..N {
+        let d = dispatcher.clone();
+        handles.push(tokio::spawn(async move { d.dispatch_v2(appraise_cmd()).await }));
+    }
+
+    let mut all_cids = Vec::with_capacity(N);
+    for h in handles {
+        let result = h.await.expect("task panic").expect("dispatch failed");
+        assert!(!result.events.is_empty(), "every dispatch must emit events");
+        let bundle_cid = result.events[0]
+            .metadata
+            .correlation_id
+            .expect("every event must carry correlation_id");
+        // 묶음 안 모든 이벤트의 cid가 동일 (cross-contamination 없음)
+        for ev in &result.events {
+            assert_eq!(
+                ev.metadata.correlation_id,
+                Some(bundle_cid),
+                "concurrent dispatch: bundle cid must be uniform"
+            );
+        }
+        all_cids.push(bundle_cid);
+    }
+
+    let unique: HashSet<_> = all_cids.iter().copied().collect();
+    assert_eq!(
+        unique.len(),
+        N,
+        "concurrent dispatches must produce N distinct cids, got {} unique out of {N}",
+        unique.len()
+    );
+}

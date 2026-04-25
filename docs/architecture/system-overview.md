@@ -38,12 +38,15 @@
 │ Presentation / Binaries                                                │
 │   - presentation/   : LocaleFormatter (ko, en TOML)                    │
 │   - bin/mind-studio : Axum REST + SSE + static UI (dev tool)           │
+│                       /api/projection/{emotion,relationship,scene}     │
+│                       /api/projection/trace/{cid} — 인과 사슬 조회      │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Application (조립·흐름 제어)  —  라이브러리 사용자의 진입점              │
 │   Director                (multi-scene facade, Spawner 주입)            │
 │   CommandDispatcher       (dispatch_v2 = 유일 write 경로)              │
 │   DialogueOrchestrator [chat]    (LLM 다턴 오케스트레이터)                     │
-│   EventBus / EventStore   (broadcast fan-out / append-only log)        │
+│   EventBus / EventStore   (broadcast fan-out / append-only log,        │
+│                            dispatch 단위 correlation_id 자동 부착)      │
 │   MemoryProjector [embed]     (broadcast 구독 → 임베딩 → RAG 저장)          │
 │   Handler Agents          : ScenePolicy / EmotionPolicy / StimulusPolicy /│
 │                             GuidePolicy / RelationshipPolicy /           │

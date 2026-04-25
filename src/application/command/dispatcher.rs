@@ -87,11 +87,13 @@ pub struct CommandDispatcher<R: MindRepository> {
     situation_service: SituationService,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
-    correlation_id: Arc<AtomicU64>,
-    /// 커맨드별 고유 suffix 생성용 내부 카운터. `Command::SeedRumor`의 pending_id 등에
-    /// 쓰이며, event_store의 next_id와 별개로 관리되어 **event id gap을 유발하지 않는다**
-    /// (Step C3 사후 리뷰 M1). 프로세스 수명 동안만 유일, replay 시 리셋되므로 id
-    /// 결정성은 §15 결정 유보 범위.
+    /// `dispatch_v2` 호출 단위 correlation_id 발급 + `Command::SeedRumor`의 pending_id
+    /// 발급에 공용으로 쓰이는 단조 증가 카운터. 1부터 시작하며 0은 "미설정" sentinel로
+    /// 예약. `AtomicU64::fetch_add`이라 동시 호출에서도 단조 증가가 보장된다.
+    ///
+    /// **영속화 시 주의** (§12.3 — 본 태스크 범위 밖, 영속화 task로 미룸):
+    /// 프로세스 재시작 시 1로 리셋되므로 SQLite 등 영속 EventStore 도입 후엔 시작 시
+    /// `SELECT MAX(correlation_id) FROM events`로 카운터를 복원해야 cid 충돌이 없다.
     command_seq: Arc<AtomicU64>,
     transactional_handlers: Vec<Arc<dyn EventHandler>>,
     inline_handlers: Vec<Arc<dyn EventHandler>>,
@@ -108,7 +110,6 @@ impl<R: MindRepository> CommandDispatcher<R> {
             situation_service: SituationService::new(),
             event_store,
             event_bus,
-            correlation_id: Arc::new(AtomicU64::new(0)),
             command_seq: Arc::new(AtomicU64::new(1)),
             transactional_handlers: Vec::new(),
             inline_handlers: Vec::new(),
@@ -227,13 +228,15 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self.inline_handlers.len()
     }
 
-    pub fn set_correlation_id(&self, id: u64) {
-        self.correlation_id.store(id, Ordering::SeqCst);
-    }
-
-    fn current_correlation_id(&self) -> Option<u64> {
-        let v = self.correlation_id.load(Ordering::SeqCst);
-        (v != 0).then_some(v)
+    /// **Deprecated** — `dispatch_v2`가 호출 단위로 cid를 자동 발급하므로 이 함수는
+    /// 더 이상 효과가 없다. 글로벌 슬롯이 제거되어 외부에서 cid를 강제 주입할 수단도
+    /// 사라졌다 (per-call 격리 원칙). 다음 마이너 버전에서 완전 제거 예정.
+    #[deprecated(
+        note = "no-op as of 2026-04-25; cid is auto-issued per dispatch_v2 call. \
+                Calls to this function have NO EFFECT — remove the call site."
+    )]
+    pub fn set_correlation_id(&self, _id: u64) {
+        // no-op. 외부 호출자가 있으면 컴파일 경고로 알린다.
     }
 
     pub fn event_store(&self) -> &Arc<dyn EventStore> {
@@ -257,6 +260,12 @@ impl<R: MindRepository> CommandDispatcher<R> {
     where
         R: Send + Sync,
     {
+        // 호출 단위 correlation_id 발급 — 함수 진입 직후 1회.
+        // command_seq는 SeedRumor의 pending_id 발급기와 공유하지만, 발급된 정수는
+        // 서로 다른 용도로 분기 사용되므로 충돌 없음. cid는 함수 로컬 변수로만
+        // 들고 다녀 dispatch 호출 간 간섭이 없다 (per-call 격리 원칙, §4.3).
+        let cid = self.command_seq.fetch_add(1, Ordering::SeqCst);
+
         let initial_event = self.build_initial_event(&cmd)?;
         let aggregate_key = initial_event.aggregate_key();
 
@@ -323,7 +332,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
         Self::apply_shared_to_repository(&mut *repo_guard, &aggregate_key, &shared);
 
-        let committed = self.commit_staging_buffer(&aggregate_key, staging_buffer);
+        let committed = self.commit_staging_buffer(&aggregate_key, staging_buffer, cid);
 
         for event in &committed {
             for handler in self.inline_handlers.iter() {
@@ -619,6 +628,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         &self,
         _command_key: &AggregateKey,
         staging: Vec<DomainEvent>,
+        cid: u64,
     ) -> Vec<DomainEvent> {
         // 각 이벤트의 aggregate_id는 **payload의 자기 aggregate_key**로 결정한다.
         // 커맨드의 aggregate_key는 참고용이며 덮어쓰기에 쓰지 않는다 — 그래야
@@ -626,15 +636,15 @@ impl<R: MindRepository> CommandDispatcher<R> {
         // (`InformationTold → Npc(listener)`)를 정확히 반영한다. 기존 이벤트
         // (EmotionAppraised·BeatTransitioned·RelationshipUpdated 등)는 payload의
         // `npc_id_hint`가 커맨드의 것과 같아서 저장값이 변하지 않는다.
+        //
+        // cid는 dispatch_v2 진입 시 발급된 호출 단위 값으로, 한 dispatch가 만든
+        // 모든 이벤트가 같은 cid로 묶인다. 부착 위치는 여기 단 한 군데 (§4.3).
         let mut committed = Vec::with_capacity(staging.len());
         for event in staging {
             let per_event_id = event.aggregate_key().npc_id_hint().to_string();
             let id = self.event_store.next_id();
             let seq = self.event_store.next_sequence(&per_event_id);
-            let mut e = DomainEvent::new(id, per_event_id, seq, event.payload);
-            if let Some(cid) = self.current_correlation_id() {
-                e = e.with_correlation(cid);
-            }
+            let e = DomainEvent::new(id, per_event_id, seq, event.payload).with_correlation(cid);
             self.event_store.append(&[e.clone()]);
             committed.push(e);
         }

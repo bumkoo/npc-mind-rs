@@ -18,6 +18,7 @@ use axum::{
     Json,
     extract::{Path, State},
 };
+use npc_mind::DomainEvent;
 use serde::Serialize;
 
 use crate::handlers::AppError;
@@ -103,5 +104,38 @@ pub async fn get_scene(State(state): State<AppState>) -> Result<Json<SceneView>,
     Ok(Json(SceneView {
         is_active: proj.is_active(),
         active_focus_id: proj.active_focus_id().map(String::from),
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// Trace — correlation_id로 묶인 이벤트 사슬 조회
+// ---------------------------------------------------------------------------
+
+/// 한 `dispatch_v2` 호출이 만든 모든 후속 이벤트 묶음을 반환한다.
+///
+/// 같은 cid 내에서는 EventStore에 추가된 순서를 그대로 보존한다 (시간 흐름과
+/// cascade depth가 함께 반영됨). 명시적 timestamp 정렬이 필요하면 호출자가 처리.
+///
+/// **범위**: `shared_dispatcher`의 EventStore만 조회한다. `/api/v2/*` Director
+/// 경로는 별도 dispatcher 인스턴스를 쓰며 그쪽 EventStore의 trace 노출은 별도
+/// 태스크 (task 명세 §10).
+#[derive(Serialize)]
+pub struct TraceView {
+    pub correlation_id: u64,
+    pub event_count: usize,
+    pub events: Vec<DomainEvent>,
+}
+
+pub async fn get_trace(
+    State(state): State<AppState>,
+    Path(correlation_id): Path<u64>,
+) -> Result<Json<TraceView>, AppError> {
+    let store = state.shared_dispatcher.event_store();
+    let events = store.get_events_by_correlation(correlation_id);
+
+    Ok(Json(TraceView {
+        correlation_id,
+        event_count: events.len(),
+        events,
     }))
 }
