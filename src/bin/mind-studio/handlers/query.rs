@@ -120,10 +120,20 @@ pub async fn get_scene(State(state): State<AppState>) -> Result<Json<SceneView>,
 /// 경로는 별도 dispatcher 인스턴스를 쓰며 그쪽 EventStore의 trace 노출은 별도
 /// 태스크 (task 명세 §10).
 #[derive(Serialize)]
+pub struct TraceNode {
+    pub event: DomainEvent,
+    pub children: Vec<TraceNode>,
+}
+
+#[derive(Serialize)]
 pub struct TraceView {
     pub correlation_id: u64,
     pub event_count: usize,
+    /// 추가된 순서 그대로 보존 (flat list)
     pub events: Vec<DomainEvent>,
+    /// 인과 트리. root 는 `parent_event_id == None` 인 이벤트.
+    /// 이벤트 묶음이 비어 있으면 `None`.
+    pub tree: Option<TraceNode>,
 }
 
 pub async fn get_trace(
@@ -132,10 +142,31 @@ pub async fn get_trace(
 ) -> Result<Json<TraceView>, AppError> {
     let store = state.shared_dispatcher.event_store();
     let events = store.get_events_by_correlation(correlation_id);
+    let tree = build_tree(&events);
 
     Ok(Json(TraceView {
         correlation_id,
         event_count: events.len(),
         events,
+        tree,
     }))
+}
+
+fn build_tree(events: &[DomainEvent]) -> Option<TraceNode> {
+    let root = events.iter().find(|e| e.metadata.parent_event_id.is_none())?;
+    Some(build_node(root, events))
+}
+
+/// 재귀 구현은 `MAX_CASCADE_DEPTH = 4` 가드 하에서 안전. 가드 변경 시 반복형으로
+/// 리팩터링 필요.
+fn build_node(parent: &DomainEvent, all: &[DomainEvent]) -> TraceNode {
+    let children: Vec<TraceNode> = all
+        .iter()
+        .filter(|e| e.metadata.parent_event_id == Some(parent.id))
+        .map(|child| build_node(child, all))
+        .collect();
+    TraceNode {
+        event: parent.clone(),
+        children,
+    }
 }

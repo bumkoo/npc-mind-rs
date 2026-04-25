@@ -38,6 +38,14 @@ pub trait EventStore: Send + Sync {
             .collect()
     }
 
+    /// id로 단일 이벤트 조회. `parent_event_id` 사슬을 따라 트리를 거슬러 갈 때 쓴다.
+    ///
+    /// **기본 구현**은 `get_all_events()`를 스캔하므로 O(N). 영속 백엔드는 PK
+    /// 인덱스로 O(1) override 권장.
+    fn get_event_by_id(&self, id: EventId) -> Option<DomainEvent> {
+        self.get_all_events().into_iter().find(|e| e.id == id)
+    }
+
     /// 다음 이벤트 ID 발급
     fn next_id(&self) -> EventId;
 
@@ -98,6 +106,11 @@ impl EventStore for InMemoryEventStore {
             .filter(|e| e.metadata.correlation_id == Some(correlation_id))
             .cloned()
             .collect()
+    }
+
+    fn get_event_by_id(&self, id: EventId) -> Option<DomainEvent> {
+        let store = self.events.read().unwrap();
+        store.iter().find(|e| e.id == id).cloned()
     }
 
     fn next_id(&self) -> EventId {

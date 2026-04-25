@@ -3015,5 +3015,89 @@ mod projection_drift {
         let body = body_json(resp).await;
         assert_eq!(body["event_count"].as_u64().unwrap(), 0);
         assert!(body["events"].as_array().unwrap().is_empty());
+        assert!(body["tree"].is_null(), "empty bundle must yield tree=null");
+    }
+
+    /// 6.5: trace 응답의 tree 가 단일 root + 자식 사슬을 형성한다.
+    ///
+    /// 트리 root 는 `parent_event_id == None`. cascade 깊이가 ≥1 인 묶음에선
+    /// `tree.children` 이 비어 있지 않아야 한다.
+    #[tokio::test]
+    async fn trace_endpoint_returns_causal_tree() {
+        let (app, state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        // appraise 한 번 → cid 추출. appraise 는 cascade 가 있어 children 이 생긴다.
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "교룡 등장",
+                "event": {
+                    "description": "사건",
+                    "desirability_for_self": -0.5,
+                    "other": null,
+                    "prospect": null
+                }
+            }
+        });
+        app.clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+
+        let store = state.shared_dispatcher.event_store();
+        let cid = store
+            .get_all_events()
+            .last()
+            .expect("at least one event")
+            .metadata
+            .correlation_id
+            .expect("dispatch_v2 must attach correlation_id");
+
+        let resp = app
+            .clone()
+            .oneshot(get(&format!("/api/projection/trace/{cid}")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+
+        let tree = &body["tree"];
+        assert!(!tree.is_null(), "non-empty bundle must yield a tree");
+
+        // root 검증
+        let root_event = &tree["event"];
+        assert!(
+            root_event["metadata"]["parent_event_id"].is_null(),
+            "tree root must have parent_event_id == null"
+        );
+        assert_eq!(
+            root_event["metadata"]["cascade_depth"].as_u64().unwrap(),
+            0,
+            "tree root must have cascade_depth == 0"
+        );
+
+        // 적어도 한 단계 이상의 children 이 있어야 한다 (appraise 는 follow-up 이 발생).
+        let children = tree["children"]
+            .as_array()
+            .expect("tree.children must be array");
+        assert!(
+            !children.is_empty(),
+            "appraise dispatch should produce at least one cascade child"
+        );
+
+        // 자식의 parent_event_id 가 root 의 id 와 일치하고, cascade_depth = root + 1.
+        let root_id = root_event["id"].as_u64().unwrap();
+        for child in children {
+            assert_eq!(
+                child["event"]["metadata"]["parent_event_id"].as_u64().unwrap(),
+                root_id
+            );
+            assert_eq!(
+                child["event"]["metadata"]["cascade_depth"].as_u64().unwrap(),
+                1
+            );
+        }
     }
 }
