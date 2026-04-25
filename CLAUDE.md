@@ -669,6 +669,7 @@ end_session(sid, significance?)
 - **아키텍처 v3 (EventBus/CQRS)**: [`docs/architecture/system-design-eventbus-cqrs.md`](docs/architecture/system-design-eventbus-cqrs.md) — EventBus, CQRS, Event Sourcing, Multi-Agent, RAG 시스템 디자인
 - **프론트엔드 아키텍처**: [`docs/architecture/frontend-architecture.md`](docs/architecture/frontend-architecture.md) — Vite+React+Zustand 구조, 스토어 설계, 데이터 흐름, 컴포넌트 트리
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
+- **변경 추적 (개인 리뷰용)**: [`docs/changes/`](docs/changes/) — Step별 PR 카드 (Memory Step A·B 등)
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **Listener-perspective 변환** (Phase 7): [`docs/emotion/sign-classifier-design.md`](docs/emotion/sign-classifier-design.md) (부호/강도 분류기 설계 + §3.7 Register 전략) + [`docs/emotion/phase7-converter-integration.md`](docs/emotion/phase7-converter-integration.md) (프로덕션 통합, **Step 1-5+ 완료** — 88% baseline, default-on, DialogueAgent · Mind Studio 통합, §6.1 테스트 카탈로그 71개)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
