@@ -149,6 +149,12 @@ fn build_api_router(state: AppState) -> Router {
             get(handlers::query::get_relationship),
         )
         .route("/api/projection/scene", get(handlers::query::get_scene))
+        // correlation_id로 묶인 이벤트 사슬 조회 (한 dispatch_v2 호출의 인과 그래프).
+        // shared_dispatcher의 EventStore만 본다 — /api/v2/* Director 경로는 별도.
+        .route(
+            "/api/projection/trace/{correlation_id}",
+            get(handlers::query::get_trace),
+        )
         // B4 Session 3 Option B-Mini: v2 dispatch shadow path (Director 경유)
         // 기존 v1 경로(/api/scene, /api/appraise 등)와 분리된 별도 Repository
         .route("/api/v2/scenes", get(handlers::v2_scenes::list_active_scenes))

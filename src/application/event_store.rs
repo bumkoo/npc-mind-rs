@@ -21,6 +21,13 @@ pub trait EventStore: Send + Sync {
     /// 주어진 event id 이후(exclusive)의 이벤트 조회 — broadcast lag 복구용
     fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent>;
 
+    /// 같은 correlation_id로 발생한 이벤트 묶음 조회.
+    ///
+    /// 한 `dispatch_v2` 호출이 만든 모든 이벤트의 인과 사슬을 반환한다.
+    /// 결과는 EventStore에 추가된 순서를 그대로 보존한다 (정렬은 호출자 책임).
+    /// `correlation_id == 0`은 "미설정" sentinel이라 매치되는 이벤트가 없다.
+    fn get_events_by_correlation(&self, correlation_id: u64) -> Vec<DomainEvent>;
+
     /// 다음 이벤트 ID 발급
     fn next_id(&self) -> EventId;
 
@@ -72,6 +79,15 @@ impl EventStore for InMemoryEventStore {
     fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent> {
         let store = self.events.read().unwrap();
         store.iter().filter(|e| e.id > after_id).cloned().collect()
+    }
+
+    fn get_events_by_correlation(&self, correlation_id: u64) -> Vec<DomainEvent> {
+        let store = self.events.read().unwrap();
+        store
+            .iter()
+            .filter(|e| e.metadata.correlation_id == Some(correlation_id))
+            .cloned()
+            .collect()
     }
 
     fn next_id(&self) -> EventId {

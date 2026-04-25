@@ -626,3 +626,49 @@ async fn distinct_dispatch_calls_get_distinct_correlation_ids() {
     assert_ne!(cid1, cid2, "different dispatch calls must have different cids");
     assert!(cid2 > cid1, "cid must be monotonically increasing: {cid1} → {cid2}");
 }
+
+/// 6.3: EventStore::get_events_by_correlation는 그 cid로 묶인 이벤트만 정확히 반환한다.
+///
+/// Appraise → Stimulus → Appraise 3 dispatch를 실행해 다중 이벤트 묶음을 확인하고,
+/// 각 dispatch의 cid로 조회한 묶음이 서로 섞이지 않음을 검증한다.
+#[tokio::test]
+async fn event_store_returns_correct_correlation_bundle() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    // Appraise로 emotion_state seed
+    let r0 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    // Stimulus는 cascade가 더 길어 묶음 검증에 적합
+    let r1 = dispatcher.dispatch_v2(stimulus_cmd()).await.expect("r1");
+    let r2 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("r2");
+
+    let cid0 = r0.events[0].metadata.correlation_id.unwrap();
+    let cid1 = r1.events[0].metadata.correlation_id.unwrap();
+    let cid2 = r2.events[0].metadata.correlation_id.unwrap();
+
+    let bundle0 = dispatcher.event_store().get_events_by_correlation(cid0);
+    let bundle1 = dispatcher.event_store().get_events_by_correlation(cid1);
+    let bundle2 = dispatcher.event_store().get_events_by_correlation(cid2);
+
+    assert_eq!(bundle0.len(), r0.events.len(), "bundle0 size mismatch");
+    assert_eq!(bundle1.len(), r1.events.len(), "bundle1 size mismatch");
+    assert_eq!(bundle2.len(), r2.events.len(), "bundle2 size mismatch");
+
+    for ev in &bundle0 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid0));
+    }
+    for ev in &bundle1 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid1));
+    }
+    for ev in &bundle2 {
+        assert_eq!(ev.metadata.correlation_id, Some(cid2));
+    }
+
+    // 묶음 합 = 전체 이벤트 수 (다른 묶음으로의 누수 없음)
+    let total = dispatcher.event_store().get_all_events().len();
+    assert_eq!(bundle0.len() + bundle1.len() + bundle2.len(), total);
+
+    // sentinel: cid 0은 매치되는 이벤트 없음.
+    let empty = dispatcher.event_store().get_events_by_correlation(0);
+    assert!(empty.is_empty(), "cid 0 is reserved sentinel — no events should match");
+}
