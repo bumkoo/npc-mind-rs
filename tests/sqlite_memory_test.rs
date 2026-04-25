@@ -349,6 +349,54 @@ fn sqlite_v1_to_v2_migration_backfills_existing_rows() {
 }
 
 #[test]
+fn sqlite_v2_reopen_is_idempotent() {
+    // 같은 v2 DB 파일을 두 번 연속 열어도 마이그레이션이 정상 no-op이어야 한다.
+    // (이전 구현의 `let _ = tx.execute(...)` 패턴은 disk-full 같은 진짜 에러도 묻었음 —
+    //  PRAGMA table_info 기반 컬럼 체크로 변경되어 idempotent 보장.)
+    let tmp = tempfile::tempdir().unwrap();
+    let db_path = tmp.path().join("mem.db");
+
+    // 1차: 새 v2 DB 생성 + 데이터 한 건 삽입
+    {
+        let store =
+            SqliteMemoryStore::with_dim(db_path.to_str().unwrap(), TEST_DIM).unwrap();
+        store
+            .index(sample_entry("m1", "npc1", "1차 데이터", 100), None)
+            .unwrap();
+    }
+
+    // 2차: 같은 파일 재오픈 — schema_meta=2 감지로 마이그레이션 skip,
+    //      또는 PRAGMA로 이미 존재하는 컬럼 skip. 어느 경로든 에러 없이 통과해야 함.
+    let store =
+        SqliteMemoryStore::with_dim(db_path.to_str().unwrap(), TEST_DIM).unwrap();
+
+    // 1차 데이터 보존 확인
+    let entry = store
+        .get_by_id("m1")
+        .unwrap()
+        .expect("재오픈 후 1차 데이터 보존");
+    assert_eq!(entry.id, "m1");
+    assert_eq!(entry.legacy_npc_id(), "npc1");
+
+    // 2차 인덱싱도 정상
+    store
+        .index(sample_entry("m2", "npc1", "2차 데이터", 200), None)
+        .unwrap();
+    assert_eq!(store.count(), 2);
+
+    // schema_meta가 여전히 v=2인지 확인 (중복 행 없음)
+    let conn = rusqlite::Connection::open(&db_path).unwrap();
+    let max_v: i64 = conn
+        .query_row("SELECT MAX(version) FROM schema_meta", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(max_v, 2);
+    let row_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM schema_meta", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(row_count, 1, "schema_meta는 단일 행을 유지해야 함 (INSERT OR REPLACE)");
+}
+
+#[test]
 fn sqlite_mark_superseded_and_topic_latest() {
     let store = SqliteMemoryStore::in_memory_with_dim(TEST_DIM).unwrap();
 

@@ -155,28 +155,46 @@ impl SqliteMemoryStore {
             .unchecked_transaction()
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-        // ALTER TABLE — 13 신규 컬럼
+        // ALTER TABLE — 13 신규 컬럼.
+        //
+        // 이전 구현은 `let _ = tx.execute(...)`로 모든 에러를 묻어 disk-full / 권한 오류 같은
+        // 진짜 실패까지 silently 통과시키는 위험이 있었다. 대신 `PRAGMA table_info`로
+        // 기존 컬럼 집합을 한 번 조회한 뒤, 누락된 컬럼만 ALTER 한다 — 이렇게 하면
+        // ALTER 실행 결과가 실패하면 그게 곧 진짜 에러이므로 정상 propagate.
         let alters = [
-            "ALTER TABLE memories ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'personal'",
-            "ALTER TABLE memories ADD COLUMN owner_a TEXT",
-            "ALTER TABLE memories ADD COLUMN owner_b TEXT",
-            "ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'experienced'",
-            "ALTER TABLE memories ADD COLUMN provenance TEXT NOT NULL DEFAULT 'runtime'",
-            "ALTER TABLE memories ADD COLUMN layer TEXT NOT NULL DEFAULT 'a'",
-            "ALTER TABLE memories ADD COLUMN topic TEXT",
-            "ALTER TABLE memories ADD COLUMN origin_chain TEXT",
-            "ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0",
-            "ALTER TABLE memories ADD COLUMN acquired_by TEXT",
-            "ALTER TABLE memories ADD COLUMN created_seq INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE memories ADD COLUMN last_recalled_at INTEGER",
-            "ALTER TABLE memories ADD COLUMN recall_count INTEGER NOT NULL DEFAULT 0",
-            "ALTER TABLE memories ADD COLUMN superseded_by TEXT REFERENCES memories(id)",
-            "ALTER TABLE memories ADD COLUMN consolidated_into TEXT REFERENCES memories(id)",
+            ("scope_kind", "ALTER TABLE memories ADD COLUMN scope_kind TEXT NOT NULL DEFAULT 'personal'"),
+            ("owner_a",    "ALTER TABLE memories ADD COLUMN owner_a TEXT"),
+            ("owner_b",    "ALTER TABLE memories ADD COLUMN owner_b TEXT"),
+            ("source",     "ALTER TABLE memories ADD COLUMN source TEXT NOT NULL DEFAULT 'experienced'"),
+            ("provenance", "ALTER TABLE memories ADD COLUMN provenance TEXT NOT NULL DEFAULT 'runtime'"),
+            ("layer",      "ALTER TABLE memories ADD COLUMN layer TEXT NOT NULL DEFAULT 'a'"),
+            ("topic",      "ALTER TABLE memories ADD COLUMN topic TEXT"),
+            ("origin_chain", "ALTER TABLE memories ADD COLUMN origin_chain TEXT"),
+            ("confidence", "ALTER TABLE memories ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0"),
+            ("acquired_by", "ALTER TABLE memories ADD COLUMN acquired_by TEXT"),
+            ("created_seq", "ALTER TABLE memories ADD COLUMN created_seq INTEGER NOT NULL DEFAULT 0"),
+            ("last_recalled_at", "ALTER TABLE memories ADD COLUMN last_recalled_at INTEGER"),
+            ("recall_count", "ALTER TABLE memories ADD COLUMN recall_count INTEGER NOT NULL DEFAULT 0"),
+            ("superseded_by", "ALTER TABLE memories ADD COLUMN superseded_by TEXT REFERENCES memories(id)"),
+            ("consolidated_into", "ALTER TABLE memories ADD COLUMN consolidated_into TEXT REFERENCES memories(id)"),
         ];
-        for stmt in &alters {
-            // 이미 존재하면 SQLite가 "duplicate column name" 에러를 내지만 migration 재실행
-            // 시나리오에서만 발생 — 무시한다.
-            let _ = tx.execute(stmt, []);
+
+        let existing_columns: std::collections::HashSet<String> = {
+            let mut stmt = tx
+                .prepare("PRAGMA table_info(memories)")
+                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(1))
+                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        for (col, stmt) in &alters {
+            if existing_columns.contains(*col) {
+                continue;
+            }
+            tx.execute(stmt, [])
+                .map_err(|e| MemoryError::StorageError(e.to_string()))?;
         }
 
         // 기존 v1 행의 신규 컬럼 기본값 백필

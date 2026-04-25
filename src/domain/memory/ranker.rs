@@ -186,9 +186,15 @@ fn cosine(a: &[f32], b: &[f32]) -> f32 {
     let mut na = 0.0f32;
     let mut nb = 0.0f32;
     for i in 0..len {
-        dot += a[i] * b[i];
-        na += a[i] * a[i];
-        nb += b[i] * b[i];
+        let (x, y) = (a[i], b[i]);
+        // 임베더가 NaN/Inf를 내보내면 클러스터링이 silent하게 망가지므로(>= 비교는 NaN에서 false)
+        // 이 경우 명시적으로 0.0(미유사)로 떨어뜨려 호출자가 단독 클러스터로 보내게 한다.
+        if !x.is_finite() || !y.is_finite() {
+            return 0.0;
+        }
+        dot += x * y;
+        na += x * x;
+        nb += y * y;
     }
     if na == 0.0 || nb == 0.0 {
         return 0.0;
