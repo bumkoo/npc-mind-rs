@@ -108,6 +108,19 @@ pub struct DomainEvent {
 pub struct EventMetadata {
     /// 같은 요청에서 파생된 이벤트 묶음 ID
     pub correlation_id: Option<u64>,
+
+    /// 이 이벤트를 발생시킨 부모 이벤트의 id.
+    /// `None`이면 initial cmd 이벤트(트리의 root).
+    /// 같은 cid 안에서 이 필드를 따라 거슬러 올라가면 root에 도달한다.
+    /// Phase A 시점에는 항상 `None` (dispatcher가 아직 채우지 않음 — Phase B에서 활성).
+    #[serde(default)]
+    pub parent_event_id: Option<EventId>,
+
+    /// BFS cascade 깊이. initial cmd 이벤트가 0, 그 follow-up이 1, ...
+    /// 같은 cid 안에서 트리의 layer를 표시한다.
+    /// Phase A 시점에는 항상 `0` (dispatcher가 아직 채우지 않음 — Phase B에서 활성).
+    #[serde(default)]
+    pub cascade_depth: u32,
 }
 
 /// `RelationshipUpdated` 이벤트에 실리는 **귀속 원인** (Memory 시스템 §8.3 hook, A8).
@@ -1114,5 +1127,60 @@ mod tests {
             topic: None,
         });
         assert_eq!(told.aggregate_key(), AggregateKey::Npc("pupil".into()));
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Phase A — parent-event-id-activation: EventMetadata 필드 default 검증
+    // ───────────────────────────────────────────────────────────────────────
+    //
+    // 현 시점에 dispatcher는 신규 두 필드를 채우지 않는다 (Phase B에서 활성).
+    // 따라서 모든 새 이벤트는 default 값(`None`/`0`)을 가진다 — 이는
+    // root-of-tree (parent 없음, depth 0)와 동일한 의미라 정상이다.
+
+    /// `EventMetadata::default()`가 새 두 필드를 안전한 값으로 초기화한다.
+    #[test]
+    fn default_metadata_has_no_parent_and_zero_depth() {
+        let m = EventMetadata::default();
+        assert_eq!(m.correlation_id, None);
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
+    }
+
+    /// `DomainEvent::new`로 만든 이벤트도 같은 default 메타를 갖는다.
+    #[test]
+    fn new_domain_event_inherits_default_metadata() {
+        let e = DomainEvent::new(
+            42,
+            "npc:test".into(),
+            1,
+            EventPayload::EmotionCleared {
+                npc_id: "npc:test".into(),
+            },
+        );
+        assert_eq!(e.id, 42);
+        assert_eq!(e.metadata.correlation_id, None);
+        assert_eq!(e.metadata.parent_event_id, None);
+        assert_eq!(e.metadata.cascade_depth, 0);
+    }
+
+    /// 기존 직렬화 데이터(필드 없음)가 새 default로 deserialize 되는지.
+    /// `#[serde(default)]` 적용의 핵심 회귀 가드.
+    #[test]
+    fn legacy_metadata_json_deserializes_with_defaults() {
+        let legacy = r#"{"correlation_id":7}"#;
+        let m: EventMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(m.correlation_id, Some(7));
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
+    }
+
+    /// 완전히 빈 메타(필드 0개)도 deserialize 가능 — `Default` 파생과 일관.
+    #[test]
+    fn empty_metadata_json_deserializes() {
+        let empty = r#"{}"#;
+        let m: EventMetadata = serde_json::from_str(empty).unwrap();
+        assert_eq!(m.correlation_id, None);
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
     }
 }
