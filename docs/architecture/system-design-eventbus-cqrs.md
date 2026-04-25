@@ -235,13 +235,24 @@ pub enum RelationshipCause {
 
 ### 3.3 이벤트 메타데이터
 
+현재 구현 (`src/domain/event.rs::EventMetadata`):
+
 ```rust
 pub struct EventMetadata {
-    pub causation_id: Option<EventId>,  // 이 이벤트를 발생시킨 Command ID
-    pub correlation_id: CorrelationId,  // 같은 요청에서 파생된 이벤트 묶음
-    pub agent_id: Option<String>,       // 어떤 핸들러가 발생시켰는가
+    pub correlation_id:   Option<u64>,     // 같은 dispatch 호출이 만든 이벤트 묶음 (cid)
+    pub parent_event_id:  Option<EventId>, // 이 이벤트를 발생시킨 부모 이벤트의 id (cmd 내부 인과 트리)
+    pub cascade_depth:    u32,             // BFS cascade 깊이 (root=0)
 }
 ```
+
+- **`correlation_id`** — `dispatch_v2` 진입 시 자동 발급 (`command_seq.fetch_add(1, SeqCst)`). 부착 위치는 `commit_staging_buffer` 한 군데.
+- **`parent_event_id`** — `None` 이면 초기 커맨드 이벤트 (트리 root). 같은 cid 안에서 이 필드를 따라 거슬러 올라가면 root 에 도달한다. BFS 처리 중 staging_buffer 인덱스로 추적, commit 시 부모의 EventStore id 로 매핑.
+- **`cascade_depth`** — initial 이벤트가 0, 그 follow-up 이 1, ... `MAX_CASCADE_DEPTH = 4` 가드.
+
+**향후 후보 메타** (별도 task):
+- `causation_id` — cmd 사이의 인과. 호출자가 명시적으로 "이 cmd 는 cid=42 cmd 의 결과로 발동된다" 고 선언하는 API 가 따른다.
+- `agent_id` / `actor` / `intent` / `trigger` — "누가 어떤 의도로 이 cmd 를 발동했는가".
+- `random_seed` — 결정적 재생산용.
 
 ---
 
@@ -412,6 +423,12 @@ pub trait EventStore: Send + Sync {
     /// 주어진 event id 이후(exclusive)의 이벤트 조회 — broadcast lag 복구용
     fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent>;
 
+    /// 같은 dispatch 가 만든 이벤트 묶음(cid) 조회 — 인과 사슬 시각화용
+    fn get_events_by_correlation(&self, correlation_id: u64) -> Vec<DomainEvent>;
+
+    /// id 로 단건 조회 — `parent_event_id` 사슬 traversal 용
+    fn get_event_by_id(&self, id: EventId) -> Option<DomainEvent>;
+
     /// 다음 이벤트 ID 발급 (global monotonic)
     fn next_id(&self) -> EventId;
 
@@ -420,7 +437,9 @@ pub trait EventStore: Send + Sync {
 }
 ```
 
-`get_events_after_id`는 EventBus v2의 lag 복구 경로에서 사용된다. `broadcast`가 `Lagged(n)` 통지를 보내면 소비자는 마지막 처리 id 이후를 store에서 다시 읽어 at-least-once를 유지한다.
+- **`get_events_after_id`** — EventBus v2의 lag 복구 경로. `broadcast`가 `Lagged(n)` 통지를 보내면 소비자는 마지막 처리 id 이후를 store에서 다시 읽어 at-least-once 를 유지한다.
+- **`get_events_by_correlation`** — 한 `dispatch_v2` 호출이 만든 이벤트 묶음. Mind Studio `/api/projection/trace/{cid}` 가 이를 사용해 묶음을 노출.
+- **`get_event_by_id`** — 트리 거슬러 가기. `parent_event_id` 사슬을 따라 올라갈 때 사용. 후자 둘은 default 구현이 `get_all_events()` 스캔이라 O(N) — 영속 백엔드는 인덱스로 override 권장.
 
 ### 5.2 구현 전략 — 단계별
 

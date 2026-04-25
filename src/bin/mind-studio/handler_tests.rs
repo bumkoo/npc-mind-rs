@@ -3015,5 +3015,72 @@ mod projection_drift {
         let body = body_json(resp).await;
         assert_eq!(body["event_count"].as_u64().unwrap(), 0);
         assert!(body["events"].as_array().unwrap().is_empty());
+        assert!(body["tree"].is_null(), "empty bundle must yield tree=null");
+    }
+
+    #[tokio::test]
+    async fn trace_endpoint_returns_causal_tree() {
+        let (app, state) = app_with_state();
+        seed_two_npcs_and_rel(&app).await;
+
+        let appraise_req = serde_json::json!({
+            "npc_id": "mu_baek",
+            "partner_id": "gyo_ryong",
+            "situation": {
+                "description": "교룡 등장",
+                "event": {
+                    "description": "사건",
+                    "desirability_for_self": -0.5,
+                    "other": null,
+                    "prospect": null
+                }
+            }
+        });
+        app.clone()
+            .oneshot(json_post("/api/appraise", appraise_req))
+            .await
+            .unwrap();
+
+        let cid = state
+            .shared_dispatcher
+            .event_store()
+            .get_all_events()
+            .last()
+            .expect("at least one event")
+            .metadata
+            .correlation_id
+            .expect("dispatch_v2 must attach correlation_id");
+
+        let resp = app
+            .clone()
+            .oneshot(get(&format!("/api/projection/trace/{cid}")))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = body_json(resp).await;
+
+        let tree = &body["tree"];
+        assert!(!tree.is_null(), "non-empty bundle must yield a tree");
+
+        let root_event = &tree["event"];
+        assert!(root_event["metadata"]["parent_event_id"].is_null());
+        assert_eq!(root_event["metadata"]["cascade_depth"].as_u64().unwrap(), 0);
+
+        let children = tree["children"]
+            .as_array()
+            .expect("tree.children must be array");
+        assert!(
+            !children.is_empty(),
+            "appraise dispatch should produce at least one cascade child"
+        );
+
+        let root_id = root_event["id"].as_u64().unwrap();
+        for child in children {
+            assert_eq!(
+                child["event"]["metadata"]["parent_event_id"].as_u64().unwrap(),
+                root_id
+            );
+            assert_eq!(child["event"]["metadata"]["cascade_depth"].as_u64().unwrap(), 1);
+        }
     }
 }

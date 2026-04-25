@@ -120,10 +120,17 @@ pub async fn get_scene(State(state): State<AppState>) -> Result<Json<SceneView>,
 /// 경로는 별도 dispatcher 인스턴스를 쓰며 그쪽 EventStore의 trace 노출은 별도
 /// 태스크 (task 명세 §10).
 #[derive(Serialize)]
+pub struct TraceNode {
+    pub event: DomainEvent,
+    pub children: Vec<TraceNode>,
+}
+
+#[derive(Serialize)]
 pub struct TraceView {
     pub correlation_id: u64,
     pub event_count: usize,
     pub events: Vec<DomainEvent>,
+    pub tree: Option<TraceNode>,
 }
 
 pub async fn get_trace(
@@ -132,10 +139,40 @@ pub async fn get_trace(
 ) -> Result<Json<TraceView>, AppError> {
     let store = state.shared_dispatcher.event_store();
     let events = store.get_events_by_correlation(correlation_id);
+    let tree = build_tree(&events);
 
     Ok(Json(TraceView {
         correlation_id,
         event_count: events.len(),
         events,
+        tree,
     }))
+}
+
+fn build_tree(events: &[DomainEvent]) -> Option<TraceNode> {
+    use std::collections::HashMap;
+
+    // parent_event_id 기준으로 1패스 인덱싱 → 자식 검색 O(1).
+    let mut by_parent: HashMap<Option<npc_mind::domain::event::EventId>, Vec<&DomainEvent>> =
+        HashMap::new();
+    for ev in events {
+        by_parent.entry(ev.metadata.parent_event_id).or_default().push(ev);
+    }
+
+    let root = *by_parent.get(&None)?.first()?;
+    Some(build_node(root, &by_parent))
+}
+
+fn build_node(
+    parent: &DomainEvent,
+    by_parent: &std::collections::HashMap<Option<npc_mind::domain::event::EventId>, Vec<&DomainEvent>>,
+) -> TraceNode {
+    let children = by_parent
+        .get(&Some(parent.id))
+        .map(|kids| kids.iter().map(|c| build_node(c, by_parent)).collect())
+        .unwrap_or_default();
+    TraceNode {
+        event: parent.clone(),
+        children,
+    }
 }

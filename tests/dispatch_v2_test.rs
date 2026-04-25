@@ -721,3 +721,172 @@ async fn concurrent_dispatch_calls_get_distinct_correlation_ids() {
         unique.len()
     );
 }
+
+// parent_event_id / cascade_depth 트리 구조 검증
+
+/// 헬퍼: appraise(seed) → stimulus dispatch. 결과 이벤트 묶음을 반환.
+async fn run_seeded_stimulus(
+    dispatcher: &CommandDispatcher<InMemoryRepository>,
+) -> Vec<npc_mind::DomainEvent> {
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    dispatcher
+        .dispatch_v2(stimulus_cmd())
+        .await
+        .expect("stimulus")
+        .events
+}
+
+#[tokio::test]
+async fn cascade_depth_increases_along_follow_up_chain() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    let events = run_seeded_stimulus(&dispatcher).await;
+
+    let initial = &events[0];
+    assert_eq!(initial.metadata.cascade_depth, 0);
+    assert!(initial.metadata.parent_event_id.is_none());
+
+    let max_depth = events
+        .iter()
+        .map(|e| e.metadata.cascade_depth)
+        .max()
+        .expect("at least one event");
+    assert!(
+        max_depth > 0,
+        "stimulus cmd should produce at least one follow-up event (max_depth was {max_depth})"
+    );
+}
+
+#[tokio::test]
+async fn parent_event_id_forms_valid_tree() {
+    use std::collections::HashSet;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    let events = run_seeded_stimulus(&dispatcher).await;
+
+    let event_ids: HashSet<_> = events.iter().map(|e| e.id).collect();
+
+    for ev in &events {
+        if let Some(parent_id) = ev.metadata.parent_event_id {
+            assert!(
+                event_ids.contains(&parent_id),
+                "parent_event_id {parent_id} must point to an event within the same correlation bundle"
+            );
+        }
+    }
+
+    let roots: Vec<_> = events
+        .iter()
+        .filter(|e| e.metadata.parent_event_id.is_none())
+        .collect();
+    assert_eq!(roots.len(), 1, "exactly one root event expected");
+    assert_eq!(roots[0].metadata.cascade_depth, 0);
+}
+
+#[tokio::test]
+async fn child_depth_is_parent_plus_one() {
+    use std::collections::HashMap;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    let events = run_seeded_stimulus(&dispatcher).await;
+
+    let by_id: HashMap<_, _> = events.iter().map(|e| (e.id, e)).collect();
+
+    for ev in &events {
+        if let Some(parent_id) = ev.metadata.parent_event_id {
+            let parent = by_id.get(&parent_id).expect("parent must exist");
+            assert_eq!(
+                ev.metadata.cascade_depth,
+                parent.metadata.cascade_depth + 1,
+                "child {} depth ({}) must equal parent {} depth ({}) + 1",
+                ev.id,
+                ev.metadata.cascade_depth,
+                parent.id,
+                parent.metadata.cascade_depth
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn event_store_returns_event_by_id() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    let result = dispatcher
+        .dispatch_v2(appraise_cmd())
+        .await
+        .expect("must succeed");
+
+    let target = &result.events[0];
+    let fetched = dispatcher.event_store().get_event_by_id(target.id);
+    assert!(fetched.is_some(), "stored event must be retrievable by id");
+    assert_eq!(fetched.unwrap().id, target.id);
+
+    if result.events.len() > 1 {
+        let leaf = result.events.last().unwrap();
+        let mut current = leaf.clone();
+        while let Some(parent_id) = current.metadata.parent_event_id {
+            current = dispatcher
+                .event_store()
+                .get_event_by_id(parent_id)
+                .expect("parent must be retrievable along the chain");
+        }
+        assert_eq!(current.metadata.cascade_depth, 0, "chain must terminate at root");
+    }
+
+    let missing = dispatcher.event_store().get_event_by_id(99_999_999);
+    assert!(missing.is_none());
+}
+
+/// 수동 인과 트리 시각화 도우미. 회귀 가드 아님:
+///   `cargo test --test dispatch_v2_test print_causal_tree -- --ignored --nocapture`
+#[tokio::test]
+#[ignore]
+async fn print_causal_tree_for_stimulus() {
+    use std::collections::HashMap;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    let events = run_seeded_stimulus(&dispatcher).await;
+
+    let cid = events[0].metadata.correlation_id.unwrap();
+    let bundle = dispatcher.event_store().get_events_by_correlation(cid);
+
+    println!("\n--- correlation_id = {cid} ({} events) ---", bundle.len());
+    let by_parent: HashMap<Option<npc_mind::domain::event::EventId>, Vec<&npc_mind::DomainEvent>> =
+        bundle.iter().fold(HashMap::new(), |mut acc, e| {
+            acc.entry(e.metadata.parent_event_id).or_default().push(e);
+            acc
+        });
+
+    fn render(
+        ev: &npc_mind::DomainEvent,
+        by_parent: &HashMap<Option<npc_mind::domain::event::EventId>, Vec<&npc_mind::DomainEvent>>,
+        indent: usize,
+    ) {
+        println!(
+            "{:indent$}#{} {:?} (depth={})",
+            "",
+            ev.id,
+            ev.kind(),
+            ev.metadata.cascade_depth,
+            indent = indent
+        );
+        if let Some(children) = by_parent.get(&Some(ev.id)) {
+            for c in children {
+                render(c, by_parent, indent + 2);
+            }
+        }
+    }
+
+    let roots: Vec<_> = bundle
+        .iter()
+        .filter(|e| e.metadata.parent_event_id.is_none())
+        .collect();
+    for r in roots {
+        render(r, &by_parent, 0);
+    }
+}

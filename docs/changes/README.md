@@ -25,6 +25,7 @@
 | 날짜 | 변경 | 파일 |
 |---|---|---|
 | 2026-04-25 | `correlation_id` 활성화 — dispatch 단위 인과 사슬 추적 | [`2026-04-25-correlation-id-activation.md`](2026-04-25-correlation-id-activation.md) |
+| 2026-04-25 | `parent_event_id` / `cascade_depth` 활성화 — cmd 안의 인과 트리 보존 | [`2026-04-25-parent-event-id-activation.md`](2026-04-25-parent-event-id-activation.md) |
 
 ## 관련
 

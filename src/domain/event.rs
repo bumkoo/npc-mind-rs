@@ -108,6 +108,17 @@ pub struct DomainEvent {
 pub struct EventMetadata {
     /// 같은 요청에서 파생된 이벤트 묶음 ID
     pub correlation_id: Option<u64>,
+
+    /// 이 이벤트를 발생시킨 부모 이벤트의 id.
+    /// `None`이면 초기 커맨드 이벤트(트리의 root).
+    /// 같은 correlation_id 안에서 이 필드를 따라 거슬러 올라가면 root에 도달한다.
+    #[serde(default)]
+    pub parent_event_id: Option<EventId>,
+
+    /// BFS cascade 깊이. 초기 커맨드 이벤트가 0, 그 follow-up이 1, ...
+    /// 같은 correlation_id 안에서 트리의 계층 깊이를 나타낸다.
+    #[serde(default)]
+    pub cascade_depth: u32,
 }
 
 /// `RelationshipUpdated` 이벤트에 실리는 **귀속 원인** (Memory 시스템 §8.3 hook, A8).
@@ -503,6 +514,18 @@ impl DomainEvent {
     /// correlation_id 설정
     pub fn with_correlation(mut self, correlation_id: u64) -> Self {
         self.metadata.correlation_id = Some(correlation_id);
+        self
+    }
+
+    /// cascade_depth 설정
+    pub fn with_cascade_depth(mut self, depth: u32) -> Self {
+        self.metadata.cascade_depth = depth;
+        self
+    }
+
+    /// parent_event_id 설정
+    pub fn with_parent(mut self, parent_id: EventId) -> Self {
+        self.metadata.parent_event_id = Some(parent_id);
         self
     }
 
@@ -1114,5 +1137,43 @@ mod tests {
             topic: None,
         });
         assert_eq!(told.aggregate_key(), AggregateKey::Npc("pupil".into()));
+    }
+
+    #[test]
+    fn default_metadata_has_no_parent_and_zero_depth() {
+        let m = EventMetadata::default();
+        assert_eq!(m.correlation_id, None);
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
+    }
+
+    #[test]
+    fn new_domain_event_inherits_default_metadata() {
+        let e = make_event(EventPayload::EmotionCleared {
+            npc_id: "npc:test".into(),
+        });
+        assert_eq!(e.metadata.correlation_id, None);
+        assert_eq!(e.metadata.parent_event_id, None);
+        assert_eq!(e.metadata.cascade_depth, 0);
+    }
+
+    /// `#[serde(default)]` 회귀 가드 — 새 필드가 없는 기존 직렬화 데이터도
+    /// 안전하게 역직렬화되어야 한다.
+    #[test]
+    fn legacy_metadata_json_deserializes_with_defaults() {
+        let legacy = r#"{"correlation_id":7}"#;
+        let m: EventMetadata = serde_json::from_str(legacy).unwrap();
+        assert_eq!(m.correlation_id, Some(7));
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
+    }
+
+    #[test]
+    fn empty_metadata_json_deserializes() {
+        let empty = r#"{}"#;
+        let m: EventMetadata = serde_json::from_str(empty).unwrap();
+        assert_eq!(m.correlation_id, None);
+        assert_eq!(m.parent_event_id, None);
+        assert_eq!(m.cascade_depth, 0);
     }
 }
