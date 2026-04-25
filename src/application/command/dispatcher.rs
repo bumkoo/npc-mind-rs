@@ -232,7 +232,8 @@ impl<R: MindRepository> CommandDispatcher<R> {
     /// 더 이상 효과가 없다. 글로벌 슬롯이 제거되어 외부에서 cid를 강제 주입할 수단도
     /// 사라졌다 (per-call 격리 원칙). 다음 마이너 버전에서 완전 제거 예정.
     #[deprecated(
-        note = "cid는 dispatch_v2가 내부에서 자동 발급한다. 이 함수는 더 이상 효과가 없다."
+        note = "no-op as of 2026-04-25; cid is auto-issued per dispatch_v2 call. \
+                Calls to this function have NO EFFECT — remove the call site."
     )]
     pub fn set_correlation_id(&self, _id: u64) {
         // no-op. 외부 호출자가 있으면 컴파일 경고로 알린다.

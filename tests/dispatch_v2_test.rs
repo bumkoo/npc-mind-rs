@@ -672,3 +672,52 @@ async fn event_store_returns_correct_correlation_bundle() {
     let empty = dispatcher.event_store().get_events_by_correlation(0);
     assert!(empty.is_empty(), "cid 0 is reserved sentinel — no events should match");
 }
+
+/// 6.5: 동시 dispatch_v2 호출 N개가 모두 distinct cid를 받고, 각 묶음 안에서는
+/// cid가 균일하다 (cross-contamination 없음).
+///
+/// task 명세 §12.1 — per-call 격리가 동시 호출에서도 보장된다는 핵심 개선점의
+/// 회귀 가드. 현재 dispatch_v2는 repository mutex로 직렬화되지만 그 제약이 풀려도
+/// cid 계약이 유지되어야 한다.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn concurrent_dispatch_calls_get_distinct_correlation_ids() {
+    use std::collections::HashSet;
+    use std::sync::Arc;
+
+    let ctx = TestContext::new();
+    let dispatcher = Arc::new(make_dispatcher_v2(ctx.repo));
+
+    const N: usize = 16;
+    let mut handles = Vec::with_capacity(N);
+    for _ in 0..N {
+        let d = dispatcher.clone();
+        handles.push(tokio::spawn(async move { d.dispatch_v2(appraise_cmd()).await }));
+    }
+
+    let mut all_cids = Vec::with_capacity(N);
+    for h in handles {
+        let result = h.await.expect("task panic").expect("dispatch failed");
+        assert!(!result.events.is_empty(), "every dispatch must emit events");
+        let bundle_cid = result.events[0]
+            .metadata
+            .correlation_id
+            .expect("every event must carry correlation_id");
+        // 묶음 안 모든 이벤트의 cid가 동일 (cross-contamination 없음)
+        for ev in &result.events {
+            assert_eq!(
+                ev.metadata.correlation_id,
+                Some(bundle_cid),
+                "concurrent dispatch: bundle cid must be uniform"
+            );
+        }
+        all_cids.push(bundle_cid);
+    }
+
+    let unique: HashSet<_> = all_cids.iter().copied().collect();
+    assert_eq!(
+        unique.len(),
+        N,
+        "concurrent dispatches must produce N distinct cids, got {} unique out of {N}",
+        unique.len()
+    );
+}
