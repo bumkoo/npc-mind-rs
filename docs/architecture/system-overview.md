@@ -40,6 +40,7 @@
 │   - bin/mind-studio : Axum REST + SSE + static UI (dev tool)           │
 │                       /api/projection/{emotion,relationship,scene}     │
 │                       /api/projection/trace/{cid} — 인과 사슬 조회      │
+│                         (flat events + tree {event,children} 동봉)     │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Application (조립·흐름 제어)  —  라이브러리 사용자의 진입점              │
 │   Director                (multi-scene facade, Spawner 주입)            │

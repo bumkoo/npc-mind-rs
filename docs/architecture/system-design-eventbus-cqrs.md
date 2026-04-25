@@ -423,6 +423,12 @@ pub trait EventStore: Send + Sync {
     /// 주어진 event id 이후(exclusive)의 이벤트 조회 — broadcast lag 복구용
     fn get_events_after_id(&self, after_id: EventId) -> Vec<DomainEvent>;
 
+    /// 같은 dispatch 가 만든 이벤트 묶음(cid) 조회 — 인과 사슬 시각화용
+    fn get_events_by_correlation(&self, correlation_id: u64) -> Vec<DomainEvent>;
+
+    /// id 로 단건 조회 — `parent_event_id` 사슬 traversal 용
+    fn get_event_by_id(&self, id: EventId) -> Option<DomainEvent>;
+
     /// 다음 이벤트 ID 발급 (global monotonic)
     fn next_id(&self) -> EventId;
 
@@ -431,7 +437,9 @@ pub trait EventStore: Send + Sync {
 }
 ```
 
-`get_events_after_id`는 EventBus v2의 lag 복구 경로에서 사용된다. `broadcast`가 `Lagged(n)` 통지를 보내면 소비자는 마지막 처리 id 이후를 store에서 다시 읽어 at-least-once를 유지한다.
+- **`get_events_after_id`** — EventBus v2의 lag 복구 경로. `broadcast`가 `Lagged(n)` 통지를 보내면 소비자는 마지막 처리 id 이후를 store에서 다시 읽어 at-least-once 를 유지한다.
+- **`get_events_by_correlation`** — 한 `dispatch_v2` 호출이 만든 이벤트 묶음. Mind Studio `/api/projection/trace/{cid}` 가 이를 사용해 묶음을 노출.
+- **`get_event_by_id`** — 트리 거슬러 가기. `parent_event_id` 사슬을 따라 올라갈 때 사용. 후자 둘은 default 구현이 `get_all_events()` 스캔이라 O(N) — 영속 백엔드는 인덱스로 override 권장.
 
 ### 5.2 구현 전략 — 단계별
 

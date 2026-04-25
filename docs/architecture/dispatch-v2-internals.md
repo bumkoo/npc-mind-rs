@@ -293,6 +293,8 @@ self.event_store.append(&committed);    // 단일 batch append
 
 **메타 부착 단일화**: cid (`correlation_id`) 는 `dispatch_v2` 진입 시 `command_seq.fetch_add(1)` 로 자동 발급된 호출 단위 값이고, `parent_event_id` 와 `cascade_depth` 는 BFS 가 누적한 `parent_indices`/`depths` 로부터 채워진다. **세 메타 필드는 모두 본 함수 단 한 군데에서만 부착**된다.
 
+**트리 거슬러 가기**: 영속화된 `parent_event_id` 를 따라 root 까지 traversal 하려면 `EventStore::get_event_by_id(id)` 를 사용한다. Mind Studio `/api/projection/trace/{cid}` 가 `get_events_by_correlation(cid)` 로 묶음을 받아 `tree: Option<TraceNode>` 로 빌드해 노출한다.
+
 ### 4.6 ⑥ Inline phase
 
 ```rust
