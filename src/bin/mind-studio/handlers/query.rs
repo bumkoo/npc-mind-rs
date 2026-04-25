@@ -129,10 +129,7 @@ pub struct TraceNode {
 pub struct TraceView {
     pub correlation_id: u64,
     pub event_count: usize,
-    /// 추가된 순서 그대로 보존 (flat list)
     pub events: Vec<DomainEvent>,
-    /// 인과 트리. root 는 `parent_event_id == None` 인 이벤트.
-    /// 이벤트 묶음이 비어 있으면 `None`.
     pub tree: Option<TraceNode>,
 }
 
@@ -153,18 +150,27 @@ pub async fn get_trace(
 }
 
 fn build_tree(events: &[DomainEvent]) -> Option<TraceNode> {
-    let root = events.iter().find(|e| e.metadata.parent_event_id.is_none())?;
-    Some(build_node(root, events))
+    use std::collections::HashMap;
+
+    // parent_event_id 기준으로 1패스 인덱싱 → 자식 검색 O(1).
+    let mut by_parent: HashMap<Option<npc_mind::domain::event::EventId>, Vec<&DomainEvent>> =
+        HashMap::new();
+    for ev in events {
+        by_parent.entry(ev.metadata.parent_event_id).or_default().push(ev);
+    }
+
+    let root = *by_parent.get(&None)?.first()?;
+    Some(build_node(root, &by_parent))
 }
 
-/// 재귀 구현은 `MAX_CASCADE_DEPTH = 4` 가드 하에서 안전. 가드 변경 시 반복형으로
-/// 리팩터링 필요.
-fn build_node(parent: &DomainEvent, all: &[DomainEvent]) -> TraceNode {
-    let children: Vec<TraceNode> = all
-        .iter()
-        .filter(|e| e.metadata.parent_event_id == Some(parent.id))
-        .map(|child| build_node(child, all))
-        .collect();
+fn build_node(
+    parent: &DomainEvent,
+    by_parent: &std::collections::HashMap<Option<npc_mind::domain::event::EventId>, Vec<&DomainEvent>>,
+) -> TraceNode {
+    let children = by_parent
+        .get(&Some(parent.id))
+        .map(|kids| kids.iter().map(|c| build_node(c, by_parent)).collect())
+        .unwrap_or_default();
     TraceNode {
         event: parent.clone(),
         children,

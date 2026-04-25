@@ -825,7 +825,6 @@ async fn event_store_returns_event_by_id() {
     assert!(fetched.is_some(), "stored event must be retrievable by id");
     assert_eq!(fetched.unwrap().id, target.id);
 
-    // parent_event_id 사슬을 따라 root 까지 거슬러 갈 수 있어야 한다.
     if result.events.len() > 1 {
         let leaf = result.events.last().unwrap();
         let mut current = leaf.clone();
@@ -838,7 +837,6 @@ async fn event_store_returns_event_by_id() {
         assert_eq!(current.metadata.cascade_depth, 0, "chain must terminate at root");
     }
 
-    // 존재하지 않는 id는 None.
     let missing = dispatcher.event_store().get_event_by_id(99_999_999);
     assert!(missing.is_none());
 }
