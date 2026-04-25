@@ -583,3 +583,46 @@ async fn v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide() {
 }
 
 // B5.3: v1/v2 parallel 테스트는 v1 제거와 함께 삭제됨.
+
+// ---------------------------------------------------------------------------
+// correlation_id activation (Stage 1, docs/tasks/correlation-id-activation.md §6.1·6.2)
+// ---------------------------------------------------------------------------
+
+/// 6.1: dispatch_v2 한 호출이 만든 모든 이벤트가 같은 cid로 묶인다.
+#[tokio::test]
+async fn dispatch_v2_attaches_correlation_id_to_all_events() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    let result = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+
+    assert!(!result.events.is_empty(), "expected at least one event");
+    let first_cid = result.events[0]
+        .metadata
+        .correlation_id
+        .expect("first event must have correlation_id");
+
+    for ev in &result.events {
+        assert_eq!(
+            ev.metadata.correlation_id,
+            Some(first_cid),
+            "all events of one dispatch must share the same correlation_id"
+        );
+    }
+}
+
+/// 6.2: 서로 다른 dispatch_v2 호출은 서로 다른 cid를 갖고, 단조 증가한다.
+#[tokio::test]
+async fn distinct_dispatch_calls_get_distinct_correlation_ids() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+
+    let r1 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+    let r2 = dispatcher.dispatch_v2(appraise_cmd()).await.expect("must succeed");
+
+    let cid1 = r1.events[0].metadata.correlation_id.expect("r1 cid");
+    let cid2 = r2.events[0].metadata.correlation_id.expect("r2 cid");
+
+    assert_ne!(cid1, cid2, "different dispatch calls must have different cids");
+    assert!(cid2 > cid1, "cid must be monotonically increasing: {cid1} → {cid2}");
+}
