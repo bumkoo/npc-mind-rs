@@ -46,7 +46,8 @@
 │   CommandDispatcher       (dispatch_v2 = 유일 write 경로)              │
 │   DialogueOrchestrator [chat]    (LLM 다턴 오케스트레이터)                     │
 │   EventBus / EventStore   (broadcast fan-out / append-only log,        │
-│                            dispatch 단위 correlation_id 자동 부착)      │
+│                            dispatch 단위 correlation_id 자동 부착 +    │
+│                            cmd 내 parent_event_id / cascade_depth 추적)│
 │   MemoryProjector [embed]     (broadcast 구독 → 임베딩 → RAG 저장)          │
 │   Handler Agents          : ScenePolicy / EmotionPolicy / StimulusPolicy /│
 │                             GuidePolicy / RelationshipPolicy /           │

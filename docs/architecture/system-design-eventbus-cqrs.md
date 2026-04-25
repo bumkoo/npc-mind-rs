@@ -235,13 +235,24 @@ pub enum RelationshipCause {
 
 ### 3.3 이벤트 메타데이터
 
+현재 구현 (`src/domain/event.rs::EventMetadata`):
+
 ```rust
 pub struct EventMetadata {
-    pub causation_id: Option<EventId>,  // 이 이벤트를 발생시킨 Command ID
-    pub correlation_id: CorrelationId,  // 같은 요청에서 파생된 이벤트 묶음
-    pub agent_id: Option<String>,       // 어떤 핸들러가 발생시켰는가
+    pub correlation_id:   Option<u64>,     // 같은 dispatch 호출이 만든 이벤트 묶음 (cid)
+    pub parent_event_id:  Option<EventId>, // 이 이벤트를 발생시킨 부모 이벤트의 id (cmd 내부 인과 트리)
+    pub cascade_depth:    u32,             // BFS cascade 깊이 (root=0)
 }
 ```
+
+- **`correlation_id`** — `dispatch_v2` 진입 시 자동 발급 (`command_seq.fetch_add(1, SeqCst)`). 부착 위치는 `commit_staging_buffer` 한 군데.
+- **`parent_event_id`** — `None` 이면 초기 커맨드 이벤트 (트리 root). 같은 cid 안에서 이 필드를 따라 거슬러 올라가면 root 에 도달한다. BFS 처리 중 staging_buffer 인덱스로 추적, commit 시 부모의 EventStore id 로 매핑.
+- **`cascade_depth`** — initial 이벤트가 0, 그 follow-up 이 1, ... `MAX_CASCADE_DEPTH = 4` 가드.
+
+**향후 후보 메타** (별도 task):
+- `causation_id` — cmd 사이의 인과. 호출자가 명시적으로 "이 cmd 는 cid=42 cmd 의 결과로 발동된다" 고 선언하는 API 가 따른다.
+- `agent_id` / `actor` / `intent` / `trigger` — "누가 어떤 의도로 이 cmd 를 발동했는가".
+- `random_seed` — 결정적 재생산용.
 
 ---
 
