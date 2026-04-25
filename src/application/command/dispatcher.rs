@@ -274,20 +274,14 @@ impl<R: MindRepository> CommandDispatcher<R> {
         let mut shared = HandlerShared::default();
         let mut prior_events: Vec<DomainEvent> = Vec::new();
 
-        // BFS 큐 element는 트리플 — `(depth, event, parent_staging_idx)`.
+        // BFS 큐 element는 `(depth, event, parent_staging_idx)`. parent_staging_idx는
+        // `staging_buffer`의 부모 위치(`None`이면 root). 부모의 EventStore id는 commit
+        // 전이라 미정이므로 인덱스로 가리키고, commit 시 id 매핑을 수행한다.
         //
-        // - `parent_staging_idx == None` → initial 커맨드 이벤트 (트리 root).
-        // - `parent_staging_idx == Some(i)` → `staging_buffer[i]`가 부모.
-        //
-        // 부모의 EventStore id는 commit 단계 전에는 결정되지 않으므로,
-        // BFS 처리 순서(= staging 순서)에 의존해 인덱스로 부모를 가리키고
-        // commit 시 인덱스 → 실제 id 매핑을 수행한다 (§4.5 옵션 A).
-        //
-        // 안전성: 단일 스레드 BFS 가정. 핸들러 병렬화를 도입하면 staging_buffer 인덱스
-        // 안정성이 깨질 수 있으니 그때 토큰 기반으로 전환 필요 (§11.3).
+        // 안전성: 단일 스레드 BFS 가정. 핸들러 병렬화를 도입하면 인덱스 안정성이
+        // 깨지므로 토큰 기반으로 전환해야 한다.
         let mut event_queue: VecDeque<(u32, DomainEvent, Option<usize>)> = VecDeque::new();
         let mut staging_buffer: Vec<DomainEvent> = Vec::new();
-        // staging_buffer와 같은 길이/순서로 누적되어 commit 단계에서 함께 소비된다.
         let mut parent_indices: Vec<Option<usize>> = Vec::new();
         let mut depths: Vec<u32> = Vec::new();
 
@@ -301,7 +295,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 return Err(DispatchV2Error::EventBudgetExceeded);
             }
 
-            // 이 이벤트가 staging에 들어갈 인덱스 — follow-up 자식들이 이를 가리킨다.
+            // follow-up 자식들이 부모로 가리킬 staging 인덱스.
             let my_idx = staging_buffer.len();
 
             for handler in self.transactional_handlers.iter() {
@@ -660,47 +654,33 @@ impl<R: MindRepository> CommandDispatcher<R> {
     ) -> Vec<DomainEvent> {
         // 각 이벤트의 aggregate_id는 **payload의 자기 aggregate_key**로 결정한다.
         // 커맨드의 aggregate_key는 참고용이며 덮어쓰기에 쓰지 않는다 — 그래야
-        // `EventStore.get_events(listener)` 같은 청자 기반 질의가 §3.3 B5
+        // `EventStore.get_events(listener)` 같은 청자 기반 질의가
         // (`InformationTold → Npc(listener)`)를 정확히 반영한다. 기존 이벤트
         // (EmotionAppraised·BeatTransitioned·RelationshipUpdated 등)는 payload의
         // `npc_id_hint`가 커맨드의 것과 같아서 저장값이 변하지 않는다.
         //
-        // cid는 dispatch_v2 진입 시 발급된 호출 단위 값으로, 한 dispatch가 만든
-        // 모든 이벤트가 같은 cid로 묶인다. 부착 위치는 여기 단 한 군데 (§4.3).
-        //
-        // parent_event_id 채우기는 2-pass 구조:
-        //   Pass 1 — id/seq 할당, cid·cascade_depth 부착, parent_event_id는 None.
-        //            BFS 처리 순서가 곧 staging 순서이므로 부모는 항상 자식보다 먼저
-        //            commit된다 → 인덱스로 부모 id를 안전하게 룩업할 수 있다.
-        //   Pass 2 — parent_indices를 사용해 부모 id를 자식 metadata에 채운다.
-        //   Pass 3 — EventStore에 단일 append로 일괄 영속화한다 (§11.1: 부분 실패
-        //            방지. InMemoryEventStore는 단일 lock의 extend라 원자적).
+        // metadata가 완전히 채워진 뒤에만 단일 `event_store.append`로 영속화한다 —
+        // 부분 실패 시에도 미완성 metadata가 EventStore에 노출되지 않는다.
         debug_assert_eq!(staging.len(), parent_indices.len());
         debug_assert_eq!(staging.len(), depths.len());
 
         let mut committed: Vec<DomainEvent> = Vec::with_capacity(staging.len());
 
-        // Pass 1: id, seq, cid, depth 할당.
+        // BFS 처리 순서가 곧 staging 순서이므로 부모는 항상 자식보다 먼저 처리된다 →
+        // 자식의 차례가 왔을 때 `committed[parent_idx]`는 이미 id가 부여돼 있다.
         for (idx, event) in staging.into_iter().enumerate() {
             let per_event_id = event.aggregate_key().npc_id_hint().to_string();
             let id = self.event_store.next_id();
             let seq = self.event_store.next_sequence(&per_event_id);
-            let mut e = DomainEvent::new(id, per_event_id, seq, event.payload).with_correlation(cid);
-            e.metadata.cascade_depth = depths[idx];
+            let mut e = DomainEvent::new(id, per_event_id, seq, event.payload)
+                .with_correlation(cid)
+                .with_cascade_depth(depths[idx]);
+            if let Some(parent_idx) = parent_indices[idx] {
+                e = e.with_parent(committed[parent_idx].id);
+            }
             committed.push(e);
         }
 
-        // Pass 2: 부모 인덱스 → 부모 id 채우기. initial(parent_indices[idx] == None)은
-        // parent_event_id 그대로 None이 유지된다 (트리 root).
-        for idx in 0..committed.len() {
-            if let Some(parent_idx) = parent_indices[idx] {
-                committed[idx].metadata.parent_event_id = Some(committed[parent_idx].id);
-            }
-        }
-
-        // Pass 3: 단일 append로 일괄 commit. 이전 구조(이벤트마다 즉시 append)는
-        // metadata 미완성 상태가 잠시 외부에 노출될 수 있었다. 이제는 metadata가
-        // 완전히 채워진 뒤에만 EventStore에 들어간다.
         self.event_store.append(&committed);
 
         committed

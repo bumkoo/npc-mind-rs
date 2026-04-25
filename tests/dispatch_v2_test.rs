@@ -722,34 +722,31 @@ async fn concurrent_dispatch_calls_get_distinct_correlation_ids() {
     );
 }
 
-// ---------------------------------------------------------------------------
-// parent_event_id / cascade_depth 활성화 (§6.1·6.2·6.3)
-// ---------------------------------------------------------------------------
+// parent_event_id / cascade_depth 트리 구조 검증
 
-/// 6.1: cascade가 깊은 cmd에서 follow-up 사슬을 따라 depth가 증가한다.
+/// 헬퍼: appraise(seed) → stimulus dispatch. 결과 이벤트 묶음을 반환.
+async fn run_seeded_stimulus(
+    dispatcher: &CommandDispatcher<InMemoryRepository>,
+) -> Vec<npc_mind::DomainEvent> {
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    dispatcher
+        .dispatch_v2(stimulus_cmd())
+        .await
+        .expect("stimulus")
+        .events
+}
+
 #[tokio::test]
 async fn cascade_depth_increases_along_follow_up_chain() {
     let ctx = TestContext::new();
     let dispatcher = make_dispatcher_v2(ctx.repo);
-    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    let events = run_seeded_stimulus(&dispatcher).await;
 
-    let result = dispatcher
-        .dispatch_v2(stimulus_cmd())
-        .await
-        .expect("must succeed");
+    let initial = &events[0];
+    assert_eq!(initial.metadata.cascade_depth, 0);
+    assert!(initial.metadata.parent_event_id.is_none());
 
-    let initial = &result.events[0];
-    assert_eq!(
-        initial.metadata.cascade_depth, 0,
-        "initial event must have depth 0"
-    );
-    assert!(
-        initial.metadata.parent_event_id.is_none(),
-        "initial event must have no parent"
-    );
-
-    let max_depth = result
-        .events
+    let max_depth = events
         .iter()
         .map(|e| e.metadata.cascade_depth)
         .max()
@@ -760,23 +757,17 @@ async fn cascade_depth_increases_along_follow_up_chain() {
     );
 }
 
-/// 6.2: parent_event_id가 같은 묶음 안에서 단일 root로 수렴하는 valid tree를 형성한다.
 #[tokio::test]
 async fn parent_event_id_forms_valid_tree() {
     use std::collections::HashSet;
 
     let ctx = TestContext::new();
     let dispatcher = make_dispatcher_v2(ctx.repo);
-    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    let events = run_seeded_stimulus(&dispatcher).await;
 
-    let result = dispatcher
-        .dispatch_v2(stimulus_cmd())
-        .await
-        .expect("must succeed");
+    let event_ids: HashSet<_> = events.iter().map(|e| e.id).collect();
 
-    let event_ids: HashSet<_> = result.events.iter().map(|e| e.id).collect();
-
-    for ev in &result.events {
+    for ev in &events {
         if let Some(parent_id) = ev.metadata.parent_event_id {
             assert!(
                 event_ids.contains(&parent_id),
@@ -785,44 +776,27 @@ async fn parent_event_id_forms_valid_tree() {
         }
     }
 
-    let roots: Vec<_> = result
-        .events
+    let roots: Vec<_> = events
         .iter()
         .filter(|e| e.metadata.parent_event_id.is_none())
         .collect();
-    assert_eq!(
-        roots.len(),
-        1,
-        "exactly one root event expected — got {}",
-        roots.len()
-    );
-    assert_eq!(
-        roots[0].metadata.cascade_depth, 0,
-        "root must have depth 0"
-    );
+    assert_eq!(roots.len(), 1, "exactly one root event expected");
+    assert_eq!(roots[0].metadata.cascade_depth, 0);
 }
 
-/// 6.3: 자식의 cascade_depth는 항상 부모의 depth + 1 이다.
 #[tokio::test]
 async fn child_depth_is_parent_plus_one() {
     use std::collections::HashMap;
 
     let ctx = TestContext::new();
     let dispatcher = make_dispatcher_v2(ctx.repo);
-    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+    let events = run_seeded_stimulus(&dispatcher).await;
 
-    let result = dispatcher
-        .dispatch_v2(stimulus_cmd())
-        .await
-        .expect("must succeed");
+    let by_id: HashMap<_, _> = events.iter().map(|e| (e.id, e)).collect();
 
-    let by_id: HashMap<_, _> = result.events.iter().map(|e| (e.id, e)).collect();
-
-    for ev in &result.events {
+    for ev in &events {
         if let Some(parent_id) = ev.metadata.parent_event_id {
-            let parent = by_id
-                .get(&parent_id)
-                .expect("parent must exist within bundle");
+            let parent = by_id.get(&parent_id).expect("parent must exist");
             assert_eq!(
                 ev.metadata.cascade_depth,
                 parent.metadata.cascade_depth + 1,
@@ -836,10 +810,7 @@ async fn child_depth_is_parent_plus_one() {
     }
 }
 
-/// 수동 인과 트리 시각화 — `sim/dispatch_v2_sim2.py`가 그렸던 모식도가
-/// 실제 EventStore 데이터로 재현되는지 사람이 눈으로 확인하기 위한 도우미.
-///
-/// 회귀 가드가 아니므로 `#[ignore]`로 두고 필요 시:
+/// 수동 인과 트리 시각화 도우미. 회귀 가드 아님:
 ///   `cargo test --test dispatch_v2_test print_causal_tree -- --ignored --nocapture`
 #[tokio::test]
 #[ignore]
@@ -848,10 +819,9 @@ async fn print_causal_tree_for_stimulus() {
 
     let ctx = TestContext::new();
     let dispatcher = make_dispatcher_v2(ctx.repo);
-    dispatcher.dispatch_v2(appraise_cmd()).await.unwrap();
-    let out = dispatcher.dispatch_v2(stimulus_cmd()).await.unwrap();
+    let events = run_seeded_stimulus(&dispatcher).await;
 
-    let cid = out.events[0].metadata.correlation_id.unwrap();
+    let cid = events[0].metadata.correlation_id.unwrap();
     let bundle = dispatcher.event_store().get_events_by_correlation(cid);
 
     println!("\n--- correlation_id = {cid} ({} events) ---", bundle.len());

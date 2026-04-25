@@ -517,6 +517,18 @@ impl DomainEvent {
         self
     }
 
+    /// cascade_depth 설정
+    pub fn with_cascade_depth(mut self, depth: u32) -> Self {
+        self.metadata.cascade_depth = depth;
+        self
+    }
+
+    /// parent_event_id 설정
+    pub fn with_parent(mut self, parent_id: EventId) -> Self {
+        self.metadata.parent_event_id = Some(parent_id);
+        self
+    }
+
     /// 페이로드 타입명 반환 (로깅/필터링용)
     pub fn payload_type(&self) -> &'static str {
         match &self.payload {
