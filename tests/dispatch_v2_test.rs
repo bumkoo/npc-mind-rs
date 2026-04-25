@@ -721,3 +721,171 @@ async fn concurrent_dispatch_calls_get_distinct_correlation_ids() {
         unique.len()
     );
 }
+
+// ---------------------------------------------------------------------------
+// parent_event_id / cascade_depth 활성화 (§6.1·6.2·6.3)
+// ---------------------------------------------------------------------------
+
+/// 6.1: cascade가 깊은 cmd에서 follow-up 사슬을 따라 depth가 증가한다.
+#[tokio::test]
+async fn cascade_depth_increases_along_follow_up_chain() {
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+
+    let result = dispatcher
+        .dispatch_v2(stimulus_cmd())
+        .await
+        .expect("must succeed");
+
+    let initial = &result.events[0];
+    assert_eq!(
+        initial.metadata.cascade_depth, 0,
+        "initial event must have depth 0"
+    );
+    assert!(
+        initial.metadata.parent_event_id.is_none(),
+        "initial event must have no parent"
+    );
+
+    let max_depth = result
+        .events
+        .iter()
+        .map(|e| e.metadata.cascade_depth)
+        .max()
+        .expect("at least one event");
+    assert!(
+        max_depth > 0,
+        "stimulus cmd should produce at least one follow-up event (max_depth was {max_depth})"
+    );
+}
+
+/// 6.2: parent_event_id가 같은 묶음 안에서 단일 root로 수렴하는 valid tree를 형성한다.
+#[tokio::test]
+async fn parent_event_id_forms_valid_tree() {
+    use std::collections::HashSet;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+
+    let result = dispatcher
+        .dispatch_v2(stimulus_cmd())
+        .await
+        .expect("must succeed");
+
+    let event_ids: HashSet<_> = result.events.iter().map(|e| e.id).collect();
+
+    for ev in &result.events {
+        if let Some(parent_id) = ev.metadata.parent_event_id {
+            assert!(
+                event_ids.contains(&parent_id),
+                "parent_event_id {parent_id} must point to an event within the same correlation bundle"
+            );
+        }
+    }
+
+    let roots: Vec<_> = result
+        .events
+        .iter()
+        .filter(|e| e.metadata.parent_event_id.is_none())
+        .collect();
+    assert_eq!(
+        roots.len(),
+        1,
+        "exactly one root event expected — got {}",
+        roots.len()
+    );
+    assert_eq!(
+        roots[0].metadata.cascade_depth, 0,
+        "root must have depth 0"
+    );
+}
+
+/// 6.3: 자식의 cascade_depth는 항상 부모의 depth + 1 이다.
+#[tokio::test]
+async fn child_depth_is_parent_plus_one() {
+    use std::collections::HashMap;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
+
+    let result = dispatcher
+        .dispatch_v2(stimulus_cmd())
+        .await
+        .expect("must succeed");
+
+    let by_id: HashMap<_, _> = result.events.iter().map(|e| (e.id, e)).collect();
+
+    for ev in &result.events {
+        if let Some(parent_id) = ev.metadata.parent_event_id {
+            let parent = by_id
+                .get(&parent_id)
+                .expect("parent must exist within bundle");
+            assert_eq!(
+                ev.metadata.cascade_depth,
+                parent.metadata.cascade_depth + 1,
+                "child {} depth ({}) must equal parent {} depth ({}) + 1",
+                ev.id,
+                ev.metadata.cascade_depth,
+                parent.id,
+                parent.metadata.cascade_depth
+            );
+        }
+    }
+}
+
+/// 수동 인과 트리 시각화 — `sim/dispatch_v2_sim2.py`가 그렸던 모식도가
+/// 실제 EventStore 데이터로 재현되는지 사람이 눈으로 확인하기 위한 도우미.
+///
+/// 회귀 가드가 아니므로 `#[ignore]`로 두고 필요 시:
+///   `cargo test --test dispatch_v2_test print_causal_tree -- --ignored --nocapture`
+#[tokio::test]
+#[ignore]
+async fn print_causal_tree_for_stimulus() {
+    use std::collections::HashMap;
+
+    let ctx = TestContext::new();
+    let dispatcher = make_dispatcher_v2(ctx.repo);
+    dispatcher.dispatch_v2(appraise_cmd()).await.unwrap();
+    let out = dispatcher.dispatch_v2(stimulus_cmd()).await.unwrap();
+
+    let cid = out.events[0].metadata.correlation_id.unwrap();
+    let bundle = dispatcher.event_store().get_events_by_correlation(cid);
+
+    println!("\n--- correlation_id = {cid} ({} events) ---", bundle.len());
+    let by_parent: HashMap<Option<npc_mind::domain::event::EventId>, Vec<&npc_mind::DomainEvent>> =
+        bundle.iter().fold(HashMap::new(), |mut acc, e| {
+            acc.entry(e.metadata.parent_event_id).or_default().push(e);
+            acc
+        });
+
+    fn render(
+        ev: &npc_mind::DomainEvent,
+        by_parent: &HashMap<Option<npc_mind::domain::event::EventId>, Vec<&npc_mind::DomainEvent>>,
+        indent: usize,
+    ) {
+        println!(
+            "{:indent$}#{} {:?} (depth={})",
+            "",
+            ev.id,
+            ev.kind(),
+            ev.metadata.cascade_depth,
+            indent = indent
+        );
+        if let Some(children) = by_parent.get(&Some(ev.id)) {
+            for c in children {
+                render(c, by_parent, indent + 2);
+            }
+        }
+    }
+
+    let roots: Vec<_> = bundle
+        .iter()
+        .filter(|e| e.metadata.parent_event_id.is_none())
+        .collect();
+    for r in roots {
+        render(r, &by_parent, 0);
+    }
+}
