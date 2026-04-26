@@ -38,6 +38,9 @@ pub enum StateEvent {
     // Step E1 — Memory / Rumor (embed feature 경로에서만 발생)
     MemoryCreated,
     MemorySuperseded,
+    /// Memory Step F에서 SceneConsolidationHandler가 발행할 예정(현재는 미발행 placeholder).
+    /// SSE 클라이언트 측 핸들러 사전 배선을 위해 미리 선언만 둔다.
+    #[allow(dead_code)]
     MemoryConsolidated,
     RumorSeeded,
     RumorSpread,
