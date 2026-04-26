@@ -445,8 +445,14 @@ fn sqlite_mark_superseded_and_topic_latest() {
     let mut e2 = sample_entry("m2", "npc1", "v2", 200);
     e2.topic = Some("aquatica".into());
     e2.created_seq = 20;
+    // schema v3: `superseded_by`에 `REFERENCES memories(id)` FK가 걸려 있어 target 엔트리가
+    // 미리 store에 존재해야 한다 (production handlers는 새 엔트리를 먼저 index한 뒤 기존
+    // 같은 topic 엔트리를 supersede하는 패턴이라 자연스럽게 만족됨). 여기선 m3-future가
+    // latest 검색에 영향을 주지 않도록 topic을 비워서 index한다.
+    let e3 = sample_entry("m3-future", "npc1", "v3", 300);
     store.index(e1, None).unwrap();
     store.index(e2, None).unwrap();
+    store.index(e3, None).unwrap();
 
     // 최신은 m2
     let latest = store.get_by_topic_latest("aquatica").unwrap().unwrap();
