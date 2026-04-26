@@ -414,8 +414,13 @@ impl ConversationPort for RigChatAdapter {
                         match result {
                             Ok(Ok(chat_resp)) => yield Ok(StreamItem::Final(chat_resp)),
                             Ok(Err(e)) => yield Err(e),
-                            Err(panic) => yield Err(ConversationError::InferenceError(
-                                format!("스트리밍 task 패닉: {panic}")
+                            Err(e) if e.is_cancelled() => yield Err(
+                                ConversationError::InferenceError(
+                                    "스트리밍 task가 취소되었습니다".into()
+                                )
+                            ),
+                            Err(e) => yield Err(ConversationError::InferenceError(
+                                format!("스트리밍 task 패닉: {e}")
                             )),
                         }
                         break;
