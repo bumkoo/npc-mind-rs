@@ -890,3 +890,319 @@ async fn print_causal_tree_for_stimulus() {
         render(r, &by_parent, 0);
     }
 }
+
+// ===========================================================================
+// dispatch_v2 에러 경로 / 안전 한계 / per-call 격리
+// ===========================================================================
+
+mod error_paths {
+    use super::*;
+    use npc_mind::application::command::dispatcher::MAX_EVENTS_PER_COMMAND;
+    use npc_mind::application::command::handler_v2::{
+        DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest,
+        HandlerResult,
+    };
+    use npc_mind::application::dto::{
+        ApplyWorldEventRequest, RumorOriginInput, RumorReachInput, SeedRumorRequest,
+    };
+    use npc_mind::domain::event::{DomainEvent, EventPayload};
+
+    // ----- InvalidSituation 분기 -----
+
+    #[tokio::test]
+    async fn v2_invalid_situation_apply_world_event_empty_world_id() {
+        let ctx = TestContext::new();
+        let dispatcher = make_dispatcher_v2(ctx.repo);
+
+        let err = dispatcher
+            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+                world_id: "".into(),
+                topic: None,
+                fact: "어떤 사실".into(),
+                significance: 0.5,
+                witnesses: vec![],
+            }))
+            .await
+            .expect_err("빈 world_id는 거부되어야 함");
+
+        match err {
+            DispatchV2Error::InvalidSituation(msg) => assert!(msg.contains("world_id")),
+            other => panic!("expected InvalidSituation, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_invalid_situation_apply_world_event_blank_fact() {
+        let ctx = TestContext::new();
+        let dispatcher = make_dispatcher_v2(ctx.repo);
+
+        let err = dispatcher
+            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+                world_id: "jianghu".into(),
+                topic: Some("topic".into()),
+                fact: "   ".into(), // whitespace only
+                significance: 0.5,
+                witnesses: vec![],
+            }))
+            .await
+            .expect_err("공백뿐인 fact는 거부되어야 함");
+
+        match err {
+            DispatchV2Error::InvalidSituation(msg) => assert!(msg.contains("fact")),
+            other => panic!("expected InvalidSituation, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_invalid_situation_seed_rumor_no_topic_no_seed_content() {
+        let ctx = TestContext::new();
+        let dispatcher = make_dispatcher_v2(ctx.repo);
+
+        let err = dispatcher
+            .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+                topic: None,
+                seed_content: None,
+                reach: RumorReachInput::default(),
+                origin: RumorOriginInput::Seeded,
+            }))
+            .await
+            .expect_err("topic도 seed_content도 없는 고아 Rumor는 거부");
+
+        match err {
+            DispatchV2Error::InvalidSituation(msg) => assert!(msg.contains("seed_content")),
+            other => panic!("expected InvalidSituation, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_invalid_situation_appraise_without_situation_or_active_scene() {
+        let ctx = TestContext::new();
+        let dispatcher = make_dispatcher_v2(ctx.repo);
+
+        // situation=None + 활성 Scene 없음 → resolve 실패
+        let err = dispatcher
+            .dispatch_v2(Command::Appraise {
+                npc_id: "mu_baek".into(),
+                partner_id: "gyo_ryong".into(),
+                situation: None,
+            })
+            .await
+            .expect_err("situation도 활성 Scene도 없으면 거부");
+
+        match err {
+            DispatchV2Error::InvalidSituation(msg) => assert!(msg.contains("Scene")),
+            other => panic!("expected InvalidSituation, got {other:?}"),
+        }
+    }
+
+    // ----- EventBudgetExceeded -----
+
+    /// 매 호출마다 follow-up 이벤트 5개를 발행하는 mock 핸들러.
+    /// 1 → 5 → 25 ... depth 진행 시 budget(20)을 빠르게 초과.
+    struct FanoutMockHandler;
+
+    impl EventHandler for FanoutMockHandler {
+        fn name(&self) -> &'static str {
+            "FanoutMockHandler"
+        }
+        fn interest(&self) -> HandlerInterest {
+            HandlerInterest::Kinds(vec![EventKind::AppraiseRequested])
+        }
+        fn mode(&self) -> DeliveryMode {
+            DeliveryMode::Transactional {
+                priority: 5, // EmotionPolicy(10)보다 먼저
+                can_emit_follow_up: true,
+            }
+        }
+        fn handle(
+            &self,
+            event: &DomainEvent,
+            _ctx: &mut EventHandlerContext<'_>,
+        ) -> Result<HandlerResult, HandlerError> {
+            let follow_ups = (0..5).map(|_| event.clone()).collect();
+            Ok(HandlerResult {
+                follow_up_events: follow_ups,
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_event_budget_exceeded_returns_typed_error() {
+        let ctx = TestContext::new();
+        let store = Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
+            .with_default_handlers()
+            .register_transactional(Arc::new(FanoutMockHandler));
+
+        let err = dispatcher
+            .dispatch_v2(appraise_cmd())
+            .await
+            .expect_err("budget exceed 또는 cascade depth 초과");
+
+        // budget이 depth보다 먼저 걸리거나 그 반대일 수 있음 — 둘 다 safety bound.
+        match err {
+            DispatchV2Error::EventBudgetExceeded => {}
+            DispatchV2Error::CascadeTooDeep { .. } => {}
+            other => panic!("expected budget/cascade error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn max_events_per_command_constant_is_positive() {
+        // budget 가드 상수가 0/음수로 잘못 변경되어 테스트가 false-pass하는 것 방지
+        assert!(MAX_EVENTS_PER_COMMAND > 0);
+    }
+
+    // ----- HandlerFailed + commit 격리 -----
+
+    /// 항상 실패하는 mock 핸들러
+    struct FailingMockHandler;
+
+    impl EventHandler for FailingMockHandler {
+        fn name(&self) -> &'static str {
+            "FailingMockHandler"
+        }
+        fn interest(&self) -> HandlerInterest {
+            HandlerInterest::Kinds(vec![EventKind::AppraiseRequested])
+        }
+        fn mode(&self) -> DeliveryMode {
+            DeliveryMode::Transactional {
+                priority: 5, // EmotionPolicy보다 먼저 실행되어 후속 핸들러 차단
+                can_emit_follow_up: false,
+            }
+        }
+        fn handle(
+            &self,
+            _event: &DomainEvent,
+            _ctx: &mut EventHandlerContext<'_>,
+        ) -> Result<HandlerResult, HandlerError> {
+            Err(HandlerError::InvalidInput("강제 실패".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_handler_failed_propagates_handler_name() {
+        let ctx = TestContext::new();
+        let store = Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store, bus)
+            .with_default_handlers()
+            .register_transactional(Arc::new(FailingMockHandler));
+
+        let err = dispatcher
+            .dispatch_v2(appraise_cmd())
+            .await
+            .expect_err("핸들러 실패는 전파");
+
+        match err {
+            DispatchV2Error::HandlerFailed { handler, source } => {
+                assert_eq!(handler, "FailingMockHandler");
+                assert!(matches!(source, HandlerError::InvalidInput(_)));
+            }
+            other => panic!("expected HandlerFailed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn v2_handler_failed_does_not_commit_to_event_store() {
+        let ctx = TestContext::new();
+        let store: Arc<dyn npc_mind::application::event_store::EventStore> =
+            Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus)
+            .with_default_handlers()
+            .register_transactional(Arc::new(FailingMockHandler));
+
+        let _ = dispatcher.dispatch_v2(appraise_cmd()).await;
+
+        // EventStore에 아무것도 커밋되지 않아야 함
+        let events = store.get_events("mu_baek");
+        assert!(
+            events.is_empty(),
+            "핸들러 실패 시 staging buffer는 commit되면 안 됨, 발견된 events: {events:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn v2_handler_failed_does_not_publish_to_event_bus() {
+        use futures::StreamExt;
+        use std::time::Duration;
+        use tokio::time::timeout;
+
+        let ctx = TestContext::new();
+        let store = Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store, bus.clone())
+            .with_default_handlers()
+            .register_transactional(Arc::new(FailingMockHandler));
+
+        let mut sub = Box::pin(bus.subscribe());
+
+        let _ = dispatcher.dispatch_v2(appraise_cmd()).await;
+
+        // 짧은 timeout 내에 아무 이벤트도 도달하면 안 됨
+        let recv = timeout(Duration::from_millis(50), sub.next()).await;
+        assert!(recv.is_err(), "핸들러 실패 시 EventBus에 이벤트 발행 금지");
+    }
+
+    // ----- per-call correlation_id 격리 -----
+
+    #[tokio::test]
+    async fn v2_correlation_id_increments_per_dispatch_call() {
+        let ctx = TestContext::new();
+        let store: Arc<dyn npc_mind::application::event_store::EventStore> =
+            Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus)
+            .with_default_handlers();
+
+        dispatcher.dispatch_v2(appraise_cmd()).await.expect("1st");
+        dispatcher.dispatch_v2(appraise_cmd()).await.expect("2nd");
+
+        let events = store.get_events("mu_baek");
+        let cids: Vec<u64> = events
+            .iter()
+            .filter_map(|e| e.metadata.correlation_id)
+            .collect();
+        // 같은 cid가 두 번째 dispatch까지 침범하지 않음
+        let unique: std::collections::HashSet<_> = cids.iter().copied().collect();
+        assert!(
+            unique.len() >= 2,
+            "두 번째 dispatch는 새 correlation_id를 받아야 함 — got {cids:?}"
+        );
+    }
+
+    // ----- payload 정규화 (clamp) -----
+
+    #[tokio::test]
+    async fn v2_apply_world_event_significance_clamped_above_one() {
+        let ctx = TestContext::new();
+        let store: Arc<dyn npc_mind::application::event_store::EventStore> =
+            Arc::new(InMemoryEventStore::new());
+        let bus = Arc::new(EventBus::new());
+        let dispatcher = CommandDispatcher::new(ctx.repo, store.clone(), bus)
+            .with_default_handlers();
+
+        dispatcher
+            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+                world_id: "jianghu".into(),
+                topic: None,
+                fact: "어떤 사실".into(),
+                significance: 5.0, // out of range
+                witnesses: vec![],
+            }))
+            .await
+            .expect("clamp되어 성공해야 함");
+
+        let events = store.get_events("jianghu");
+        let req = events
+            .iter()
+            .find_map(|e| match &e.payload {
+                EventPayload::ApplyWorldEventRequested { significance, .. } => Some(*significance),
+                _ => None,
+            })
+            .expect("ApplyWorldEventRequested 발행됨");
+        assert!(req <= 1.0 && req >= 0.0, "significance가 [0,1]로 클램프됨 — got {req}");
+    }
+}
