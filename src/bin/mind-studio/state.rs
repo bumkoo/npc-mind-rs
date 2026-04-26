@@ -456,7 +456,10 @@ pub struct TurnRecord {
 pub struct ScenarioMeta {
     pub name: String,
     pub description: String,
-    /// 평가 노트 (Claude가 작성)
+    /// 평가 노트 (Claude가 작성). 작가가 손으로 쓰는 시나리오 JSON에서 흔히 누락되므로
+    /// `#[serde(default)]`로 빈 Vec를 허용한다 (Memory Step E3.2 회귀 가드 — `notes` 누락
+    /// 시 `StateInner::load_from_file`이 500을 떨구는 문제 방지).
+    #[serde(default)]
     pub notes: Vec<String>,
 }
 
