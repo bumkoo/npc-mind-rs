@@ -300,6 +300,21 @@ pub struct ChatResponse {
     pub timings: Option<LlamaTimings>,
 }
 
+/// 스트리밍 응답의 단일 항목.
+///
+/// LLM이 토큰을 생성하는 대로 `Token`이 흘러나오고, 응답이 완료되면 마지막에
+/// `Final`이 정확히 한 번 발행된 뒤 stream이 종료된다. 에러 발생 시 stream은
+/// `Err(ConversationError)`를 yield한 뒤 종료된다.
+#[cfg(feature = "chat")]
+#[derive(Debug, Clone)]
+pub enum StreamItem {
+    /// LLM이 막 생성한 토큰 한 조각
+    Token(String),
+    /// 최종 응답 — 누적된 전체 텍스트와 timings 포함.
+    /// 정상 종료 시 stream의 마지막 item으로 정확히 한 번 발행된다.
+    Final(ChatResponse),
+}
+
 /// 대화 오케스트레이터 오류
 #[cfg(feature = "chat")]
 #[derive(Debug, thiserror::Error)]
@@ -555,15 +570,35 @@ pub trait ConversationPort: Send + Sync {
         user_message: &str,
     ) -> Result<ChatResponse, ConversationError>;
 
-    /// 상대의 대사를 전달하고 NPC(LLM)의 응답을 스트리밍으로 받는다.
+    /// 상대의 대사를 전달하고 NPC(LLM) 응답을 토큰 단위로 스트리밍한다.
     ///
-    /// 토큰은 `token_tx`로 실시간 전송되고, 완성된 응답 + timings가 반환된다.
-    async fn send_message_stream(
-        &self,
-        session_id: &str,
-        user_message: &str,
-        token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<ChatResponse, ConversationError>;
+    /// 반환된 `Stream`은 `StreamItem::Token`을 여러 번 yield한 뒤, 마지막에
+    /// `StreamItem::Final`을 정확히 한 번 yield하고 종료된다. 에러 발생 시
+    /// `Err(ConversationError)`가 yield되고 stream이 종료된다.
+    ///
+    /// 호출자는 자기 환경의 폴링 메커니즘(tokio await, Bevy 매 프레임 try_next 등)으로
+    /// stream을 소비하기만 하면 되며, 채널 생성·task spawn·동기화는 어댑터 내부
+    /// 디테일이다 — 호출자 측 tokio 의존이 발생하지 않는다.
+    ///
+    /// # 호출자 패턴
+    ///
+    /// ```rust,ignore
+    /// use futures::StreamExt;
+    /// let mut stream = port.send_message_stream("s1", "안녕");
+    /// while let Some(item) = stream.next().await {
+    ///     match item? {
+    ///         StreamItem::Token(t) => print!("{}", t),
+    ///         StreamItem::Final(resp) => return Ok(resp),
+    ///     }
+    /// }
+    /// ```
+    fn send_message_stream<'a>(
+        &'a self,
+        session_id: &'a str,
+        user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<dyn futures::Stream<Item = Result<StreamItem, ConversationError>> + Send + 'a>,
+    >;
 
     /// system_prompt를 갱신한다 (Beat 전환 시).
     ///

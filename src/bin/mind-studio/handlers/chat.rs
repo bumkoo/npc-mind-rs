@@ -1,5 +1,7 @@
 use axum::Json;
 use axum::extract::State;
+use futures::StreamExt;
+use npc_mind::StreamItem;
 use npc_mind::application::dialogue_test_service::*;
 use crate::state::*;
 use crate::studio_service::StudioService;
@@ -30,13 +32,16 @@ pub async fn chat_message_stream(
 ) -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {
     let stream = async_stream::stream! {
         let chat_state = match state.chat.as_ref() { Some(c) => c, None => { yield Ok(axum::response::sse::Event::default().event("error").data("chat feature가 비활성입니다.")); return; } };
-        let (token_tx, mut token_rx) = tokio::sync::mpsc::channel::<String>(64);
-        let session_id = req.session_id.clone();
-        let utterance = req.utterance.clone();
-        let chat_state_clone = chat_state.clone();
-        let llm_task = tokio::spawn(async move { chat_state_clone.send_message_stream(&session_id, &utterance, token_tx).await });
-        while let Some(token) = token_rx.recv().await { yield Ok(axum::response::sse::Event::default().event("token").data(token)); }
-        let chat_resp = match llm_task.await { Ok(Ok(resp)) => resp, Ok(Err(e)) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; } Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(format!("태스크 패닉: {e}"))); return; } };
+        let mut token_stream = chat_state.send_message_stream(&req.session_id, &req.utterance);
+        let mut chat_resp: Option<npc_mind::ChatResponse> = None;
+        while let Some(item) = token_stream.next().await {
+            match item {
+                Ok(StreamItem::Token(t)) => yield Ok(axum::response::sse::Event::default().event("token").data(t)),
+                Ok(StreamItem::Final(resp)) => { chat_resp = Some(resp); break; }
+                Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; }
+            }
+        }
+        let chat_resp = match chat_resp { Some(r) => r, None => { yield Ok(axum::response::sse::Event::default().event("error").data("스트림이 Final 없이 종료됨")); return; } };
         let npc_response = chat_resp.text;
         let timings = chat_resp.timings;
 

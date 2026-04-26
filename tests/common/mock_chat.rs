@@ -6,11 +6,13 @@
 #![cfg(feature = "chat")]
 
 use async_trait::async_trait;
+use futures::Stream;
 use npc_mind::ports::{
     ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
-    LlmModelInfo,
+    LlmModelInfo, StreamItem,
 };
 use std::collections::VecDeque;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
 /// ConversationPort에 대한 호출 이력 항목
@@ -126,14 +128,19 @@ impl ConversationPort for MockConversationPort {
         Ok(response)
     }
 
-    async fn send_message_stream(
-        &self,
-        session_id: &str,
-        user_message: &str,
-        _token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<ChatResponse, ConversationError> {
-        // 테스트에서는 stream 경로를 쓰지 않지만, 포트 요구 사항으로 구현.
-        self.send_message(session_id, user_message).await
+    fn send_message_stream<'a>(
+        &'a self,
+        session_id: &'a str,
+        user_message: &'a str,
+    ) -> Pin<Box<dyn Stream<Item = Result<StreamItem, ConversationError>> + Send + 'a>> {
+        // 테스트에서는 stream 경로의 토큰 분할을 검증하지 않으므로,
+        // send_message 결과를 단일 Final item으로 그대로 반환한다.
+        Box::pin(async_stream::stream! {
+            match self.send_message(session_id, user_message).await {
+                Ok(resp) => yield Ok(StreamItem::Final(resp)),
+                Err(e) => yield Err(e),
+            }
+        })
     }
 
     async fn update_system_prompt(

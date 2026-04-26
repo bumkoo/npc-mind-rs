@@ -66,15 +66,23 @@ impl npc_mind::ports::ConversationPort for SilentChatPort {
         })
     }
 
-    async fn send_message_stream(
-        &self,
-        _session_id: &str,
-        _user_message: &str,
-        _token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<npc_mind::ports::ChatResponse, npc_mind::ports::ConversationError> {
-        Ok(npc_mind::ports::ChatResponse {
-            text: "mock NPC response".to_string(),
-            timings: None,
+    fn send_message_stream<'a>(
+        &'a self,
+        _session_id: &'a str,
+        _user_message: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn futures::Stream<
+                    Item = Result<npc_mind::ports::StreamItem, npc_mind::ports::ConversationError>,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async_stream::stream! {
+            yield Ok(npc_mind::ports::StreamItem::Final(npc_mind::ports::ChatResponse {
+                text: "mock NPC response".to_string(),
+                timings: None,
+            }));
         })
     }
 

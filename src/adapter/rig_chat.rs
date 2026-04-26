@@ -18,14 +18,16 @@ use crate::adapter::llama_timings::TimingsCapturingClient;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaHealth,
     LlamaMetrics, LlamaServerMonitor, LlamaSlotInfo, LlamaTimings, LlmInfoProvider, LlmModelInfo,
+    StreamItem,
 };
-use futures::StreamExt;
+use futures::{Stream, StreamExt};
 use rig::agent::MultiTurnStreamItem;
 use rig::client::CompletionClient;
 use rig::completion::{Chat, Message};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -35,14 +37,16 @@ use tokio::sync::RwLock;
 /// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
 pub struct RigChatAdapter {
     client: openai::CompletionsClient<TimingsCapturingClient>,
-    model_name: RwLock<String>,
+    /// 모델명 — Arc로 감싸 spawn된 task로 안전하게 이동
+    model_name: Arc<RwLock<String>>,
     /// OpenAI 호환 API URL (예: `http://127.0.0.1:8081/v1`)
     base_url: String,
     /// llama-server root URL (예: `http://127.0.0.1:8081`) — `/v1` 제거
     server_url: String,
     /// 공유 HTTP 클라이언트 — rig 통신, 모델 감지, 서버 모니터링이 같은 커넥션 풀 사용
     http_client: reqwest::Client,
-    sessions: RwLock<HashMap<String, ChatSession>>,
+    /// 세션 맵 — Arc로 감싸 streaming task로 안전하게 이동
+    sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     /// TimingsCapturingClient와 공유하는 timings 저장소
     last_timings: Arc<RwLock<Option<LlamaTimings>>>,
 }
@@ -82,11 +86,11 @@ impl RigChatAdapter {
 
         Self {
             client,
-            model_name: RwLock::new(model_name.to_string()),
+            model_name: Arc::new(RwLock::new(model_name.to_string())),
             base_url: base_url.to_string(),
             server_url: derive_server_url(base_url),
             http_client,
-            sessions: RwLock::new(HashMap::new()),
+            sessions: Arc::new(RwLock::new(HashMap::new())),
             last_timings: timings_store,
         }
     }
@@ -157,69 +161,139 @@ impl RigChatAdapter {
         Ok(ChatResponse { text, timings })
     }
 
-    /// rig Agent를 빌드하고 stream_chat()으로 토큰 스트리밍하는 내부 헬퍼
-    ///
-    /// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답 + timings를 반환한다.
-    async fn stream_chat_with_agent(
-        &self,
-        system_prompt: &str,
-        user_message: &str,
-        history: Vec<Message>,
-        token_tx: tokio::sync::mpsc::Sender<String>,
-        config: &Option<LlmModelInfo>,
-    ) -> Result<ChatResponse, ConversationError> {
-        // 이전 timings 초기화
-        *self.last_timings.write().await = None;
+}
 
-        let model_name = self.model_name.read().await;
-        let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
+/// streaming task가 필요로 하는 어댑터 자원의 'static 묶음.
+///
+/// `send_message_stream`이 self에서 추출해 `tokio::spawn`된 future에 넘긴다.
+/// 모든 필드가 Clone(Arc 또는 derive Clone)이므로 spawn lifetime을 만족한다.
+struct StreamingCtx {
+    client: openai::CompletionsClient<TimingsCapturingClient>,
+    sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
+    model_name: Arc<RwLock<String>>,
+    last_timings: Arc<RwLock<Option<LlamaTimings>>>,
+}
 
-        // 동적 파라미터 적용
-        if let Some(c) = config {
-            if let Some(t) = c.temperature {
-                builder = builder.temperature(t as f64);
-            }
-            if let Some(tp) = c.top_p {
-                builder = builder.additional_params(serde_json::json!({ "top_p": tp }));
-            }
-            if let Some(mt) = c.max_tokens {
-                builder = builder.max_tokens(mt.into());
-            }
-        }
+/// 내부 streaming 실행 — mpsc 패턴은 어댑터 사적 구현 디테일.
+///
+/// 자유 함수 형태이므로 모든 자원이 owned/Arc로 전달되어 `tokio::spawn`의 `'static`
+/// 요구를 만족한다. 외부 trait 시그니처에는 노출되지 않으므로 tokio 의존이 안전하게
+/// 격리된다.
+async fn run_streaming_internal(
+    ctx: StreamingCtx,
+    session_id: String,
+    user_message: String,
+    token_tx: tokio::sync::mpsc::Sender<String>,
+) -> Result<ChatResponse, ConversationError> {
+    // 1. 세션에서 현재 상태를 읽어옴
+    let (system_prompt, history, config) = {
+        let sessions_read = ctx.sessions.read().await;
+        let session = sessions_read
+            .get(&session_id)
+            .ok_or_else(|| ConversationError::SessionNotFound(session_id.clone()))?;
+        (
+            session.system_prompt.clone(),
+            session.rig_history.clone(),
+            session.generation_config.clone(),
+        )
+    };
 
-        let agent = builder.build();
+    // 2. 스트리밍 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
+    let chat_response = stream_chat_with_agent(
+        &ctx,
+        &system_prompt,
+        &user_message,
+        history,
+        token_tx,
+        &config,
+    )
+    .await?;
 
-        let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
+    // 3. 이력 업데이트
+    {
+        let mut sessions_write = ctx.sessions.write().await;
+        let session = sessions_write
+            .get_mut(&session_id)
+            .ok_or_else(|| ConversationError::SessionNotFound(session_id.clone()))?;
 
-        let mut full_response = String::new();
+        session.rig_history.push(Message::user(&user_message));
+        session
+            .rig_history
+            .push(Message::assistant(&chat_response.text));
 
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(MultiTurnStreamItem::StreamAssistantItem(
-                    StreamedAssistantContent::Text(text),
-                )) => {
-                    let s = text.text;
-                    if !s.is_empty() {
-                        full_response.push_str(&s);
-                        let _ = token_tx.send(s).await;
-                    }
-                }
-                Ok(_) => {
-                    // ToolCall, Reasoning, FinalResponse 등은 무시
-                }
-                Err(e) => {
-                    return Err(ConversationError::InferenceError(e.to_string()));
-                }
-            }
-        }
-
-        let timings = self.last_timings.read().await.clone();
-
-        Ok(ChatResponse {
-            text: full_response,
-            timings,
-        })
+        session.dialogue_history.push(DialogueTurn {
+            role: DialogueRole::User,
+            content: user_message,
+        });
+        session.dialogue_history.push(DialogueTurn {
+            role: DialogueRole::Assistant,
+            content: chat_response.text.clone(),
+        });
     }
+
+    Ok(chat_response)
+}
+
+/// rig Agent를 빌드하고 stream_chat()으로 토큰 스트리밍하는 내부 헬퍼
+///
+/// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답 + timings를 반환한다.
+async fn stream_chat_with_agent(
+    ctx: &StreamingCtx,
+    system_prompt: &str,
+    user_message: &str,
+    history: Vec<Message>,
+    token_tx: tokio::sync::mpsc::Sender<String>,
+    config: &Option<LlmModelInfo>,
+) -> Result<ChatResponse, ConversationError> {
+    // 이전 timings 초기화
+    *ctx.last_timings.write().await = None;
+
+    let model_name_read = ctx.model_name.read().await;
+    let mut builder = ctx.client.agent(&*model_name_read).preamble(system_prompt);
+
+    // 동적 파라미터 적용
+    if let Some(c) = config {
+        if let Some(t) = c.temperature {
+            builder = builder.temperature(t as f64);
+        }
+        if let Some(tp) = c.top_p {
+            builder = builder.additional_params(serde_json::json!({ "top_p": tp }));
+        }
+        if let Some(mt) = c.max_tokens {
+            builder = builder.max_tokens(mt.into());
+        }
+    }
+
+    let agent = builder.build();
+
+    let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
+
+    let mut full_response = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
+                let s = text.text;
+                if !s.is_empty() {
+                    full_response.push_str(&s);
+                    let _ = token_tx.send(s).await;
+                }
+            }
+            Ok(_) => {
+                // ToolCall, Reasoning, FinalResponse 등은 무시
+            }
+            Err(e) => {
+                return Err(ConversationError::InferenceError(e.to_string()));
+            }
+        }
+    }
+
+    let timings = ctx.last_timings.read().await.clone();
+
+    Ok(ChatResponse {
+        text: full_response,
+        timings,
+    })
 }
 
 #[async_trait::async_trait]
@@ -298,53 +372,57 @@ impl ConversationPort for RigChatAdapter {
         Ok(chat_response)
     }
 
-    async fn send_message_stream(
-        &self,
-        session_id: &str,
-        user_message: &str,
-        token_tx: tokio::sync::mpsc::Sender<String>,
-    ) -> Result<ChatResponse, ConversationError> {
-        // 1. 세션에서 현재 상태를 읽어옴
-        let (system_prompt, history, config) = {
-            let sessions = self.sessions.read().await;
-            let session = sessions
-                .get(session_id)
-                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
-            (
-                session.system_prompt.clone(),
-                session.rig_history.clone(),
-                session.generation_config.clone(),
-            )
+    fn send_message_stream<'a>(
+        &'a self,
+        session_id: &'a str,
+        user_message: &'a str,
+    ) -> Pin<Box<dyn Stream<Item = Result<StreamItem, ConversationError>> + Send + 'a>> {
+        // self의 필요 자원을 'static Arc/Clone으로 추출 — spawn 가능하게 한다.
+        let ctx = StreamingCtx {
+            client: self.client.clone(),
+            sessions: Arc::clone(&self.sessions),
+            model_name: Arc::clone(&self.model_name),
+            last_timings: Arc::clone(&self.last_timings),
         };
+        let session_id = session_id.to_string();
+        let user_message = user_message.to_string();
 
-        // 2. 스트리밍 LLM 호출 (lock 해제 상태에서 — 블로킹 방지)
-        let chat_response = self
-            .stream_chat_with_agent(&system_prompt, user_message, history, token_tx, &config)
-            .await?;
+        Box::pin(async_stream::stream! {
+            // 1. 어댑터 내부 채널 생성 — trait 외부에 노출되지 않으므로
+            //    호출자 측 tokio 의존이 발생하지 않는다.
+            let (token_tx, mut token_rx) = tokio::sync::mpsc::channel::<String>(64);
 
-        // 3. 이력 업데이트
-        {
-            let mut sessions = self.sessions.write().await;
-            let session = sessions
-                .get_mut(session_id)
-                .ok_or_else(|| ConversationError::SessionNotFound(session_id.to_string()))?;
+            // 2. streaming 로직을 'static task로 spawn — 토큰은 token_tx로 흘려보내고
+            //    최종 ChatResponse는 JoinHandle 결과로 합류한다.
+            let llm_future = run_streaming_internal(ctx, session_id, user_message, token_tx);
+            let mut llm_task = tokio::spawn(llm_future);
 
-            session.rig_history.push(Message::user(user_message));
-            session
-                .rig_history
-                .push(Message::assistant(&chat_response.text));
-
-            session.dialogue_history.push(DialogueTurn {
-                role: DialogueRole::User,
-                content: user_message.to_string(),
-            });
-            session.dialogue_history.push(DialogueTurn {
-                role: DialogueRole::Assistant,
-                content: chat_response.text.clone(),
-            });
-        }
-
-        Ok(chat_response)
+            // 3. 토큰을 흘려보내며 task 완료를 기다린다.
+            //    tokio::select!는 cancel-safe — mpsc::Receiver::recv와 JoinHandle 모두 안전.
+            loop {
+                tokio::select! {
+                    Some(token) = token_rx.recv() => {
+                        yield Ok(StreamItem::Token(token));
+                    }
+                    result = &mut llm_task => {
+                        // task 완료 — 채널에 남은 토큰을 모두 비워주고 Final 발행.
+                        // select!가 task 완료 분기를 먼저 선택했을 때 채널 잔류 토큰
+                        // 손실을 방지 (§11.3).
+                        while let Ok(token) = token_rx.try_recv() {
+                            yield Ok(StreamItem::Token(token));
+                        }
+                        match result {
+                            Ok(Ok(chat_resp)) => yield Ok(StreamItem::Final(chat_resp)),
+                            Ok(Err(e)) => yield Err(e),
+                            Err(panic) => yield Err(ConversationError::InferenceError(
+                                format!("스트리밍 task 패닉: {panic}")
+                            )),
+                        }
+                        break;
+                    }
+                }
+            }
+        })
     }
 
     async fn update_system_prompt(
