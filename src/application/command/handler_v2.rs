@@ -378,4 +378,240 @@ mod tests {
         let e = HandlerError::Repository("save failed".into());
         assert_eq!(e.to_string(), "repository error: save failed");
     }
+
+    use super::test_support::HandlerTestHarness;
+    use crate::domain::emotion::EmotionState;
+    use crate::domain::personality::{HexacoProfile, Npc};
+    use std::sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Arc,
+    };
+
+    /// 외부 검증용 — 실행 여부와 ctx 가시성을 확인하는 probe handler
+    struct ProbeHandler {
+        ran: Arc<AtomicBool>,
+        saw_npc: Arc<AtomicBool>,
+        npc_id: &'static str,
+    }
+
+    impl EventHandler for ProbeHandler {
+        fn name(&self) -> &'static str {
+            "ProbeHandler"
+        }
+        fn interest(&self) -> HandlerInterest {
+            HandlerInterest::All
+        }
+        fn mode(&self) -> DeliveryMode {
+            DeliveryMode::Transactional {
+                priority: 0,
+                can_emit_follow_up: false,
+            }
+        }
+        fn handle(
+            &self,
+            _event: &DomainEvent,
+            ctx: &mut EventHandlerContext<'_>,
+        ) -> Result<HandlerResult, HandlerError> {
+            self.ran.store(true, Ordering::SeqCst);
+            if ctx.repo.get_npc(self.npc_id).is_some() {
+                self.saw_npc.store(true, Ordering::SeqCst);
+            }
+            Ok(HandlerResult::default())
+        }
+    }
+
+    fn make_npc(id: &str) -> Npc {
+        Npc::new(id, id, "test", HexacoProfile::neutral())
+    }
+
+    fn cleared_event(npc_id: &str) -> DomainEvent {
+        DomainEvent::new(
+            42,
+            npc_id.into(),
+            1,
+            EventPayload::EmotionCleared {
+                npc_id: npc_id.into(),
+            },
+        )
+    }
+
+    #[test]
+    fn harness_dispatch_routes_event_to_handler() {
+        let ran = Arc::new(AtomicBool::new(false));
+        let probe = ProbeHandler {
+            ran: ran.clone(),
+            saw_npc: Arc::new(AtomicBool::new(false)),
+            npc_id: "x",
+        };
+        let mut h = HandlerTestHarness::new();
+        h.dispatch(&probe, cleared_event("x")).expect("ok");
+        assert!(ran.load(Ordering::SeqCst), "handler가 호출되어야 함");
+    }
+
+    #[test]
+    fn harness_dispatch_passes_repo_to_handler() {
+        let saw = Arc::new(AtomicBool::new(false));
+        let probe = ProbeHandler {
+            ran: Arc::new(AtomicBool::new(false)),
+            saw_npc: saw.clone(),
+            npc_id: "alice",
+        };
+        let mut h = HandlerTestHarness::new().with_npc(make_npc("alice"));
+        h.dispatch(&probe, cleared_event("alice")).expect("ok");
+        assert!(
+            saw.load(Ordering::SeqCst),
+            "ctx.repo로 with_npc로 추가한 NPC가 보여야 함"
+        );
+    }
+
+    #[test]
+    fn harness_isolates_shared_state_between_instances() {
+        let mut h1 = HandlerTestHarness::new();
+        let h2 = HandlerTestHarness::new();
+        h1.shared.clear_scene = true;
+
+        assert!(h1.shared.clear_scene);
+        assert!(!h2.shared.clear_scene);
+    }
+
+    /// ctx.shared.emotion_state를 항상 채우는 probe handler
+    struct EmotionFillHandler;
+
+    impl EventHandler for EmotionFillHandler {
+        fn name(&self) -> &'static str {
+            "EmotionFillHandler"
+        }
+        fn interest(&self) -> HandlerInterest {
+            HandlerInterest::All
+        }
+        fn mode(&self) -> DeliveryMode {
+            DeliveryMode::Transactional {
+                priority: 0,
+                can_emit_follow_up: false,
+            }
+        }
+        fn handle(
+            &self,
+            _event: &DomainEvent,
+            ctx: &mut EventHandlerContext<'_>,
+        ) -> Result<HandlerResult, HandlerError> {
+            ctx.shared.emotion_state = Some(EmotionState::new());
+            Ok(HandlerResult::default())
+        }
+    }
+
+    #[test]
+    fn harness_shared_state_persists_across_dispatch_calls() {
+        let mut h = HandlerTestHarness::new();
+        h.dispatch(&EmotionFillHandler, cleared_event("a")).unwrap();
+        assert!(h.shared.emotion_state.is_some());
+
+        let saw = Arc::new(AtomicUsize::new(0));
+        struct ReadShared(Arc<AtomicUsize>);
+        impl EventHandler for ReadShared {
+            fn name(&self) -> &'static str { "ReadShared" }
+            fn interest(&self) -> HandlerInterest { HandlerInterest::All }
+            fn mode(&self) -> DeliveryMode {
+                DeliveryMode::Transactional { priority: 0, can_emit_follow_up: false }
+            }
+            fn handle(
+                &self,
+                _event: &DomainEvent,
+                ctx: &mut EventHandlerContext<'_>,
+            ) -> Result<HandlerResult, HandlerError> {
+                if ctx.shared.emotion_state.is_some() {
+                    self.0.fetch_add(1, Ordering::SeqCst);
+                }
+                Ok(HandlerResult::default())
+            }
+        }
+        h.dispatch(&ReadShared(saw.clone()), cleared_event("a")).unwrap();
+        assert_eq!(saw.load(Ordering::SeqCst), 1, "2차 dispatch가 1차 shared를 봐야 함");
+    }
+
+    /// 항상 InvalidInput 에러를 반환하는 probe
+    struct AlwaysFailHandler;
+    impl EventHandler for AlwaysFailHandler {
+        fn name(&self) -> &'static str { "AlwaysFailHandler" }
+        fn interest(&self) -> HandlerInterest { HandlerInterest::All }
+        fn mode(&self) -> DeliveryMode {
+            DeliveryMode::Transactional { priority: 0, can_emit_follow_up: false }
+        }
+        fn handle(
+            &self,
+            _event: &DomainEvent,
+            _ctx: &mut EventHandlerContext<'_>,
+        ) -> Result<HandlerResult, HandlerError> {
+            Err(HandlerError::InvalidInput("forced".into()))
+        }
+    }
+
+    #[test]
+    fn harness_propagates_handler_error() {
+        let mut h = HandlerTestHarness::new();
+        let result = h.dispatch(&AlwaysFailHandler, cleared_event("x"));
+        match result {
+            Err(HandlerError::InvalidInput(msg)) => assert_eq!(msg, "forced"),
+            other => panic!("expected InvalidInput, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn harness_aggregate_key_derived_from_event() {
+        struct CapturedKey(Arc<std::sync::Mutex<Option<AggregateKey>>>);
+        impl EventHandler for CapturedKey {
+            fn name(&self) -> &'static str { "CapturedKey" }
+            fn interest(&self) -> HandlerInterest { HandlerInterest::All }
+            fn mode(&self) -> DeliveryMode {
+                DeliveryMode::Transactional { priority: 0, can_emit_follow_up: false }
+            }
+            fn handle(
+                &self,
+                _event: &DomainEvent,
+                ctx: &mut EventHandlerContext<'_>,
+            ) -> Result<HandlerResult, HandlerError> {
+                *self.0.lock().unwrap() = Some(ctx.aggregate_key.clone());
+                Ok(HandlerResult::default())
+            }
+        }
+        let captured = Arc::new(std::sync::Mutex::new(None));
+        let event = cleared_event("npc-7");
+        let expected = event.aggregate_key();
+
+        let mut h = HandlerTestHarness::new();
+        h.dispatch(&CapturedKey(captured.clone()), event).unwrap();
+
+        assert_eq!(captured.lock().unwrap().as_ref(), Some(&expected));
+    }
+
+    #[test]
+    fn interest_kinds_empty_matches_nothing() {
+        let interest = HandlerInterest::Kinds(vec![]);
+        let ev = cleared_event("a");
+        assert!(!interest.matches(&ev));
+    }
+
+    #[test]
+    fn interest_predicate_inspects_payload_fields() {
+        // Predicate는 페이로드 내부 값을 검사할 수 있어야 함
+        let interest = HandlerInterest::Predicate(|ev| match &ev.payload {
+            EventPayload::EmotionCleared { npc_id } => npc_id == "match-me",
+            _ => false,
+        });
+        assert!(interest.matches(&cleared_event("match-me")));
+        assert!(!interest.matches(&cleared_event("other")));
+    }
+
+    #[test]
+    fn handler_shared_clear_signals_independent_of_optional_state() {
+        // clear_emotion_for/clear_scene 시그널은 set_*과 독립적으로 설정 가능
+        let mut s = HandlerShared::default();
+        s.emotion_state = Some(EmotionState::new());
+        s.clear_emotion_for = Some("a".into());
+        s.clear_scene = true;
+        // 두 그룹이 독립적인 필드 — 동시 설정해도 충돌 없음 (Dispatcher가 save 후 clear 적용)
+        assert!(s.emotion_state.is_some());
+        assert_eq!(s.clear_emotion_for.as_deref(), Some("a"));
+        assert!(s.clear_scene);
+    }
 }

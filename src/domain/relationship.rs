@@ -252,3 +252,132 @@ impl RelationshipBuilder {
         )
     }
 }
+
+// ---------------------------------------------------------------------------
+// 단위 테스트 — 내부 헬퍼 / 경계값 / Modifier 일관성
+// 행위 시나리오는 tests/relationship_test.rs 참조.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::personality::SCORE_MAX;
+
+    fn s(v: f32) -> Score {
+        Score::new(v, "test").expect("범위 내 값")
+    }
+
+    #[test]
+    fn updated_score_clamps_at_upper_boundary() {
+        // 0.95 + 0.5 = 1.45 → clamp → 1.0
+        let result = updated_score(s(0.95), 0.5);
+        assert_eq!(result.value(), SCORE_MAX);
+    }
+
+    #[test]
+    fn updated_score_clamps_at_lower_boundary() {
+        let result = updated_score(s(-0.95), -0.5);
+        assert_eq!(result.value(), -SCORE_MAX);
+    }
+
+    #[test]
+    fn updated_score_normal_addition_within_range() {
+        let result = updated_score(s(0.2), 0.3);
+        assert!((result.value() - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn emotion_intensity_multiplier_floored_at_zero() {
+        // closeness=-1, weight=0.5 → 1 + (-1)*0.5 = 0.5
+        // 음수 방지 max(0.0)는 weight가 1.0 이상일 때만 트리거되지만 구현 일관성 검증
+        let r = Relationship::new("a", "b", s(-1.0), Score::neutral(), Score::neutral());
+        let m = r.emotion_intensity_multiplier();
+        assert!(m >= 0.0);
+        assert!((m - 0.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn empathy_rel_modifier_never_negative_at_extreme_enmity() {
+        let r = Relationship::new("a", "b", s(-1.0), Score::neutral(), Score::neutral());
+        let m = r.empathy_rel_modifier();
+        assert!(m >= 0.0);
+    }
+
+    #[test]
+    fn hostility_rel_modifier_never_negative_at_extreme_intimacy() {
+        let r = Relationship::new("a", "b", s(1.0), Score::neutral(), Score::neutral());
+        let m = r.hostility_rel_modifier();
+        assert!(m >= 0.0);
+    }
+
+    #[test]
+    fn modifiers_struct_matches_individual_methods() {
+        let r = Relationship::new("a", "b", s(0.4), s(-0.3), s(0.5));
+        let m = r.modifiers();
+        assert_eq!(m.intensity_multiplier, r.emotion_intensity_multiplier());
+        assert_eq!(m.trust_modifier, r.trust_emotion_modifier());
+        assert_eq!(m.empathy_modifier, r.empathy_rel_modifier());
+        assert_eq!(m.hostility_modifier, r.hostility_rel_modifier());
+    }
+
+    #[test]
+    fn with_updated_closeness_significance_zero_baseline_delta() {
+        // sig=0 → multiplier = 1.0; valence=+1.0 → delta = 1.0 * 0.05 * 1 = 0.05
+        let r = Relationship::neutral("a", "b");
+        let updated = r.with_updated_closeness(1.0, 0.0);
+        assert!((updated.closeness().value() - 0.05).abs() < 1e-6);
+    }
+
+    #[test]
+    fn with_updated_closeness_significance_one_quadruples_delta() {
+        // sig=1 → multiplier = 1 + 1*3 = 4; valence=+1.0 → delta = 1.0 * 0.05 * 4 = 0.20
+        let r = Relationship::neutral("a", "b");
+        let updated = r.with_updated_closeness(1.0, 1.0);
+        assert!((updated.closeness().value() - 0.20).abs() < 1e-6);
+    }
+
+    #[test]
+    fn with_updated_closeness_does_not_mutate_trust_or_power() {
+        let original = Relationship::new("a", "b", s(0.0), s(0.5), s(-0.3));
+        let updated = original.with_updated_closeness(0.5, 0.5);
+        assert_eq!(updated.trust().value(), 0.5);
+        assert_eq!(updated.power().value(), -0.3);
+        // 원본 불변
+        assert_eq!(original.closeness().value(), 0.0);
+    }
+
+    #[test]
+    fn with_power_preserves_closeness_and_trust() {
+        let original = Relationship::new("a", "b", s(0.4), s(-0.2), s(0.0));
+        let updated = original.with_power(s(0.9));
+        assert_eq!(updated.closeness().value(), 0.4);
+        assert_eq!(updated.trust().value(), -0.2);
+        assert_eq!(updated.power().value(), 0.9);
+    }
+
+    #[test]
+    fn after_dialogue_only_modifies_closeness() {
+        use crate::domain::emotion::{Emotion, EmotionState, EmotionType};
+
+        let mut state = EmotionState::new();
+        state.add(Emotion::new(EmotionType::Joy, 0.6));
+        let valence_sign = state.overall_valence().signum();
+
+        let original = Relationship::new("a", "b", s(0.0), s(0.4), s(0.2));
+        let updated = original.after_dialogue(&state, 0.5);
+
+        assert_eq!(updated.trust().value(), 0.4);
+        assert_eq!(updated.power().value(), 0.2);
+        // closeness는 valence 부호 방향으로 이동
+        assert!(updated.closeness().value() * valence_sign > 0.0);
+    }
+
+    #[test]
+    fn neutral_empathy_and_hostility_modifiers_are_unit() {
+        // intensity/trust modifier는 tests/relationship_test.rs에서 커버됨;
+        // empathy/hostility는 신규 커버리지.
+        let r = Relationship::neutral("a", "b");
+        assert_eq!(r.empathy_rel_modifier(), 1.0);
+        assert_eq!(r.hostility_rel_modifier(), 1.0);
+    }
+}

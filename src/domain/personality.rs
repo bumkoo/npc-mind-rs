@@ -623,3 +623,148 @@ impl crate::ports::StimulusWeights for HexacoProfile {
         finalize_weight(BASE_SELF, e, CLAMP_STIMULUS)
     }
 }
+
+// ---------------------------------------------------------------------------
+// 단위 테스트 — 내부 헬퍼 / 경계값 / 분기 커버리지
+// 통합 시나리오는 tests/personality_test.rs 참조.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ports::{AppraisalWeights, StimulusWeights};
+
+    fn s(v: f32) -> Score {
+        Score::new(v, "test").expect("범위 내 값")
+    }
+
+    #[test]
+    fn score_clamped_caps_value_above_max() {
+        assert_eq!(Score::clamped(2.5).value(), SCORE_MAX);
+    }
+
+    #[test]
+    fn score_clamped_caps_value_below_min() {
+        assert_eq!(Score::clamped(-3.0).value(), SCORE_MIN);
+    }
+
+    #[test]
+    fn score_modifier_floor_at_zero_when_negative_combined() {
+        // -1.0 * 2.0 = -2.0 → 1 + (-2) = -1 → max(0) = 0
+        let m = Score::new(-1.0, "f").unwrap().modifier(2.0);
+        assert_eq!(m, 0.0);
+    }
+
+    #[test]
+    fn score_deserialize_rejects_above_max() {
+        let result: Result<Score, _> = serde_json::from_str("1.5");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn score_deserialize_rejects_below_min() {
+        let result: Result<Score, _> = serde_json::from_str("-1.5");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn score_deserialize_accepts_boundary_values() {
+        assert_eq!(serde_json::from_str::<Score>("1.0").unwrap().value(), 1.0);
+        assert_eq!(serde_json::from_str::<Score>("-1.0").unwrap().value(), -1.0);
+    }
+
+    #[test]
+    fn avg4_clamps_to_max_when_all_inputs_max() {
+        let result = avg4(s(1.0), s(1.0), s(1.0), s(1.0));
+        assert_eq!(result.value(), SCORE_MAX);
+    }
+
+    #[test]
+    fn avg4_returns_arithmetic_mean_for_mixed_values() {
+        let result = avg4(s(0.4), s(0.0), s(-0.4), s(0.0));
+        assert!((result.value() - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn desirability_self_weight_uses_different_branches_by_sign() {
+        // d>=0: E(+) + X(+) 사용. d<0: E(+) - A(-) - Pru(-) 사용.
+        // 같은 프로필에서 분기에 따라 결과가 달라야 함.
+        let mut p = HexacoProfile::neutral();
+        p.extraversion.social_self_esteem = s(1.0);
+        p.extraversion.social_boldness = s(1.0);
+        p.extraversion.sociability = s(1.0);
+        p.extraversion.liveliness = s(1.0);
+
+        let pos = p.desirability_self_weight(0.5);
+        let neg = p.desirability_self_weight(-0.5);
+        // X+1: pos에서 effect 추가, neg에선 미사용 → 다른 값
+        assert!(pos > neg);
+    }
+
+    #[test]
+    fn empathy_weight_neutral_profile_returns_base() {
+        let p = HexacoProfile::neutral();
+        let w = p.empathy_weight(0.5);
+        assert_eq!(w, BASE_EMPATHY);
+    }
+
+    #[test]
+    fn hostility_weight_zero_for_high_honesty() {
+        // H=+1 → -avg.h*W_DOMINANT = -0.7 → BASE(0) + (-0.7) → CLAMP_OPTIONAL(min=0) → 0
+        let mut p = HexacoProfile::neutral();
+        p.honesty_humility.sincerity = s(1.0);
+        p.honesty_humility.fairness = s(1.0);
+        p.honesty_humility.greed_avoidance = s(1.0);
+        p.honesty_humility.modesty = s(1.0);
+
+        let w = p.hostility_weight(0.5);
+        assert_eq!(w, 0.0);
+    }
+
+    #[test]
+    fn praiseworthiness_weight_branches_differ_by_self_and_sign() {
+        // is_self=true: praise>0 → -modesty effect, praise<0 → +modesty effect
+        // 같은 modesty(+1)에 대해 두 결과가 달라야 함.
+        let mut p = HexacoProfile::neutral();
+        p.honesty_humility.modesty = s(1.0);
+
+        let self_praise = p.praiseworthiness_weight(true, 0.5);
+        let self_blame = p.praiseworthiness_weight(true, -0.5);
+        assert!(self_praise < self_blame, "겸손은 자기칭찬은 억제하고 자기비난은 증폭한다");
+    }
+
+    #[test]
+    fn praiseworthiness_weight_other_branch_uses_gentleness() {
+        // is_self=false: praise>0 → +gentleness, praise<0 → -gentleness
+        let mut p = HexacoProfile::neutral();
+        p.agreeableness.gentleness = s(1.0);
+
+        let other_admire = p.praiseworthiness_weight(false, 0.5);
+        let other_reproach = p.praiseworthiness_weight(false, -0.5);
+        assert!(other_admire > other_reproach, "온화함은 감탄을 증폭하고 비난을 억제한다");
+    }
+
+    #[test]
+    fn appealingness_weight_neutral_profile_returns_base_self() {
+        let p = HexacoProfile::neutral();
+        assert_eq!(p.appealingness_weight(0.5), BASE_SELF);
+    }
+
+    #[test]
+    fn stimulus_absorb_rate_subtracts_patience_for_negative_pleasure() {
+        use crate::domain::pad::Pad;
+        let mut p = HexacoProfile::neutral();
+        p.agreeableness.patience = s(1.0);
+
+        let neg_pad = Pad { pleasure: -0.5, arousal: 0.0, dominance: 0.0 };
+        let pos_pad = Pad { pleasure: 0.5, arousal: 0.0, dominance: 0.0 };
+        // patience=+1: 부정 자극에서만 차감
+        assert!(p.stimulus_absorb_rate(&neg_pad) < p.stimulus_absorb_rate(&pos_pad));
+    }
+
+    #[test]
+    fn finalize_weight_clamps_to_provided_range() {
+        assert_eq!(finalize_weight(1.0, 5.0, CLAMP_STANDARD), CLAMP_STANDARD.1);
+        assert_eq!(finalize_weight(0.0, -5.0, CLAMP_OPTIONAL), CLAMP_OPTIONAL.0);
+    }
+}

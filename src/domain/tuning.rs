@@ -205,3 +205,133 @@ pub const RUMOR_MIN_CONFIDENCE: f32 = 0.1;
 /// 관계 변화 기록 하한 — closeness/trust/power 중 최대 Δ가 이 값 미만이면
 /// `RelationshipMemoryHandler`는 MemoryEntry를 남기지 않는다. 미세 변동 폭증 방지.
 pub const MEMORY_RELATIONSHIP_DELTA_THRESHOLD: f32 = 0.05;
+
+// ---------------------------------------------------------------------------
+// 단위 테스트 — 상수 불변식 가드
+// 다른 모듈이 의존하는 부등식 / 범위가 우발적으로 깨지지 않도록 한다.
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stimulus_impact_rate_in_unit_range() {
+        assert!(STIMULUS_IMPACT_RATE > 0.0 && STIMULUS_IMPACT_RATE <= 1.0);
+    }
+
+    #[test]
+    fn stimulus_fade_threshold_below_min_inertia() {
+        assert!(STIMULUS_FADE_THRESHOLD < STIMULUS_MIN_INERTIA);
+    }
+
+    #[test]
+    fn stimulus_min_inertia_in_unit_range() {
+        assert!(STIMULUS_MIN_INERTIA > 0.0 && STIMULUS_MIN_INERTIA < 1.0);
+    }
+
+    #[test]
+    fn beat_merge_threshold_in_unit_range() {
+        assert!(BEAT_MERGE_THRESHOLD > 0.0 && BEAT_MERGE_THRESHOLD < 1.0);
+    }
+
+    #[test]
+    fn closeness_rate_smaller_than_trust_rate() {
+        // closeness는 더 점진적으로 갱신되어야 한다 (대화 누적 vs 단발 신뢰 변화)
+        assert!(CLOSENESS_UPDATE_RATE < TRUST_UPDATE_RATE);
+    }
+
+    #[test]
+    fn significance_scale_amplifies_at_max_to_quadruple() {
+        // sig=1.0 → multiplier = 1 + 1*SIGNIFICANCE_SCALE = 4.0
+        assert_eq!(1.0 + 1.0 * SIGNIFICANCE_SCALE, 4.0);
+    }
+
+    #[test]
+    fn level_thresholds_strictly_descending() {
+        assert!(LEVEL_VERY_HIGH_THRESHOLD > LEVEL_HIGH_THRESHOLD);
+        assert!(LEVEL_HIGH_THRESHOLD > LEVEL_LOW_THRESHOLD);
+        assert!(LEVEL_LOW_THRESHOLD > LEVEL_VERY_LOW_THRESHOLD);
+    }
+
+    #[test]
+    fn level_thresholds_centered_around_zero() {
+        // 양음 대칭은 분류 일관성에 핵심
+        assert!((LEVEL_HIGH_THRESHOLD + LEVEL_LOW_THRESHOLD).abs() < 1e-6);
+        assert!((LEVEL_VERY_HIGH_THRESHOLD + LEVEL_VERY_LOW_THRESHOLD).abs() < 1e-6);
+    }
+
+    #[test]
+    fn llm_temp_min_lt_base_lt_max() {
+        assert!(LLM_TEMP_MIN < LLM_BASE_TEMPERATURE);
+        assert!(LLM_BASE_TEMPERATURE < LLM_TEMP_MAX);
+    }
+
+    #[test]
+    fn llm_top_p_min_lt_base_le_max() {
+        assert!(LLM_TOP_P_MIN < LLM_BASE_TOP_P);
+        assert!(LLM_BASE_TOP_P <= LLM_TOP_P_MAX);
+    }
+
+    #[test]
+    fn pad_axis_dead_zone_below_axis_scale() {
+        assert!(PAD_AXIS_DEAD_ZONE < PAD_AXIS_SCALE);
+        assert!(PAD_AXIS_DEAD_ZONE >= 0.0);
+    }
+
+    #[test]
+    fn source_weights_strictly_descending() {
+        // 직접 경험 > 목격 > 전해 들음 > 소문
+        assert!(SOURCE_W_EXPERIENCED > SOURCE_W_WITNESSED);
+        assert!(SOURCE_W_WITNESSED > SOURCE_W_HEARD);
+        assert!(SOURCE_W_HEARD > SOURCE_W_RUMOR);
+    }
+
+    #[test]
+    fn source_weights_in_unit_range() {
+        for w in [SOURCE_W_EXPERIENCED, SOURCE_W_WITNESSED, SOURCE_W_HEARD, SOURCE_W_RUMOR] {
+            assert!(w > 0.0 && w <= 1.0, "source weight {w} out of (0, 1]");
+        }
+    }
+
+    #[test]
+    fn rumor_decay_under_one_and_floor_positive() {
+        assert!(RUMOR_HOP_CONFIDENCE_DECAY > 0.0 && RUMOR_HOP_CONFIDENCE_DECAY < 1.0);
+        assert!(RUMOR_MIN_CONFIDENCE > 0.0 && RUMOR_MIN_CONFIDENCE < 1.0);
+    }
+
+    #[test]
+    fn memory_relationship_delta_threshold_consistent_with_closeness_rate() {
+        // 단일 dialogue가 만들어 낼 수 있는 closeness 델타와 같은 자릿수여야
+        // "유의미한" 변동만 기록한다는 의도가 보장된다.
+        assert!(MEMORY_RELATIONSHIP_DELTA_THRESHOLD >= CLOSENESS_UPDATE_RATE);
+    }
+
+    #[test]
+    fn memory_retention_cutoff_in_unit_range() {
+        assert!(MEMORY_RETENTION_CUTOFF > 0.0 && MEMORY_RETENTION_CUTOFF < 1.0);
+    }
+
+    #[test]
+    fn memory_push_top_k_positive() {
+        assert!(MEMORY_PUSH_TOP_K > 0);
+        assert!(MEMORY_PROMPT_TOKEN_BUDGET > 0);
+    }
+
+    #[test]
+    fn day_ms_matches_24_hours() {
+        assert_eq!(DAY_MS, 24 * 60 * 60 * 1000);
+    }
+
+    #[test]
+    fn scene_task_channel_capacity_positive() {
+        assert!(SCENE_TASK_CHANNEL_CAPACITY > 0);
+    }
+
+    #[test]
+    fn mood_emotion_trait_thresholds_in_unit_range() {
+        for t in [MOOD_THRESHOLD, EMOTION_THRESHOLD, TRAIT_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD] {
+            assert!(t > 0.0 && t < 1.0, "threshold {t} out of (0, 1)");
+        }
+    }
+}
