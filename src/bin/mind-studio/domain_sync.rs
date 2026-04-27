@@ -88,11 +88,10 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
     }
     let npc_ids: Vec<String> = inner.npcs.keys().cloned().collect();
     for id in npc_ids {
-        if let std::collections::hash_map::Entry::Vacant(e) = inner.emotions.entry(id) {
-            if let Some(state) = repo.get_emotion_state(e.key()) {
+        if let std::collections::hash_map::Entry::Vacant(e) = inner.emotions.entry(id)
+            && let Some(state) = repo.get_emotion_state(e.key()) {
                 e.insert(state);
             }
-        }
     }
 
     // Scene — last_scene_id가 가리키는 현재 Scene을 UI 필드로 펼쳐 저장.
@@ -138,7 +137,7 @@ pub async fn dispatch_appraise(
 
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(result)
 }
@@ -164,7 +163,7 @@ pub async fn dispatch_stimulus(
 
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(result)
 }
@@ -186,7 +185,7 @@ pub async fn dispatch_end_dialogue(
 
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(response)
 }
@@ -212,7 +211,7 @@ pub async fn dispatch_generate_guide(
 
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(GuideResult { guide })
 }
@@ -253,7 +252,7 @@ pub async fn dispatch_start_scene(
 
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
 
     Ok(SceneResult {
@@ -290,7 +289,7 @@ pub async fn dispatch_tell_information(
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(output)
 }
@@ -308,7 +307,7 @@ pub async fn dispatch_apply_world_event(
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(output)
 }
@@ -326,7 +325,7 @@ pub async fn dispatch_seed_rumor(
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(output)
 }
@@ -344,7 +343,7 @@ pub async fn dispatch_spread_rumor(
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
-        sync_from_repo(&*guard, inner);
+        sync_from_repo(&guard, inner);
     }
     Ok(output)
 }

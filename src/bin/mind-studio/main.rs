@@ -224,7 +224,7 @@ fn init_analyzer() -> Option<npc_mind::domain::pad::PadAnalyzer> {
     })?;
 
     let embedder = OrtEmbedder::new(&model_path, &tokenizer_path).ok()?;
-    let source = FileAnchorSource::from_content(&anchor_toml, AnchorFormat::Toml);
+    let source = FileAnchorSource::from_content(anchor_toml, AnchorFormat::Toml);
 
     PadAnalyzer::new(Box::new(embedder), &source).ok()
 }

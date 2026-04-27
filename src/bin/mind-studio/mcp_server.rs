@@ -83,11 +83,10 @@ impl MindMcpService {
             if focuses.is_object() {
                 let map = focuses.as_object().cloned().unwrap_or_default();
                 let mut arr: Vec<Value> = map.into_iter().map(|(key, mut focus_val)| {
-                    if let Some(focus_obj) = focus_val.as_object_mut() {
-                        if !focus_obj.contains_key("id") {
+                    if let Some(focus_obj) = focus_val.as_object_mut()
+                        && !focus_obj.contains_key("id") {
                             focus_obj.insert("id".to_string(), Value::String(key));
                         }
-                    }
                     focus_val
                 }).collect();
                 for focus in arr.iter_mut() {
@@ -95,14 +94,13 @@ impl MindMcpService {
                     Self::normalize_trigger_field(focus);
                 }
                 *focuses = Value::Array(arr);
-            } else if focuses.is_array() {
-                if let Some(arr) = focuses.as_array_mut() {
+            } else if focuses.is_array()
+                && let Some(arr) = focuses.as_array_mut() {
                     for focus in arr.iter_mut() {
                         Self::flatten_focus_situation(focus);
                         Self::normalize_trigger_field(focus);
                     }
                 }
-            }
         }
         scene
     }
@@ -455,12 +453,11 @@ impl MindMcpService {
                 let response = {
                     let mut inner = self.state.inner.write().await;
                     // situation_description이 없으면 현재 상황에서 자동 추출
-                    if req.situation_description.is_none() {
-                        if let Some(ref sit) = inner.current_situation {
+                    if req.situation_description.is_none()
+                        && let Some(ref sit) = inner.current_situation {
                             req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
                         }
-                    }
-                    let result = crate::domain_sync::dispatch_generate_guide(&self.state, &mut *inner, req)
+                    let result = crate::domain_sync::dispatch_generate_guide(&self.state, &mut inner, req)
                         .await
                         .map_err(|e| e.to_string())?;
                     let fmt = self.state.formatter.read().await;
@@ -561,12 +558,11 @@ impl MindMcpService {
                 // B5.2 (3/3): 먼저 inner·공유 repo를 갱신한 뒤 StartScene dispatch.
                 self.state.rebuild_repo_from_inner().await;
                 let mut scene_restored = false;
-                if let Some(scene_val) = scene_cfg {
-                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
+                if let Some(scene_val) = scene_cfg
+                    && let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
                         StudioService::load_scene_into_state(&self.state, &scene_req).await;
                         scene_restored = true;
                     }
-                }
                 self.state.emit(StateEvent::ScenarioLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "scene_restored": scene_restored }))
             }
@@ -583,7 +579,7 @@ impl MindMcpService {
                     let mut inner = self.state.inner.write().await;
                     let collector = self.state.collector.clone();
                     collector.take_entries();
-                    let mut result = crate::domain_sync::dispatch_start_scene(&self.state, &mut *inner, req)
+                    let mut result = crate::domain_sync::dispatch_start_scene(&self.state, &mut inner, req)
                         .await
                         .map_err(|e| e.to_string())?;
                     if let Some(ref mut initial) = result.initial_appraise {
@@ -600,7 +596,7 @@ impl MindMcpService {
             }
             "get_scene_info" => {
                 let inner = self.state.inner.read().await;
-                let repo = crate::repository::ReadOnlyAppStateRepo { inner: &*inner };
+                let repo = crate::repository::ReadOnlyAppStateRepo { inner: &inner };
                 use npc_mind::ports::SceneStore;
                 let mut info = match repo.get_scene() {
                     Some(scene) => npc_mind::application::scene_service::SceneService::new().build_scene_info(&scene),
@@ -636,11 +632,10 @@ impl MindMcpService {
                     *inner = loaded;
                 }
                 self.state.rebuild_repo_from_inner().await;
-                if let Some(scene_val) = scene_cfg {
-                    if let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
+                if let Some(scene_val) = scene_cfg
+                    && let Ok(scene_req) = serde_json::from_value::<npc_mind::application::dto::SceneRequest>(scene_val) {
                         StudioService::load_scene_into_state(&self.state, &scene_req).await;
                     }
-                }
                 self.state.emit(StateEvent::ResultLoaded);
                 Ok(serde_json::json!({ "status": "ok", "resolved_path": resolved, "turn_count": history_count }))
             }
@@ -650,15 +645,14 @@ impl MindMcpService {
                 if let Ok(entries) = std::fs::read_dir(data_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.extension().map(|e| e == "txt").unwrap_or(false) {
-                            if let Ok(meta) = std::fs::metadata(&path) {
+                        if path.extension().map(|e| e == "txt").unwrap_or(false)
+                            && let Ok(meta) = std::fs::metadata(&path) {
                                 files.push(serde_json::json!({
                                     "name": path.file_name().unwrap_or_default().to_string_lossy(),
                                     "path": path.to_string_lossy().replace('\\', "/"),
                                     "size_kb": meta.len() / 1024
                                 }));
                             }
-                        }
                     }
                 }
                 files.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
@@ -738,8 +732,10 @@ impl MindMcpService {
                 let scenario_val = &arguments["scenario"];
                 
                 // StateInner 생성
-                let mut state_inner = crate::state::StateInner::default();
-                state_inner.format = crate::state::FORMAT_SCENARIO.to_string();
+                let mut state_inner = crate::state::StateInner {
+                    format: crate::state::FORMAT_SCENARIO.to_string(),
+                    ..crate::state::StateInner::default()
+                };
                 
                 // scenario meta
                 if let Some(meta) = scenario_val.get("scenario") {
@@ -747,29 +743,26 @@ impl MindMcpService {
                 }
                 
                 // npcs
-                if let Some(npcs) = scenario_val.get("npcs") {
-                    if let Ok(npcs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::NpcProfile>>(npcs.clone()) {
+                if let Some(npcs) = scenario_val.get("npcs")
+                    && let Ok(npcs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::NpcProfile>>(npcs.clone()) {
                         state_inner.npcs = npcs_map;
                     }
-                }
                 
                 // relationships — 키를 owner_id:target_id 형식으로 자동 정규화
-                if let Some(rels) = scenario_val.get("relationships") {
-                    if let Ok(rels_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::RelationshipData>>(rels.clone()) {
+                if let Some(rels) = scenario_val.get("relationships")
+                    && let Ok(rels_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::RelationshipData>>(rels.clone()) {
                         // 입력 키가 owner_id:target_id 형식이 아닐 수 있으므로,
                         // RelationshipData의 owner_id/target_id로부터 정규 키를 재생성
                         state_inner.relationships = rels_map.into_values()
                             .map(|rel| (rel.key(), rel))
                             .collect();
                     }
-                }
                 
                 // objects
-                if let Some(objs) = scenario_val.get("objects") {
-                    if let Ok(objs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::ObjectEntry>>(objs.clone()) {
+                if let Some(objs) = scenario_val.get("objects")
+                    && let Ok(objs_map) = serde_json::from_value::<std::collections::HashMap<String, crate::state::ObjectEntry>>(objs.clone()) {
                         state_inner.objects = objs_map;
                     }
-                }
                 
                 // scene — focuses 객체→배열 변환 및 situation→event/action/object 평탄화
                 // 저장 전에 SceneRequest 역직렬화로 필수 필드 검증

@@ -224,8 +224,8 @@ fn sparse_조회_스파이크() {
     println!("Sparse 조회 스파이크 결과 (vs 정규식 Prefilter)");
     println!("{}", "=".repeat(165));
     println!(
-        "{:<4} {:<32} {:<28} {:<28} {:>6}  {}",
-        "id", "발화", "정규식 결과", "sparse 결과 (top1)", "점수", "기여 토큰"
+        "{:<4} {:<32} {:<28} {:<28} {:>6}  기여 토큰",
+        "id", "발화", "정규식 결과", "sparse 결과 (top1)", "점수"
     );
     println!("{}", "-".repeat(165));
 
@@ -257,7 +257,7 @@ fn sparse_조회_스파이크() {
 
         // 출력
         let regex_str = match &regex_hit {
-            Some(r) => format!("{}", r.matched_category),
+            Some(r) => r.matched_category.to_string(),
             None => "(miss)".to_string(),
         };
         let (sparse_str, score, contribs) = match sparse_hit {

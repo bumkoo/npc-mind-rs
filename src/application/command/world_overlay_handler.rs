@@ -87,8 +87,8 @@ impl EventHandler for WorldOverlayHandler {
             match self.store.get_canonical_by_topic(topic_str) {
                 Ok(Some(canon)) => {
                     // 자기 자신을 덮어쓰지 않음 (재진입/replay 방어).
-                    if canon.id != new_id {
-                        if let Err(e) = self.store.mark_superseded(&canon.id, &new_id) {
+                    if canon.id != new_id
+                        && let Err(e) = self.store.mark_superseded(&canon.id, &new_id) {
                             tracing::warn!(
                                 event_id = event.id,
                                 world_id,
@@ -97,7 +97,6 @@ impl EventHandler for WorldOverlayHandler {
                                 "WorldOverlayHandler: mark_superseded failed"
                             );
                         }
-                    }
                 }
                 Ok(None) => {
                     // 이 topic에 Canonical이 아직 없음 — 본 커맨드가 **첫** Canonical 시딩.

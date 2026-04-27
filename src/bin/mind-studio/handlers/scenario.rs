@@ -70,7 +70,7 @@ pub async fn get_scenario_seeds(
 /// GET /api/scene-info — Scene 상태 조회 (B5.2 2/3: SceneService 직접 호출)
 pub async fn get_scene_info(State(state): State<AppState>) -> Json<SceneInfoResult> {
     let inner = state.inner.read().await;
-    let repo = ReadOnlyAppStateRepo { inner: &*inner };
+    let repo = ReadOnlyAppStateRepo { inner: &inner };
     use npc_mind::ports::SceneStore;
     let mut info = match repo.get_scene() {
         Some(scene) => npc_mind::application::scene_service::SceneService::new().build_scene_info(&scene),
@@ -100,7 +100,7 @@ pub async fn scene(
         let mut inner = state.inner.write().await;
         let collector = state.collector.clone();
         collector.take_entries();
-        let mut result = crate::domain_sync::dispatch_start_scene(&state, &mut *inner, req.clone()).await?;
+        let mut result = crate::domain_sync::dispatch_start_scene(&state, &mut inner, req.clone()).await?;
         // initial_appraise의 trace만 우선 채움 (v1에서도 최종 response 단계만 trace 채움)
         if let Some(ref mut initial) = result.initial_appraise {
             initial.trace = collector.take_entries();
@@ -149,12 +149,11 @@ pub async fn guide(
 ) -> Result<Json<GuideResponse>, AppError> {
     let response = {
         let mut inner = state.inner.write().await;
-        if req.situation_description.is_none() {
-            if let Some(ref sit) = inner.current_situation {
+        if req.situation_description.is_none()
+            && let Some(ref sit) = inner.current_situation {
                 req.situation_description = sit.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
             }
-        }
-        let result = crate::domain_sync::dispatch_generate_guide(&state, &mut *inner, req).await?;
+        let result = crate::domain_sync::dispatch_generate_guide(&state, &mut inner, req).await?;
         let fmt = state.formatter.read().await;
         result.format(&**fmt)
     };
@@ -213,7 +212,7 @@ pub struct LoadResponse {
 /// POST /api/load
 pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<Json<LoadResponse>, AppError> {
     let resolved = resolve_data_path(&req.path);
-    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(AppError::Internal)?;
     loaded.turn_history.clear();
     loaded.loaded_path = Some(resolved);
     let scene_cfg = loaded.scene.clone();
@@ -232,11 +231,10 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
     let report = apply_scenario_seeds(&state, &seeds);
     #[cfg(not(feature = "embed"))]
     let report = SeedReport::default();
-    if let Some(scene_val) = scene_cfg {
-        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
+    if let Some(scene_val) = scene_cfg
+        && let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
         }
-    }
     state.emit(StateEvent::ScenarioLoaded);
     Ok(Json(LoadResponse {
         warnings: report.warnings,
@@ -248,7 +246,7 @@ pub async fn load_state(State(state): State<AppState>, Json(req): Json<super::Sa
 /// POST /api/load-result
 pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::SaveRequest>) -> Result<Json<super::LoadResultResponse>, AppError> {
     let resolved = resolve_data_path(&req.path);
-    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(|e| AppError::Internal(e))?;
+    let mut loaded = StateInner::load_from_file(std::path::Path::new(&resolved)).map_err(AppError::Internal)?;
     loaded.loaded_path = Some(resolved);
     let scene_cfg = loaded.scene.clone();
     let history = loaded.turn_history.clone();
@@ -266,11 +264,10 @@ pub async fn load_result(State(state): State<AppState>, Json(req): Json<super::S
         // 복원이라 작가 편집 경로가 아님).
         let _report = apply_scenario_seeds(&state, &seeds);
     }
-    if let Some(scene_val) = scene_cfg {
-        if let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
+    if let Some(scene_val) = scene_cfg
+        && let Ok(scene_req) = serde_json::from_value::<SceneRequest>(scene_val) {
             StudioService::load_scene_into_state(&state, &scene_req).await;
         }
-    }
     state.emit(StateEvent::ResultLoaded);
     Ok(Json(super::LoadResultResponse { turn_history: history }))
 }

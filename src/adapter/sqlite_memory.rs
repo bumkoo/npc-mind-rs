@@ -551,7 +551,7 @@ impl MemoryStore for SqliteMemoryStore {
 
         let results = results
             .into_iter()
-            .filter(|e| npc_id.map_or(true, |id| e.legacy_npc_id() == id))
+            .filter(|e| npc_id.is_none_or(|id| e.legacy_npc_id() == id))
             .take(limit)
             .map(|entry| MemoryResult {
                 entry,
@@ -642,8 +642,8 @@ impl MemoryStore for SqliteMemoryStore {
             }
         }
 
-        if let Some(ref sources) = query.source_filter {
-            if !sources.is_empty() {
+        if let Some(ref sources) = query.source_filter
+            && !sources.is_empty() {
                 let placeholders: Vec<String> = sources
                     .iter()
                     .enumerate()
@@ -654,7 +654,6 @@ impl MemoryStore for SqliteMemoryStore {
                     binds.push(Box::new(source_as_persisted(*s).to_string()));
                 }
             }
-        }
 
         if let Some(layer) = query.layer_filter {
             where_parts.push(format!("layer = ?{}", binds.len() + 1));

@@ -8,8 +8,8 @@
 //!
 //! Phase 3 통합 — 정규식 프리필터 + 임베딩 변환식:
 //!   - utterance → Prefilter.classify()
-//!       Some(hit): hit.p_s_default 사용, sign/magnitude 모두 hit값 (expected 무시, D1=C/D3=A)
-//!       None: PadAnalyzer 실측 P_S + expected_sign 사용 (기존 경로)
+//!     - Some(hit): hit.p_s_default 사용, sign/magnitude 모두 hit값 (expected 무시, D1=C/D3=A)
+//!     - None: PadAnalyzer 실측 P_S + expected_sign 사용 (기존 경로)
 //!   - 목표: 62% (run06 baseline) → Phase 3 적용 후 정확도 측정
 //!
 //! Phase 2.5 Calibration: coef 0.5/1.0/1.5 + bin 0.15/0.4 (PadAnalyzer 실측 ±0.0~0.4 교정)
@@ -247,8 +247,8 @@ fn print_console_table(results: &[CaseResult]) {
     println!("Magnitude 벤치마크 결과 (Phase 3 — Prefilter + PadAnalyzer)");
     println!("{}", "=".repeat(145));
     println!(
-        "{:<4} {:<7} {:<11} {:<28} {:>7} {:>7} {:<8} {:<8} {}",
-        "id", "난이도", "subtype", "source", "P_S", "P_L", "기대", "예측", "발화"
+        "{:<4} {:<7} {:<11} {:<28} {:>7} {:>7} {:<8} {:<8} 발화",
+        "id", "난이도", "subtype", "source", "P_S", "P_L", "기대", "예측"
     );
     println!("{}", "-".repeat(145));
 
@@ -329,7 +329,7 @@ fn write_source_breakdown(out: &mut String, results: &[CaseResult]) {
             src, p, t, (p as f32 / t as f32) * 100.0
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_summary_section(out: &mut String, results: &[CaseResult]) {
@@ -361,7 +361,7 @@ fn write_summary_section(out: &mut String, results: &[CaseResult]) {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_failure_section(out: &mut String, results: &[CaseResult]) {
@@ -384,7 +384,7 @@ fn write_failure_section(out: &mut String, results: &[CaseResult]) {
             r.case.notes.replace('|', "\\|"),
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
@@ -408,7 +408,7 @@ fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
             exp, row[0], row[1], row[2]
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn count_by_difficulty(results: &[CaseResult], diff: &str) -> (usize, usize) {

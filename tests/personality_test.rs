@@ -655,8 +655,8 @@ fn test_derive_llm_parameters() {
     
     // Formula: temp = 0.8 + (1.0*0.1) + (1.0*0.05) - (-1.0*0.1) - (-1.0*0.05) = 0.8 + 0.1 + 0.05 + 0.1 + 0.05 = 1.1
     // Formula: top_p = 0.9 + (1.0*0.05) - (-1.0*0.05) = 0.9 + 0.05 + 0.05 = 1.0 (clamped to 1.0)
-    assert!((temp1 as f32 - 1.1).abs() < 0.001, "Expected temp 1.1, got {}", temp1);
-    assert!((top_p1 as f32 - 1.0).abs() < 0.001, "Expected top_p 1.0, got {}", top_p1);
+    assert!((temp1 - 1.1).abs() < 0.001, "Expected temp 1.1, got {}", temp1);
+    assert!((top_p1 - 1.0).abs() < 0.001, "Expected top_p 1.0, got {}", top_p1);
 
     // 2. Rigid profile: Low O, Low X, High C -> Expect low temperature
     let mut rigid_profile = HexacoProfile::neutral();
@@ -685,12 +685,12 @@ fn test_derive_llm_parameters() {
     
     // Formula: temp = 0.8 + (-1.0*0.1) + (-1.0*0.05) - (1.0*0.1) - (1.0*0.05) = 0.8 - 0.1 - 0.05 - 0.1 - 0.05 = 0.5
     // Formula: top_p = 0.9 + (-1.0*0.05) - (1.0*0.05) = 0.9 - 0.05 - 0.05 = 0.8
-    assert!((temp2 as f32 - 0.5).abs() < 0.001, "Expected temp 0.5, got {}", temp2);
-    assert!((top_p2 as f32 - 0.8).abs() < 0.001, "Expected top_p 0.8, got {}", top_p2);
+    assert!((temp2 - 0.5).abs() < 0.001, "Expected temp 0.5, got {}", temp2);
+    assert!((top_p2 - 0.8).abs() < 0.001, "Expected top_p 0.8, got {}", top_p2);
 
     // 3. Neutral profile
     let neutral_profile = HexacoProfile::neutral();
     let (temp3, top_p3) = neutral_profile.derive_llm_parameters();
-    assert!((temp3 as f32 - 0.8).abs() < 0.001, "Expected temp 0.8, got {}", temp3);
-    assert!((top_p3 as f32 - 0.9).abs() < 0.001, "Expected top_p 0.9, got {}", top_p3);
+    assert!((temp3 - 0.8).abs() < 0.001, "Expected temp 0.8, got {}", temp3);
+    assert!((top_p3 - 0.9).abs() < 0.001, "Expected top_p 0.9, got {}", top_p3);
 }

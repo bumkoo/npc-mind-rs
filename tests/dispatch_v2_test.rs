@@ -1203,6 +1203,6 @@ mod error_paths {
                 _ => None,
             })
             .expect("ApplyWorldEventRequested 발행됨");
-        assert!(req <= 1.0 && req >= 0.0, "significance가 [0,1]로 클램프됨 — got {req}");
+        assert!((0.0..=1.0).contains(&req), "significance가 [0,1]로 클램프됨 — got {req}");
     }
 }

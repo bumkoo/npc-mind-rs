@@ -50,12 +50,14 @@ fn betrayal_situation() -> SituationInput {
     }
 }
 
-/// DialogueOrchestrator + EventStore + ConversationPort mock 튜플 생성
-fn setup() -> (
+type SetupTuple = (
     DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<InMemoryEventStore>,
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
-) {
+);
+
+/// DialogueOrchestrator + EventStore + ConversationPort mock 튜플 생성
+fn setup() -> SetupTuple {
     let ctx = TestContext::new();
     let (dispatcher, store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 

@@ -523,7 +523,7 @@ async fn full_pipeline_appraise_stimulus_after_dialogue() {
     assert_eq!(resp.status(), StatusCode::OK);
     let stim_json = body_json(resp).await;
     assert!(!stim_json["emotions"].as_array().unwrap().is_empty());
-    assert_eq!(stim_json["beat_changed"].as_bool().unwrap(), false);
+    assert!(!stim_json["beat_changed"].as_bool().unwrap());
 
     // 3. after_dialogue
     let after_req = serde_json::json!({
@@ -589,7 +589,7 @@ async fn scene_info_empty_initially() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     let json = body_json(resp).await;
-    assert_eq!(json["has_scene"].as_bool().unwrap(), false);
+    assert!(!json["has_scene"].as_bool().unwrap());
     assert_eq!(json["focuses"].as_array().unwrap().len(), 0);
 }
 
@@ -820,7 +820,7 @@ async fn save_type_result_includes_turn_history() {
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(content["format"], "mind-studio/result");
     assert!(
-        content["turn_history"].as_array().unwrap().len() > 0,
+        !content["turn_history"].as_array().unwrap().is_empty(),
         "결과 파일에 turn_history가 있어야 함"
     );
 

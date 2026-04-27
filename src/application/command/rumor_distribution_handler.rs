@@ -50,20 +50,17 @@ impl RumorDistributionHandler {
     /// 수신자에게 노출될 콘텐츠 확정.
     fn resolve_content(&self, rumor_id: &str, content_version: &Option<String>) -> String {
         // 1) content_version — 해당 Distortion
-        if let Some(cv) = content_version {
-            if let Ok(Some(rumor)) = self.rumor_store.load(rumor_id) {
-                if let Some(d) = rumor.distortions().iter().find(|d| &d.id == cv) {
+        if let Some(cv) = content_version
+            && let Ok(Some(rumor)) = self.rumor_store.load(rumor_id)
+                && let Some(d) = rumor.distortions().iter().find(|d| &d.id == cv) {
                     return d.content.clone();
                 }
-            }
-        }
         // 2)(3) rumor의 topic이 있으면 Canonical 조회, 없으면 seed_content fallback
         if let Ok(Some(rumor)) = self.rumor_store.load(rumor_id) {
-            if let Some(topic) = &rumor.topic {
-                if let Ok(Some(canon)) = self.memory_store.get_canonical_by_topic(topic) {
+            if let Some(topic) = &rumor.topic
+                && let Ok(Some(canon)) = self.memory_store.get_canonical_by_topic(topic) {
                     return canon.content;
                 }
-            }
             if let Some(seed) = &rumor.seed_content {
                 return seed.clone();
             }

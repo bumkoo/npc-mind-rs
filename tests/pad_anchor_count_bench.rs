@@ -6,7 +6,6 @@
 
 #![cfg(feature = "embed")]
 
-use npc_mind::PadAnchorSource;
 use npc_mind::adapter::ort_embedder::OrtEmbedder;
 use npc_mind::adapter::file_anchor_source::{FileAnchorSource, AnchorFormat};
 use npc_mind::domain::pad::PadAnalyzer;
