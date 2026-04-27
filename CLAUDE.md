@@ -48,7 +48,7 @@ MIND_STUDIO_PORT=3000                         # 서버 포트 [mind-studio featu
 
 ### 빌드 주의사항 (Windows)
 
-- `--features embed`: ort(ONNX Runtime) 정적 링크를 위해 `.cargo/config.toml`에서 CRT를 동적으로 통일해야 함. 변경 후 `cargo clean` 필수.
+- `--features embed`: ort(ONNX Runtime) 정적 링크를 위해 `.cargo/config.toml`에서 CRT를 동적으로 통일해야 함. 변경 후 `cargo clean` 필수. CRT 통일을 위한 `CFLAGS=/MD` / `CXXFLAGS=/MD`는 셸/CI 환경변수로 직접 설정해야 한다 (Cargo `[env]`는 모든 타겟에 적용되어 Linux/macOS 빌드를 깨므로 config.toml에 두지 않는다).
 - `--features chat`: rig-core 기본 TLS 백엔드(`aws-lc-sys`)가 MSVC에서 `__builtin_bswap` 링크 실패. Cargo.toml에서 `default-features = false, features = ["reqwest-native-tls"]` 사용.
 - rig 0.33+ OpenAI provider는 기본 Responses API(`/v1/responses`) 사용. llama.cpp 등 로컬 서버는 Chat Completions만 지원하므로 `.completions_api()` 호출 필수.
 
