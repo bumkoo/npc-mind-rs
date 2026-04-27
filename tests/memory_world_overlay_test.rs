@@ -299,5 +299,5 @@ async fn significance_clamped_to_unit_range() {
     let EventPayload::ApplyWorldEventRequested { significance, .. } = req.payload else {
         panic!("unexpected payload");
     };
-    assert!(significance <= 1.0 && significance >= 0.0);
+    assert!((0.0..=1.0).contains(&significance));
 }

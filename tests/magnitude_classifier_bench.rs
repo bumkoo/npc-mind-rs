@@ -327,8 +327,8 @@ fn print_console_table(results: &[CaseResult]) {
     println!("강도 축 분류기 벤치마크 결과 (Phase 4, k-NN top-{})", K);
     println!("{}", "=".repeat(135));
     println!(
-        "{:<4} {:<7} {:<11} {:<8} {:<8} {:>6} {:>6} {:>6} {:<8} {}",
-        "id", "난이도", "subtype", "기대", "예측", "W", "N", "S", "margin", "발화"
+        "{:<4} {:<7} {:<11} {:<8} {:<8} {:>6} {:>6} {:>6} {:<8} 발화",
+        "id", "난이도", "subtype", "기대", "예측", "W", "N", "S", "margin"
     );
     println!("{}", "-".repeat(135));
 
@@ -418,7 +418,7 @@ fn write_summary_section(out: &mut String, results: &[CaseResult]) {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
@@ -439,7 +439,7 @@ fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
             exp, row[0], row[1], row[2]
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_failure_section(out: &mut String, results: &[CaseResult]) {
@@ -463,7 +463,7 @@ fn write_failure_section(out: &mut String, results: &[CaseResult]) {
             r.case.notes.replace('|', "\\|"),
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_margin_distribution(out: &mut String, results: &[CaseResult]) {
@@ -489,7 +489,7 @@ fn write_margin_distribution(out: &mut String, results: &[CaseResult]) {
         };
         out.push_str(&format!("| {} | {} | {} | {} |\n", label, total, passed, rate));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn count_by_difficulty(results: &[CaseResult], diff: &str) -> (usize, usize) {

@@ -3,6 +3,8 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=-crt-static"]
 
-[env]
-CFLAGS = "/MD"
-CXXFLAGS = "/MD"
+# Windows MSVC 빌드 시 CRT 통일을 위해 셸/CI에서 직접 설정해야 한다:
+#   set CFLAGS=/MD
+#   set CXXFLAGS=/MD
+# Cargo의 [env]는 모든 타겟에 적용되어 Linux/macOS 빌드(cc/gcc)를 깨므로
+# 글로벌로 두지 않는다.

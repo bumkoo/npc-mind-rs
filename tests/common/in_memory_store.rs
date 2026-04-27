@@ -47,7 +47,7 @@ impl MemoryStore for InMemoryMemoryStore {
         let entries = self.entries.read().unwrap();
         let mut scored: Vec<_> = entries
             .iter()
-            .filter(|(e, emb)| emb.is_some() && npc_id.map_or(true, |id| e.legacy_npc_id() == id))
+            .filter(|(e, emb)| emb.is_some() && npc_id.is_none_or(|id| e.legacy_npc_id() == id))
             .map(|(entry, emb)| {
                 let score = cosine_sim(query_embedding, emb.as_ref().unwrap());
                 MemoryResult {
@@ -74,7 +74,7 @@ impl MemoryStore for InMemoryMemoryStore {
             .iter()
             .filter(|(e, _)| {
                 e.content.to_lowercase().contains(&keyword_lower)
-                    && npc_id.map_or(true, |id| e.legacy_npc_id() == id)
+                    && npc_id.is_none_or(|id| e.legacy_npc_id() == id)
             })
             .take(limit)
             .map(|(entry, _)| MemoryResult {

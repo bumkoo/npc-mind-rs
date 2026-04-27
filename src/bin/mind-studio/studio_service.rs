@@ -43,7 +43,7 @@ impl StudioService {
 
             // trace 수집기 초기화 (이전 호출 잔여 entries 제거)
             collector.take_entries();
-            let mut result = crate::domain_sync::dispatch_appraise(state, &mut *inner, req.clone()).await?;
+            let mut result = crate::domain_sync::dispatch_appraise(state, &mut inner, req.clone()).await?;
             // dispatch 중 수집된 tracing 이벤트를 trace로 첨부
             result.trace = collector.take_entries();
 
@@ -52,7 +52,7 @@ impl StudioService {
 
             // 턴 기록 통합 저장
             Self::record_turn(
-                &mut *inner,
+                &mut inner,
                 &format!("appraise ({}→{})", req.npc_id, req.partner_id),
                 "appraise",
                 &req,
@@ -78,7 +78,7 @@ impl StudioService {
             let collector = state.collector.clone();
 
             collector.take_entries();
-            let mut result = crate::domain_sync::dispatch_stimulus(state, &mut *inner, req.clone()).await?;
+            let mut result = crate::domain_sync::dispatch_stimulus(state, &mut inner, req.clone()).await?;
             result.trace = collector.take_entries();
 
             let fmt = state.formatter.read().await;
@@ -94,7 +94,7 @@ impl StudioService {
             };
 
             // 턴 기록 통합 저장
-            Self::record_turn(&mut *inner, &label, "stimulus", &req, &response, None);
+            Self::record_turn(&mut inner, &label, "stimulus", &req, &response, None);
             response
         };
         state.emit(StateEvent::StimulusApplied);
@@ -111,11 +111,11 @@ impl StudioService {
             let mut inner = state.inner.write().await;
 
             let response =
-                crate::domain_sync::dispatch_end_dialogue(state, &mut *inner, req.clone()).await?;
+                crate::domain_sync::dispatch_end_dialogue(state, &mut inner, req.clone()).await?;
 
             // 턴 기록 통합 저장
             Self::record_turn(
-                &mut *inner,
+                &mut inner,
                 &format!("after_dialogue ({}→{})", req.npc_id, req.partner_id),
                 "after_dialogue",
                 &req,
@@ -227,7 +227,7 @@ impl StudioService {
         // 실패해도 시나리오 로드 자체는 성공해야 하므로 에러는 로그만.
         if let Err(e) = crate::domain_sync::dispatch_start_scene(
             state,
-            &mut *inner,
+            &mut inner,
             scene_req.clone(),
         )
         .await
@@ -307,7 +307,7 @@ impl StudioService {
             .map(|f| f.id.clone());
 
         collector.take_entries();
-        let mut result = crate::domain_sync::dispatch_appraise(state, &mut *inner, req.appraise.clone()).await?;
+        let mut result = crate::domain_sync::dispatch_appraise(state, &mut inner, req.appraise.clone()).await?;
         result.trace = collector.take_entries();
 
         let fmt = state.formatter.read().await;
@@ -350,7 +350,7 @@ impl StudioService {
         inner.script_cursor = 0;
 
         // 턴 기록 통합 저장
-        Self::record_turn(&mut *inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
+        Self::record_turn(&mut inner, &format!("chat/start ({})", req.session_id), "chat_start", &req, &response, Some(llm_model_info.clone()));
 
         drop(inner);
         state.emit(StateEvent::ChatStarted);
@@ -472,7 +472,7 @@ impl StudioService {
         let fmt = state.formatter.read().await;
         let (stim_resp, changed) = if let Some(pad) = pad {
             let resp = Self::apply_stimulus_with_pad(
-                state, &mut *inner, &state.collector, &**fmt, req, pad,
+                state, &mut inner, &state.collector, &**fmt, req, pad,
             ).await?;
             let changed = resp.beat_changed;
             if changed {
@@ -526,7 +526,7 @@ impl StudioService {
             None => serde_json::json!({ "npc_response": &npc_response }),
         };
         Self::record_turn(
-            &mut *inner,
+            &mut inner,
             &format!("chat/message [{}→{}]{}", req.partner_id, req.npc_id, label_suffix),
             "chat_message",
             req,

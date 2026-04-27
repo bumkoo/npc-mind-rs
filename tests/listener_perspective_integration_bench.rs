@@ -244,8 +244,8 @@ fn print_console_table(results: &[CaseResult]) {
     println!("Listener-perspective 통합 벤치 (Phase 7 Step 3 — EmbeddedConverter 엔드투엔드)");
     println!("{}", "=".repeat(160));
     println!(
-        "{:<4} {:<7} {:<11} {:<32} {:>7} {:>7} {:<6} {:<8} {:<8} {}",
-        "id", "난이도", "subtype", "path", "P_S", "P_L", "기대", "meta", "bin", "발화"
+        "{:<4} {:<7} {:<11} {:<32} {:>7} {:>7} {:<6} {:<8} {:<8} 발화",
+        "id", "난이도", "subtype", "path", "P_S", "P_L", "기대", "meta", "bin"
     );
     println!("{}", "-".repeat(160));
 
@@ -297,10 +297,8 @@ fn generate_report(meta: &RunMeta, results: &[CaseResult]) -> String {
         "# Listener-perspective 통합 벤치 — {}\n\n",
         meta.run_id
     ));
-    out.push_str(&format!(
-        "**주 판정**: `result.meta.magnitude == expected` (A안)\n\n\
-         **병기 지표**: `bin(|result.listener_pad.pleasure|)` (C안)\n\n"
-    ));
+    out.push_str("**주 판정**: `result.meta.magnitude == expected` (A안)\n\n\
+         **병기 지표**: `bin(|result.listener_pad.pleasure|)` (C안)\n\n");
 
     write_summary_section(&mut out, results);
     write_path_breakdown(&mut out, results);
@@ -348,7 +346,7 @@ fn write_summary_section(out: &mut String, results: &[CaseResult]) {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_path_breakdown(out: &mut String, results: &[CaseResult]) {
@@ -369,7 +367,7 @@ fn write_path_breakdown(out: &mut String, results: &[CaseResult]) {
             path, p, t, (p as f32 / t as f32) * 100.0
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_failure_section(out: &mut String, results: &[CaseResult]) {
@@ -393,7 +391,7 @@ fn write_failure_section(out: &mut String, results: &[CaseResult]) {
             r.case.notes.replace('|', "\\|"),
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
@@ -417,7 +415,7 @@ fn write_confusion_matrix(out: &mut String, results: &[CaseResult]) {
             exp, row[0], row[1], row[2]
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_bin_vs_meta_diff(out: &mut String, results: &[CaseResult]) {
@@ -451,7 +449,7 @@ fn write_bin_vs_meta_diff(out: &mut String, results: &[CaseResult]) {
             r.expected_mag.as_str(),
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 // ============================================================

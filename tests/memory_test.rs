@@ -118,7 +118,7 @@ fn dialogue_turn_completed_event_works() {
         },
     );
 
-    store.append(&[event.clone()]);
+    store.append(std::slice::from_ref(&event));
     bus.publish(&event);
 
     let events = store.get_all_events();

@@ -80,85 +80,37 @@ pub mod inline {
     pub const SCENE_CONSOLIDATION: i32 = 60;
 }
 
-#[cfg(test)]
-mod invariants {
-    use super::*;
+// 컴파일타임 invariants — 다른 모듈이 의존하는 핸들러 실행 순서가
+// 우발적으로 깨지지 않도록 빌드 시점에 검증한다 (`#[cfg(test)]` 불필요).
+const _: () = {
+    // 감정 평가는 가이드 생성보다 먼저 실행된다.
+    assert!(transactional::EMOTION_APPRAISAL < transactional::GUIDE_GENERATION);
+    // 자극 적용도 가이드보다 먼저.
+    assert!(transactional::STIMULUS_APPLICATION < transactional::GUIDE_GENERATION);
+    // 감사 단계는 관계 갱신 이후.
+    assert!(transactional::AUDIT > transactional::RELATIONSHIP_UPDATE);
+    // Scene 시작은 감정 평가보다 먼저 (Scene이 활성된 뒤 평가).
+    assert!(transactional::SCENE_START < transactional::EMOTION_APPRAISAL);
+    // Information telling: 관계 갱신 이후, 감사 이전.
+    assert!(transactional::INFORMATION_TELLING > transactional::RELATIONSHIP_UPDATE);
+    assert!(transactional::INFORMATION_TELLING < transactional::AUDIT);
+    // Rumor spread: telling 이후, 감사 이전.
+    assert!(transactional::RUMOR_SPREAD > transactional::INFORMATION_TELLING);
+    assert!(transactional::RUMOR_SPREAD < transactional::AUDIT);
+    // World overlay (§6.5 B6): Guide 직후, Relationship 이전.
+    assert!(transactional::WORLD_OVERLAY > transactional::GUIDE_GENERATION);
+    assert!(transactional::WORLD_OVERLAY < transactional::RELATIONSHIP_UPDATE);
 
-    #[test]
-    fn emotion_appraisal_runs_before_guide_generation() {
-        assert!(transactional::EMOTION_APPRAISAL < transactional::GUIDE_GENERATION);
-    }
-
-    #[test]
-    fn stimulus_application_runs_before_guide_generation() {
-        assert!(transactional::STIMULUS_APPLICATION < transactional::GUIDE_GENERATION);
-    }
-
-    #[test]
-    fn audit_runs_after_relationship_update() {
-        assert!(transactional::AUDIT > transactional::RELATIONSHIP_UPDATE);
-    }
-
-    #[test]
-    fn all_inline_priorities_are_positive() {
-        assert!(inline::EMOTION_PROJECTION > 0);
-        assert!(inline::RELATIONSHIP_PROJECTION > 0);
-        assert!(inline::SCENE_PROJECTION > 0);
-    }
-
-    #[test]
-    fn scene_start_runs_before_emotion_appraisal() {
-        assert!(transactional::SCENE_START < transactional::EMOTION_APPRAISAL);
-    }
-
-    #[test]
-    fn information_telling_runs_after_relationship_update() {
-        assert!(transactional::INFORMATION_TELLING > transactional::RELATIONSHIP_UPDATE);
-    }
-
-    #[test]
-    fn information_telling_runs_before_audit() {
-        assert!(transactional::INFORMATION_TELLING < transactional::AUDIT);
-    }
-
-    #[test]
-    fn rumor_spread_runs_after_information_telling() {
-        assert!(transactional::RUMOR_SPREAD > transactional::INFORMATION_TELLING);
-    }
-
-    #[test]
-    fn rumor_spread_runs_before_audit() {
-        assert!(transactional::RUMOR_SPREAD < transactional::AUDIT);
-    }
-
-    #[test]
-    fn memory_ingestion_runs_after_scene_projection() {
-        // Projection 3종보다 뒤에서 실행되어야 쿼리 일관성 보장.
-        assert!(inline::MEMORY_INGESTION > inline::SCENE_PROJECTION);
-    }
-
-    #[test]
-    fn world_overlay_runs_after_guide_before_relationship() {
-        // §6.5 B6: Guide 직후, Relationship 이전.
-        assert!(transactional::WORLD_OVERLAY > transactional::GUIDE_GENERATION);
-        assert!(transactional::WORLD_OVERLAY < transactional::RELATIONSHIP_UPDATE);
-    }
-
-    #[test]
-    fn world_overlay_ingestion_runs_after_memory_ingestion() {
-        // MemoryEntry 생성 → supersede 순서 보장.
-        assert!(inline::WORLD_OVERLAY_INGESTION > inline::MEMORY_INGESTION);
-    }
-
-    #[test]
-    fn relationship_memory_runs_after_world_overlay_ingestion() {
-        // World 오버레이 Canonical이 먼저 생성된 뒤 관계 기억에 반영될 수 있게.
-        assert!(inline::RELATIONSHIP_MEMORY > inline::WORLD_OVERLAY_INGESTION);
-    }
-
-    #[test]
-    fn scene_consolidation_runs_last() {
-        // Layer A→B 흡수는 모든 Layer A 엔트리 인덱싱 이후에 돌아야 놓치는 것이 없다.
-        assert!(inline::SCENE_CONSOLIDATION > inline::RELATIONSHIP_MEMORY);
-    }
-}
+    // Inline projection priorities는 모두 양수.
+    assert!(inline::EMOTION_PROJECTION > 0);
+    assert!(inline::RELATIONSHIP_PROJECTION > 0);
+    assert!(inline::SCENE_PROJECTION > 0);
+    // Memory ingestion은 Projection 3종 이후 (쿼리 일관성).
+    assert!(inline::MEMORY_INGESTION > inline::SCENE_PROJECTION);
+    // World overlay ingestion: MemoryEntry 생성 → supersede 순서 보장.
+    assert!(inline::WORLD_OVERLAY_INGESTION > inline::MEMORY_INGESTION);
+    // Relationship memory: World 오버레이 Canonical 이후.
+    assert!(inline::RELATIONSHIP_MEMORY > inline::WORLD_OVERLAY_INGESTION);
+    // Scene consolidation은 마지막 (Layer A→B 흡수가 모든 인덱싱 이후 돌도록).
+    assert!(inline::SCENE_CONSOLIDATION > inline::RELATIONSHIP_MEMORY);
+};

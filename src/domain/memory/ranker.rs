@@ -159,13 +159,12 @@ fn cluster_by_embedding(candidates: Vec<Candidate>, threshold: f32) -> Vec<Vec<C
             Some(emb) => {
                 let mut placed = false;
                 for cluster in clusters.iter_mut() {
-                    if let Some(centroid) = cluster.first().and_then(|x| x.embedding.as_ref()) {
-                        if cosine(emb, centroid) >= threshold {
+                    if let Some(centroid) = cluster.first().and_then(|x| x.embedding.as_ref())
+                        && cosine(emb, centroid) >= threshold {
                             cluster.push(c.clone());
                             placed = true;
                             break;
                         }
-                    }
                 }
                 if !placed {
                     clusters.push(vec![c]);

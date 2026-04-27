@@ -12,7 +12,10 @@ use crate::domain::memory::{
     MemoryEntry, MemoryLayer, MemoryResult, MemoryScope, MemorySource, MemoryType, Provenance,
 };
 use crate::ports::{MemoryError, MemoryQuery, MemoryScopeFilter, MemoryStore};
-use rusqlite::{ffi::sqlite3_auto_extension, params, Connection};
+use rusqlite::ffi::{
+    sqlite3, sqlite3_api_routines, sqlite3_auto_extension,
+};
+use rusqlite::{params, Connection};
 use sqlite_vec::sqlite3_vec_init;
 use std::sync::{Mutex, Once};
 use zerocopy::AsBytes;
@@ -26,14 +29,24 @@ const SCHEMA_VERSION: i64 = 3;
 /// sqlite-vec auto-extension 등록은 프로세스 전역 1회만 수행.
 static VEC_INIT: Once = Once::new();
 
+/// `sqlite3_auto_extension`이 요구하는 함수 포인터 시그니처.
+/// sqlite-vec의 `sqlite3_vec_init`을 이 형태로 transmute해 등록한다.
+type SqliteExtensionInit = unsafe extern "C" fn(
+    *mut sqlite3,
+    *mut *mut i8,
+    *const sqlite3_api_routines,
+) -> i32;
+
 fn ensure_vec_extension_loaded() {
     VEC_INIT.call_once(|| {
         // sqlite3_vec_init을 auto-extension으로 등록하면
         // 이후 모든 Connection::open() 호출에서 vec0 모듈이 로드된다.
+        // transmute 시그니처를 명시해 sqlite-vec/rusqlite-ffi 시그니처 drift를
+        // 컴파일러가 잡아내도록 한다.
         unsafe {
-            sqlite3_auto_extension(Some(std::mem::transmute(
-                sqlite3_vec_init as *const (),
-            )));
+            let init: SqliteExtensionInit =
+                std::mem::transmute(sqlite3_vec_init as *const ());
+            sqlite3_auto_extension(Some(init));
         }
     });
 }
@@ -233,10 +246,8 @@ impl SqliteMemoryStore {
                     Ok((id, format!("personal:{npc_id}"), emb))
                 })
                 .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-            for r in rows {
-                if let Ok(v) = r {
-                    migrated_vecs.push(v);
-                }
+            for v in rows.flatten() {
+                migrated_vecs.push(v);
             }
         }
 
@@ -540,7 +551,7 @@ impl MemoryStore for SqliteMemoryStore {
 
         let results = results
             .into_iter()
-            .filter(|e| npc_id.map_or(true, |id| e.legacy_npc_id() == id))
+            .filter(|e| npc_id.is_none_or(|id| e.legacy_npc_id() == id))
             .take(limit)
             .map(|entry| MemoryResult {
                 entry,
@@ -631,8 +642,8 @@ impl MemoryStore for SqliteMemoryStore {
             }
         }
 
-        if let Some(ref sources) = query.source_filter {
-            if !sources.is_empty() {
+        if let Some(ref sources) = query.source_filter
+            && !sources.is_empty() {
                 let placeholders: Vec<String> = sources
                     .iter()
                     .enumerate()
@@ -643,7 +654,6 @@ impl MemoryStore for SqliteMemoryStore {
                     binds.push(Box::new(source_as_persisted(*s).to_string()));
                 }
             }
-        }
 
         if let Some(layer) = query.layer_filter {
             where_parts.push(format!("layer = ?{}", binds.len() + 1));

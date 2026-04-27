@@ -5,6 +5,7 @@ use super::dto::{FocusInfoItem, SceneInfoResult};
 ///
 /// Mind Studio가 현재 활성 Scene 상태를 REST 응답용 DTO로 변환할 때 사용한다.
 /// trigger 평가는 도메인 `Scene::check_trigger`를 직접 호출하므로 이 서비스 책임 아님.
+#[derive(Default)]
 pub struct SceneService;
 
 impl SceneService {

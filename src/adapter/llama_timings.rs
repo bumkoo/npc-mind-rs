@@ -275,11 +275,10 @@ impl futures::Stream for TimingsCapturingStream {
                             continue;
                         }
                         // timings 필드가 포함된 JSON인지 빠르게 확인 후 파싱
-                        if data.contains("\"timings\"") {
-                            if let Ok(envelope) =
+                        if data.contains("\"timings\"")
+                            && let Ok(envelope) =
                                 serde_json::from_str::<StreamingTimingsEnvelope>(data)
-                            {
-                                if envelope.timings.is_some() {
+                                && envelope.timings.is_some() {
                                     let store = this.timings_store.clone();
                                     let timings = envelope.timings;
                                     // 비동기 write를 위해 spawn — poll에서 .await 불가
@@ -287,8 +286,6 @@ impl futures::Stream for TimingsCapturingStream {
                                         *store.write().await = timings;
                                     });
                                 }
-                            }
-                        }
                     }
                 }
 

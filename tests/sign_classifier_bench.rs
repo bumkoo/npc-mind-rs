@@ -317,8 +317,8 @@ fn print_console_table(results: &[CaseResult]) {
     println!("부호 축 분류기 벤치마크 결과");
     println!("{}", "=".repeat(110));
     println!(
-        "{:<4} {:<7} {:<11} {:<7} {:<7} {:<8} {}",
-        "id", "난이도", "subtype", "기대", "예측", "margin", "발화"
+        "{:<4} {:<7} {:<11} {:<7} {:<7} {:<8} 발화",
+        "id", "난이도", "subtype", "기대", "예측", "margin"
     );
     println!("{}", "-".repeat(110));
 
@@ -396,7 +396,7 @@ fn write_summary_section(out: &mut String, results: &[CaseResult]) {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 
     out.push_str("### 부호별\n\n");
     out.push_str("| 부호 | 통과 | 전체 | 정확도 |\n");
@@ -410,7 +410,7 @@ fn write_summary_section(out: &mut String, results: &[CaseResult]) {
             ));
         }
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_failure_section(out: &mut String, results: &[CaseResult]) {
@@ -436,7 +436,7 @@ fn write_failure_section(out: &mut String, results: &[CaseResult]) {
             r.case.notes.replace('|', "\\|"),
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn write_margin_distribution(out: &mut String, results: &[CaseResult]) {
@@ -464,7 +464,7 @@ fn write_margin_distribution(out: &mut String, results: &[CaseResult]) {
         };
         out.push_str(&format!("| {} | {} | {} | {} |\n", label, total, passed, rate));
     }
-    out.push_str("\n");
+    out.push('\n');
 }
 
 fn count_by_difficulty(results: &[CaseResult], diff: &str) -> (usize, usize) {

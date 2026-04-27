@@ -1051,7 +1051,7 @@ mod error_paths {
     #[test]
     fn max_events_per_command_constant_is_positive() {
         // budget 가드 상수가 0/음수로 잘못 변경되어 테스트가 false-pass하는 것 방지
-        assert!(MAX_EVENTS_PER_COMMAND > 0);
+        const { assert!(MAX_EVENTS_PER_COMMAND > 0) };
     }
 
     // ----- HandlerFailed + commit 격리 -----
@@ -1203,6 +1203,6 @@ mod error_paths {
                 _ => None,
             })
             .expect("ApplyWorldEventRequested 발행됨");
-        assert!(req <= 1.0 && req >= 0.0, "significance가 [0,1]로 클램프됨 — got {req}");
+        assert!((0.0..=1.0).contains(&req), "significance가 [0,1]로 클램프됨 — got {req}");
     }
 }

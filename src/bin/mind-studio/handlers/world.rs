@@ -33,7 +33,7 @@ pub async fn apply_event(
     };
 
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_apply_world_event(&state, &mut *inner, req).await?;
+    let output = domain_sync::dispatch_apply_world_event(&state, &mut inner, req).await?;
 
     let world_event_seen = output
         .events

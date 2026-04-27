@@ -116,8 +116,8 @@ impl EventHandler for StimulusPolicy {
         // 이전에는 `ctx.repo.get_scene()` (단일 Scene legacy 경로)를 썼으나 `last_scene_id`
         // 가 다른 Scene을 가리킬 때 **잘못된 Scene의 trigger**를 검사하는 multi-scene 버그.
         let scene_id = SceneId::new(npc_id, partner_id);
-        if let Some(scene) = ctx.repo.get_scene_by_id(&scene_id) {
-            if let Some(focus) = scene.check_trigger(&stimulated).cloned() {
+        if let Some(scene) = ctx.repo.get_scene_by_id(&scene_id)
+            && let Some(focus) = scene.check_trigger(&stimulated).cloned() {
                 let from_focus_id = scene.active_focus_id().map(|s| s.to_string());
                 let situation = focus.to_situation().map_err(|e| {
                     HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
@@ -176,7 +176,6 @@ impl EventHandler for StimulusPolicy {
                     follow_up_events: vec![stimulus_event, beat_event],
                 });
             }
-        }
 
         // Beat 전환 없음
         ctx.shared.emotion_state = Some(stimulated.clone());

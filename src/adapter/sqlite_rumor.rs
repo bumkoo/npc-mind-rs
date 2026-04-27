@@ -268,11 +268,10 @@ impl RumorStore for SqliteRumorStore {
         )?;
         let mut out = Vec::new();
         for id in ids {
-            if let Some(r) = load_internal(&conn, &id)? {
-                if reach_overlaps(reach, &r.reach_policy) {
+            if let Some(r) = load_internal(&conn, &id)?
+                && reach_overlaps(reach, &r.reach_policy) {
                     out.push(r);
                 }
-            }
         }
         Ok(out)
     }

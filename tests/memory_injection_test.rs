@@ -75,13 +75,13 @@ fn seed_store_with_memories(
     store.index(e2, None).unwrap();
 }
 
-fn setup_with_memory(
-    attach_memory: bool,
-) -> (
+type SetupWithMemoryTuple = (
     DialogueOrchestrator<InMemoryRepository, MockConversationPort>,
     Arc<std::sync::Mutex<Vec<ChatCall>>>,
     Arc<common::in_memory_store::InMemoryMemoryStore>,
-) {
+);
+
+fn setup_with_memory(attach_memory: bool) -> SetupWithMemoryTuple {
     let ctx = TestContext::new();
     let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
 
@@ -93,7 +93,7 @@ fn setup_with_memory(
     let calls = chat.calls.clone();
 
     let memory_store = Arc::new(common::in_memory_store::InMemoryMemoryStore::new());
-    seed_store_with_memories(&*memory_store, "mu_baek");
+    seed_store_with_memories(&memory_store, "mu_baek");
 
     let mut agent = DialogueOrchestrator::new(dispatcher, chat, formatter);
     if attach_memory {

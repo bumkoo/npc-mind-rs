@@ -41,7 +41,7 @@ fn counterfactual_gratitude_positive() {
         "구명은인 없었으면 목숨을 잃을 뻔하였소.",
     ];
     for u in cases {
-        let hit = pf.classify(u).expect(&format!("매칭 실패: {}", u));
+        let hit = pf.classify(u).unwrap_or_else(|| panic!("매칭 실패: {}", u));
         assert_eq!(hit.matched_category, "counterfactual_gratitude", "{}", u);
         assert_eq!(hit.sign, Sign::Keep);
         assert_eq!(hit.magnitude, Magnitude::Strong);
@@ -83,7 +83,7 @@ fn negation_praise_positive() {
         "비할 데 없는 솜씨요.",
     ];
     for u in cases {
-        let hit = pf.classify(u).expect(&format!("매칭 실패: {}", u));
+        let hit = pf.classify(u).unwrap_or_else(|| panic!("매칭 실패: {}", u));
         assert_eq!(hit.matched_category, "negation_praise", "{}", u);
         assert_eq!(hit.sign, Sign::Keep);
         assert_eq!(hit.magnitude, Magnitude::Strong);
@@ -124,7 +124,7 @@ fn wuxia_criticism_positive() {
         "목이 달아날 줄 알라.",
     ];
     for u in cases {
-        let hit = pf.classify(u).expect(&format!("매칭 실패: {}", u));
+        let hit = pf.classify(u).unwrap_or_else(|| panic!("매칭 실패: {}", u));
         assert_eq!(hit.matched_category, "wuxia_criticism", "{}", u);
         assert_eq!(hit.sign, Sign::Keep);
         assert_eq!(hit.magnitude, Magnitude::Strong);
@@ -162,7 +162,7 @@ fn sarcasm_interjection_positive() {
         "참으로 훌륭하기도 하셔라.",
     ];
     for u in cases {
-        let hit = pf.classify(u).expect(&format!("매칭 실패: {}", u));
+        let hit = pf.classify(u).unwrap_or_else(|| panic!("매칭 실패: {}", u));
         assert_eq!(hit.matched_category, "sarcasm_interjection", "{}", u);
         assert_eq!(hit.sign, Sign::Invert);
         assert_eq!(hit.magnitude, Magnitude::Strong);

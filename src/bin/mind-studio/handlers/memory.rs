@@ -209,7 +209,7 @@ pub async fn tell(
     Json(req): Json<TellInformationRequest>,
 ) -> Result<Json<TellResponse>, AppError> {
     let mut inner = state.inner.write().await;
-    let output = domain_sync::dispatch_tell_information(&state, &mut *inner, req).await?;
+    let output = domain_sync::dispatch_tell_information(&state, &mut inner, req).await?;
 
     let listeners_informed = output
         .events

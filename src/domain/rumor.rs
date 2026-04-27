@@ -236,19 +236,17 @@ impl Rumor {
     /// 새 홉 추가 — I-RU-1 (단조 증가) + content_version 참조 무결성 강제.
     pub fn add_hop(&mut self, hop: RumorHop) -> Result<(), RumorError> {
         // content_version이 있으면 distortions에 실존해야 한다 (참조 무결성).
-        if let Some(cv) = &hop.content_version {
-            if !self.distortions.iter().any(|d| &d.id == cv) {
+        if let Some(cv) = &hop.content_version
+            && !self.distortions.iter().any(|d| &d.id == cv) {
                 return Err(RumorError::HopContentVersionUnknown { cv: cv.clone() });
             }
-        }
-        if let Some(last) = self.hops.last() {
-            if hop.hop_index <= last.hop_index {
+        if let Some(last) = self.hops.last()
+            && hop.hop_index <= last.hop_index {
                 return Err(RumorError::HopIndexNotMonotonic {
                     last: last.hop_index,
                     new: hop.hop_index,
                 });
             }
-        }
         // 동일 hop_index 중복 방지 (last 이후 추가되는 hop이라도 중간 삽입 시 걸러냄).
         if self.hops.iter().any(|h| h.hop_index == hop.hop_index) {
             return Err(RumorError::DuplicateHopIndex {
@@ -318,14 +316,13 @@ impl Rumor {
         // I-RU-1: hop_index 단조성.
         let mut prev: Option<u32> = None;
         for h in &self.hops {
-            if let Some(p) = prev {
-                if h.hop_index <= p {
+            if let Some(p) = prev
+                && h.hop_index <= p {
                     return Err(RumorError::HopIndexNotMonotonic {
                         last: p,
                         new: h.hop_index,
                     });
                 }
-            }
             prev = Some(h.hop_index);
         }
 
@@ -355,11 +352,10 @@ impl Rumor {
 
         // RumorHop.content_version 참조 무결성.
         for h in &self.hops {
-            if let Some(cv) = &h.content_version {
-                if !self.distortions.iter().any(|d| &d.id == cv) {
+            if let Some(cv) = &h.content_version
+                && !self.distortions.iter().any(|d| &d.id == cv) {
                     return Err(RumorError::HopContentVersionUnknown { cv: cv.clone() });
                 }
-            }
         }
 
         // 고아 Rumor는 seed_content 필수.
@@ -379,7 +375,12 @@ impl Rumor {
     ///
     /// `SqliteRumorStore`는 `embed` feature 전용이므로 no-features 빌드에서는 호출자가
     /// 테스트 외에는 없다 — dead_code 경고를 억제한다.
+    ///
+    /// 9개 인자는 `Rumor` 구조체 필드와 1:1 매핑되는 저장소 hydration 전용이라
+    /// 별도 `Parts` 구조체로 묶지 않는다 (필드 중복 선언만 늘어남) —
+    /// `clippy::too_many_arguments` 임계(8)를 의도적으로 넘긴다.
     #[cfg_attr(not(feature = "embed"), allow(dead_code))]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn from_parts(
         id: String,
         topic: Option<String>,

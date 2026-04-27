@@ -401,7 +401,7 @@ async fn sse_스트림_timings_없으면_none_유지() {
 
     use futures::StreamExt;
     let mut stream = response.into_body();
-    while let Some(_) = stream.next().await {}
+    while stream.next().await.is_some() {}
 
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 

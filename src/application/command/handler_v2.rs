@@ -605,10 +605,12 @@ mod tests {
     #[test]
     fn handler_shared_clear_signals_independent_of_optional_state() {
         // clear_emotion_for/clear_scene 시그널은 set_*과 독립적으로 설정 가능
-        let mut s = HandlerShared::default();
-        s.emotion_state = Some(EmotionState::new());
-        s.clear_emotion_for = Some("a".into());
-        s.clear_scene = true;
+        let s = HandlerShared {
+            emotion_state: Some(EmotionState::new()),
+            clear_emotion_for: Some("a".into()),
+            clear_scene: true,
+            ..HandlerShared::default()
+        };
         // 두 그룹이 독립적인 필드 — 동시 설정해도 충돌 없음 (Dispatcher가 save 후 clear 적용)
         assert!(s.emotion_state.is_some());
         assert_eq!(s.clear_emotion_for.as_deref(), Some("a"));
