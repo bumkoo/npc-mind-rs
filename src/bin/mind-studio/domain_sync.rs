@@ -88,9 +88,9 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
     }
     let npc_ids: Vec<String> = inner.npcs.keys().cloned().collect();
     for id in npc_ids {
-        if !inner.emotions.contains_key(&id) {
-            if let Some(state) = repo.get_emotion_state(&id) {
-                inner.emotions.insert(id, state);
+        if let std::collections::hash_map::Entry::Vacant(e) = inner.emotions.entry(id) {
+            if let Some(state) = repo.get_emotion_state(e.key()) {
+                e.insert(state);
             }
         }
     }

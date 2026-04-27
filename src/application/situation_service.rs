@@ -7,6 +7,7 @@ use super::error::MindServiceError;
 ///
 /// 저장소에서 관계 정보(modifiers)나 오브젝트 설명 등을 조회하여
 /// DTO의 변환 메서드에 주입합니다.
+#[derive(Default)]
 pub struct SituationService;
 
 /// event/action/object 변환에 필요한 저장소 조회 결과

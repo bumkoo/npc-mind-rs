@@ -126,7 +126,7 @@ pub struct EventMetadata {
 /// Step A에서는 모든 발행 지점이 `Unspecified`로 고정된다. Step C/D에서 InformationPolicy/
 /// WorldOverlayPolicy 추가 시 정식 variant로 채워진다. Memory 컨텍스트의
 /// `RelationshipMemoryPolicy`가 이 값으로 content·source·topic을 분기한다.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RelationshipChangeCause {
     /// 장면 내 대사/행동 (Step A default가 이쪽으로 이행하려면 scene_id가 필요하므로
@@ -139,13 +139,8 @@ pub enum RelationshipChangeCause {
     /// 소문 확산 (Step C `RumorSpread`에서 설정)
     Rumor { rumor_id: String },
     /// Step A 기본값 — 마이그레이션·레거시 호환. Memory 정책은 이 값을 일반 분기로 처리한다.
+    #[default]
     Unspecified,
-}
-
-impl Default for RelationshipChangeCause {
-    fn default() -> Self {
-        Self::Unspecified
-    }
 }
 
 /// 도메인 이벤트 페이로드

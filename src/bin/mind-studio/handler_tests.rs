@@ -1439,9 +1439,13 @@ async fn test_studio_analysis_pipeline_integrity() {
         ).await.unwrap();
 
         // 검증 A: 분석 대상이 NPC 대답이 아닌 '사용자 대사'여야 함
-        let calls_lock = _calls.lock().unwrap();
-        assert_eq!(calls_lock.len(), 1, "분석기가 한 번 호출되어야 함");
-        assert_eq!(calls_lock[0], "사용자의 아주 화나는 대사", "분석 대상은 반드시 사용자 대사여야 함");
+        // std Mutex guard는 await 이전에 drop되어야 하므로 별도 스코프로 격리한다
+        // (clippy::await_holding_lock).
+        {
+            let calls_lock = _calls.lock().unwrap();
+            assert_eq!(calls_lock.len(), 1, "분석기가 한 번 호출되어야 함");
+            assert_eq!(calls_lock[0], "사용자의 아주 화나는 대사", "분석 대상은 반드시 사용자 대사여야 함");
+        }
 
         // 검증 B: 반환된 결과에 input_pad가 포함되어야 함 (UI 슬라이더 반영용)
         let stimulus = stim.expect("자극 결과가 반환되어야 함");

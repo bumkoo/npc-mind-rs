@@ -634,7 +634,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         let id = store.next_id();
         let seq = store.next_sequence(&meta.npc_id);
         let event = DomainEvent::new(id, meta.npc_id.clone(), seq, payload);
-        store.append(&[event.clone()]);
+        store.append(std::slice::from_ref(&event));
         bus.publish(&event);
     }
 

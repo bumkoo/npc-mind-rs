@@ -11,7 +11,7 @@ use crate::state::TurnRecord;
 macro_rules! impl_crud_handlers {
     ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, $event:expr) => {
         pub async fn $list_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>
         ) -> axum::Json<Vec<$item_type>> {
             let inner = state.inner.read().await;
             let mut items: Vec<$item_type> = inner.$field.values().cloned().collect();
@@ -20,7 +20,7 @@ macro_rules! impl_crud_handlers {
         }
 
         pub async fn $upsert_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>,
             axum::Json(item): axum::Json<$item_type>,
         ) -> axum::http::StatusCode {
             {
@@ -35,7 +35,7 @@ macro_rules! impl_crud_handlers {
         }
 
         pub async fn $delete_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>,
             axum::extract::Path(id): axum::extract::Path<String>,
         ) -> axum::http::StatusCode {
             {
@@ -52,7 +52,7 @@ macro_rules! impl_crud_handlers {
     // 관계(Relationship) 전용 — .key() 메서드 활용
     ($item_type:ty, $field:ident, $list_fn:ident, $upsert_fn:ident, $delete_fn:ident, relationship, $event:expr) => {
         pub async fn $list_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>
         ) -> axum::Json<Vec<$item_type>> {
             let inner = state.inner.read().await;
             let mut items: Vec<$item_type> = inner.$field.values().cloned().collect();
@@ -61,7 +61,7 @@ macro_rules! impl_crud_handlers {
         }
 
         pub async fn $upsert_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>,
             axum::Json(rel): axum::Json<$item_type>,
         ) -> axum::http::StatusCode {
             {
@@ -76,7 +76,7 @@ macro_rules! impl_crud_handlers {
         }
 
         pub async fn $delete_fn(
-            axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+            axum::extract::State(state): axum::extract::State<$crate::state::AppState>,
             axum::extract::Path((owner, target)): axum::extract::Path<(String, String)>,
         ) -> axum::http::StatusCode {
             {

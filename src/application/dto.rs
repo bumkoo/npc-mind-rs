@@ -79,6 +79,10 @@ impl HasFocusFields for SceneFocusInput {
     fn object(&self) -> Option<&ObjectInput> { self.object.as_ref() }
 }
 
+/// `convert_focuses` 반환 형태 — event/action/object 3종 도메인 Focus 옵셔널 묶음.
+pub(crate) type ConvertedFocuses =
+    (Option<EventFocus>, Option<ActionFocus>, Option<ObjectFocus>);
+
 /// event/action/object DTO를 도메인 Focus로 일괄 변환
 pub(crate) fn convert_focuses(
     input: &impl HasFocusFields,
@@ -86,7 +90,7 @@ pub(crate) fn convert_focuses(
     action_agent_modifiers: Option<RelationshipModifiers>,
     object_description: Option<String>,
     npc_id: &str,
-) -> Result<(Option<EventFocus>, Option<ActionFocus>, Option<ObjectFocus>), MindServiceError> {
+) -> Result<ConvertedFocuses, MindServiceError> {
     let event = input.event().map(|e| e.to_domain(event_other_modifiers)).transpose()?;
     let action = input.action().map(|a| a.to_domain(action_agent_modifiers, npc_id)).transpose()?;
     let object = input.object().map(|o| o.to_domain(object_description)).transpose()?;

@@ -109,12 +109,10 @@ impl MindMcpService {
 
     fn flatten_focus_situation(focus: &mut Value) {
         let Some(focus_obj) = focus.as_object_mut() else { return; };
-        if let Some(situation) = focus_obj.remove("situation") {
-            if let Value::Object(sit_map) = situation {
-                for (k, v) in sit_map {
-                    if !focus_obj.contains_key(&k) {
-                        focus_obj.insert(k, v);
-                    }
+        if let Some(Value::Object(sit_map)) = focus_obj.remove("situation") {
+            for (k, v) in sit_map {
+                if !focus_obj.contains_key(&k) {
+                    focus_obj.insert(k, v);
                 }
             }
         }
