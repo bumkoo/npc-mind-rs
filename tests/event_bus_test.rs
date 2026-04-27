@@ -26,7 +26,7 @@ fn make_event(id: u64) -> DomainEvent {
 
 #[test]
 fn default_capacity_constant_is_positive() {
-    assert!(DEFAULT_CAPACITY > 0);
+    const { assert!(DEFAULT_CAPACITY > 0) };
 }
 
 #[test]
