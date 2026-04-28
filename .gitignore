@@ -37,3 +37,11 @@ mind-studio-ui/node_modules/
 data/listener_perspective/results/*.md
 !data/listener_perspective/results/baseline.md
 !data/listener_perspective/results/README.md
+
+# Phase 0 Lore RAG corpus — 원본은 외부 자료, SQLite는 빌드 산출물
+wuxia-core/docs/Chinese-Literature/*.epub
+wuxia-core/docs/Chinese-Literature/*.pdf
+wuxia-core/docs/Chinese-History/*.epub
+wuxia-core/docs/Chinese-History/*.pdf
+data/corpus/lore.sqlite
+data/corpus/lore.sqlite-*
