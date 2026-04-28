@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::personality::DimensionAverages;
+use crate::domain::tuning::profile;
 use crate::ports::PersonalityProfile;
 
 use super::enums::{Attitude, BehavioralTendency, Restriction, Tone};
-use super::{EMOTION_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, MOOD_THRESHOLD, TRAIT_THRESHOLD};
 
 /// 감정 상태에서 도출된 구체적 연기 지시
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,14 +26,14 @@ impl ActingDirective {
     /// 감정과 성격을 기반으로 구체적인 연기 지시를 생성합니다.
     pub fn from_emotion_and_personality(
         state: &EmotionState,
-        profile: &impl PersonalityProfile,
+        personality: &impl PersonalityProfile,
     ) -> Self {
-        let avg = profile.dimension_averages();
+        let avg = personality.dimension_averages();
         let mood = state.overall_valence();
 
         // 판단에 필요한 정보 요약
         let dominant = state.dominant().map(|e| e.emotion_type());
-        let significant = state.significant(EMOTION_THRESHOLD);
+        let significant = state.significant(profile().emotion_threshold);
         let has_anger = significant
             .iter()
             .any(|e| e.emotion_type() == EmotionType::Anger);
@@ -72,7 +72,7 @@ impl Tone {
     }
 
     fn decide_from_dominant(etype: EmotionType, avg: &DimensionAverages) -> Self {
-        let t = TRAIT_THRESHOLD;
+        let t = profile().trait_threshold;
         match etype {
             EmotionType::Anger => {
                 if avg.c.value() > t {
@@ -114,9 +114,10 @@ impl Tone {
     }
 
     fn decide_from_mood(mood: f32) -> Self {
-        if mood > EMOTION_THRESHOLD {
+        let threshold = profile().emotion_threshold;
+        if mood > threshold {
             Self::RelaxedGentle
-        } else if mood < -EMOTION_THRESHOLD {
+        } else if mood < -threshold {
             Self::Heavy
         } else {
             Self::Calm
@@ -144,7 +145,7 @@ impl Attitude {
     }
 
     fn decide_for_anger(avg: &DimensionAverages) -> Self {
-        if avg.a.value() < -TRAIT_THRESHOLD {
+        if avg.a.value() < -profile().trait_threshold {
             Self::HostileAggressive
         } else {
             Self::SuppressedDiscomfort
@@ -152,9 +153,10 @@ impl Attitude {
     }
 
     fn decide_from_mood(mood: f32) -> Self {
-        if mood > MOOD_THRESHOLD {
+        let threshold = profile().mood_threshold;
+        if mood > threshold {
             Self::FriendlyOpen
-        } else if mood < -MOOD_THRESHOLD {
+        } else if mood < -threshold {
             Self::DefensiveClosed
         } else {
             Self::NeutralObservant
@@ -176,7 +178,7 @@ impl BehavioralTendency {
             Self::decide_for_fear(avg)
         } else if has_shame {
             Self::AvoidOrDeflect
-        } else if mood > MOOD_THRESHOLD {
+        } else if mood > profile().mood_threshold {
             Self::ActiveCooperation
         } else {
             Self::ObserveAndRespond
@@ -184,7 +186,7 @@ impl BehavioralTendency {
     }
 
     fn decide_for_anger(avg: &DimensionAverages) -> Self {
-        let t = TRAIT_THRESHOLD;
+        let t = profile().trait_threshold;
         if avg.c.value() < -t {
             Self::ImmediateConfrontation
         } else if avg.c.value() > t {
@@ -195,7 +197,7 @@ impl BehavioralTendency {
     }
 
     fn decide_for_fear(avg: &DimensionAverages) -> Self {
-        if avg.e.value() < -TRAIT_THRESHOLD {
+        if avg.e.value() < -profile().trait_threshold {
             Self::BraveConfrontation
         } else {
             Self::SeekSafety
@@ -211,9 +213,10 @@ impl Restriction {
         mood: f32,
         avg: &DimensionAverages,
     ) -> Vec<Self> {
+        let p = profile();
         let mut restrictions = Vec::new();
 
-        if mood < -MOOD_THRESHOLD {
+        if mood < -p.mood_threshold {
             restrictions.push(Self::NoHumorOrLightTone);
         }
         if has_anger {
@@ -225,7 +228,7 @@ impl Restriction {
         if has_fear {
             restrictions.push(Self::NoBravado);
         }
-        if avg.h.value() > HONESTY_RESTRICTION_THRESHOLD {
+        if avg.h.value() > p.honesty_restriction_threshold {
             restrictions.push(Self::NoLyingOrExaggeration);
         }
 

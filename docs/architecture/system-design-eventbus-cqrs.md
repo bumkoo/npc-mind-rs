@@ -401,6 +401,143 @@ pub struct GuideProjection {
 | DialogueHistoryProjection (예정) | L2 | 검색이 최신 턴 1~2개 지연 허용 |
 | ContextProjection (예정) | L2 | LLM 요약이 본래 async |
 
+### 4.4 영속화 모델 — "Event-enriched CRUD" (의도된 절충)
+
+> **2026-04 헥사고날/DDD 리뷰 #2 반영**
+
+본 시스템은 순수 Event Sourcing이 **아니다**. 진실의 원천(source of truth)은
+`MindRepository`(현재 `InMemoryRepository`)이며, `EventStore`는 audit log + replay
+지원 보조 저장소다.
+
+#### 4.4.1 무엇이 표준 ES와 다른가
+
+표준 Event Sourcing이라면 핸들러가 이런 흐름을 따라야 한다:
+
+```rust
+// 순수 ES — 모든 상태는 이벤트 stream에서 재구성
+let current = self.event_store.rebuild_emotion_state(&npc_id).await?;
+let new_state = engine.apply_stimulus(&npc, &current, &pad);
+let events = vec![DomainEvent::stimulus_applied(...)];
+event_store.append(&events).await?;
+```
+
+본 시스템의 transactional 핸들러는 이 대신 다음과 같이 동작한다
+(`StimulusPolicy`, `dispatcher.rs:312-318` 등):
+
+```rust
+// 실제 — write-side repository에서 직접 읽음
+let npc = ctx.repo.get_npc(npc_id)?;            // ← 이벤트 stream 재구성 아님
+let relationship = ctx.repo.get_relationship(...)?;
+let current = ctx.repo.get_emotion_state(npc_id)?;
+let new_state = engine.apply_stimulus(npc.personality(), &current, &pad);
+// 이벤트는 결과 산출물로 발행되지만, repo가 진실의 원천
+```
+
+핸들러는 *결과*로 이벤트를 발행하지만, *입력*은 in-memory repository에서 읽는다.
+즉 repository는 매 커맨드마다 상태를 보유하고 갱신되며 (CRUD), 이벤트는 그 변화의
+"audit-with-history" 로그로 EventStore에 누적된다.
+
+#### 4.4.2 왜 이렇게 했나 (정당화)
+
+1. **재구성 비용 회피**. NPC 성격(HEXACO 24 facet)·관계(3축 trust/closeness/power)·
+   감정 state는 매 커맨드마다 재구성하기엔 무겁다. 게임 1세션에 수백 turn이 발생하면
+   매 turn마다 수천 개 이벤트를 fold하는 건 RAG 검색보다 훨씬 비싸다.
+2. **싱글 프로세스 게임 가정**. 분산 환경이 아니므로 repository = 프로세스 메모리 =
+   사실상 강한 일관성. ES의 핵심 장점인 "분산 노드 간 인과 관계 추적"이 우리 시나리오엔
+   불필요.
+3. **시나리오 로딩의 성격**. NPC 정의는 시나리오 JSON에서 한 번에 로드되며 (시드),
+   런타임에 NPC가 새로 생성되는 일이 드물다. 이런 상태는 "이벤트의 합"보다는 "초기
+   상태 + 변화"가 더 자연스럽다.
+4. **Mind Studio 운용 편의**. UI에서 NPC를 직접 추가/수정/삭제할 때 "관련 이벤트 모두
+   생성" 대신 repository 직접 변경 → 이벤트 스트림과는 별도 경로(`rebuild_repo_from_inner`)
+   로 동기화한다.
+
+#### 4.4.3 트레이드오프 — 무엇을 잃었나
+
+- **순수 ES의 시간여행 능력 약화**. `event_store.replay_to(timestamp_t)`로 과거의
+  완전한 NPC 상태를 복원할 수 없다. 이벤트는 변화 스냅샷(예: `EmotionAppraised`에
+  `emotion_snapshot` 포함)을 갖고 있어 일부 시간여행은 가능하지만, 성격(personality)
+  같은 정적 데이터는 시나리오 시드에 묶여 있어 시점별 복원 불가.
+- **이벤트 스트림이 손상되면 일관성 회복 어려움**. EventStore는 append-only지만,
+  RepositoryState와의 정합은 코드 규약으로만 보장된다. 핸들러가 이벤트는 발행하고
+  HandlerShared write-back을 빠뜨리면 두 저장소가 어긋난다.
+- **재현성 약화**. 같은 이벤트 stream을 다른 머신에서 replay해도 NPC 정의가 다른
+  시나리오면 결과가 다를 수 있다. 시나리오 JSON 버전을 함께 보관해야 완전 재현.
+
+#### 4.4.4 무엇을 지켰나
+
+- **Audit log로서의 EventStore**: 모든 의사결정 사건(EmotionAppraised, BeatTransitioned,
+  RelationshipUpdated 등)이 timestamp + correlation_id + parent_id + cascade_depth와
+  함께 영속화된다. "왜 이 NPC가 화났나"의 추적은 이벤트 stream으로 가능.
+- **L1 projection의 read model 성격**: EmotionProjection 등은 진정한 read model이며
+  write-side와 분리되어 있다. UI/외부 쿼리는 projection을 읽는다.
+- **Memory/RAG 이벤트 기반 인덱싱**: `MemoryProjector`가 EventBus를 구독해 RAG 인덱스를
+  채우는 경로는 진성 ES — 검색 결과는 이벤트 stream에서 도출된다.
+- **Replay 보조 경로**: `MemoryProjector`가 `Lagged(n)` 통지 후 `get_events_after_id()`
+  로 따라잡는 흐름은 표준 ES at-least-once 패턴.
+
+#### 4.4.5 합의된 명칭과 향후 진화
+
+이 영속화 모델을 본 문서는 **"Event-enriched CRUD"** 또는 **"Event-augmented State Store"**
+로 부른다. 분산·멀티테넌시·시점별 정확한 시간여행이 필요해지면 진성 ES로의 전환을
+검토할 수 있는 후보 단계는:
+
+| 단계 | 변화 |
+|------|------|
+| 현재 (Event-enriched CRUD) | repository = SoT, EventStore = audit + replay |
+| 중간 (Hybrid Snapshot ES) | EventStore가 SoT, snapshot으로 재구성 비용 감쇠 |
+| 진성 ES | 시나리오 시드도 `NpcDefined` 이벤트로 기록, repository는 derived view |
+
+진화는 **수요가 발생할 때 실행**한다. 현 시점 1인 게임 시나리오에서는 현재 모델이
+적절한 트레이드오프다. 본 절은 그 사실을 명시적으로 박제하기 위해 작성됨.
+
+### 4.5 Replay 정책 — `*Requested`는 audit-only
+
+> **2026-04 헥사고날/DDD 리뷰 #3 반영**
+
+`EventPayload`는 28 variant 중 10개가 `*Requested` (커맨드 의도) + 나머지가 결과
+(`*Applied`/`*Generated`/`*Updated` 등)다. 두 종류가 같은 stream에 영속화된다.
+
+#### 4.5.1 정상 dispatch 경로 (non-replay)
+
+- `Command::*`가 들어오면 `dispatch_v2`가 해당 `*Requested` 이벤트를 BFS queue에
+  enqueue → transactional handler가 트리거되어 결과 이벤트(`*Applied` 등)를 산출.
+- 모든 이벤트(요청 + 결과)가 EventStore에 append 후 EventBus broadcast.
+- 이는 정상이며, audit log로서 "어떤 커맨드가 들어와 어떤 결과가 산출되었나"의
+  완전한 인과 체인을 기록한다.
+
+#### 4.5.2 Replay 경로 (lag 복구·디버깅·외부 재인덱싱)
+
+EventStore에서 이벤트를 읽어와 다시 처리하는 모든 경로는 **`*Requested` 이벤트를
+건너뛰어야 한다**. 그렇지 않으면:
+
+1. `*Requested`가 다시 핸들러를 트리거 → 같은 결과 이벤트가 두 번째로 발행됨
+   → projection·MemoryStore 상태 손상
+2. 이미 stream에 있는 결과 이벤트도 다시 읽히고, 거기에 새로 산출된 결과까지
+   더해져 의미적 중복
+
+#### 4.5.3 정책 강제 메커니즘
+
+- **API**: `DomainEvent::is_command_intent() -> bool` (`src/domain/event.rs`).
+  10개 `*Requested` variant에 대해 `true` 반환. 단위 테스트
+  `is_command_intent_kind_set_matches_requested_enum_variants`가 누락 회귀 가드.
+- **현행 구현**: `MemoryProjector::consume_stream`의 `Lagged(n)` 복구 분기가
+  `event_store.get_events_after_id(last_processed_id)`로 받은 각 이벤트를
+  처리 전 `is_command_intent()` 체크로 skip.
+- **신규 replay 소비자 작성 가이드**: EventStore에서 이벤트를 fold·재인덱싱하는
+  모든 새 소비자는 동일 가드를 적용한다. 미적용은 silent corruption.
+
+#### 4.5.4 비대칭의 의도
+
+라이브 broadcast 구독자(예: SSE 브리지, Mind Studio UI)는 `*Requested` 이벤트도
+수신한다 — "커맨드가 들어왔다"는 사실 자체를 UI에 표시할 수 있도록. 즉:
+
+| 경로 | `*Requested` 이벤트 | 처리 |
+|------|---------------------|------|
+| `dispatch_v2` 정상 경로 | 핸들러 트리거 | ✅ (의도된 시작점) |
+| Live broadcast 구독 | UI/관찰자에게 통지 | ✅ (audit feed) |
+| Replay (event_store fold) | **skip** | ⛔ (이미 처리됨) |
+
 ---
 
 ## 5. Event Store 설계

@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::emotion::EmotionType;
-use super::tuning::{PAD_AXIS_DEAD_ZONE, PAD_AXIS_SCALE, PAD_D_SCALE_WEIGHT};
+use super::tuning::profile;
 
 // ---------------------------------------------------------------------------
 // PAD 구조체
@@ -87,7 +87,7 @@ impl Pad {
 pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
     let pa = a.pleasure * b.pleasure + a.arousal * b.arousal;
     let d_gap = (a.dominance - b.dominance).abs();
-    pa * (1.0 + d_gap * PAD_D_SCALE_WEIGHT)
+    pa * (1.0 + d_gap * profile().pad_d_scale_weight)
 }
 
 // ---------------------------------------------------------------------------
@@ -365,15 +365,16 @@ impl PadAnalyzer {
 
     /// 대사 임베딩과 축 앵커 유사도 차이 → -1.0~1.0
     ///
-    /// 보정: |차이| < PAD_AXIS_DEAD_ZONE(0.02) → 0.0, 이후 ×PAD_AXIS_SCALE(3.0)
+    /// 보정: |차이| < pad_axis_dead_zone(default 0.02) → 0.0, 이후 ×pad_axis_scale(default 3.0)
     fn axis_score(utterance_emb: &[f32], axis: &AxisEmbeddings) -> f32 {
         let sim_pos = Self::cosine_sim(utterance_emb, &axis.positive);
         let sim_neg = Self::cosine_sim(utterance_emb, &axis.negative);
         let raw = sim_pos - sim_neg;
-        if raw.abs() < PAD_AXIS_DEAD_ZONE {
+        let p = profile();
+        if raw.abs() < p.pad_axis_dead_zone {
             return 0.0;
         }
-        (raw * PAD_AXIS_SCALE).clamp(-1.0, 1.0)
+        (raw * p.pad_axis_scale).clamp(-1.0, 1.0)
     }
 }
 

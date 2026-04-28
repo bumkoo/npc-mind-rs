@@ -11,7 +11,7 @@
 use tracing::trace;
 
 use crate::domain::pad::{Pad, emotion_to_pad, pad_dot};
-use crate::domain::tuning::{STIMULUS_FADE_THRESHOLD, STIMULUS_IMPACT_RATE, STIMULUS_MIN_INERTIA};
+use crate::domain::tuning::profile;
 use crate::ports::StimulusWeights;
 
 use super::types::EmotionState;
@@ -36,6 +36,7 @@ impl crate::ports::StimulusProcessor for StimulusEngine {
         stimulus: &Pad,
     ) -> EmotionState {
         let absorb = personality.stimulus_absorb_rate(stimulus);
+        let p = profile();
         trace!(
             absorb_rate = absorb,
             pleasure = stimulus.pleasure,
@@ -47,12 +48,12 @@ impl crate::ports::StimulusProcessor for StimulusEngine {
         for emotion in current_state.emotions() {
             let emotion_pad = emotion_to_pad(emotion.emotion_type());
             let alignment = pad_dot(&emotion_pad, stimulus);
-            let inertia = (1.0 - emotion.intensity()).max(STIMULUS_MIN_INERTIA);
-            let delta = alignment * absorb * STIMULUS_IMPACT_RATE * inertia;
+            let inertia = (1.0 - emotion.intensity()).max(p.stimulus_min_inertia);
+            let delta = alignment * absorb * p.stimulus_impact_rate * inertia;
             let old_intensity = emotion.intensity();
             let new_intensity = (old_intensity + delta).clamp(0.0, 1.0);
 
-            if new_intensity < STIMULUS_FADE_THRESHOLD {
+            if new_intensity < p.stimulus_fade_threshold {
                 trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, result = "faded");
                 new_state.remove(emotion.emotion_type());
             } else {

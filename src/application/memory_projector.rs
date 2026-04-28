@@ -120,6 +120,14 @@ impl MemoryProjector {
                     let missed = event_store.get_events_after_id(last_processed_id);
                     for ev in missed {
                         let id = ev.id;
+                        // Replay 정책 (헥사고날/DDD 리뷰 #3): `*Requested` 이벤트는
+                        // 커맨드 의도(audit-only)이므로 replay 시 핸들러를 다시 트리거하지
+                        // 않는다. 결과 이벤트(*Applied/*Generated/...)만 처리해 부작용 중복을
+                        // 방지한다. 자세한 정책은 `DomainEvent::is_command_intent` 참조.
+                        if ev.is_command_intent() {
+                            last_processed_id = last_processed_id.max(id);
+                            continue;
+                        }
                         self.on_event(&ev);
                         last_processed_id = last_processed_id.max(id);
                     }

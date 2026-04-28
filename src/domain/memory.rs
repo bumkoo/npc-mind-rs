@@ -127,14 +127,12 @@ pub enum MemorySource {
 impl MemorySource {
     /// Ranker 2단계 가중치 (tuning 상수에서 조회).
     pub fn weight(self) -> f32 {
-        use crate::domain::tuning::{
-            SOURCE_W_EXPERIENCED, SOURCE_W_HEARD, SOURCE_W_RUMOR, SOURCE_W_WITNESSED,
-        };
+        let p = crate::domain::tuning::profile();
         match self {
-            Self::Experienced => SOURCE_W_EXPERIENCED,
-            Self::Witnessed => SOURCE_W_WITNESSED,
-            Self::Heard => SOURCE_W_HEARD,
-            Self::Rumor => SOURCE_W_RUMOR,
+            Self::Experienced => p.source_w_experienced,
+            Self::Witnessed => p.source_w_witnessed,
+            Self::Heard => p.source_w_heard,
+            Self::Rumor => p.source_w_rumor,
         }
     }
 

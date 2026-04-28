@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use crate::application::command::dispatcher::CommandDispatcher;
 use crate::application::command::types::Command;
 use crate::domain::scene_id::SceneId;
-use crate::domain::tuning::SCENE_TASK_CHANNEL_CAPACITY;
+use crate::domain::tuning::profile;
 use crate::ports::MindRepository;
 
 use super::spawner::Spawner;
@@ -32,7 +32,7 @@ use super::spawner::Spawner;
 /// 이 sender로 forward된다. Sender가 drop되는 순간 task는 다음 recv()에서 None을 받고
 /// 종료한다.
 ///
-/// 채널 capacity는 `crate::domain::tuning::SCENE_TASK_CHANNEL_CAPACITY`.
+/// 채널 capacity는 `profile().scene_task_channel_capacity`.
 pub(super) fn spawn_scene_task<R>(
     scene_id: SceneId,
     dispatcher: Arc<CommandDispatcher<R>>,
@@ -41,7 +41,7 @@ pub(super) fn spawn_scene_task<R>(
 where
     R: MindRepository + Send + Sync + 'static,
 {
-    let (tx, mut rx) = mpsc::channel::<Command>(SCENE_TASK_CHANNEL_CAPACITY);
+    let (tx, mut rx) = mpsc::channel::<Command>(profile().scene_task_channel_capacity);
     let scene_id_for_log = scene_id.clone();
 
     spawner.spawn(Box::pin(async move {

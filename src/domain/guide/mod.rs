@@ -19,9 +19,6 @@ use serde::{Deserialize, Serialize};
 use super::emotion::EmotionState;
 use super::personality::Npc;
 use super::relationship::Relationship;
-use super::tuning::{
-    EMOTION_THRESHOLD, HONESTY_RESTRICTION_THRESHOLD, MOOD_THRESHOLD, TRAIT_THRESHOLD,
-};
 
 // ---------------------------------------------------------------------------
 // LLM 연기 가이드 (최종 산출물)

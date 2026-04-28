@@ -378,7 +378,7 @@ impl HexacoProfile {
     /// 성격 지표를 기반으로 LLM 생성 파라미터를 유도 (Gemma 3 12B 최적화)
     /// 반환: (temperature, top_p)
     pub fn derive_llm_parameters(&self) -> (f32, f32) {
-        use crate::domain::tuning::*;
+        let p = crate::domain::tuning::profile();
 
         let avg = self.dimension_averages();
         let h = avg.h.value();
@@ -389,20 +389,20 @@ impl HexacoProfile {
         let o = avg.o.value();
 
         // Temperature = Base + (O * Wo) + (X * Wx) - (C * Wc) - (H * Wh)
-        let temperature = LLM_BASE_TEMPERATURE 
-            + (o * LLM_TEMP_OPENNESS_WEIGHT) 
-            + (x * LLM_TEMP_EXTRAVERSION_WEIGHT) 
-            - (c * LLM_TEMP_CONSCIENTIOUSNESS_WEIGHT) 
-            - (h * LLM_TEMP_HONESTY_WEIGHT);
+        let temperature = p.llm_base_temperature
+            + (o * p.llm_temp_openness_weight)
+            + (x * p.llm_temp_extraversion_weight)
+            - (c * p.llm_temp_conscientiousness_weight)
+            - (h * p.llm_temp_honesty_weight);
 
         // Top P = Base + (O * Wo) - (C * Wc)
-        let top_p = LLM_BASE_TOP_P 
-            + (o * LLM_TOP_P_OPENNESS_WEIGHT) 
-            - (c * LLM_TOP_P_CONSCIENTIOUSNESS_WEIGHT);
+        let top_p = p.llm_base_top_p
+            + (o * p.llm_top_p_openness_weight)
+            - (c * p.llm_top_p_conscientiousness_weight);
 
         (
-            temperature.clamp(LLM_TEMP_MIN, LLM_TEMP_MAX), 
-            top_p.clamp(LLM_TOP_P_MIN, LLM_TOP_P_MAX)
+            temperature.clamp(p.llm_temp_min, p.llm_temp_max),
+            top_p.clamp(p.llm_top_p_min, p.llm_top_p_max),
         )
     }
     }

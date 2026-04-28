@@ -523,18 +523,23 @@ delta = pad_dot × absorb_rate × STIMULUS_IMPACT_RATE × inertia
 - 약한 감정(intensity 낮음) → inertia 큼 → 자극에 쉽게 변함
 - intensity=1.0이어도 최소 관성(0.30)으로 변동 보장
 
-## 튜닝 상수 (주요, 전체는 `src/domain/tuning.rs` 참조)
+## 튜닝 프로파일 (주요, 전체는 `src/domain/tuning.rs` 참조)
 
-| 상수 | 값 | 용도 |
+도메인 정책 파라미터는 `TuningProfile` 구조체로 관리되며 `tuning::profile()`로 조회합니다.
+프로세스 시작 시 1회 `tuning::install(TuningProfile { ... })`로 주입 가능 (미설치 시 `Default`).
+
+| TuningProfile 필드 | 기본값 | 용도 |
 |------|-----|------|
-| `STIMULUS_IMPACT_RATE` | 0.5 | stimulus 감정 변동 계수 |
-| `STIMULUS_MIN_INERTIA` | 0.30 | 관성 최소값 (intensity=1.0에서도 반응 보장) |
-| `BEAT_MERGE_THRESHOLD` | 0.2 | Beat 합치기 시 이전 감정 소멸 기준 |
-| `TRUST_UPDATE_RATE` | 0.1 | 신뢰 갱신 계수 |
-| `CLOSENESS_UPDATE_RATE` | 0.05 | 친밀도 갱신 계수 |
-| `SIGNIFICANCE_SCALE` | 3.0 | 상황 중요도 배율 (sig=1.0 → 4배) |
-| `EMOTION_THRESHOLD` | 0.2 | 감정 유의미 판단 기준 (가이드 반영) |
-| `TRAIT_THRESHOLD` | 0.3 | 성격 특성 추출 임계값 |
+| `stimulus_impact_rate` | 0.5 | stimulus 감정 변동 계수 |
+| `stimulus_min_inertia` | 0.30 | 관성 최소값 (intensity=1.0에서도 반응 보장) |
+| `beat_merge_threshold` | 0.2 | Beat 합치기 시 이전 감정 소멸 기준 |
+| `trust_update_rate` | 0.1 | 신뢰 갱신 계수 |
+| `closeness_update_rate` | 0.05 | 친밀도 갱신 계수 |
+| `significance_scale` | 3.0 | 상황 중요도 배율 (sig=1.0 → 4배) |
+| `emotion_threshold` | 0.2 | 감정 유의미 판단 기준 (가이드 반영) |
+| `trait_threshold` | 0.3 | 성격 특성 추출 임계값 |
+
+`DAY_MS`는 시간 단위 상수로 `pub const DAY_MS: u64`로 별도 노출됩니다 (튜닝 대상 아님).
 
 파일별 로컬 상수(`personality.rs`의 `W_STANDARD`/`BASE_*`/`CLAMP_*` 등, `pad_table.rs`의 22개 감정별 PAD 좌표)는 해당 파일 상단에 정의되어 있습니다.
 

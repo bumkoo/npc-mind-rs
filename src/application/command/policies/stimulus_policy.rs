@@ -27,7 +27,7 @@ use crate::domain::emotion::{AppraisalEngine, EmotionState, StimulusEngine};
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::pad::Pad;
 use crate::domain::scene_id::SceneId;
-use crate::domain::tuning::{BEAT_DEFAULT_SIGNIFICANCE, BEAT_MERGE_THRESHOLD};
+use crate::domain::tuning::profile;
 use crate::ports::{Appraiser, StimulusProcessor};
 
 /// PAD 자극 적용 + Beat 전환 판정 폴리시
@@ -124,14 +124,15 @@ impl EventHandler for StimulusPolicy {
                 })?;
 
                 // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipPolicy)
-                let beat_rel = relationship.after_dialogue(&stimulated, BEAT_DEFAULT_SIGNIFICANCE);
+                let tuning = profile();
+                let beat_rel = relationship.after_dialogue(&stimulated, tuning.beat_default_significance);
                 let new_state = self.appraiser.appraise(
                     npc.personality(),
                     &situation,
                     &beat_rel.modifiers(),
                 );
                 let merged =
-                    EmotionState::merge_from_beat(&stimulated, &new_state, BEAT_MERGE_THRESHOLD);
+                    EmotionState::merge_from_beat(&stimulated, &new_state, tuning.beat_merge_threshold);
 
                 // Scene을 active_focus = 새 focus로 갱신해 공유 상태에 전파.
                 // v1은 `save_scene: Some(new_scene)`로 Dispatcher write-back 지시했고,
