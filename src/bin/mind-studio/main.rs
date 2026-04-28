@@ -74,6 +74,51 @@ async fn main() {
         state = state.with_llm_monitor(arc_adapter);
     }
 
+    // Phase 0 Lore RAG: SQLite 인덱스가 있으면 부착 (embed feature 한정).
+    // 인덱스가 없거나 manifest를 못 읽어도 Mind Studio는 정상 시작 — search_lore 등은
+    // "lore index 미구성" 메시지를 반환하게 된다.
+    #[cfg(feature = "embed")]
+    {
+        use std::sync::Arc;
+        let manifest_path = std::env::var_os("NPC_MIND_LORE_MANIFEST")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("data/corpus/manifest.toml"));
+        let db_path = std::env::var_os("NPC_MIND_LORE_DB")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::path::PathBuf::from("data/corpus/lore.sqlite"));
+
+        match (
+            npc_mind::lore::Manifest::load(&manifest_path),
+            db_path.exists().then(|| {
+                npc_mind::lore::SqliteLoreStore::new(db_path.to_string_lossy().as_ref())
+            }),
+        ) {
+            (Ok(manifest), Some(Ok(store))) => {
+                state = state.with_lore(
+                    Arc::new(store) as Arc<dyn npc_mind::lore::LoreStore>,
+                    Arc::new(manifest),
+                );
+                tracing::info!(
+                    "Lore RAG 부착 완료: manifest={} db={}",
+                    manifest_path.display(),
+                    db_path.display()
+                );
+            }
+            (Ok(_), None) => {
+                tracing::warn!(
+                    "Lore RAG: SQLite 파일 없음 ({}). lore-ingest를 먼저 실행하세요.",
+                    db_path.display()
+                );
+            }
+            (Err(e), _) => {
+                tracing::warn!("Lore RAG: manifest 로드 실패 ({}): {}", manifest_path.display(), e);
+            }
+            (_, Some(Err(e))) => {
+                tracing::warn!("Lore RAG: SqliteLoreStore 초기화 실패: {:?}", e);
+            }
+        }
+    }
+
     // MCP 서버 초기화 (chat이 설정된 state를 clone)
     let mcp_server = mcp_server::create_mcp_server(state.clone());
     state = state.with_mcp(mcp_server);

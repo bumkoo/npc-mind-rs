@@ -7,7 +7,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 [features]
 # Phase 7 Step 5: listener_perspective는 default-on. 회귀 감시 88% baseline 유지.
 default = ["listener_perspective"]
-embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy"]
+embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy", "dep:epub"]
 chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
 # Phase 7: Listener-perspective PAD 변환기 (prefilter + sign/magnitude 분류기)
@@ -42,6 +42,8 @@ sqlite-vec = { version = "0.1", optional = true }
 zerocopy = { version = "0.7", optional = true }
 # Phase 7 listener_perspective feature 전용
 regex = { version = "1", optional = true }
+# Phase 0 Lore RAG — EPUB 파서 (embed feature 전용)
+epub = { version = "2.1", optional = true }
 
 [dev-dependencies]
 approx = "0.5"
@@ -57,3 +59,10 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }
 name = "npc-mind-studio"
 path = "src/bin/mind-studio/main.rs"
 required-features = ["mind-studio"]
+
+# Phase 0 Lore RAG — EPUB → 임베딩 → SQLite ingest CLI.
+# `cargo run --features embed --bin lore-ingest -- --all`로 실행.
+[[bin]]
+name = "lore-ingest"
+path = "src/bin/lore_ingest.rs"
+required-features = ["embed"]

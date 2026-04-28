@@ -6,6 +6,7 @@
 pub mod adapter;
 pub mod application;
 pub mod domain;
+pub mod lore;
 pub mod ports;
 pub mod presentation;
 

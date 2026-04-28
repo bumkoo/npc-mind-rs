@@ -30,6 +30,8 @@ use npc_mind::domain::listener_perspective::ListenerPerspectiveConverter;
 use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
 #[cfg(feature = "embed")]
 use npc_mind::ports::{MemoryStore, RumorStore};
+#[cfg(feature = "embed")]
+use npc_mind::lore::{LoreStore, Manifest};
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -102,6 +104,15 @@ pub struct AppState {
     /// Step E1: Rumor 저장소. `embed` feature 활성 시에만 존재하며 같은 DB 파일을 공유.
     #[cfg(feature = "embed")]
     pub rumor_store: Arc<dyn RumorStore>,
+
+    /// Phase 0 Lore RAG: 장르 원전 임베딩 검색 저장소.
+    /// `NPC_MIND_LORE_DB`(기본 `data/corpus/lore.sqlite`) 파일이 존재할 때만 Some.
+    /// 부재 시 `search_lore` 등 MCP 도구는 "lore index 미구성" 에러를 반환한다.
+    #[cfg(feature = "embed")]
+    pub lore_store: Option<Arc<dyn LoreStore>>,
+    /// Phase 0 Lore RAG: `data/corpus/manifest.toml` 캐시. `list_corpora` 도구가 사용.
+    #[cfg(feature = "embed")]
+    pub lore_manifest: Option<Arc<Manifest>>,
 
     // ---- Read Side — Projection 공유 핸들 ----
     //
@@ -280,6 +291,10 @@ impl AppState {
             memory_store,
             #[cfg(feature = "embed")]
             rumor_store,
+            #[cfg(feature = "embed")]
+            lore_store: None,
+            #[cfg(feature = "embed")]
+            lore_manifest: None,
             emotion_projection,
             relationship_projection,
             scene_projection,
@@ -366,6 +381,19 @@ impl AppState {
     #[cfg(feature = "listener_perspective")]
     pub fn with_converter(mut self, converter: Arc<dyn ListenerPerspectiveConverter>) -> Self {
         self.converter = Some(converter);
+        self
+    }
+
+    /// Phase 0 Lore RAG 저장소·매니페스트를 부착 (embed feature).
+    /// `search_lore`/`list_corpora`/`get_chunk` MCP 도구가 이 핸들로 동작한다.
+    #[cfg(feature = "embed")]
+    pub fn with_lore(
+        mut self,
+        store: Arc<dyn LoreStore>,
+        manifest: Arc<Manifest>,
+    ) -> Self {
+        self.lore_store = Some(store);
+        self.lore_manifest = Some(manifest);
         self
     }
 }

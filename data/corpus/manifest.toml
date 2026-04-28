@@ -1,0 +1,54 @@
+# Phase 0 Lore RAG 매니페스트 — Public Domain 원전 3권
+#
+# **확장 시 디렉터 승인 필수.** 39권 전체 인덱싱은 라이선스 검증 후 별도 TASK.
+# 원본 EPUB 파일은 git에서 제외(.gitignore §3.2). 이 매니페스트만 commit.
+#
+# 다른 머신에서 작업할 때:
+#   1. wuxia-core/docs/Chinese-Literature/ 아래에 EPUB 3권을 배치
+#   2. cargo run --features embed --bin lore-ingest -- --all
+#   → data/corpus/lore.sqlite 재생성
+
+[[corpus]]
+id = "shuihuzhuan"
+title = "水滸傳 (수호지)"
+author_name = "施耐庵 (시내암)"
+genre_tags = ["wuxia", "chinese-literature", "novel-classical"]
+license = "public-domain"
+
+  [[corpus.editions]]
+  id = "shuihuzhuan-zh-zhang"
+  language = "zh"
+  edition = "張啟疆 註釋"
+  source = "wuxia-core/docs/Chinese-Literature/水滸傳 (張啟疆) (z-library.sk, 1lib.sk, z-lib.sk).epub"
+  format = "epub"
+  license_note = "원전 본문 PD. 張啟疆 註釋 부분 분리 권장. 분리 어려우면 본문만 임베딩."
+
+[[corpus]]
+id = "jianghu-qixia-zhuan"
+title = "江湖奇俠傳"
+author_name = "平江不肖生 (向恺然)"
+genre_tags = ["wuxia", "chinese-literature", "novel-modern", "republican-era"]
+license = "public-domain"
+license_note = "1922 발표, 작가 1957 사망. 글로벌 PD 확정."
+
+  [[corpus.editions]]
+  id = "jianghu-qixia-zh-1922"
+  language = "zh"
+  edition = "1922 원전"
+  source = "wuxia-core/docs/Chinese-Literature/江湖奇俠傳 (平江不肖生) (z-library.sk, 1lib.sk, z-lib.sk).epub"
+  format = "epub"
+
+[[corpus]]
+id = "shushan-jianxia-zhuan"
+title = "蜀山劍俠傳"
+author_name = "還珠樓主 (李壽民)"
+genre_tags = ["wuxia", "xianxia", "chinese-literature", "novel-modern"]
+license = "public-domain"
+license_note = "1932 발표, 작가 1961 사망. 중국·한국 PD 확정."
+
+  [[corpus.editions]]
+  id = "shushan-jianxia-zh-1932"
+  language = "zh-Hant"
+  edition = "1932 원전 (繁體中文)"
+  source = "wuxia-core/docs/Chinese-Literature/蜀山劍俠傳 (繁體中文) (還珠樓主) (z-library.sk, 1lib.sk, z-lib.sk).epub"
+  format = "epub"

@@ -319,6 +319,45 @@ impl MindMcpService {
                 "inputSchema": { "type": "object", "properties": { "npc_id": { "type": "string" } }, "required": ["npc_id"] }
             }),
 
+            // Phase 0 Lore RAG (embed feature). 인덱스 미구성 시 도구 자체는 노출하되 호출 시 에러.
+            serde_json::json!({
+                "name": "search_lore",
+                "description": "장르 원전(Public Domain)에서 의미 기반 검색. bge-m3 임베딩 + FTS5/vec0 ANN. corpus_filter/edition_filter로 범위 한정. lore-ingest로 인덱스 구성 필요.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "검색어 (한국어/중국어/영어)" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" },
+                        "corpus_filter": { "type": "array", "items": { "type": "string" }, "description": "corpus_id 화이트리스트" },
+                        "edition_filter": { "type": "array", "items": { "type": "string" }, "description": "edition_id 화이트리스트" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+            serde_json::json!({
+                "name": "list_corpora",
+                "description": "manifest에 등록된 모든 원전(corpus + editions) 목록. genre_tag로 필터 가능. indexed_chunks 필드로 인덱싱 상태 확인.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "genre_tag": { "type": "string", "description": "장르 태그 필터 (예: wuxia)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_chunk",
+                "description": "단일 청크와 같은 edition의 앞뒤 N개 청크 반환 — 검색 결과의 문맥 확장에 사용.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "chunk_id": { "type": "string" },
+                        "before": { "type": "integer", "description": "앞 N개 (기본 1)" },
+                        "after": { "type": "integer", "description": "뒤 N개 (기본 1)" }
+                    },
+                    "required": ["chunk_id"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -894,6 +933,93 @@ impl MindMcpService {
                 #[cfg(not(feature = "chat"))]
                 {
                     Err("chat feature가 비활성입니다. --features chat으로 빌드하세요.".into())
+                }
+            }
+            "search_lore" => {
+                #[cfg(feature = "embed")]
+                {
+                    let query = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let corpus_filter = arguments.get("corpus_filter").and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
+                    let edition_filter = arguments.get("edition_filter").and_then(|v| v.as_array())
+                        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect());
+                    let store = self.state.lore_store.as_ref()
+                        .ok_or_else(|| "Lore index 미구성 — `lore-ingest --all` 실행 필요".to_string())?;
+                    let analyzer = self.state.analyzer.as_ref()
+                        .ok_or_else(|| "임베딩 분석기 미초기화 — embed feature 또는 모델 경로 확인".to_string())?;
+                    let embedding = {
+                        let mut a = analyzer.lock().await;
+                        let (_, emb) = a.analyze_with_embedding(query)
+                            .map_err(|e| format!("임베딩 실패: {:?}", e))?;
+                        emb.ok_or_else(|| "분석기가 임베딩을 반환하지 않음".to_string())?
+                            .into_inner()
+                    };
+                    let q = npc_mind::lore::SearchQuery {
+                        query: query.to_string(),
+                        top_k,
+                        corpus_filter,
+                        edition_filter,
+                    };
+                    let hits = store.search(&embedding, &q)
+                        .map_err(|e| format!("search 실패: {:?}", e))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_lore는 --features embed 필요".into())
+                }
+            }
+            "list_corpora" => {
+                #[cfg(feature = "embed")]
+                {
+                    let genre_tag = arguments.get("genre_tag").and_then(|v| v.as_str());
+                    let manifest = self.state.lore_manifest.as_ref()
+                        .ok_or_else(|| "Lore manifest 미부착 — data/corpus/manifest.toml 확인".to_string())?;
+                    let counts: std::collections::HashMap<String, u64> = self.state.lore_store.as_ref()
+                        .map(|s| s.corpus_chunk_counts().unwrap_or_default().into_iter().collect())
+                        .unwrap_or_default();
+                    let summaries: Vec<npc_mind::lore::CorpusSummary> = manifest.corpus.iter()
+                        .filter(|c| genre_tag.is_none_or(|t| c.genre_tags.iter().any(|g| g == t)))
+                        .map(|c| npc_mind::lore::CorpusSummary {
+                            corpus_id: c.id.clone(),
+                            title: c.title.clone(),
+                            author_name: c.author_name.clone(),
+                            genre_tags: c.genre_tags.clone(),
+                            license: c.license.clone(),
+                            editions: c.editions.iter().map(|e| npc_mind::lore::EditionSummary {
+                                edition_id: e.id.clone(),
+                                language: e.language.clone(),
+                                edition: e.edition.clone(),
+                            }).collect(),
+                            indexed_chunks: counts.get(&c.id).copied(),
+                        })
+                        .collect();
+                    Ok(serde_json::to_value(summaries).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_corpora는 --features embed 필요".into())
+                }
+            }
+            "get_chunk" => {
+                #[cfg(feature = "embed")]
+                {
+                    let chunk_id = arguments["chunk_id"].as_str().ok_or("chunk_id is required")?;
+                    let before = arguments.get("before").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                    let after = arguments.get("after").and_then(|v| v.as_u64()).unwrap_or(1) as u32;
+                    let store = self.state.lore_store.as_ref()
+                        .ok_or_else(|| "Lore index 미구성 — `lore-ingest --all` 실행 필요".to_string())?;
+                    let ctx = store.get_chunk(chunk_id, before, after)
+                        .map_err(|e| format!("get_chunk 실패: {:?}", e))?;
+                    match ctx {
+                        Some(c) => Ok(serde_json::to_value(c).map_err(|e| e.to_string())?),
+                        None => Err(format!("chunk_id '{}' 없음", chunk_id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_chunk은 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {
