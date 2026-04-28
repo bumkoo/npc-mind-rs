@@ -541,6 +541,30 @@ delta = pad_dot × absorb_rate × STIMULUS_IMPACT_RATE × inertia
 
 `DAY_MS`는 시간 단위 상수로 `pub const DAY_MS: u64`로 별도 노출됩니다 (튜닝 대상 아님).
 
+### 마이그레이션 — 이전 `pub const` API에서 전환 (Breaking Change)
+
+리뷰 #1 후속으로 모든 튜닝 `pub const`가 `TuningProfile` 필드로 이동됨. 외부 사용자 코드 전환 필요:
+
+```rust
+// 이전 (compile error 발생)
+use npc_mind::domain::tuning::STIMULUS_IMPACT_RATE;
+let rate = STIMULUS_IMPACT_RATE;
+
+// 이후
+use npc_mind::domain::tuning::profile;
+let rate = profile().stimulus_impact_rate;
+
+// 값을 바꿀 때 (프로세스 시작 시 1회)
+use npc_mind::domain::tuning::{install, TuningProfile};
+install(TuningProfile {
+    stimulus_impact_rate: 0.7,
+    ..Default::default()
+}).expect("once only");
+```
+
+상수명 → 필드명 규칙: `SCREAMING_SNAKE` → `snake_case` (예: `BEAT_MERGE_THRESHOLD` → `beat_merge_threshold`).
+`DAY_MS`는 그대로 유지. `install()`은 `validate()` 통과 시에만 성공하며, 두 번째 호출은 `InstallError::AlreadyInstalled` 반환.
+
 파일별 로컬 상수(`personality.rs`의 `W_STANDARD`/`BASE_*`/`CLAMP_*` 등, `pad_table.rs`의 22개 감정별 PAD 좌표)는 해당 파일 상단에 정의되어 있습니다.
 
 ## Mind Studio (개발 도구)

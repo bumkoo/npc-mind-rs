@@ -329,58 +329,177 @@ impl Default for TuningProfile {
 
 impl TuningProfile {
     /// 프로파일 일관성 검증. `install()` 안에서 호출되며,
-    /// 위반 시 debug 빌드에선 panic, release 빌드에선 false 반환.
+    /// 위반 시 release 빌드에선 `Err` 반환 (`InstallError::Invalid`로 래핑).
     ///
-    /// 프로덕션에서 fail-fast가 필요한 호출자는 `install()`이 Err를 반환하도록 할 수 있다.
+    /// 검증 정책:
+    /// - **부등식 invariant** (`closeness_update_rate < trust_update_rate` 등): 도메인
+    ///   로직이 가정하는 순서·관계를 보장.
+    /// - **range 검증**: 명백히 비정상적인 값(음수, 0, 폭주 가능 값)을 차단.
+    /// - 검증되지 않은 필드는 도메인이 모든 실수 값을 의미 있게 받아들일 수 있는 경우
+    ///   (예: `pad_d_scale_weight`는 음수도 reverse-scaling으로 의미 있을 수 있음).
     pub fn validate(&self) -> Result<(), &'static str> {
+        // 헬퍼 — positive comparison으로 작성해 clippy::neg_cmp_on_partial_ord 회피.
+        // NaN은 모든 비교에서 false → 경계 검사를 통과하지 못해 자동 거부됨.
+        let in_open_unit = |x: f32| x > 0.0 && x < 1.0;
+        let in_closed_unit = |x: f32| (0.0..=1.0).contains(&x);
+        let strictly_positive = |x: f32| x > 0.0;
+        let non_negative = |x: f32| x >= 0.0;
+
+        // ── Stimulus ──
         if !(self.stimulus_impact_rate > 0.0 && self.stimulus_impact_rate <= 1.0) {
             return Err("stimulus_impact_rate must be in (0, 1]");
         }
-        if !(self.stimulus_fade_threshold < self.stimulus_min_inertia) {
+        if self.stimulus_fade_threshold >= self.stimulus_min_inertia {
             return Err("stimulus_fade_threshold must be < stimulus_min_inertia");
         }
-        if !(self.stimulus_min_inertia > 0.0 && self.stimulus_min_inertia < 1.0) {
+        if !in_open_unit(self.stimulus_min_inertia) {
             return Err("stimulus_min_inertia must be in (0, 1)");
         }
-        if !(self.beat_merge_threshold > 0.0 && self.beat_merge_threshold < 1.0) {
+        if !in_open_unit(self.beat_merge_threshold) {
             return Err("beat_merge_threshold must be in (0, 1)");
         }
-        if !(self.closeness_update_rate < self.trust_update_rate) {
+        if !in_closed_unit(self.beat_default_significance) {
+            return Err("beat_default_significance must be in [0, 1]");
+        }
+
+        // ── 관계 갱신 ──
+        if self.closeness_update_rate >= self.trust_update_rate {
             return Err("closeness_update_rate must be < trust_update_rate");
         }
-        if !(self.level_very_high_threshold > self.level_high_threshold
-            && self.level_high_threshold > self.level_low_threshold
-            && self.level_low_threshold > self.level_very_low_threshold)
+        if !in_open_unit(self.trust_update_rate) {
+            return Err("trust_update_rate must be in (0, 1)");
+        }
+        if !in_open_unit(self.closeness_update_rate) {
+            return Err("closeness_update_rate must be in (0, 1)");
+        }
+        if !strictly_positive(self.significance_scale) {
+            return Err("significance_scale must be > 0");
+        }
+
+        // ── PAD ──
+        // pad_d_scale_weight는 음수도 의미가 있을 수 있어 검증 안 함.
+        if self.pad_axis_dead_zone < 0.0 || self.pad_axis_dead_zone >= self.pad_axis_scale {
+            return Err("pad_axis_dead_zone must be in [0, pad_axis_scale)");
+        }
+        if !strictly_positive(self.pad_axis_scale) {
+            return Err("pad_axis_scale must be > 0");
+        }
+
+        // ── 가이드 임계값 ──
+        if !in_open_unit(self.mood_threshold) {
+            return Err("mood_threshold must be in (0, 1)");
+        }
+        if !in_open_unit(self.emotion_threshold) {
+            return Err("emotion_threshold must be in (0, 1)");
+        }
+        if !in_open_unit(self.trait_threshold) {
+            return Err("trait_threshold must be in (0, 1)");
+        }
+        if !in_open_unit(self.honesty_restriction_threshold) {
+            return Err("honesty_restriction_threshold must be in (0, 1)");
+        }
+
+        // ── 관계 변조 weight (음수 들어가면 modifier가 0으로 floored되어 무력화) ──
+        for w in [
+            self.rel_closeness_intensity_weight,
+            self.rel_trust_emotion_weight,
+            self.rel_closeness_empathy_weight,
+            self.rel_closeness_hostility_weight,
+        ] {
+            if !non_negative(w) {
+                return Err("rel_*_weight must all be >= 0");
+            }
+        }
+
+        // ── Level 임계값: 엄격 내림차순 ──
+        if self.level_very_high_threshold <= self.level_high_threshold
+            || self.level_high_threshold <= self.level_low_threshold
+            || self.level_low_threshold <= self.level_very_low_threshold
         {
             return Err("level thresholds must be strictly decreasing");
         }
-        if !(self.llm_temp_min < self.llm_base_temperature
-            && self.llm_base_temperature < self.llm_temp_max)
+
+        // ── LLM 샘플링 ──
+        if self.llm_temp_min <= 0.0
+            || self.llm_temp_min >= self.llm_base_temperature
+            || self.llm_base_temperature >= self.llm_temp_max
         {
-            return Err("llm temperature: min < base < max");
+            return Err("llm temperature: 0 < min < base < max");
         }
-        if !(self.llm_top_p_min < self.llm_base_top_p && self.llm_base_top_p <= self.llm_top_p_max)
+        if self.llm_top_p_min <= 0.0
+            || self.llm_top_p_min >= self.llm_base_top_p
+            || self.llm_base_top_p > self.llm_top_p_max
+            || self.llm_top_p_max > 1.0
         {
-            return Err("llm top_p: min < base <= max");
+            return Err("llm top_p: 0 < min < base <= max <= 1");
         }
-        if !(self.source_w_experienced > self.source_w_witnessed
-            && self.source_w_witnessed > self.source_w_heard
-            && self.source_w_heard > self.source_w_rumor)
+        // weight들은 modulation 입력이라 음수면 의미 반전 → 양수만 허용.
+        for w in [
+            self.llm_temp_openness_weight,
+            self.llm_temp_extraversion_weight,
+            self.llm_temp_conscientiousness_weight,
+            self.llm_temp_honesty_weight,
+            self.llm_top_p_openness_weight,
+            self.llm_top_p_conscientiousness_weight,
+        ] {
+            if !non_negative(w) {
+                return Err("llm modulation weights must all be >= 0");
+            }
+        }
+
+        // ── Source 가중치 ──
+        if self.source_w_experienced <= self.source_w_witnessed
+            || self.source_w_witnessed <= self.source_w_heard
+            || self.source_w_heard <= self.source_w_rumor
         {
             return Err("source weights must be strictly decreasing: Exp > Wit > Heard > Rumor");
         }
-        if !(self.rumor_hop_confidence_decay > 0.0 && self.rumor_hop_confidence_decay < 1.0) {
-            return Err("rumor_hop_confidence_decay must be in (0, 1)");
+        if self.source_w_rumor <= 0.0 || self.source_w_experienced > 1.0 {
+            return Err("source weights must be in (0, 1]");
         }
-        if !(self.memory_retention_cutoff > 0.0 && self.memory_retention_cutoff < 1.0) {
+
+        // ── Memory ranker ──
+        if !in_open_unit(self.memory_retention_cutoff) {
             return Err("memory_retention_cutoff must be in (0, 1)");
+        }
+        if !non_negative(self.recall_boost_factor) {
+            return Err("recall_boost_factor must be >= 0 (negative would penalize recalled memories)");
+        }
+        if !non_negative(self.emotion_proximity_bonus) {
+            return Err("emotion_proximity_bonus must be >= 0");
+        }
+        if !strictly_positive(self.recency_boost_tau_days) {
+            return Err("recency_boost_tau_days must be > 0 (else exp(-x/0) diverges)");
+        }
+        if !in_closed_unit(self.similarity_cluster_threshold) {
+            return Err("similarity_cluster_threshold must be in [0, 1] (cosine sim range)");
+        }
+        if !strictly_positive(self.decay_tau_default_days) {
+            return Err("decay_tau_default_days must be > 0");
         }
         if self.memory_push_top_k == 0 {
             return Err("memory_push_top_k must be > 0");
         }
+        if self.memory_prompt_token_budget == 0 {
+            return Err("memory_prompt_token_budget must be > 0");
+        }
+        if !in_open_unit(self.memory_relationship_delta_threshold) {
+            return Err("memory_relationship_delta_threshold must be in (0, 1)");
+        }
+
+        // ── Rumor ──
+        if !in_open_unit(self.rumor_hop_confidence_decay) {
+            return Err("rumor_hop_confidence_decay must be in (0, 1)");
+        }
+        if !in_open_unit(self.rumor_min_confidence) {
+            return Err("rumor_min_confidence must be in (0, 1)");
+        }
+
+        // ── Infrastructure ──
         if self.scene_task_channel_capacity == 0 {
             return Err("scene_task_channel_capacity must be > 0");
         }
+
         Ok(())
     }
 }
@@ -406,22 +525,26 @@ pub struct InvalidProfile {
 ///
 /// `validate()` 통과한 프로파일만 설치된다.
 pub fn install(profile: TuningProfile) -> Result<(), InstallError> {
-    profile
-        .validate()
-        .map_err(|reason| InstallError::Invalid(InvalidProfile {
+    profile.validate().map_err(|reason| {
+        InstallError::Invalid(Box::new(InvalidProfile {
             profile: profile.clone(),
             reason,
-        }))?;
+        }))
+    })?;
     GLOBAL
         .set(profile)
-        .map_err(|p| InstallError::AlreadyInstalled(AlreadyInstalled(p)))
+        .map_err(|p| InstallError::AlreadyInstalled(Box::new(AlreadyInstalled(p))))
 }
 
 /// install() 실패 사유.
+///
+/// 두 variant 모두 `TuningProfile`(약 200B)을 보관해 enum 자체가 크다.
+/// `Box`로 래핑해 stack 사용량을 포인터 크기로 유지 (`Result<(), InstallError>`가
+/// hot path에서 사용되므로).
 #[derive(Debug)]
 pub enum InstallError {
-    AlreadyInstalled(AlreadyInstalled),
-    Invalid(InvalidProfile),
+    AlreadyInstalled(Box<AlreadyInstalled>),
+    Invalid(Box<InvalidProfile>),
 }
 
 impl std::fmt::Display for InstallError {
@@ -489,15 +612,67 @@ mod tests {
 
     #[test]
     fn validate_catches_invalid_stimulus_rate() {
-        let mut p = TuningProfile::default();
-        p.stimulus_impact_rate = 1.5;
+        let p = TuningProfile {
+            stimulus_impact_rate: 1.5,
+            ..Default::default()
+        };
         assert!(p.validate().is_err());
     }
 
     #[test]
     fn validate_catches_inverted_levels() {
-        let mut p = TuningProfile::default();
-        p.level_high_threshold = 0.8; // > VERY_HIGH(0.6)
+        // level_high_threshold > level_very_high_threshold(0.6) → invariant 위반
+        let p = TuningProfile {
+            level_high_threshold: 0.8,
+            ..Default::default()
+        };
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn validate_catches_negative_recall_boost() {
+        let p = TuningProfile {
+            recall_boost_factor: -0.5,
+            ..Default::default()
+        };
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn validate_catches_zero_recency_tau() {
+        // 0이면 exp(-x/0) → NaN/Inf
+        let p = TuningProfile {
+            recency_boost_tau_days: 0.0,
+            ..Default::default()
+        };
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn validate_catches_pad_dead_zone_above_scale() {
+        let p = TuningProfile {
+            pad_axis_dead_zone: 5.0,
+            pad_axis_scale: 3.0,
+            ..Default::default()
+        };
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn validate_catches_negative_significance_scale() {
+        let p = TuningProfile {
+            significance_scale: -1.0,
+            ..Default::default()
+        };
+        assert!(p.validate().is_err());
+    }
+
+    #[test]
+    fn validate_catches_top_p_above_one() {
+        let p = TuningProfile {
+            llm_top_p_max: 1.5,
+            ..Default::default()
+        };
         assert!(p.validate().is_err());
     }
 

@@ -581,20 +581,46 @@ impl DomainEvent {
     ///
     /// `dispatch_v2`의 정상 경로(non-replay)에서는 이 메서드가 사용되지 않는다 —
     /// 거기서는 `*Requested`가 첫 이벤트로 enqueue되어 핸들러를 트리거한다.
+    ///
+    /// ## 구현 노트 — exhaustive match로 컴파일타임 강제
+    ///
+    /// `EventKind`에 대해 exhaustive match를 사용한다. 새 `EventKind` variant이
+    /// 추가될 때 분류 누락 시 **컴파일 실패** → "신설 이벤트는 어느 그룹인가"를
+    /// 강제한다. `matches!()` 또는 별도 테스트 가드보다 강한 보장.
     pub fn is_command_intent(&self) -> bool {
-        matches!(
-            self.payload,
-            EventPayload::AppraiseRequested { .. }
-                | EventPayload::StimulusApplyRequested { .. }
-                | EventPayload::GuideRequested { .. }
-                | EventPayload::SceneStartRequested { .. }
-                | EventPayload::RelationshipUpdateRequested { .. }
-                | EventPayload::DialogueEndRequested { .. }
-                | EventPayload::SeedRumorRequested { .. }
-                | EventPayload::SpreadRumorRequested { .. }
-                | EventPayload::TellInformationRequested { .. }
-                | EventPayload::ApplyWorldEventRequested { .. }
-        )
+        use EventKind::*;
+        match self.kind() {
+            // 커맨드 의도 — `Command::*` dispatch 시 첫 이벤트로 발행, replay 시 skip
+            AppraiseRequested
+            | StimulusApplyRequested
+            | GuideRequested
+            | SceneStartRequested
+            | RelationshipUpdateRequested
+            | DialogueEndRequested
+            | SeedRumorRequested
+            | SpreadRumorRequested
+            | TellInformationRequested
+            | ApplyWorldEventRequested => true,
+            // 결과 이벤트 — replay 시 그대로 처리 가능 (idempotent projection 전제)
+            EmotionAppraised
+            | StimulusApplied
+            | BeatTransitioned
+            | SceneStarted
+            | SceneEnded
+            | RelationshipUpdated
+            | GuideGenerated
+            | DialogueTurnCompleted
+            | EmotionCleared
+            | MemoryEntryCreated
+            | MemoryEntrySuperseded
+            | MemoryEntryConsolidated
+            | RumorSeeded
+            | RumorSpread
+            | RumorDistorted
+            | RumorFaded
+            | InformationTold
+            | WorldEventOccurred => false,
+        }
     }
 
     /// 페이로드 종류 태그 반환 (타입 안전 필터링용)
@@ -1214,32 +1240,6 @@ mod tests {
     // -----------------------------------------------------------------------
     // is_command_intent — replay 정책 가드 (헥사고날/DDD 리뷰 #3)
     // -----------------------------------------------------------------------
-
-    /// 모든 *Requested variant이 누락 없이 `is_command_intent() == true`인지 검증.
-    /// 새 *Requested variant 추가 시 `is_command_intent` 본문에 누락하면 이 가드가
-    /// 실패 (`EventKind::*Requested` enum과 동기화 강제).
-    #[test]
-    fn is_command_intent_kind_set_matches_requested_enum_variants() {
-        let requested_kinds = [
-            EventKind::AppraiseRequested,
-            EventKind::StimulusApplyRequested,
-            EventKind::GuideRequested,
-            EventKind::SceneStartRequested,
-            EventKind::RelationshipUpdateRequested,
-            EventKind::DialogueEndRequested,
-            EventKind::SeedRumorRequested,
-            EventKind::SpreadRumorRequested,
-            EventKind::TellInformationRequested,
-            EventKind::ApplyWorldEventRequested,
-        ];
-        // EventKind::name() 패턴이 `*Requested`로 끝나는 enum과 동일 개수인지 회귀 검사.
-        // 향후 새 *Requested variant가 추가되면 이 카운트를 갱신해야 한다.
-        assert_eq!(
-            requested_kinds.len(),
-            10,
-            "10 Requested variants documented in CLAUDE.md"
-        );
-    }
 
     #[test]
     fn is_command_intent_true_for_appraise_requested() {
