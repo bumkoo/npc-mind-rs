@@ -20,7 +20,7 @@ use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::EventKind;
 use npc_mind::domain::memory::{MemoryScope, MemorySource};
 use npc_mind::domain::personality::NpcBuilder;
-use npc_mind::domain::tuning::{RUMOR_HOP_CONFIDENCE_DECAY, RUMOR_MIN_CONFIDENCE};
+use npc_mind::domain::tuning::profile;
 use npc_mind::ports::{MemoryQuery, MemoryScopeFilter, MemoryStore, RumorStore};
 use npc_mind::{
     EventStore, InMemoryRepository, RumorOriginInput, RumorReachInput, SeedRumorRequest,
@@ -209,14 +209,16 @@ async fn successive_spreads_increment_hop_and_decay_confidence() {
     let b = recipient_entries(&*memory_store, "b").pop().unwrap();
     let c = recipient_entries(&*memory_store, "c").pop().unwrap();
 
+    let p = profile();
     assert!((a.confidence - 1.0).abs() < 1e-6); // decay^0
     assert!(
-        (b.confidence - RUMOR_HOP_CONFIDENCE_DECAY).abs() < 1e-6,
+        (b.confidence - p.rumor_hop_confidence_decay).abs() < 1e-6,
         "expected decay^1 = {}, got {}",
-        RUMOR_HOP_CONFIDENCE_DECAY,
+        p.rumor_hop_confidence_decay,
         b.confidence
     );
-    let expected_c = (RUMOR_HOP_CONFIDENCE_DECAY * RUMOR_HOP_CONFIDENCE_DECAY).max(RUMOR_MIN_CONFIDENCE);
+    let expected_c =
+        (p.rumor_hop_confidence_decay * p.rumor_hop_confidence_decay).max(p.rumor_min_confidence);
     assert!((c.confidence - expected_c).abs() < 1e-5);
     assert!(c.confidence < b.confidence && b.confidence < a.confidence);
 }
@@ -369,11 +371,12 @@ async fn deep_hop_confidence_floors_at_min() {
     // hop 0: 1.0, hop 20: clamp(0.8^20 ≈ 0.0115, 0.1) = 0.1
     let hop0 = recipient_entries(&*memory_store, "listener-0").pop().unwrap();
     let hop20 = recipient_entries(&*memory_store, "listener-20").pop().unwrap();
+    let floor = profile().rumor_min_confidence;
     assert!((hop0.confidence - 1.0).abs() < 1e-6);
     assert!(
-        (hop20.confidence - RUMOR_MIN_CONFIDENCE).abs() < 1e-6,
-        "hop 20 should floor at RUMOR_MIN_CONFIDENCE ({}), got {}",
-        RUMOR_MIN_CONFIDENCE,
+        (hop20.confidence - floor).abs() < 1e-6,
+        "hop 20 should floor at rumor_min_confidence ({}), got {}",
+        floor,
         hop20.confidence
     );
 }

@@ -480,7 +480,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         pad: Option<(f32, f32, f32)>,
     ) -> String {
         use crate::domain::memory::ranker::{Candidate, DecayTauTable, MemoryRanker, RankQuery};
-        use crate::domain::tuning::{MEMORY_PUSH_TOP_K, MEMORY_RETENTION_CUTOFF};
+        use crate::domain::tuning::profile;
 
         let (Some(store), Some(framer)) = (self.memory_store.clone(), self.memory_framer.clone())
         else {
@@ -501,7 +501,9 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         };
 
         // 2) MemoryStore 검색 — NpcAllowed scope, Top-K * 3 oversample (Ranker가 다시 K로 줄임)
-        let oversample = (MEMORY_PUSH_TOP_K * 3).max(MEMORY_PUSH_TOP_K);
+        let tuning = profile();
+        let top_k = tuning.memory_push_top_k;
+        let oversample = (top_k * 3).max(top_k);
         let mem_query = MemoryQuery {
             text: Some(query.to_string()),
             embedding: query_embedding.clone(),
@@ -511,7 +513,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             topic: None,
             exclude_superseded: true,
             exclude_consolidated_source: true,
-            min_retention: Some(MEMORY_RETENTION_CUTOFF),
+            min_retention: Some(tuning.memory_retention_cutoff),
             current_pad: pad,
             limit: oversample,
         };
@@ -546,7 +548,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         let ranker = MemoryRanker::new(&tau);
         let rq = RankQuery {
             current_pad: pad,
-            limit: MEMORY_PUSH_TOP_K,
+            limit: top_k,
             min_score_cutoff: 0.0,
         };
         let now_ms = std::time::SystemTime::now()

@@ -9,7 +9,7 @@ use crate::application::command::handler_v2::{
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
-use crate::domain::tuning::BEAT_DEFAULT_SIGNIFICANCE;
+use crate::domain::tuning::profile;
 
 /// 관계 갱신 폴리시
 pub struct RelationshipPolicy;
@@ -69,7 +69,7 @@ impl EventHandler for RelationshipPolicy {
             } => self.handle_relationship_update(
                 npc_id,
                 partner_id,
-                significance.unwrap_or(BEAT_DEFAULT_SIGNIFICANCE),
+                significance.unwrap_or(profile().beat_default_significance),
                 ctx,
             ),
 
@@ -85,7 +85,7 @@ impl EventHandler for RelationshipPolicy {
                 self.handle_relationship_update_with_cause(
                     npc_id,
                     partner_id,
-                    BEAT_DEFAULT_SIGNIFICANCE,
+                    profile().beat_default_significance,
                     crate::domain::event::RelationshipChangeCause::SceneInteraction {
                         scene_id: crate::domain::scene_id::SceneId::new(
                             npc_id.clone(),
@@ -190,7 +190,7 @@ impl RelationshipPolicy {
         significance: Option<f32>,
         ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
-        let sig = significance.unwrap_or(BEAT_DEFAULT_SIGNIFICANCE);
+        let sig = significance.unwrap_or(profile().beat_default_significance);
         let relationship = ctx
             .repo
             .get_relationship(npc_id, partner_id)

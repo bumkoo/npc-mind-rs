@@ -22,13 +22,10 @@ use super::emotion::{EmotionState, RelationshipModifiers};
 use super::personality::Score;
 
 // ---------------------------------------------------------------------------
-// 갱신 속도 상수
+// 갱신 속도 — TuningProfile에서 조회
 // ---------------------------------------------------------------------------
 
-use crate::domain::tuning::{
-    CLOSENESS_UPDATE_RATE, REL_CLOSENESS_EMPATHY_WEIGHT, REL_CLOSENESS_HOSTILITY_WEIGHT,
-    REL_CLOSENESS_INTENSITY_WEIGHT, REL_TRUST_EMOTION_WEIGHT, SIGNIFICANCE_SCALE,
-};
+use crate::domain::tuning::profile;
 
 // ---------------------------------------------------------------------------
 // Relationship (Value Object)
@@ -120,7 +117,7 @@ impl Relationship {
     /// 감정 반응 배율: closeness 방향에 따라 강화/약화
     /// 가까운 사이(+)면 감정 반응 강화, 적대적(-)이면 감정 절제/경계
     pub fn emotion_intensity_multiplier(&self) -> f32 {
-        (1.0 + self.closeness.value() * REL_CLOSENESS_INTENSITY_WEIGHT).max(0.0)
+        (1.0 + self.closeness.value() * profile().rel_closeness_intensity_weight).max(0.0)
     }
 
     /// 신뢰도 감정 배율: trust 방향에 따라 감정 증폭/약화
@@ -134,7 +131,7 @@ impl Relationship {
     ///
     /// 1.0 ± trust × 0.3 패턴 (engine.rs의 W와 동일)
     pub fn trust_emotion_modifier(&self) -> f32 {
-        1.0 + self.trust.value() * REL_TRUST_EMOTION_WEIGHT
+        1.0 + self.trust.value() * profile().rel_trust_emotion_weight
     }
 
     /// 공감 관계 배율: 가까울수록 공감(HappyFor/Pity) 증폭
@@ -143,7 +140,7 @@ impl Relationship {
     /// - 중립(0.0) → 1.0
     /// - 원수(-0.8) → 0.76: 멀어서 공감 약함
     pub fn empathy_rel_modifier(&self) -> f32 {
-        (1.0 + self.closeness.value() * REL_CLOSENESS_EMPATHY_WEIGHT).max(0.0)
+        (1.0 + self.closeness.value() * profile().rel_closeness_empathy_weight).max(0.0)
     }
 
     /// 적대 관계 배율: 적대적일수록 적대감(Resentment/Gloating) 증폭
@@ -152,7 +149,7 @@ impl Relationship {
     /// - 중립(0.0) → 1.0
     /// - 원수(-0.8) → 1.24: 멀어서 적대 증폭
     pub fn hostility_rel_modifier(&self) -> f32 {
-        (1.0 - self.closeness.value() * REL_CLOSENESS_HOSTILITY_WEIGHT).max(0.0)
+        (1.0 - self.closeness.value() * profile().rel_closeness_hostility_weight).max(0.0)
     }
 
     // --- 새 인스턴스 반환 (Value Object 패턴) ---
@@ -160,11 +157,12 @@ impl Relationship {
     /// closeness를 갱신한 새 Relationship 반환
     /// 대화의 전체 감정 결과(overall_valence) 기반. 매우 점진적.
     pub fn with_updated_closeness(&self, overall_valence: f32, significance: f32) -> Self {
-        let multiplier = 1.0 + significance * SIGNIFICANCE_SCALE;
+        let p = profile();
+        let multiplier = 1.0 + significance * p.significance_scale;
         Self {
             closeness: updated_score(
                 self.closeness,
-                overall_valence * CLOSENESS_UPDATE_RATE * multiplier,
+                overall_valence * p.closeness_update_rate * multiplier,
             ),
             ..self.clone()
         }

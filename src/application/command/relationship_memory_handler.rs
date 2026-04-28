@@ -14,7 +14,7 @@
 //! | `Rumor { rumor_id }` | Rumor | `None` | "소문({rumor_id}) 여파로 {target} 관련 변화" |
 //! | `Unspecified` | Experienced | `None` | 일반 cause 미표기 변화 |
 //!
-//! **threshold 필터**: MEMORY_RELATIONSHIP_DELTA_THRESHOLD(0.05)보다 변화량 작으면 no-op.
+//! **threshold 필터**: `profile().memory_relationship_delta_threshold`(default 0.05)보다 변화량 작으면 no-op.
 //! 한 이벤트로 3축(closeness/trust/power) 모두의 Δ 중 **최대값**이 threshold 미만이면 의미
 //! 없는 미세 변동으로 간주하고 기억을 남기지 않는다. 어떤 축이 주도한 변화인지
 //! content에 추적용 라벨("[closeness Δ=0.34]" 등)로 포함한다 (리뷰 H4).
@@ -38,7 +38,7 @@ use crate::domain::event::{DomainEvent, EventKind, EventPayload, RelationshipCha
 use crate::domain::memory::{
     MemoryEntry, MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance,
 };
-use crate::domain::tuning::MEMORY_RELATIONSHIP_DELTA_THRESHOLD;
+use crate::domain::tuning::profile;
 use crate::ports::MemoryStore;
 
 pub struct RelationshipMemoryHandler {
@@ -169,7 +169,7 @@ impl EventHandler for RelationshipMemoryHandler {
             *after_trust,
             *after_power,
         );
-        if delta < MEMORY_RELATIONSHIP_DELTA_THRESHOLD {
+        if delta < profile().memory_relationship_delta_threshold {
             return Ok(HandlerResult::default());
         }
 

@@ -5,10 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::enums::{PersonalityTrait, SpeechStyle};
 use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::relationship::Relationship;
-use crate::domain::tuning::{
-    EMOTION_THRESHOLD, LEVEL_HIGH_THRESHOLD, LEVEL_LOW_THRESHOLD, LEVEL_VERY_HIGH_THRESHOLD,
-    LEVEL_VERY_LOW_THRESHOLD, TRAIT_THRESHOLD,
-};
+use crate::domain::tuning::profile;
 use crate::ports::PersonalityProfile;
 
 // ---------------------------------------------------------------------------
@@ -28,9 +25,9 @@ pub struct PersonalitySnapshot {
 
 impl PersonalitySnapshot {
     /// 성격 프로필에서 두드러지는 특성을 추출합니다.
-    pub fn from_profile(profile: &impl PersonalityProfile) -> Self {
-        let avg = profile.dimension_averages();
-        let t = TRAIT_THRESHOLD;
+    pub fn from_profile(personality: &impl PersonalityProfile) -> Self {
+        let avg = personality.dimension_averages();
+        let t = profile().trait_threshold;
 
         let mut traits = Vec::new();
         let mut styles = Vec::new();
@@ -190,7 +187,7 @@ impl EmotionSnapshot {
         });
 
         let active_emotions = state
-            .significant(EMOTION_THRESHOLD)
+            .significant(profile().emotion_threshold)
             .iter()
             .map(|e| EmotionEntry {
                 emotion_type: e.emotion_type(),
@@ -261,13 +258,14 @@ pub enum PowerLevel {
 
 impl RelationshipLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > LEVEL_VERY_HIGH_THRESHOLD {
+        let p = profile();
+        if value > p.level_very_high_threshold {
             Self::VeryHigh
-        } else if value > LEVEL_HIGH_THRESHOLD {
+        } else if value > p.level_high_threshold {
             Self::High
-        } else if value > LEVEL_LOW_THRESHOLD {
+        } else if value > p.level_low_threshold {
             Self::Neutral
-        } else if value > LEVEL_VERY_LOW_THRESHOLD {
+        } else if value > p.level_very_low_threshold {
             Self::Low
         } else {
             Self::VeryLow
@@ -277,13 +275,14 @@ impl RelationshipLevel {
 
 impl PowerLevel {
     pub fn from_score(value: f32) -> Self {
-        if value > LEVEL_VERY_HIGH_THRESHOLD {
+        let p = profile();
+        if value > p.level_very_high_threshold {
             Self::VeryHigh
-        } else if value > LEVEL_HIGH_THRESHOLD {
+        } else if value > p.level_high_threshold {
             Self::High
-        } else if value > LEVEL_LOW_THRESHOLD {
+        } else if value > p.level_low_threshold {
             Self::Neutral
-        } else if value > LEVEL_VERY_LOW_THRESHOLD {
+        } else if value > p.level_very_low_threshold {
             Self::Low
         } else {
             Self::VeryLow

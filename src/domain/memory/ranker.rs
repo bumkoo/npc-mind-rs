@@ -4,10 +4,7 @@
 //! Step B 이후에 연결된다.
 
 use super::{MemoryEntry, MemorySource, MemoryType, Provenance};
-use crate::domain::tuning::{
-    DAY_MS, DECAY_TAU_DEFAULT_DAYS, EMOTION_PROXIMITY_BONUS, RECALL_BOOST_FACTOR,
-    RECENCY_BOOST_TAU_DAYS, SIMILARITY_CLUSTER_THRESHOLD,
-};
+use crate::domain::tuning::{DAY_MS, profile};
 
 // ---------------------------------------------------------------------------
 // 공개 타입
@@ -80,7 +77,7 @@ impl DecayTauTable {
         ];
         Self {
             entries,
-            default_days: DECAY_TAU_DEFAULT_DAYS,
+            default_days: profile().decay_tau_default_days,
         }
     }
 
@@ -133,7 +130,7 @@ pub fn filter_by_source_priority(candidates: Vec<Candidate>) -> Vec<Candidate> {
     }
 
     // Topic-없는 후보: embedding cosine 클러스터링
-    let clusters = cluster_by_embedding(topicless, SIMILARITY_CLUSTER_THRESHOLD);
+    let clusters = cluster_by_embedding(topicless, profile().similarity_cluster_threshold);
     for group in clusters {
         out.extend(keep_min_priority(group));
     }
@@ -211,7 +208,7 @@ pub fn final_score(
     let source_confidence = entry.source.weight() * entry.confidence;
     let emotion_proximity = query_pad
         .and_then(|q| entry.emotional_context.map(|e| pad_cosine(e, q)))
-        .map(|c| 1.0 + c * EMOTION_PROXIMITY_BONUS)
+        .map(|c| 1.0 + c * profile().emotion_proximity_bonus)
         .unwrap_or(1.0);
     let temporal_recency = recency_boost(entry.timestamp_ms, now_ms);
 
@@ -235,14 +232,14 @@ pub fn retention_curve(e: &MemoryEntry, now_ms: u64, tau: &DecayTauTable) -> f32
     let age_days = age_ms as f32 / DAY_MS as f32;
 
     let base = (-age_days / tau_days).exp();
-    let boost = 1.0 + (e.recall_count as f32).ln_1p() * RECALL_BOOST_FACTOR;
+    let boost = 1.0 + (e.recall_count as f32).ln_1p() * profile().recall_boost_factor;
     (base * boost).clamp(0.0, 1.0)
 }
 
 /// `exp(-age_days / τ_recency)` — 최근 장면 우선 단기 가산.
 fn recency_boost(timestamp_ms: u64, now_ms: u64) -> f32 {
     let age_days = now_ms.saturating_sub(timestamp_ms) as f32 / DAY_MS as f32;
-    (-age_days / RECENCY_BOOST_TAU_DAYS).exp()
+    (-age_days / profile().recency_boost_tau_days).exp()
 }
 
 /// PAD 삼차원 코사인 유사도 (-1.0 ~ 1.0). 영벡터면 0.

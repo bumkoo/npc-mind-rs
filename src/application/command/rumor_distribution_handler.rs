@@ -27,7 +27,7 @@ use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::memory::{
     MemoryEntry, MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance,
 };
-use crate::domain::tuning::{RUMOR_HOP_CONFIDENCE_DECAY, RUMOR_MIN_CONFIDENCE};
+use crate::domain::tuning::profile;
 use crate::ports::{MemoryStore, RumorStore};
 
 pub struct RumorDistributionHandler {
@@ -74,9 +74,10 @@ impl RumorDistributionHandler {
         // u32 → i32 캐스트 방어: 이론적으로 `hop_index > i32::MAX`면 음수 지수로 변환되어
         // `f32::powi`가 발산(1/x^|n|로 수렴)할 수 있다. 현실 hop이 수백 이상인 경우는
         // `decay^N`이 이미 0에 수렴해 floor가 걸리므로 상한 128로 saturate해도 무해.
+        let p = profile();
         let capped = hop_index.min(128) as i32;
-        let raw = RUMOR_HOP_CONFIDENCE_DECAY.powi(capped);
-        raw.max(RUMOR_MIN_CONFIDENCE)
+        let raw = p.rumor_hop_confidence_decay.powi(capped);
+        raw.max(p.rumor_min_confidence)
     }
 }
 

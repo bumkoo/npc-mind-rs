@@ -558,6 +558,71 @@ impl DomainEvent {
         }
     }
 
+    /// 이 이벤트가 **커맨드 의도(command intent)**인지 — 즉 결과가 아닌 트리거인지.
+    ///
+    /// `*Requested` variant 전부에 대해 `true`. 이들은 `Command::*`가 dispatch될 때
+    /// 시작 이벤트로 발행되며, 같은 트랜잭션 안에서 transactional handler들이 결과
+    /// 이벤트(`*Applied`/`*Generated`/`*Updated` 등)를 산출한다.
+    ///
+    /// ## Replay 정책 (헥사고날/DDD 리뷰 #3)
+    ///
+    /// 이벤트 stream을 replay하는 소비자(예: `MemoryProjector::run`의 lag 복구 경로)
+    /// 는 **`is_command_intent() == true`인 이벤트를 건너뛰어야 한다**. 그렇지
+    /// 않으면 다음 문제가 생긴다:
+    ///
+    /// - 이미 처리된 커맨드를 재실행하는 셈이 되어 부작용 중복 (예: 같은 `RumorSeeded`
+    ///   가 다시 발행됨)
+    /// - 결과 이벤트(`StimulusApplied` 등)는 이미 stream에 있으므로 `*Requested`를
+    ///   다시 트리거하면 동일 결과가 두 번 적용됨
+    /// - Inline projection은 이미 결과 이벤트로 갱신되었으므로 의미적 중복
+    ///
+    /// 즉 `*Requested`는 **audit 목적**으로 stream에 보존되지만, replay 시점에는
+    /// "이미 일어난 일"이며 핸들러가 다시 처리해서는 안 된다.
+    ///
+    /// `dispatch_v2`의 정상 경로(non-replay)에서는 이 메서드가 사용되지 않는다 —
+    /// 거기서는 `*Requested`가 첫 이벤트로 enqueue되어 핸들러를 트리거한다.
+    ///
+    /// ## 구현 노트 — exhaustive match로 컴파일타임 강제
+    ///
+    /// `EventKind`에 대해 exhaustive match를 사용한다. 새 `EventKind` variant이
+    /// 추가될 때 분류 누락 시 **컴파일 실패** → "신설 이벤트는 어느 그룹인가"를
+    /// 강제한다. `matches!()` 또는 별도 테스트 가드보다 강한 보장.
+    pub fn is_command_intent(&self) -> bool {
+        use EventKind::*;
+        match self.kind() {
+            // 커맨드 의도 — `Command::*` dispatch 시 첫 이벤트로 발행, replay 시 skip
+            AppraiseRequested
+            | StimulusApplyRequested
+            | GuideRequested
+            | SceneStartRequested
+            | RelationshipUpdateRequested
+            | DialogueEndRequested
+            | SeedRumorRequested
+            | SpreadRumorRequested
+            | TellInformationRequested
+            | ApplyWorldEventRequested => true,
+            // 결과 이벤트 — replay 시 그대로 처리 가능 (idempotent projection 전제)
+            EmotionAppraised
+            | StimulusApplied
+            | BeatTransitioned
+            | SceneStarted
+            | SceneEnded
+            | RelationshipUpdated
+            | GuideGenerated
+            | DialogueTurnCompleted
+            | EmotionCleared
+            | MemoryEntryCreated
+            | MemoryEntrySuperseded
+            | MemoryEntryConsolidated
+            | RumorSeeded
+            | RumorSpread
+            | RumorDistorted
+            | RumorFaded
+            | InformationTold
+            | WorldEventOccurred => false,
+        }
+    }
+
     /// 페이로드 종류 태그 반환 (타입 안전 필터링용)
     pub fn kind(&self) -> EventKind {
         match &self.payload {
@@ -1170,5 +1235,38 @@ mod tests {
         assert_eq!(m.correlation_id, None);
         assert_eq!(m.parent_event_id, None);
         assert_eq!(m.cascade_depth, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // is_command_intent — replay 정책 가드 (헥사고날/DDD 리뷰 #3)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_command_intent_true_for_appraise_requested() {
+        let ev = make_event(EventPayload::AppraiseRequested {
+            npc_id: "a".into(),
+            partner_id: "b".into(),
+            situation: trivial_situation(),
+        });
+        assert!(ev.is_command_intent());
+    }
+
+    #[test]
+    fn is_command_intent_false_for_emotion_appraised() {
+        let ev = make_event(EventPayload::EmotionAppraised {
+            npc_id: "a".into(),
+            partner_id: "b".into(),
+            situation_description: None,
+            dominant: None,
+            mood: 0.0,
+            emotion_snapshot: vec![],
+        });
+        assert!(!ev.is_command_intent());
+    }
+
+    #[test]
+    fn is_command_intent_false_for_emotion_cleared() {
+        let ev = make_event(EventPayload::EmotionCleared { npc_id: "a".into() });
+        assert!(!ev.is_command_intent());
     }
 }
