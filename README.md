@@ -347,6 +347,27 @@ cargo run --features mind-studio --bin npc-mind-studio
 
 > **Windows note:** Requires `.cargo/config.toml` for dynamic CRT linking when using `--features embed`. See [embedding setup](docs/infra/embedding-adapter-migration.md).
 
+### Lore RAG (Phase 0)
+
+The `lore-ingest` CLI indexes Public-Domain genre source novels (EPUB) into
+`data/corpus/lore.sqlite` (vec0 + FTS5). The corpus EPUB files and the SQLite
+index are gitignored. To rebuild on another machine:
+
+```bash
+# 1. Place the EPUBs listed in data/corpus/manifest.toml under wuxia-core/docs/Chinese-Literature/
+# 2. Place the bge-m3 ONNX model at ../models/bge-m3/{model_quantized.onnx, tokenizer.json}
+# 3. Run:
+cargo run --features embed --bin lore-ingest -- --all
+
+# To re-index after a chunking/filter policy change (Phase 0 cleanup added a
+# noise filter for ToC chapters and < 50-char chunks — existing indexes built
+# before this change should be regenerated):
+cargo run --features embed --bin lore-ingest -- --all --reembed
+```
+
+Mind Studio auto-attaches the index when `data/corpus/lore.sqlite` exists and
+exposes `search_lore` / `list_corpora` / `get_chunk` MCP tools.
+
 ---
 
 ## Locale Customization

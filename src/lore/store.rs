@@ -384,6 +384,13 @@ mod sqlite_impl {
                     {
                         continue;
                     }
+                    // SearchHit.score 정규화 (Phase 0 cleanup 검증):
+                    //   sqlite-vec `distance_metric=cosine`은 cosine distance = 1 - cos_sim을
+                    //   반환하며 (입력 벡터 정규화 여부와 무관하게 sqlite-vec 내부에서 norm
+                    //   분모로 나눠 계산), 범위는 [0, 2]이다. 따라서 `1.0 - distance`는
+                    //   cosine similarity 그 자체이며 [-1, 1] 범위.
+                    //   체크포인트 2 정성 평가: cross-lingual KO↔ZH 매칭 score 0.45~0.62 관측.
+                    //   bge-m3 cross-lingual의 정상 범위(같은 의미 다른 언어 0.4~0.7)와 일치.
                     results.push(SearchHit {
                         corpus_id,
                         edition_id,
