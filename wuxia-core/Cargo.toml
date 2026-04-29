@@ -1,0 +1,13 @@
+[package]
+name = "wuxia-core"
+version = "0.1.0"
+edition = "2024"
+description = "Wuxia RPG - Pure domain logic (no game engine dependency)"
+
+[dependencies]
+# Pure Rust only. NO bevy, NO toml, NO file I/O here.
+# 파일 포맷 파싱은 wuxia-data crate가 담당한다.
+serde = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
