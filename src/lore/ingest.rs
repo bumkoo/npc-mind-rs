@@ -48,6 +48,31 @@ pub struct ChapterText {
     pub text: String,
 }
 
+/// 청크 최소 길이 (Unicode scalar) — 이 미만은 noise(짧은 ToC 항목, 빈 페이지 잔여 등)로 간주하고 skip.
+pub const MIN_CHUNK_CHARS: usize = 50;
+
+/// ToC·표지 같은 비본문 챕터 제목 화이트리스트.
+/// 정확 일치 또는 prefix 매칭(목차 1./Contents — 등)으로 skip.
+const NOISE_CHAPTER_TITLES: &[&str] = &[
+    "Cover",
+    "封面",
+    "目錄",
+    "目次",
+    "目录",
+    "Table of Contents",
+    "Contents",
+];
+
+/// 챕터 제목이 ToC/표지 등 비본문이면 true.
+/// 비교는 trim + 정확 일치 (대소문자 영어는 그대로 비교 — 등재된 형태로만 매칭).
+pub fn is_noise_chapter_title(title: &str) -> bool {
+    let t = title.trim();
+    if t.is_empty() {
+        return false;
+    }
+    NOISE_CHAPTER_TITLES.iter().any(|s| t == *s)
+}
+
 /// EPUB → 챕터 텍스트 추출 트레잇. Phase 0의 단일 구현은 `epub` 크레이트 기반.
 pub trait EpubReader {
     fn read_chapters(&mut self, path: &std::path::Path) -> Result<Vec<ChapterText>, LoreError>;
@@ -79,24 +104,29 @@ pub fn chunk_chapter(
     let mut idx = 0usize;
     while start < chars.len() {
         let end = (start + target).min(chars.len());
-        let text: String = chars[start..end].iter().collect();
-        let chunk_id = format!(
-            "{edition_id}::ch{:04}::p{:04}",
-            chapter.index,
-            idx
-        );
-        out.push(ChunkRecord {
-            chunk_id,
-            corpus_id: corpus_id.to_string(),
-            edition_id: edition_id.to_string(),
-            language: language.to_string(),
-            text,
-            chapter_index: Some(chapter.index),
-            chapter_title: chapter.title.clone(),
-            char_offset_in_edition: edition_offset_base + start as u64,
-            char_offset_in_chapter: start as u64,
-        });
-        idx += 1;
+        let len = end - start;
+        // 노이즈 필터: 청크 길이 < MIN_CHUNK_CHARS면 skip.
+        // 마지막 짧은 꼬리(전 청크의 overlap에 이미 포함)와 빈 페이지 잔여를 함께 처리.
+        if len >= MIN_CHUNK_CHARS {
+            let text: String = chars[start..end].iter().collect();
+            let chunk_id = format!(
+                "{edition_id}::ch{:04}::p{:04}",
+                chapter.index,
+                idx
+            );
+            out.push(ChunkRecord {
+                chunk_id,
+                corpus_id: corpus_id.to_string(),
+                edition_id: edition_id.to_string(),
+                language: language.to_string(),
+                text,
+                chapter_index: Some(chapter.index),
+                chapter_title: chapter.title.clone(),
+                char_offset_in_edition: edition_offset_base + start as u64,
+                char_offset_in_chapter: start as u64,
+            });
+            idx += 1;
+        }
         if end >= chars.len() {
             break;
         }
@@ -106,6 +136,11 @@ pub fn chunk_chapter(
 }
 
 /// 한 edition 전체를 chunked records로 변환.
+///
+/// 노이즈 필터:
+/// - `chapter_title`이 ToC/표지 등 비본문 제목이면 챕터 전체 skip
+///   (단 `char_offset_in_edition` 누적은 그대로 유지 → 본문 챕터 offset 일관성 보존)
+/// - 개별 청크 길이 < `MIN_CHUNK_CHARS`는 `chunk_chapter` 내부에서 skip
 pub fn chunk_edition(
     corpus_id: &str,
     edition: &Edition,
@@ -115,9 +150,18 @@ pub fn chunk_edition(
     let mut out = Vec::new();
     let mut base: u64 = 0;
     for ch in chapters {
-        let mut recs = chunk_chapter(corpus_id, &edition.id, &edition.language, ch, base, cfg);
-        out.append(&mut recs);
-        base += ch.text.chars().count() as u64;
+        let chapter_chars = ch.text.chars().count() as u64;
+        let skip = ch
+            .title
+            .as_deref()
+            .map(is_noise_chapter_title)
+            .unwrap_or(false);
+        if !skip {
+            let mut recs =
+                chunk_chapter(corpus_id, &edition.id, &edition.language, ch, base, cfg);
+            out.append(&mut recs);
+        }
+        base += chapter_chars;
     }
     out
 }
@@ -501,20 +545,88 @@ mod tests {
             format: "epub".into(),
             license_note: None,
         };
-        let chapters = vec![fake_chapter(1, "a", 50), fake_chapter(2, "b", 30)];
+        // 두 챕터 모두 MIN_CHUNK_CHARS(50) 이상이어야 noise 필터에 걸리지 않음.
+        let chapters = vec![fake_chapter(1, "a", 100), fake_chapter(2, "b", 80)];
         let recs = chunk_edition("c", &edition, &chapters);
         assert!(!recs.is_empty());
         let chapter1: Vec<_> = recs.iter().filter(|r| r.chapter_index == Some(1)).collect();
         let chapter2: Vec<_> = recs.iter().filter(|r| r.chapter_index == Some(2)).collect();
         assert!(!chapter2.is_empty());
-        // chapter2의 첫 청크는 chapter1의 끝(50자) 이상의 edition offset
+        // chapter2의 첫 청크는 chapter1의 끝(100자) 이상의 edition offset
         let c2_first = chapter2[0].char_offset_in_edition;
         let c1_first = chapter1[0].char_offset_in_edition;
-        assert!(c2_first >= 50);
+        assert!(c2_first >= 100);
         assert!(c1_first < c2_first);
         // chapter 안에서 청크는 같은 챕터로만 채워짐
         for r in &chapter2 {
             assert_eq!(r.chapter_index, Some(2));
+        }
+    }
+
+    /// Cleanup TASK: ToC/표지 챕터 + 짧은 청크 noise 필터 단위 테스트.
+    /// `chunk_edition` 진입 시 noise 챕터는 통째로 skip되고, 본문 챕터의 짧은 꼬리는
+    /// `chunk_chapter` 내부에서 skip되며, 본문 챕터의 `char_offset_in_edition`은
+    /// (skip된 noise 챕터 길이만큼) 그대로 누적된다.
+    #[test]
+    fn noise_filter_skips_toc_and_short_chunks() {
+        // is_noise_chapter_title 단위 검증
+        assert!(is_noise_chapter_title("Cover"));
+        assert!(is_noise_chapter_title("封面"));
+        assert!(is_noise_chapter_title("目錄"));
+        assert!(is_noise_chapter_title("目次"));
+        assert!(is_noise_chapter_title("目录"));
+        assert!(is_noise_chapter_title("Table of Contents"));
+        assert!(is_noise_chapter_title("Contents"));
+        assert!(is_noise_chapter_title("  Cover  "));     // trim
+        assert!(!is_noise_chapter_title("第一回"));
+        assert!(!is_noise_chapter_title(""));
+
+        let edition = Edition {
+            id: "ed".into(),
+            language: "zh".into(),
+            edition: None,
+            source: "x".into(),
+            format: "epub".into(),
+            license_note: None,
+        };
+
+        // 챕터 1: ToC(목차) — 통째로 skip
+        // 챕터 2: 본문 100자 — 살아남음
+        // 챕터 3: 본문 30자(< MIN_CHUNK_CHARS) — chunk_chapter에서 모든 청크 skip
+        // 챕터 4: 본문 200자 — 살아남음
+        let chapters = vec![
+            fake_chapter(1, "目錄", 40),
+            fake_chapter(2, "第一回", 100),
+            fake_chapter(3, "短章", 30),
+            fake_chapter(4, "第二回", 200),
+        ];
+        let recs = chunk_edition("c", &edition, &chapters);
+
+        // 살아남는 챕터는 2와 4뿐
+        let kept_chapters: std::collections::BTreeSet<u32> =
+            recs.iter().filter_map(|r| r.chapter_index).collect();
+        assert_eq!(kept_chapters, [2u32, 4].into_iter().collect());
+
+        // ToC(40자)와 짧은 챕터(30자)에서는 청크가 0개
+        assert!(!recs.iter().any(|r| r.chapter_index == Some(1)));
+        assert!(!recs.iter().any(|r| r.chapter_index == Some(3)));
+
+        // 본문 챕터는 char_offset_in_edition이 누적 길이 기준으로 매겨짐:
+        // 챕터 2의 첫 청크 offset = 40 (목차 길이)
+        // 챕터 4의 첫 청크 offset = 40 + 100 + 30 = 170
+        let ch2_first = recs.iter().find(|r| r.chapter_index == Some(2)).unwrap();
+        let ch4_first = recs.iter().find(|r| r.chapter_index == Some(4)).unwrap();
+        assert_eq!(ch2_first.char_offset_in_edition, 40);
+        assert_eq!(ch4_first.char_offset_in_edition, 170);
+
+        // 모든 살아남은 청크는 MIN_CHUNK_CHARS 이상
+        for r in &recs {
+            assert!(
+                r.text.chars().count() >= MIN_CHUNK_CHARS,
+                "노이즈 필터를 통과한 청크가 {}자 — MIN_CHUNK_CHARS({}) 이상이어야 함",
+                r.text.chars().count(),
+                MIN_CHUNK_CHARS
+            );
         }
     }
 }

@@ -44,7 +44,30 @@ NPC_MIND_CHAT_URL=http://127.0.0.1:8081/v1   # 로컬 LLM 서버 [chat feature]
 NPC_MIND_MODEL_DIR=../models/bge-m3          # ONNX 모델 [embed feature]
 NPC_MIND_ANCHOR_LANG=ko                       # PAD 앵커 언어 [embed feature]
 MIND_STUDIO_PORT=3000                         # 서버 포트 [mind-studio feature]
+NPC_MIND_LORE_DB=data/corpus/lore.sqlite      # Lore RAG SQLite 경로 [embed feature]
+NPC_MIND_LORE_MANIFEST=data/corpus/manifest.toml   # Lore 매니페스트 경로 [embed feature]
 ```
+
+### Lore RAG (Phase 0)
+
+원전 EPUB 3권을 임베딩+검색용 SQLite로 인덱싱. 원본 EPUB과 `data/corpus/lore.sqlite`는 모두
+gitignore (외부 자료 + 빌드 산출물). 다른 머신에서 작업할 때:
+
+```bash
+# 1. wuxia-core/docs/Chinese-Literature/ 아래 manifest.toml에 등록된 EPUB 3권 배치
+# 2. ../models/bge-m3/ 아래 ONNX 모델 배치
+# 3. cargo run --features embed --bin lore-ingest -- --all
+```
+
+청킹·필터 정책이 바뀌면 (예: Phase 0 cleanup으로 ToC 챕터 + 50자 미만 청크 noise 필터
+추가) 기존 인덱스를 재생성하기 위해 `--reembed`를 1회 실행:
+
+```bash
+cargo run --features embed --bin lore-ingest -- --all --reembed
+```
+
+`data/corpus/lore.sqlite`가 존재하면 Mind Studio가 자동으로 부착하고
+`search_lore` / `list_corpora` / `get_chunk` MCP 도구를 노출한다.
 
 ### 빌드 주의사항 (Windows)
 
