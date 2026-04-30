@@ -1,0 +1,70 @@
+# 무협(wuxia) Group 폼 — Phase 2 폼 시스템 자리.
+#
+# Phase 1에서는 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase 2부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "group"
+
+# kind 옵션 — Phase 1 무협에서 사용한 8 종류.
+[[fields.kind.options]]
+value = "dynasty-court"
+label = "황실/조정"
+
+[[fields.kind.options]]
+value = "clan"
+label = "세가/가문"
+
+[[fields.kind.options]]
+value = "sect-religious"
+label = "신교/사파"
+
+[[fields.kind.options]]
+value = "alliance"
+label = "동맹/연합체"
+
+[[fields.kind.options]]
+value = "covert-band"
+label = "비밀 결사/사병"
+
+[[fields.kind.options]]
+value = "mendicant-order"
+label = "개방/탁발 결사"
+
+[[fields.kind.options]]
+value = "tribe-confederacy"
+label = "부족 연합"
+
+[[fields.kind.options]]
+value = "merchants-council"
+label = "상방 의회"
+
+# 무협 진영(alignment) 표준화 — wuxia 장르 절대 좌표계.
+# Phase 1에서는 .md frontmatter `extras.alignment`로 들어가며, SQLite에 캐시된다.
+[[fields]]
+key = "alignment"
+label = "진영"
+required = true
+type = "enum"
+options = [
+  { value = "orthodox",   label = "정파(正)" },
+  { value = "heterodox",  label = "사파(邪)" },
+  { value = "demonic",    label = "마교(魔)" },
+  { value = "outland",    label = "새외(塞外)" },
+  { value = "imperial",   label = "황실" },
+  { value = "neutral",    label = "중립" },
+]
+
+# 무협 특화 수평 관계 — 코어 도메인의 allied_groups/rival_groups보다 강한 결.
+[[fields]]
+key = "enmity_groups"
+label = "원수"
+description = "rival보다 강도 높음 — 피의 원수, 멸문 명분"
+type = "id_array"
+target = "group"
+
+[[fields]]
+key = "fellowship_groups"
+label = "사문·동문"
+description = "공식 결속 — 동문수학, 사형제 결사"
+type = "id_array"
+target = "group"

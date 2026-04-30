@@ -32,6 +32,8 @@ use npc_mind::ports::{LlmModelInfo, UtteranceAnalyzer};
 use npc_mind::ports::{MemoryStore, RumorStore};
 #[cfg(feature = "embed")]
 use npc_mind::lore::{LoreStore, Manifest};
+#[cfg(feature = "embed")]
+use npc_mind::worldbuilding::WorldRepository;
 
 /// 서버 공유 상태
 #[derive(Clone)]
@@ -113,6 +115,13 @@ pub struct AppState {
     /// Phase 0 Lore RAG: `data/corpus/manifest.toml` 캐시. `list_corpora` 도구가 사용.
     #[cfg(feature = "embed")]
     pub lore_manifest: Option<Arc<Manifest>>,
+
+    /// Phase 1 Worldbuilding: Group SQLite 저장소.
+    /// `NPC_MIND_WORLD_DB` 환경변수로 경로 지정. 부재 시 `list_groups`/`get_group`/
+    /// `search_groups` MCP·REST 도구가 "world index 미구성" 에러를 반환.
+    /// Phase 2+에서 Person/Place 등 도메인 추가에 따라 같은 DB가 확장된다.
+    #[cfg(feature = "embed")]
+    pub world_store: Option<Arc<dyn WorldRepository>>,
 
     // ---- Read Side — Projection 공유 핸들 ----
     //
@@ -295,6 +304,8 @@ impl AppState {
             lore_store: None,
             #[cfg(feature = "embed")]
             lore_manifest: None,
+            #[cfg(feature = "embed")]
+            world_store: None,
             emotion_projection,
             relationship_projection,
             scene_projection,
@@ -394,6 +405,14 @@ impl AppState {
     ) -> Self {
         self.lore_store = Some(store);
         self.lore_manifest = Some(manifest);
+        self
+    }
+
+    /// Phase 1 Worldbuilding 저장소를 부착 (embed feature).
+    /// `list_groups`/`get_group`/`search_groups` MCP·REST 도구가 이 핸들로 동작한다.
+    #[cfg(feature = "embed")]
+    pub fn with_world(mut self, store: Arc<dyn WorldRepository>) -> Self {
+        self.world_store = Some(store);
         self
     }
 }

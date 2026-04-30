@@ -17,6 +17,9 @@ listener_perspective = ["dep:regex"]
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Phase 1 Worldbuilding — 마크다운 frontmatter(YAML) 파서.
+# `serde_yaml` 0.9는 작자가 unmaintained 선언했으나 안정 동작. gray_matter 도입 금지(D2 원칙).
+serde_yaml = "0.9"
 thiserror = "2"
 toml = "1.1"
 tracing = "0.1"
@@ -65,4 +68,11 @@ required-features = ["mind-studio"]
 [[bin]]
 name = "lore-ingest"
 path = "src/bin/lore_ingest.rs"
+required-features = ["embed"]
+
+# Phase 1 Worldbuilding — 마크다운(SoT) → SQLite 인덱스 빌드 CLI.
+# `cargo run --features embed --bin world-load -- --project chilguk-chunchu`
+[[bin]]
+name = "world-load"
+path = "src/bin/world_load.rs"
 required-features = ["embed"]

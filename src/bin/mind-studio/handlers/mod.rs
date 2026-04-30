@@ -111,6 +111,9 @@ pub mod memory;
 pub mod rumor;
 #[cfg(feature = "embed")]
 pub mod world;
+// Phase 1 Worldbuilding — Group 조회 (embed feature, world_store 부착 시에만 동작).
+#[cfg(feature = "embed")]
+pub mod world_groups;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {
@@ -153,6 +156,24 @@ pub enum AppError {
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
     V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
+}
+
+/// Phase 1 Worldbuilding — `WorldError` variant 별 HTTP 상태 매핑.
+/// `NotFound` → 404, `Invalid` → 400, `ParentCycle` → 500 (서버 invariant 위반),
+/// `Storage` → 500.
+#[cfg(feature = "embed")]
+impl From<npc_mind::domain::world::WorldError> for AppError {
+    fn from(e: npc_mind::domain::world::WorldError) -> Self {
+        use npc_mind::domain::world::WorldError as W;
+        match e {
+            W::NotFound(msg) => AppError::NotFound(msg),
+            W::Invalid(msg) => AppError::Internal(format!("worldbuilding invalid: {msg}")),
+            W::ParentCycle { path } => {
+                AppError::Internal(format!("worldbuilding parent_group cycle: {path}"))
+            }
+            W::Storage(msg) => AppError::Internal(format!("worldbuilding storage: {msg}")),
+        }
+    }
 }
 
 impl From<npc_mind::application::director::DirectorError> for AppError {

@@ -9,6 +9,7 @@ pub mod domain;
 pub mod lore;
 pub mod ports;
 pub mod presentation;
+pub mod worldbuilding;
 
 // ---------------------------------------------------------------------------
 // 편의 재노출 — 라이브러리 사용자의 주요 진입점
@@ -58,6 +59,16 @@ pub use ports::RumorStore;
 pub use adapter::sqlite_memory::{SqliteMemoryStore, DEFAULT_EMBEDDING_DIM};
 #[cfg(feature = "embed")]
 pub use adapter::sqlite_rumor::SqliteRumorStore;
+#[cfg(feature = "embed")]
+pub use adapter::sqlite_world::SqliteWorldStore;
+
+// --- Worldbuilding (Phase 1: Group only) ---
+pub use domain::world::{
+    Group, GroupFilter, GroupId, GroupStatus, MemberRef, Temporal, WorldError,
+    detect_parent_group_cycle,
+};
+pub use worldbuilding::WorldRepository;
+pub use worldbuilding::markdown::{group_from_markdown, parse_frontmatter, parse_h2_sections};
 #[cfg(feature = "embed")]
 pub use application::memory_projector::MemoryProjector;
 

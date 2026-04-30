@@ -11,6 +11,7 @@ pub mod pad_table;
 pub mod personality;
 pub mod relationship;
 pub mod tuning;
+pub mod world;
 
 #[cfg(feature = "listener_perspective")]
 pub mod listener_perspective;

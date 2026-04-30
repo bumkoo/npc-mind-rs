@@ -45,3 +45,6 @@ wuxia-core/docs/Chinese-History/*.epub
 wuxia-core/docs/Chinese-History/*.pdf
 data/corpus/lore.sqlite
 data/corpus/lore.sqlite-*
+
+# Phase 1 Worldbuilding — 프로젝트 SQLite 빌드 산출물 (SoT는 .md)
+projects/*/build/
