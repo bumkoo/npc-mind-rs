@@ -358,6 +358,45 @@ impl MindMcpService {
                 }
             }),
 
+            // Phase 1 Worldbuilding — Group 조회 (embed feature + NPC_MIND_WORLD_DB 부착 필요).
+            serde_json::json!({
+                "name": "list_groups",
+                "description": "월드 인덱스에서 Group 목록 조회. 필터로 kind/status/parent_group/alignment/genre_tag 지정 가능. world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "description": "kind 필터 (예: alliance, clan, sect-religious)" },
+                        "status": { "type": "string", "description": "active|declining|dissolved|dormant" },
+                        "parent_group": { "type": "string", "description": "수직 포함 — 자식 그룹 필터" },
+                        "alignment": { "type": "string", "description": "wuxia 진영 (orthodox|heterodox|demonic|outland|imperial|neutral)" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, dynasty)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_group",
+                "description": "Group ID로 단일 그룹의 전체 detail 조회. 없으면 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "group_id": { "type": "string" }
+                    },
+                    "required": ["group_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_groups",
+                "description": "FTS5 trigram 매치로 Group 검색 (name + aliases + summary + body 결합). 한국어/한자/영어 모두 매칭.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -1020,6 +1059,75 @@ impl MindMcpService {
                 #[cfg(not(feature = "embed"))]
                 {
                     Err("get_chunk은 --features embed 필요".into())
+                }
+            }
+            "list_groups" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::{GroupFilter, GroupId, GroupStatus};
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let filter = GroupFilter {
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        status: arguments
+                            .get("status")
+                            .and_then(|v| v.as_str())
+                            .and_then(GroupStatus::from_str_loose),
+                        parent_group: arguments
+                            .get("parent_group")
+                            .and_then(|v| v.as_str())
+                            .map(|s| GroupId::new(s.to_string())),
+                        genre_tag: arguments.get("genre_tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        alignment: arguments.get("alignment").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    };
+                    let groups = store
+                        .list_groups(filter)
+                        .map_err(|e| format!("list_groups 실패: {e}"))?;
+                    Ok(serde_json::to_value(groups).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_groups는 --features embed 필요".into())
+                }
+            }
+            "get_group" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::GroupId;
+                    let id = arguments["group_id"].as_str().ok_or("group_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let g = store
+                        .get_group(&GroupId::new(id.to_string()))
+                        .map_err(|e| format!("get_group 실패: {e}"))?;
+                    match g {
+                        Some(g) => Ok(serde_json::to_value(g).map_err(|e| e.to_string())?),
+                        None => Err(format!("group '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_group는 --features embed 필요".into())
+                }
+            }
+            "search_groups" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_groups(q, top_k)
+                        .map_err(|e| format!("search_groups 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_groups는 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {

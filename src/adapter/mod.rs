@@ -12,6 +12,8 @@ pub mod ort_embedder;
 pub mod sqlite_memory;
 #[cfg(feature = "embed")]
 pub mod sqlite_rumor;
+#[cfg(feature = "embed")]
+pub mod sqlite_world;
 
 #[cfg(feature = "chat")]
 pub mod llama_timings;

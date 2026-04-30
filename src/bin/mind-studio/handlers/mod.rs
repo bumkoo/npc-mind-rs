@@ -111,6 +111,9 @@ pub mod memory;
 pub mod rumor;
 #[cfg(feature = "embed")]
 pub mod world;
+// Phase 1 Worldbuilding — Group 조회 (embed feature, world_store 부착 시에만 동작).
+#[cfg(feature = "embed")]
+pub mod world_groups;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

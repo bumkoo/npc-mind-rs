@@ -1,0 +1,11 @@
+name = "chilguk-chunchu"
+title = "칠국춘추(七國春秋)"
+description = "270년 전 통일제국 대진이 와해되고 7개 정치체가 공존하는 무협 세계. Phase 1 — Group 5-6개 vertical slice."
+genre = "wuxia"
+version = "1.0.0"
+
+# Phase 1 검증 게이트:
+# - 5-6개 Group .md → SQLite 적재
+# - MCP list_groups/get_group/search_groups 정성 평가 통과
+# - parent_group cycle 없음
+# - 시간성·멤버십·외래키 텍스트 보존

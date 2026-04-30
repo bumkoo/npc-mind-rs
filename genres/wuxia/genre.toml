@@ -1,0 +1,18 @@
+# 무협(wuxia) 장르 패키지 — Phase 1.
+#
+# 본 파일은 장르가 끼우는 어휘·진영 표준화·폼 옵션의 진입점.
+# `src/`(코어 도메인)는 wuxia 어휘를 모르며, 본 디렉토리만 무협 어휘를 보유한다.
+
+name = "wuxia"
+display_name = "무협(武俠)"
+description = "중국 강호·문파·황실을 배경으로 한 동아시아 판타지. 정파/사파/마교/황실/새외 진영 표준화."
+
+# 진영(alignment) 표준 — Group/Person/Place 모두 공통 좌표계.
+alignment_axis = ["orthodox", "heterodox", "demonic", "outland", "imperial", "neutral"]
+
+# Phase 1엔 Group 폼만 사용. Phase 2+에서 person/place/item/skill/... 추가.
+[forms]
+group = "forms/group.toml"
+
+[markdown_templates]
+group = "markdown_template/group.md"

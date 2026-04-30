@@ -119,6 +119,40 @@ async fn main() {
         }
     }
 
+    // Phase 1 Worldbuilding: NPC_MIND_WORLD_DB가 가리키는 SQLite가 있으면 부착.
+    // 부재 시 list_groups 등 MCP/REST 도구는 "world index 미구성" 에러를 반환.
+    #[cfg(feature = "embed")]
+    {
+        use std::sync::Arc;
+        if let Some(path) = std::env::var_os("NPC_MIND_WORLD_DB") {
+            let path = std::path::PathBuf::from(path);
+            if path.is_file() {
+                match npc_mind::adapter::sqlite_world::SqliteWorldStore::new(
+                    path.to_string_lossy().as_ref(),
+                ) {
+                    Ok(store) => {
+                        state = state.with_world(
+                            Arc::new(store) as Arc<dyn npc_mind::worldbuilding::WorldRepository>,
+                        );
+                        tracing::info!("World store 부착 완료: {}", path.display());
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "World store 초기화 실패 ({}): {:?}",
+                            path.display(),
+                            e
+                        );
+                    }
+                }
+            } else {
+                tracing::warn!(
+                    "NPC_MIND_WORLD_DB={} 파일 없음 — world-load --project <id> 실행 필요",
+                    path.display()
+                );
+            }
+        }
+    }
+
     // MCP 서버 초기화 (chat이 설정된 state를 clone)
     let mcp_server = mcp_server::create_mcp_server(state.clone());
     state = state.with_mcp(mcp_server);
@@ -241,7 +275,15 @@ fn build_api_router(state: AppState) -> Router {
         .route("/api/world/apply-event", post(handlers::world::apply_event))
         .route("/api/rumors", get(handlers::rumor::list))
         .route("/api/rumors/seed", post(handlers::rumor::seed))
-        .route("/api/rumors/{id}/spread", post(handlers::rumor::spread));
+        .route("/api/rumors/{id}/spread", post(handlers::rumor::spread))
+        // Phase 1 Worldbuilding — Group 조회. world_store 미부착 시 501 NotImplemented.
+        // 순서 주의: `search`는 path-param보다 먼저 등록해야 axum 라우터가 우선 매치한다.
+        .route("/api/world/groups", get(handlers::world_groups::list_groups))
+        .route(
+            "/api/world/groups/search",
+            get(handlers::world_groups::search_groups),
+        )
+        .route("/api/world/groups/{id}", get(handlers::world_groups::get_group));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());
