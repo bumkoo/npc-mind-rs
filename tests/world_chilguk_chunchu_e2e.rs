@@ -253,7 +253,8 @@ fn full_roundtrip_preserves_temporal_and_members() {
         .get_group(&GroupId::new("group-daejin-court"))
         .unwrap()
         .unwrap();
-    // source_path만 다를 수 있음 — 다른 모든 핵심 필드는 보존되어야 함
+    // 모든 핵심 필드 보존 검증. source_path는 SqliteWorldStore가 그대로 저장/복원하나
+    // 본 테스트의 in-memory store는 e2e 입력에서 setter로 주입한 절대경로를 그대로 보존.
     assert_eq!(daejin_db.id, daejin_md.id);
     assert_eq!(daejin_db.kind, daejin_md.kind);
     assert_eq!(daejin_db.name, daejin_md.name);

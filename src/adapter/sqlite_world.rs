@@ -8,7 +8,9 @@ use std::sync::Mutex;
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value};
 
-use crate::domain::world::{Group, GroupFilter, GroupId, GroupStatus, WorldError};
+use crate::domain::world::{Group, GroupFilter, GroupId, WorldError};
+#[cfg(test)]
+use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
 const SCHEMA_VERSION: i64 = 1;
@@ -264,7 +266,7 @@ impl WorldRepository for SqliteWorldStore {
         let rows = stmt
             .query_map(rusqlite::params_from_iter(bind_refs), row_to_group)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        Ok(collect_rows_warn_on_err(rows))
     }
 
     fn get_group(&self, id: &GroupId) -> Result<Option<Group>, WorldError> {
@@ -317,7 +319,7 @@ impl WorldRepository for SqliteWorldStore {
                  LIMIT ?2",
             )?;
             let rows = stmt.query_map(params![phrase, top_k as i64], row_to_group)?;
-            Ok(rows.filter_map(|r| r.ok()).collect())
+            Ok(collect_rows_warn_on_err(rows))
         })();
 
         match fts_hits {
@@ -384,13 +386,16 @@ impl SqliteWorldStore {
         let rows = stmt
             .query_map(params![pat, top_k as i64], row_to_group)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
-        Ok(rows.filter_map(|r| r.ok()).collect())
+        Ok(collect_rows_warn_on_err(rows))
     }
 }
 
 fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<Group> {
+    // 컬럼 순서는 호출자(prepare 문) SELECT 절과 1:1 매핑.
+    // 비-truth 컬럼(status, alignment)은 temporal_json·extras_json에 동일 값이 있으므로
+    // 굳이 읽지 않는다. CHECK 제약과 인덱싱용 캐시일 뿐이다.
     let id: String = row.get(0)?;
-    let _project_id: String = row.get(1)?;
+    // project_id (1)은 현재 도메인 모델 미보존 (Phase 2+ 다중 프로젝트 시 추가).
     let kind: String = row.get(2)?;
     let name: String = row.get(3)?;
     let aliases_json: String = row.get(4)?;
@@ -398,8 +403,7 @@ fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<Group> {
     let allied_json: String = row.get(6)?;
     let rival_json: String = row.get(7)?;
     let headquarters: Option<String> = row.get(8)?;
-    let status: String = row.get(9)?;
-    let _alignment: Option<String> = row.get(10)?;
+    // status (9), alignment (10): 캐시 컬럼 — temporal_json/extras_json에서 복원.
     let summary: String = row.get(11)?;
     let tags_json: String = row.get(12)?;
     let extras_json: String = row.get(13)?;
@@ -413,8 +417,6 @@ fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<Group> {
     let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
     let temporal = serde_json::from_str(&temporal_json).unwrap_or_default();
     let members = serde_json::from_str(&members_json).unwrap_or_default();
-    // status는 temporal 내부에 이미 있으므로 굳이 덮어쓰지 않는다 — temporal_json이 truth.
-    let _ = (GroupStatus::from_str_loose(&status), &status);
 
     Ok(Group {
         id: GroupId::new(id),
@@ -433,6 +435,24 @@ fn row_to_group(row: &rusqlite::Row) -> rusqlite::Result<Group> {
         rival_groups: from_json_groupids(&rival_json),
         source_path,
     })
+}
+
+/// `query_map` 결과의 row decode 에러를 silent하게 흘려보내지 않고 `tracing::warn!`으로
+/// 기록한 뒤 성공 row만 모은다. JSON deserialize/타입 불일치 등의 진단 가시성 확보용.
+fn collect_rows_warn_on_err<I>(rows: I) -> Vec<Group>
+where
+    I: Iterator<Item = rusqlite::Result<Group>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(g) => out.push(g),
+            Err(e) => {
+                tracing::warn!("SqliteWorldStore row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -591,6 +611,52 @@ mod tests {
                 "search_groups({q:?})는 panic·error 없이 Ok이어야 함: {res:?}"
             );
         }
+    }
+
+    #[test]
+    fn upsert_replaces_fts_stale_row() {
+        // upsert 두 번 — 첫 번째 alias가 FTS5 stale row로 남으면 안 됨.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut g = sample_group("group-x", "alliance", "Alpha Council");
+        g.aliases = vec!["OldAliasUnique".into()];
+        g.body_sections.clear();
+        g.body_sections
+            .insert("Overview".into(), "first body".into());
+        store.upsert_group("p", &g).unwrap();
+        // 첫 alias로 검색 가능
+        let hits = store.search_groups("OldAliasUnique", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+
+        // alias 교체 + body 교체 후 재upsert
+        g.aliases = vec!["NewAliasUnique".into()];
+        g.body_sections.clear();
+        g.body_sections
+            .insert("Overview".into(), "second body".into());
+        store.upsert_group("p", &g).unwrap();
+
+        // 옛 alias로는 검색 0건이어야 함 (FTS5 row 교체 검증)
+        let hits_old = store.search_groups("OldAliasUnique", 5).unwrap();
+        assert!(
+            hits_old.is_empty(),
+            "stale FTS5 row 검출: {:?}",
+            hits_old.iter().map(|g| g.id.as_str()).collect::<Vec<_>>()
+        );
+        // 새 alias로 검색 1건
+        let hits_new = store.search_groups("NewAliasUnique", 5).unwrap();
+        assert_eq!(hits_new.len(), 1);
+        // 옛 body 텍스트도 매치되지 않아야 함
+        let hits_body = store.search_groups("first body", 5).unwrap();
+        assert!(hits_body.is_empty());
+    }
+
+    #[test]
+    fn upsert_preserves_source_path_round_trip() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut g = sample_group("group-sp", "alliance", "SP");
+        g.source_path = Some("projects/test/world/group/group-sp.md".into());
+        store.upsert_group("p", &g).unwrap();
+        let back = store.get_group(&GroupId::new("group-sp")).unwrap().unwrap();
+        assert_eq!(back.source_path, g.source_path);
     }
 
     #[test]

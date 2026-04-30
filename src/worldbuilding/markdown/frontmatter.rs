@@ -91,12 +91,38 @@ pub fn parse_frontmatter(md: &str) -> Result<Frontmatter, FrontmatterError> {
 /// - H2 다음 라인부터 다음 H2 또는 EOF까지 본문.
 /// - 본문은 양끝 빈 줄 trim, 내부 줄바꿈은 보존.
 /// - 동일 제목 H2가 여럿이면 마지막 본문이 우선 (덮어쓰기).
+/// - **Fenced code block** (``` 또는 ~~~로 둘러싸인 영역) 안의 `## `는 헤더로 인식하지 않음.
+///   같은 종류의 펜스(``` ↔ ~~~)에서만 토글되며, 들여쓰기는 무시(0-3 공백 허용).
 pub fn parse_h2_sections(body: &str) -> BTreeMap<String, String> {
     let mut out: BTreeMap<String, String> = BTreeMap::new();
     let mut cur_title: Option<String> = None;
     let mut cur_buf: String = String::new();
+    let mut fence: Option<char> = None; // Some('`') | Some('~') | None
     for line in body.lines() {
         let trimmed = line.trim_start();
+        // 펜스 토글 검사 — 같은 종류 펜스(``` 또는 ~~~)만 매치.
+        // CommonMark는 정확한 길이 매치까지 요구하지만, 본 파서는 단순화: 3+ 연속 백틱/틸드.
+        if let Some(c) = fence_char(trimmed) {
+            match fence {
+                None => fence = Some(c),
+                Some(prev) if prev == c => fence = None,
+                _ => {} // 다른 종류 펜스는 무시 (열려 있으면 그대로 유지)
+            }
+            // 펜스 라인 자체는 본문에 포함 (현 섹션이 있을 때만).
+            if cur_title.is_some() {
+                cur_buf.push_str(line);
+                cur_buf.push('\n');
+            }
+            continue;
+        }
+        // 펜스 안에서는 헤더 매칭 비활성 — 본문으로 누적.
+        if fence.is_some() {
+            if cur_title.is_some() {
+                cur_buf.push_str(line);
+                cur_buf.push('\n');
+            }
+            continue;
+        }
         if let Some(rest) = trimmed.strip_prefix("## ") {
             if let Some(title) = cur_title.take() {
                 out.insert(title, cur_buf.trim().to_string());
@@ -118,6 +144,17 @@ pub fn parse_h2_sections(body: &str) -> BTreeMap<String, String> {
         out.insert(title, cur_buf.trim().to_string());
     }
     out
+}
+
+/// 라인이 fenced code block 펜스인지(``` / ~~~ 3+ 연속) 검사하고 펜스 문자를 반환.
+fn fence_char(trimmed: &str) -> Option<char> {
+    for c in ['`', '~'] {
+        let n = trimmed.chars().take_while(|&ch| ch == c).count();
+        if n >= 3 {
+            return Some(c);
+        }
+    }
+    None
 }
 
 // ---------------------------------------------------------------------------
@@ -183,5 +220,53 @@ mod tests {
         let secs = parse_h2_sections(body);
         assert_eq!(secs.len(), 1);
         assert!(secs.contains_key("개요"));
+    }
+
+    #[test]
+    fn parse_frontmatter_handles_crlf() {
+        // CRLF 입력에서 펜스 인식·body 추출이 정상 작동.
+        let md = "---\r\nid: group-x\r\nkind: clan\r\nname: test\r\n---\r\n\r\n## Heading\r\nBody.";
+        let fm = parse_frontmatter(md).expect("CRLF 파싱");
+        assert_eq!(fm.value["id"].as_str(), Some("group-x"));
+        assert!(fm.body.starts_with("## Heading"));
+    }
+
+    #[test]
+    fn parse_h2_sections_ignores_hash_inside_fenced_code_block() {
+        // ``` 안의 `## fake` 는 헤더로 인식되지 않아야 함.
+        let body = "## Real\nbefore\n```\n## fake header\nstill code\n```\nafter\n\n## Real2\ndone";
+        let secs = parse_h2_sections(body);
+        assert_eq!(secs.len(), 2);
+        assert!(secs.contains_key("Real"));
+        assert!(secs.contains_key("Real2"));
+        assert!(!secs.contains_key("fake header"));
+        assert!(secs["Real"].contains("## fake header"));
+        assert!(secs["Real"].contains("```"));
+    }
+
+    #[test]
+    fn parse_h2_sections_handles_tilde_fence() {
+        // ~~~ 펜스도 토글되어야 함.
+        let body = "## A\n~~~\n## not a header\n~~~\n## B\nbody";
+        let secs = parse_h2_sections(body);
+        assert_eq!(secs.len(), 2);
+        assert!(secs.contains_key("A"));
+        assert!(secs.contains_key("B"));
+    }
+
+    #[test]
+    fn parse_h2_sections_duplicate_title_keeps_last() {
+        let body = "## Same\nfirst\n\n## Same\nsecond";
+        let secs = parse_h2_sections(body);
+        assert_eq!(secs.len(), 1);
+        assert_eq!(secs["Same"], "second");
+    }
+
+    #[test]
+    fn parse_frontmatter_empty_body_yields_empty_sections() {
+        let md = "---\nid: g\nkind: clan\nname: x\n---\n";
+        let fm = parse_frontmatter(md).unwrap();
+        let secs = parse_h2_sections(&fm.body);
+        assert!(secs.is_empty());
     }
 }

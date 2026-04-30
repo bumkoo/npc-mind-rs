@@ -39,7 +39,7 @@ pub async fn list_groups(
     };
     let groups = store
         .list_groups(filter)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(AppError::from)?;
     Ok(Json(groups))
 }
 
@@ -53,7 +53,7 @@ pub async fn get_group(
         .ok_or_else(|| AppError::NotImplemented("world index 미구성".into()))?;
     let g = store
         .get_group(&GroupId::new(id.clone()))
-        .map_err(|e| AppError::Internal(e.to_string()))?
+        .map_err(AppError::from)?
         .ok_or_else(|| AppError::NotFound(format!("group '{id}' 없음")))?;
     Ok(Json(g))
 }
@@ -76,6 +76,6 @@ pub async fn search_groups(
     let top_k = p.top_k.unwrap_or(5);
     let hits = store
         .search_groups(&q, top_k)
-        .map_err(|e| AppError::Internal(e.to_string()))?;
+        .map_err(AppError::from)?;
     Ok(Json(hits))
 }

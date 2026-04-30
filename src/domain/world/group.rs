@@ -349,6 +349,65 @@ mod tests {
     }
 
     #[test]
+    fn cycle_detection_finds_three_node_cycle() {
+        // a → b → c → a — canonical rotation: 가장 작은 id 'a' 시작.
+        let groups = vec![
+            g_with_parent("group-a", Some("group-b")),
+            g_with_parent("group-b", Some("group-c")),
+            g_with_parent("group-c", Some("group-a")),
+        ];
+        let cycles = detect_parent_group_cycle(&groups);
+        assert_eq!(cycles.len(), 1);
+        assert_eq!(
+            cycles[0],
+            vec![
+                GroupId::new("group-a"),
+                GroupId::new("group-b"),
+                GroupId::new("group-c"),
+            ]
+        );
+    }
+
+    #[test]
+    fn cycle_detection_finds_two_disjoint_cycles() {
+        // (a↔b) + (c↔d) — 두 개의 독립 cycle. 둘 다 검출되며 BTreeSet으로 정렬 보장.
+        let groups = vec![
+            g_with_parent("group-a", Some("group-b")),
+            g_with_parent("group-b", Some("group-a")),
+            g_with_parent("group-c", Some("group-d")),
+            g_with_parent("group-d", Some("group-c")),
+        ];
+        let cycles = detect_parent_group_cycle(&groups);
+        assert_eq!(cycles.len(), 2);
+        assert_eq!(
+            cycles[0],
+            vec![GroupId::new("group-a"), GroupId::new("group-b")]
+        );
+        assert_eq!(
+            cycles[1],
+            vec![GroupId::new("group-c"), GroupId::new("group-d")]
+        );
+    }
+
+    #[test]
+    fn cycle_detection_tail_cycle_excludes_prefix() {
+        // a → b → c → b — a는 cycle 외부 prefix. cycle은 {b, c}만 포함되어야 함.
+        let groups = vec![
+            g_with_parent("group-a", Some("group-b")),
+            g_with_parent("group-b", Some("group-c")),
+            g_with_parent("group-c", Some("group-b")),
+        ];
+        let cycles = detect_parent_group_cycle(&groups);
+        assert_eq!(cycles.len(), 1);
+        // canonical: 가장 작은 'group-b' 시작.
+        assert_eq!(
+            cycles[0],
+            vec![GroupId::new("group-b"), GroupId::new("group-c")]
+        );
+        assert!(!cycles[0].contains(&GroupId::new("group-a")));
+    }
+
+    #[test]
     fn cycle_detection_dangling_parent_is_not_cycle() {
         // 외래키 결손 (Phase 2까지 자연스러운 상태) — cycle 아님.
         let groups = vec![g_with_parent("group-a", Some("group-missing"))];

@@ -300,7 +300,17 @@ fn run() -> Result<(), String> {
     println!("cycles            = {}", cycles.len());
 
     if !errors.is_empty() {
-        return Err(format!("{} 파일 파싱 실패", errors.len()));
+        // 부분 실패 시 SQLite는 성공한 파일만 적재된 partial 상태이다.
+        // 사용자가 일관된 인덱스를 원하면 `--reload`로 재실행하거나 `.md` 오류를 고친 뒤 재실행.
+        eprintln!(
+            "\n[world-load] ⚠ {} 파일 파싱 실패 — DB는 partial 상태일 수 있음. \
+             오류 수정 후 `--reload`로 재실행하면 일관된 인덱스 보장.",
+            errors.len()
+        );
+        return Err(format!(
+            "{} 파일 파싱 실패 (DB partial; 위 가이드 참조)",
+            errors.len()
+        ));
     }
     Ok(())
 }
@@ -316,16 +326,30 @@ fn print_warnings(label: &str, items: &[(String, String)]) {
 }
 
 /// `world/group/` 하위 .md 파일을 (한 단계만) 수집. 재귀 X — Phase 1 단순.
+/// 하위 디렉토리가 발견되면 stderr로 경고 (재귀가 아니라 무시되었음을 알림).
 fn walk_md(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
+    let mut subdirs: Vec<PathBuf> = Vec::new();
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("md") {
             out.push(path);
+        } else if path.is_dir() {
+            subdirs.push(path);
         }
     }
     out.sort();
+    if !subdirs.is_empty() {
+        eprintln!(
+            "[world-load] ℹ {} 하위 디렉토리 {} 개 무시 (Phase 1 walk_md 비-재귀):",
+            dir.display(),
+            subdirs.len()
+        );
+        for d in &subdirs {
+            eprintln!("  - {}", d.display());
+        }
+    }
     Ok(out)
 }
 
@@ -335,12 +359,21 @@ fn path_relative_str(root: &Path, path: &Path) -> String {
         .unwrap_or_else(|_| path.to_string_lossy().to_string())
 }
 
-/// project.toml에서 `genre = "..."` 한 줄만 추출 (TOML full parse 회피).
+/// project.toml에서 `genre = "..."` 한 줄만 추출. TOML 파싱 실패는 stderr로 보고하되
+/// fatal로 취급하지 않는다 (CLI는 빈 메타로 진행).
 fn parse_project_genre(raw: &str) -> Option<String> {
-    let value: toml::Value = toml::from_str(raw).ok()?;
-    value
-        .as_table()?
-        .get("genre")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    if raw.trim().is_empty() {
+        return None;
+    }
+    match toml::from_str::<toml::Value>(raw) {
+        Ok(v) => v
+            .as_table()?
+            .get("genre")
+            .and_then(|x| x.as_str())
+            .map(|s| s.to_string()),
+        Err(e) => {
+            eprintln!("[world-load] ⚠ project.toml 파싱 실패 — genre 추출 불가: {e}");
+            None
+        }
+    }
 }
