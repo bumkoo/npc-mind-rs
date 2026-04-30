@@ -298,10 +298,14 @@ impl WorldRepository for SqliteWorldStore {
             return self.search_like(&conn, q, top_k);
         }
 
+        // FTS5 phrase wrapping — `*`, `OR`/`AND`/`NEAR`, `:`, `(`, `)` 등 query 키워드를
+        // 무력화. 단 trigram 토크나이저는 query 안에 토큰화 가능한 트리그램이 0개인 경우
+        // (예: 모두 punctuation) `SQL logic error` 또는 빈 결과를 낸다 — 이를 hard error로
+        // 취급하면 검색 UI가 죽으므로, **MATCH 호출 자체가 실패하면 LIKE fallback**으로 떨어진다.
         let escaped = q.replace('"', "\"\"");
         let phrase = format!("\"{}\"", escaped);
-        let mut stmt = conn
-            .prepare(
+        let fts_hits: Result<Vec<Group>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
                 "SELECT g.id, g.project_id, g.kind, g.name, g.aliases_json, g.parent_group,
                         g.allied_groups_json, g.rival_groups_json, g.headquarters, g.status, g.alignment,
                         g.summary, g.tags_json, g.extras_json, g.body_sections_json, g.temporal_json,
@@ -311,17 +315,25 @@ impl WorldRepository for SqliteWorldStore {
                  WHERE groups_fts MATCH ?1
                  ORDER BY rank
                  LIMIT ?2",
-            )
-            .map_err(|e| WorldError::Storage(e.to_string()))?;
-        let rows = stmt
-            .query_map(params![phrase, top_k as i64], row_to_group)
-            .map_err(|e| WorldError::Storage(e.to_string()))?;
-        let hits: Vec<Group> = rows.filter_map(|r| r.ok()).collect();
-        if !hits.is_empty() {
-            return Ok(hits);
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_group)?;
+            Ok(rows.filter_map(|r| r.ok()).collect())
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => {
+                // FTS5가 매치 0건이면 LIKE fallback (id-스타일·짧은 한자 등 trigram 외).
+                self.search_like(&conn, q, top_k)
+            }
+            Err(e) => {
+                // FTS5 query 파싱 실패 등 — 사용자 입력에서 흔하다. 하드 에러 대신 fallback.
+                tracing::debug!(
+                    "FTS5 MATCH 실패, LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_like(&conn, q, top_k)
+            }
         }
-        // FTS5가 결과 없으면 LIKE fallback (id-스타일·짧은 한자 등 trigram 외).
-        self.search_like(&conn, q, top_k)
     }
 
     fn count_groups(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
@@ -553,6 +565,32 @@ mod tests {
 
         // 빈 query
         assert!(store.search_groups("", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_pathological_queries_dont_crash() {
+        // 사용자 입력에서 흔한 FTS5 keyword/특수문자가 hard error로 새지 않고,
+        // 빈 결과 또는 LIKE fallback 결과를 반환해야 한다.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let g = sample_group("group-x", "alliance", "Alpha");
+        store.upsert_group("p", &g).unwrap();
+
+        // FTS5 keyword as raw query — phrase wrapping이 무력화해야 함.
+        for q in [
+            "\"escaped\"",       // 더블쿼트
+            "OR",                  // FTS5 keyword
+            "AND",
+            "NEAR",
+            "AND BAD (paren",      // 미닫힌 괄호
+            "*",                   // prefix wildcard 단독
+            ":column",             // 컬럼 필터 시도
+        ] {
+            let res = store.search_groups(q, 5);
+            assert!(
+                res.is_ok(),
+                "search_groups({q:?})는 panic·error 없이 Ok이어야 함: {res:?}"
+            );
+        }
     }
 
     #[test]

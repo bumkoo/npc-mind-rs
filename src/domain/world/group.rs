@@ -133,7 +133,10 @@ pub struct Group {
     pub tags: Vec<String>,
     #[serde(default)]
     pub extras: Map<String, Value>,
-    /// H2 섹션 본문. 키 순서를 유지하기 위해 `BTreeMap` 사용.
+    /// H2 섹션 본문 (제목 → 본문). `BTreeMap`이라 **알파벳 정렬** 순서로 보존되며,
+    /// 마크다운 작성 순서는 보존되지 않는다 (FTS5 인덱싱·결정적 직렬화에는 문제 없음).
+    /// 표시 순서가 중요해지면 (Phase 2+ UI 패널 등) `Vec<(String, String)>` 또는
+    /// `IndexMap`으로 교체 검토.
     #[serde(default)]
     pub body_sections: BTreeMap<String, String>,
     #[serde(default)]

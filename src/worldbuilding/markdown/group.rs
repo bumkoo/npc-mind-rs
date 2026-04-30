@@ -192,83 +192,89 @@ fn parse_extras_map(v: Option<&YamlValue>) -> Map<String, JsonValue> {
 mod tests {
     use super::*;
 
-    const DAEJIN_FIXTURE: &str = r#"---
-id: group-daejin-court
-kind: dynasty-court
-name: 대진 황실
-aliases: [낙양 조정, 중원 황실]
+    // 장르 중립 fixture — wuxia·판타지·SF 어휘 없이 frontmatter 모든 필드를 시연.
+    // 도메인 시나리오는 `tests/world_chilguk_chunchu_e2e.rs`에서 실제 SoT 파일로 검증.
+    const NEUTRAL_FIXTURE: &str = r#"---
+id: group-alpha
+kind: alliance
+name: Alpha Council
+aliases: [The Council, Alpha Pact]
 summary: |
-  270년 전 통일제국의 후예. 천순제는 꼭두각시이며 실권은 조고가 잡고 있다.
-tags: [wuxia, group, dynasty]
+  Multi-line summary describing the alliance's purpose and scope across two
+  short sentences. Used to verify block-scalar handling.
+tags: [test, alliance, sample]
 temporal:
-  founded_at: 원년 (270년 전)
+  founded_at: Year 0 (origin)
   dissolved_at: ~
   status: declining
   notes: |
-    270년 전 통일제국으로 출발.
+    Founded at origin; experienced two periods of internal strife.
 members:
-  - person_id: npc-07
-    display_name: 천순제
-    role: 황제 (꼭두각시)
-  - person_id: npc-02
-    display_name: 조고
-    role: 실권자
-    note: 환관, 십상시 수장
-headquarters: place-daejin-luoyang
+  - person_id: person-a01
+    display_name: Alice
+    role: Leader (chair)
+  - person_id: person-a02
+    display_name: Bob
+    role: Officer
+    note: '"trusted" — operations lead'
+headquarters: place-alpha-hq
 parent_group: ~
 allied_groups: []
 rival_groups: []
 extras:
-  alignment: imperial
-  shadow_ruler: 조고
-  capital: 낙양(洛陽)
+  alignment: orthodox
+  founder: Alice
+  charter_year: 0
 ---
 
-## 개요
-산문 — 대진 황실은 270년 전 통일제국의 후예다.
+## Overview
+Prose paragraph describing the alliance.
 
-## 권력 구조
-천순제 ↔ 조고 ↔ 십상시.
+## Power Structure
+Alice chairs; Bob leads operations.
 "#;
 
     #[test]
-    fn parse_daejin_fixture_full_roundtrip() {
-        let g = group_from_markdown(DAEJIN_FIXTURE).expect("파싱 성공");
-        assert_eq!(g.id.as_str(), "group-daejin-court");
-        assert_eq!(g.kind, "dynasty-court");
-        assert_eq!(g.name, "대진 황실");
-        assert_eq!(g.aliases, vec!["낙양 조정".to_string(), "중원 황실".to_string()]);
-        assert!(g.summary.contains("꼭두각시"));
-        assert_eq!(g.tags, vec!["wuxia", "group", "dynasty"]);
+    fn parse_neutral_fixture_full_roundtrip() {
+        let g = group_from_markdown(NEUTRAL_FIXTURE).expect("파싱 성공");
+        assert_eq!(g.id.as_str(), "group-alpha");
+        assert_eq!(g.kind, "alliance");
+        assert_eq!(g.name, "Alpha Council");
+        assert_eq!(
+            g.aliases,
+            vec!["The Council".to_string(), "Alpha Pact".to_string()]
+        );
+        assert!(g.summary.contains("Multi-line"));
+        assert_eq!(g.tags, vec!["test", "alliance", "sample"]);
 
         // temporal
-        assert_eq!(g.temporal.founded_at.as_deref(), Some("원년 (270년 전)"));
+        assert_eq!(g.temporal.founded_at.as_deref(), Some("Year 0 (origin)"));
         assert!(g.temporal.dissolved_at.is_none());
         assert_eq!(g.temporal.status, GroupStatus::Declining);
-        assert!(g.temporal.notes.as_deref().unwrap().contains("270년 전"));
+        assert!(g.temporal.notes.as_deref().unwrap().contains("Founded"));
 
         // members
         assert_eq!(g.members.len(), 2);
-        assert_eq!(g.members[0].person_id.as_deref(), Some("npc-07"));
-        assert_eq!(g.members[0].role, "황제 (꼭두각시)");
-        assert_eq!(g.members[1].note.as_deref(), Some("환관, 십상시 수장"));
+        assert_eq!(g.members[0].person_id.as_deref(), Some("person-a01"));
+        assert_eq!(g.members[0].role, "Leader (chair)");
+        assert_eq!(g.members[1].note.as_deref(), Some("\"trusted\" — operations lead"));
 
         // 외래키 텍스트
-        assert_eq!(g.headquarters.as_deref(), Some("place-daejin-luoyang"));
+        assert_eq!(g.headquarters.as_deref(), Some("place-alpha-hq"));
         assert!(g.parent_group.is_none());
         assert!(g.allied_groups.is_empty());
 
         // extras
-        assert_eq!(g.alignment(), Some("imperial"));
+        assert_eq!(g.alignment(), Some("orthodox"));
         assert_eq!(
-            g.extras.get("shadow_ruler").and_then(|v| v.as_str()),
-            Some("조고")
+            g.extras.get("founder").and_then(|v| v.as_str()),
+            Some("Alice")
         );
 
         // body sections
-        assert!(g.body_sections.contains_key("개요"));
-        assert!(g.body_sections.contains_key("권력 구조"));
-        assert!(g.body_sections["개요"].contains("270년 전"));
+        assert!(g.body_sections.contains_key("Overview"));
+        assert!(g.body_sections.contains_key("Power Structure"));
+        assert!(g.body_sections["Overview"].contains("Prose"));
     }
 
     #[test]

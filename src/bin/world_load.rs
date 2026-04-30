@@ -199,8 +199,10 @@ fn run() -> Result<(), String> {
     let mut missing_parents: Vec<(String, String)> = Vec::new();
     let mut missing_allied: Vec<(String, String)> = Vec::new();
     let mut missing_rival: Vec<(String, String)> = Vec::new();
-    let mut foreign_member: Vec<(String, String)> = Vec::new();
-    let mut foreign_hq: Vec<(String, String)> = Vec::new();
+    // 도메인 외 외래키(Person/Place)는 Phase 2/3에서 활성. Phase 1엔 전체 카운트만 보고.
+    // — `pending_member_refs`/`pending_hq_refs`는 누락 검출이 아니라 **모든** 참조 카운트다.
+    let mut pending_member_refs: u64 = 0;
+    let mut pending_hq_refs: u64 = 0;
     let mut allied_rival_overlap: Vec<(String, String)> = Vec::new();
     for g in &groups {
         if let Some(p) = &g.parent_group
@@ -222,13 +224,15 @@ fn run() -> Result<(), String> {
             if let Some(pid) = &m.person_id
                 && !pid.is_empty()
             {
-                foreign_member.push((g.id.0.clone(), pid.clone()));
+                pending_member_refs += 1;
+                let _ = pid; // Phase 2에서 person 도메인 활성 시 검증 활성
             }
         }
         if let Some(hq) = &g.headquarters
             && !hq.is_empty()
         {
-            foreign_hq.push((g.id.0.clone(), hq.clone()));
+            pending_hq_refs += 1;
+            let _ = hq; // Phase 3에서 place 도메인 활성 시 검증 활성
         }
         let allied: HashSet<&GroupId> = g.allied_groups.iter().collect();
         for r in &g.rival_groups {
@@ -240,16 +244,16 @@ fn run() -> Result<(), String> {
     print_warnings("parent_group", &missing_parents);
     print_warnings("allied_groups", &missing_allied);
     print_warnings("rival_groups", &missing_rival);
-    if !foreign_member.is_empty() {
+    if pending_member_refs > 0 {
         eprintln!(
-            "[world-load] ℹ Phase 2(Person) 도입 예정 — members.person_id {} 건은 텍스트 보존",
-            foreign_member.len()
+            "[world-load] ℹ Phase 2(Person) 도입 예정 — members.person_id {} 건은 텍스트 보존 (검증 비활성)",
+            pending_member_refs
         );
     }
-    if !foreign_hq.is_empty() {
+    if pending_hq_refs > 0 {
         eprintln!(
-            "[world-load] ℹ Phase 3(Place) 도입 예정 — headquarters {} 건은 텍스트 보존",
-            foreign_hq.len()
+            "[world-load] ℹ Phase 3(Place) 도입 예정 — headquarters {} 건은 텍스트 보존 (검증 비활성)",
+            pending_hq_refs
         );
     }
     if !allied_rival_overlap.is_empty() {
