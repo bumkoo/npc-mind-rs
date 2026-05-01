@@ -228,18 +228,8 @@ fn run() -> Result<(), String> {
         }
     }
 
-    // upsert — groups 먼저, persons 다음 (외래키 검증을 위해 두 테이블 모두 채움)
-    for g in &groups {
-        store
-            .upsert_group(&args.project, g)
-            .map_err(|e: WorldError| format!("upsert group {}: {e}", g.id))?;
-    }
-    for p in &persons {
-        store
-            .upsert_person(&args.project, p)
-            .map_err(|e: WorldError| format!("upsert person {}: {e}", p.id))?;
-    }
-
+    // 검증을 upsert 앞으로 — 치명적 결함이 있으면 DB를 건드리지 않는다.
+    // (이전 동작: upsert → 검증 순서로 partial-state DB가 남았음. Code review #3.)
     // parent_group cycle 검증 (경고)
     let cycles = detect_parent_group_cycle(&groups);
     if !cycles.is_empty() {
@@ -419,7 +409,65 @@ fn run() -> Result<(), String> {
         }
     }
 
-    // 카운트
+    // 치명적 결함 조기 종료 — DB 미터치 유지.
+    // (이전 동작은 upsert를 먼저 수행해 SQLite에 partial row가 남았다. Code review #3.)
+    let fatal_parse = !errors.is_empty();
+    let fatal_fk = fk_errors_total > 0;
+    let fatal_mind = !args.no_mind && !mind_failures.is_empty();
+
+    if fatal_parse || fatal_fk || fatal_mind {
+        // 진단 위주 result 블록 — DB가 미수정임을 명시.
+        println!("\n=== 결과 (DB 미수정) ===");
+        println!("project           = {}", args.project);
+        println!("groups parsed     = {}", groups.len());
+        println!("persons parsed    = {}", persons.len());
+        println!("errors            = {}", errors.len());
+        println!("cycles            = {}", cycles.len());
+        println!("fk errors (활성)  = {fk_errors_total}");
+        if !args.no_mind {
+            println!("mind failures     = {}", mind_failures.len());
+        } else {
+            println!("mind eligible     = (--no-mind: 비활성)");
+        }
+
+        if fatal_parse {
+            eprintln!(
+                "\n[world-load] ✗ {} 파일 파싱 실패 — DB는 미수정 상태이며 기존 인덱스가 그대로 유지됩니다. \
+                 오류 수정 후 재실행하세요.",
+                errors.len()
+            );
+            return Err(format!("{} 파일 파싱 실패 (DB unchanged)", errors.len()));
+        }
+        if fatal_fk {
+            return Err(format!(
+                "{} 외래키 결손 — Phase 2 활성. DB 미수정. .md 수정 후 재실행하세요.",
+                fk_errors_total
+            ));
+        }
+        if fatal_mind {
+            return Err(format!(
+                "{} 인물의 npc-mind 변환 실패 — DB 미수정. HEXACO 범위 점검 후 재실행.",
+                mind_failures.len()
+            ));
+        }
+        unreachable!("fatal_* 위 세 분기가 모든 case를 cover");
+    }
+
+    // 모든 검증 통과 — 이제 upsert. 부분 실패가 발생하면(SQLite IO 오류 등) 그 시점까지의
+    // row가 DB에 남으나 검증 단계 자체는 통과한 상태이므로 partial-state는 SQLite IO 자체의
+    // 신뢰성에 의존한다 (atomic ingest는 별도 task로 분리 예정).
+    for g in &groups {
+        store
+            .upsert_group(&args.project, g)
+            .map_err(|e: WorldError| format!("upsert group {}: {e}", g.id))?;
+    }
+    for p in &persons {
+        store
+            .upsert_person(&args.project, p)
+            .map_err(|e: WorldError| format!("upsert person {}: {e}", p.id))?;
+    }
+
+    // 최종 카운트 + 결과 출력 — upsert 완료 후의 인덱스 상태.
     let group_total = store
         .count_groups(Some(&args.project))
         .map_err(|e| format!("count groups: {e:?}"))?;
@@ -438,41 +486,8 @@ fn run() -> Result<(), String> {
     println!("fk errors (활성)  = {fk_errors_total}");
     if !args.no_mind {
         println!("mind eligible     = {mind_eligible}");
-        // 활성 mind 등록은 mind-studio 측에서 발생. 여기는 변환 가능성만 보고.
-        let active_or_player =
-            persons.iter().filter(|p| p.is_mind_eligible()).count() as u64;
-        if active_or_player != mind_eligible {
-            println!(
-                "mind conversion failures = {}",
-                active_or_player - mind_eligible
-            );
-        }
     } else {
         println!("mind eligible     = (--no-mind: 비활성)");
-    }
-
-    if !errors.is_empty() {
-        eprintln!(
-            "\n[world-load] ⚠ {} 파일 파싱 실패 — DB는 partial 상태일 수 있음. \
-             오류 수정 후 `--reload`로 재실행하면 일관된 인덱스 보장.",
-            errors.len()
-        );
-        return Err(format!(
-            "{} 파일 파싱 실패 (DB partial; 위 가이드 참조)",
-            errors.len()
-        ));
-    }
-    if fk_errors_total > 0 {
-        return Err(format!(
-            "{} 외래키 결손 — Phase 2 활성. 위 진단을 보고 .md를 수정한 뒤 `--reload`로 재실행하세요.",
-            fk_errors_total
-        ));
-    }
-    if !args.no_mind && !mind_failures.is_empty() {
-        return Err(format!(
-            "{} 인물의 npc-mind 변환 실패 — HEXACO 범위 또는 정합성 점검 후 재실행.",
-            mind_failures.len()
-        ));
     }
     Ok(())
 }

@@ -420,8 +420,19 @@ impl AppState {
     /// Phase 2 — world_store에 등록된 active/player Person을 inner.npcs에 자동 등록.
     ///
     /// 호출 시점: 부착 직후(`with_world` 호출 다음) 또는 시나리오 로드 후.
-    /// idempotent — 같은 ID가 이미 있으면 덮어쓰며, emotion_state·관계·scene은 보존
-    /// (이 메서드는 inner.npcs만 갱신). 이후 `rebuild_repo_from_inner()`로 공유 repo에 반영.
+    ///
+    /// **덮어쓰기 정책 (Code review #5)**:
+    /// - 같은 NpcId가 inner.npcs에 이미 있으면 `NpcProfile` 전체를 SQLite의 값으로 **완전히 교체**.
+    ///   사용자가 UI에서 description·HEXACO facet을 수동 편집한 적이 있어도 그 편집은 사라진다.
+    ///   현재 호출 site는 mind-studio 부팅 시 1회뿐이라 실해는 발생하지 않으나, 향후 런타임
+    ///   재동기화 endpoint(`task-phase2-followup-runtime-sync.md`)가 추가될 경우 작가의 in-memory
+    ///   편집을 보호하려면 (a) 이 메서드를 그대로 사용하되 작가에게 "수동 편집은 sync 후 사라진다"
+    ///   고 명시하거나 (b) merge 정책을 도입(기존 description/facets 유지) — 둘 중 하나를 명확히
+    ///   결정해야 한다. 본 메서드는 (a)를 채택.
+    /// - emotion_state · 관계 · scene · memory는 **보존**된다. 이는 `inner.emotions` /
+    ///   `inner.relationships` / `inner.scene_*` 가 별도 필드이며 본 메서드는 `inner.npcs`만
+    ///   교체하기 때문이다. `rebuild_repo_from_inner()`은 inner의 다른 필드를 그대로 다시
+    ///   shared repo에 반영한다.
     ///
     /// 반환: 등록된 인물 수 (필터링 후). world_store가 부재하면 0.
     #[cfg(feature = "embed")]

@@ -62,11 +62,21 @@ impl SqliteWorldStore {
         if current < 2 {
             Self::migrate_v2(&conn)?;
         }
-        conn.execute(
-            "INSERT OR REPLACE INTO world_schema_meta(version) VALUES (?)",
+        // schema_meta를 단일 row로 강제 (Code review #7).
+        // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
+        // PRIMARY KEY가 version이라 v1→v2 후 (1)·(2) 두 row가 누적됐다. MAX()는 정상 동작
+        // 했으나 향후 "exact version 매치" 코드가 깨질 수 있어 DELETE+INSERT로 단일 row 유지.
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute("DELETE FROM world_schema_meta", [])
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO world_schema_meta(version) VALUES (?)",
             [SCHEMA_VERSION],
         )
         .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(())
     }
 
@@ -169,6 +179,21 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+/// JSON 배열 컬럼(tags_json·affiliation_json)을 토큰 단위로 LIKE 매칭할 때 쓰는 패턴 빌더.
+///
+/// LIKE의 와일드카드 `%`/`_`를 escape하고, 따옴표로 둘러싼 토큰을 만들어서
+/// `["group-a","group-b"]`에서 정확히 `"group-a"`만 매칭하도록 한다.
+/// 호출자는 `... LIKE ? ESCAPE '\\\\'` SQL을 사용해야 함.
+///
+/// 보호하는 케이스:
+/// - id에 `_` (예: `group_underscore`) — `_`는 LIKE에서 single-char wildcard로 작동
+/// - id에 `%` — 전체 wildcard
+/// - id가 다른 id의 prefix (예: `group-a` vs `group-aa`) — 따옴표 boundary가 분리
+fn json_token_like_pattern(token: &str) -> String {
+    let escaped = token.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    format!("%\"{}\"%", escaped)
 }
 
 fn aliases_concat(items: &[String]) -> String {
@@ -305,8 +330,9 @@ impl WorldRepository for SqliteWorldStore {
         }
         if let Some(t) = filter.genre_tag {
             // tags_json 안의 문자열 매칭 — JSON1 json_each 미사용, LIKE로 폴백.
-            sql.push_str(" AND tags_json LIKE ?");
-            binds.push(format!("%\"{}\"%", t));
+            // LIKE 메타문자(%/_) escape는 json_token_like_pattern + ESCAPE '\\' 조합으로.
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
         }
         sql.push_str(" ORDER BY id ASC");
 
@@ -500,14 +526,14 @@ impl WorldRepository for SqliteWorldStore {
             binds.push(s.as_str().to_string());
         }
         if let Some(g) = filter.affiliation {
-            // affiliation_json은 ["group-a","group-b"] 형식 — JSON1 미사용, LIKE로 폴백.
-            // 정확한 토큰 매칭을 위해 따옴표 포함 패턴 사용 (group-a vs group-a-extra 구분).
-            sql.push_str(" AND affiliation_json LIKE ?");
-            binds.push(format!("%\"{}\"%", g.as_str()));
+            // affiliation_json은 ["group-a","group-b"] 형식. 따옴표로 boundary 강제.
+            // LIKE 메타문자 escape는 json_token_like_pattern + ESCAPE '\\' 조합으로.
+            sql.push_str(" AND affiliation_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(g.as_str()));
         }
         if let Some(t) = filter.genre_tag {
-            sql.push_str(" AND tags_json LIKE ?");
-            binds.push(format!("%\"{}\"%", t));
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
         }
         sql.push_str(" ORDER BY id ASC");
 
@@ -1319,6 +1345,225 @@ mod tests {
         assert!(
             res.is_err(),
             "손상된 단건 조회는 silent neutral이 아니라 에러여야 함: {res:?}"
+        );
+    }
+
+    #[test]
+    fn schema_meta_remains_single_row_after_migration() {
+        // Code review #7: schema_meta는 v1→v2 후에도 단일 row 유지해야 함.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (1);
+                 CREATE TABLE groups (id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL, name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]',
+                    parent_group TEXT, allied_groups_json TEXT NOT NULL DEFAULT '[]',
+                    rival_groups_json TEXT NOT NULL DEFAULT '[]', headquarters TEXT,
+                    status TEXT NOT NULL DEFAULT 'active', alignment TEXT,
+                    summary TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    temporal_json TEXT NOT NULL DEFAULT '{}',
+                    members_json TEXT NOT NULL DEFAULT '[]',
+                    source_path TEXT, updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE groups_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );",
+            )
+            .unwrap();
+        }
+
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // schema_meta에 row가 정확히 1개여야 하며 version=2.
+        let (count, max_version): (i64, i64) = {
+            let conn = store.conn.lock().unwrap();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM world_schema_meta", [], |r| r.get(0))
+                .unwrap();
+            let max: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(version), 0) FROM world_schema_meta",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            (count, max)
+        };
+        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2 누적 X)");
+        assert_eq!(max_version, 2);
+
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn affiliation_filter_does_not_match_substring_groups() {
+        // Code review #4: LIKE 메타문자 escape — id가 다른 id의 substring이거나
+        // `_`/`%` 포함 시 false-positive 매칭 방지.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-1", "active", "1");
+        p1.affiliation = vec![GroupId::new("group-a")];
+        let mut p2 = sample_person("npc-2", "active", "2");
+        // `group-a`의 substring이 아니라 별도 그룹.
+        p2.affiliation = vec![GroupId::new("group-aa")];
+        let mut p3 = sample_person("npc-3", "active", "3");
+        // `_` 포함 — LIKE에서 single-char wildcard로 해석되면 group-aa가 매치되어 false-positive.
+        p3.affiliation = vec![GroupId::new("group_a")];
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+        store.upsert_person("p", &p3).unwrap();
+
+        // group-a 필터: npc-1만 매치되어야 함 (group-aa 또는 group_a 매치 안 됨).
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group-a")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["npc-1"],
+            "group-a 필터는 정확히 npc-1만 — substring/wildcard false-positive 금지"
+        );
+
+        // group_a 필터: npc-3만 매치 (literal `_`).
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group_a")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["npc-3"],
+            "group_a 필터는 정확히 npc-3만 — `_` literal 매칭"
+        );
+
+        // group-aa 필터: npc-2만.
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group-aa")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-2"]);
+    }
+
+    #[test]
+    fn tag_filter_escapes_like_metachars() {
+        // genre_tag 필터도 동일 escape 적용 — `tag_a`와 `tag-a` 구분.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-1", "active", "1");
+        p1.tags = vec!["tag-a".into()];
+        let mut p2 = sample_person("npc-2", "active", "2");
+        p2.tags = vec!["tag_a".into()];
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+
+        let hits = store
+            .list_persons(PersonFilter {
+                genre_tag: Some("tag-a".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-1"], "tag-a는 tag_a를 매치하면 안 됨");
+
+        let hits = store
+            .list_persons(PersonFilter {
+                genre_tag: Some("tag_a".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-2"]);
+    }
+
+    #[test]
+    fn hexaco_facets_extras_round_trip_through_sqlite() {
+        // Code review #6: 24 facet 정형 보존이 SQLite를 통과해도 무손실.
+        // Phase 4 정밀 패스 진입 시 silent regression 방지를 위한 회귀 가드.
+        let mut p = sample_person("npc-x", "active", "X");
+        let facets = serde_json::json!({
+            "H_sincerity": -0.9,
+            "H_fairness": -0.7,
+            "H_greed_avoidance": -0.8,
+            "H_modesty": -0.6,
+            "E_fearfulness": -0.4,
+            "E_anxiety": -0.2,
+            "E_dependence": -0.7,
+            "E_sentimentality": -0.3,
+            "X_social_self_esteem": 0.6,
+            "X_social_boldness": 0.5,
+            "X_sociability": -0.4,
+            "X_liveliness": -0.2,
+            "A_forgiveness": -0.8,
+            "A_gentleness": -0.6,
+            "A_flexibility": -0.5,
+            "A_patience": 0.7,
+            "C_organization": 0.8,
+            "C_diligence": 0.7,
+            "C_perfectionism": 0.6,
+            "C_prudence": 0.7,
+            "O_aesthetic_appreciation": 0.5,
+            "O_inquisitiveness": 0.7,
+            "O_creativity": 0.4,
+            "O_unconventionality": 0.6
+        });
+        p.extras
+            .insert("hexaco_facets".into(), facets.clone());
+
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store.upsert_person("p", &p).unwrap();
+        let back = store.get_person(&PersonId::new("npc-x")).unwrap().unwrap();
+
+        let stored = back
+            .extras
+            .get("hexaco_facets")
+            .expect("hexaco_facets 보존 필요");
+        assert_eq!(
+            stored, &facets,
+            "24 facet JSON 객체가 SQLite 라운드트립에서 무손실로 보존되어야 함"
+        );
+        // 24 키 카운트 회귀 가드.
+        assert_eq!(stored.as_object().unwrap().len(), 24);
+    }
+
+    #[test]
+    fn search_persons_with_percent_in_summary_uses_escape() {
+        // Code review #8: search_persons LIKE fallback이 `%` 포함 query·body를 잘못 매칭하지 않아야 함.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-percent", "active", "퍼센트");
+        p1.summary = "정확히 50% 할인".into();
+        p1.body_sections.clear();
+        let mut p2 = sample_person("npc-other", "active", "다른");
+        p2.summary = "할인 행사".into();
+        p2.body_sections.clear();
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+
+        // FTS5 trigram이 query 길이 3 이상을 처리하나, `%` 같은 punctuation 포함 query는
+        // LIKE fallback으로 떨어진다. fallback escape가 정확하면 "50%"는 "50"로 시작하는
+        // 임의 string이 아니라 literal `50%`만 매치해야 한다.
+        let hits = store.search_persons("50%", 5).unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert!(
+            ids.contains(&"npc-percent"),
+            "search_persons(\"50%\")는 npc-percent를 찾아야 함 — escape 후에도 literal 매칭"
+        );
+        // npc-other("할인 행사")는 매치되지 않아야 — 50% wildcard 해석 방지.
+        assert!(
+            !ids.contains(&"npc-other"),
+            "search_persons(\"50%\")가 npc-other(50% 무관)까지 매치되면 안 됨 — escape 누락 의심"
         );
     }
 
