@@ -301,11 +301,16 @@ fn build_api_router(state: AppState) -> Router {
             get(handlers::world_groups::search_groups),
         )
         .route("/api/world/groups/{id}", get(handlers::world_groups::get_group))
-        // Phase 2 Worldbuilding — Person 조회.
+        // Phase 2 Worldbuilding — Person 조회 + 런타임 sync.
         .route("/api/world/persons", get(handlers::world_persons::list_persons))
         .route(
             "/api/world/persons/search",
             get(handlers::world_persons::search_persons),
+        )
+        // sync는 path param보다 먼저 등록 — axum 매칭 우선순위.
+        .route(
+            "/api/world/persons/sync",
+            post(handlers::world_persons::sync_persons),
         )
         .route("/api/world/persons/{id}", get(handlers::world_persons::get_person));
 

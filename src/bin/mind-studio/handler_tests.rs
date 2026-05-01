@@ -3096,3 +3096,202 @@ mod projection_drift {
         }
     }
 }
+
+// =============================================================================
+// Phase 2 Follow-up — POST /api/world/persons/sync 런타임 sync 검증
+// =============================================================================
+//
+// world_store에서 변경된 Person을 mind repo로 일괄 재동기화할 때,
+// emotion_state·관계·scene이 보존되는지 (Phase 2 본문 §3.5) 검증.
+// `rebuild_repo_from_inner`이 inner.emotions를 명시 재적용하므로 보존이 보장되며,
+// 본 테스트는 그 보장의 회귀 가드이다.
+
+#[cfg(feature = "embed")]
+mod runtime_sync {
+    use super::*;
+    use std::sync::Arc;
+
+    use npc_mind::adapter::sqlite_world::SqliteWorldStore;
+    use npc_mind::domain::emotion::{Emotion, EmotionState, EmotionType};
+    use npc_mind::domain::personality::Score;
+    use npc_mind::domain::world::{HexacoSix, Person};
+    use npc_mind::ports::EmotionStore;
+    use npc_mind::worldbuilding::WorldRepository;
+
+    fn build_person(id: &str, h: f32) -> Person {
+        let mut p = Person::new(id, "active", id);
+        p.summary = "테스트 인물".into();
+        p.hexaco = HexacoSix {
+            honesty_humility: Score::clamped(h),
+            ..HexacoSix::neutral()
+        };
+        p
+    }
+
+    /// SqliteWorldStore에 person을 upsert한 뒤 AppState에 부착한다.
+    /// Arc<dyn WorldRepository>가 구체 타입을 잃으므로, store 갱신을 위해
+    /// 별도 핸들로 SqliteWorldStore::new를 다시 호출하지 않고 같은 store에 추가 upsert.
+    fn fresh_state_with_world() -> (AppState, Arc<SqliteWorldStore>) {
+        let store = Arc::new(SqliteWorldStore::in_memory().unwrap());
+        let initial = build_person("npc-T1", 0.2);
+        store.upsert_person("test", &initial).unwrap();
+
+        let mut state = test_state();
+        state = state.with_world(store.clone() as Arc<dyn WorldRepository>);
+        (state, store)
+    }
+
+    /// emotion_state 보존 회귀 가드 — Phase 2 본문 §3.5 보장.
+    /// (1) sync로 npc-T1 등록 → (2) inner.emotions[npc-T1]에 비-default 감정 주입 →
+    /// (3) world_store의 npc-T1 HEXACO를 다른 값으로 갱신 → (4) sync 재호출 →
+    /// (5) inner.npcs[npc-T1] HEXACO 갱신 + inner.emotions[npc-T1] 보존 검증.
+    #[tokio::test]
+    async fn sync_preserves_emotion_state_across_reloads() {
+        let (state, store) = fresh_state_with_world();
+
+        // 1. 첫 sync — npc-T1 등록.
+        let count = state.sync_world_persons_into_repo().await.unwrap();
+        assert_eq!(count, 1);
+
+        // 2. inner.emotions에 비-default 감정 주입.
+        let mut emotion = EmotionState::default();
+        emotion.add(Emotion::new(EmotionType::Joy, 0.7));
+        emotion.add(Emotion::new(EmotionType::Anger, 0.3));
+        {
+            let mut inner = state.inner.write().await;
+            inner.emotions.insert("npc-T1".into(), emotion.clone());
+        }
+        // sync 호출이 다시 일어나기 전에 shared repo에도 반영해 둔다 — 일반 흐름에선
+        // dispatch가 자연스럽게 채우지만 본 테스트는 inner 직접 주입 패턴.
+        state.rebuild_repo_from_inner().await;
+
+        // shared repo에도 감정이 들어갔는지 확인.
+        {
+            let repo = state.shared_dispatcher.repository_guard();
+            let st = repo.get_emotion_state("npc-T1").expect("emotion 존재");
+            assert!(!st.snapshot().is_empty(), "shared repo에 감정 보존 필요");
+        }
+
+        // 3. world_store의 HEXACO 변경.
+        let updated = build_person("npc-T1", -0.5);
+        store.upsert_person("test", &updated).unwrap();
+
+        // 4. sync 재호출 — NpcProfile은 덮어쓰기, emotion은 보존.
+        let count = state.sync_world_persons_into_repo().await.unwrap();
+        assert_eq!(count, 1, "재호출도 동일 1명 등록");
+
+        // 5. NpcProfile HEXACO 갱신 확인.
+        {
+            let inner = state.inner.read().await;
+            let profile = inner.npcs.get("npc-T1").expect("npc-T1 존재");
+            assert!(
+                (profile.sincerity - -0.5).abs() < 1e-6,
+                "HEXACO 갱신 필요 (이전 0.2 → 신규 -0.5)"
+            );
+        }
+
+        // 6. emotion_state 보존 확인 — 본 테스트의 핵심 회귀 가드.
+        {
+            let inner = state.inner.read().await;
+            let st = inner.emotions.get("npc-T1").expect("emotion 보존 필요");
+            assert!(
+                !st.snapshot().is_empty(),
+                "sync 후에도 emotion_state가 비어있으면 안 됨 — Phase 2 §3.5 위반"
+            );
+            // Joy 강도 보존 검증 — snapshot은 (감정명, 강도) 튜플.
+            let snap = st.snapshot();
+            let joy = snap
+                .iter()
+                .find(|(name, _)| name == "Joy")
+                .expect("Joy emotion 보존 필요");
+            assert!(
+                (joy.1 - 0.7).abs() < 1e-6,
+                "Joy 강도 0.7 보존 필요, 실제: {}",
+                joy.1
+            );
+        }
+
+        // 7. shared repo에서도 감정이 보존되어야 함 (rebuild_repo_from_inner이 재적용).
+        {
+            let repo = state.shared_dispatcher.repository_guard();
+            let st = repo
+                .get_emotion_state("npc-T1")
+                .expect("shared repo에도 emotion 보존 필요");
+            assert!(!st.snapshot().is_empty());
+        }
+    }
+
+    /// world_store에 historical/legendary kind는 mind repo에 등록되지 않음 (정책 회귀).
+    #[tokio::test]
+    async fn sync_filters_non_mind_eligible_kinds() {
+        let store = Arc::new(SqliteWorldStore::in_memory().unwrap());
+        let mut active = Person::new("npc-A", "active", "현역");
+        active.hexaco = HexacoSix::neutral();
+        let mut historical = Person::new("H01", "historical", "역사");
+        historical.hexaco = HexacoSix::neutral();
+        let mut legendary = Person::new("L01", "legendary", "전설");
+        legendary.hexaco = HexacoSix::neutral();
+        store.upsert_person("test", &active).unwrap();
+        store.upsert_person("test", &historical).unwrap();
+        store.upsert_person("test", &legendary).unwrap();
+
+        let mut state = test_state();
+        state = state.with_world(store as Arc<dyn WorldRepository>);
+
+        let count = state.sync_world_persons_into_repo().await.unwrap();
+        assert_eq!(count, 1, "active만 등록 — historical/legendary 제외");
+
+        let inner = state.inner.read().await;
+        assert!(inner.npcs.contains_key("npc-A"));
+        assert!(!inner.npcs.contains_key("H01"));
+        assert!(!inner.npcs.contains_key("L01"));
+    }
+
+    /// world_store 미부착 시 sync_world_persons_into_repo가 0 반환 (no-op).
+    #[tokio::test]
+    async fn sync_with_no_world_store_returns_zero() {
+        let state = test_state();
+        let count = state.sync_world_persons_into_repo().await.unwrap();
+        assert_eq!(count, 0);
+    }
+
+    /// HTTP endpoint 검증 — POST /api/world/persons/sync.
+    #[tokio::test]
+    async fn http_sync_endpoint_returns_synced_count() {
+        let store = Arc::new(SqliteWorldStore::in_memory().unwrap());
+        store.upsert_person("test", &build_person("npc-X", 0.0)).unwrap();
+        store.upsert_person("test", &build_person("npc-Y", 0.0)).unwrap();
+
+        let mut state = test_state();
+        state = state.with_world(store as Arc<dyn WorldRepository>);
+        let app = crate::build_api_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/world/persons/sync")
+            .body(Body::empty())
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["synced"], 2);
+    }
+
+    /// world_store 미부착 시 HTTP는 NotImplemented.
+    #[tokio::test]
+    async fn http_sync_endpoint_without_world_store_returns_not_implemented() {
+        let state = test_state();
+        let app = crate::build_api_router(state);
+
+        let req = Request::builder()
+            .method("POST")
+            .uri("/api/world/persons/sync")
+            .body(Body::empty())
+            .unwrap();
+        let res = app.oneshot(req).await.unwrap();
+        // AppError::NotImplemented는 501.
+        assert_eq!(res.status(), StatusCode::NOT_IMPLEMENTED);
+    }
+}
