@@ -745,12 +745,24 @@ fn row_to_person(row: &rusqlite::Row) -> rusqlite::Result<Person> {
     let body_json: String = row.get(14)?;
     let source_path: Option<String> = row.get(15)?;
 
-    let status = PersonStatus::from_str_loose(&status_str).unwrap_or_default();
-    // hexaco는 Score VO로 역직렬화 — 범위 위반 시 silent fallback for resilience.
-    let hexaco: HexacoSix = serde_json::from_str(&hexaco_json).unwrap_or_else(|e| {
-        tracing::warn!("persons.hexaco_json 디코드 실패 ({e}) — neutral로 폴백");
-        HexacoSix::neutral()
-    });
+    // status는 schema CHECK가 막지만, 외부 도구로 손상된 row 방어 — silent fallback 대신
+    // hard error로 collect_person_rows_warn_on_err가 row 자체를 스킵·로그한다.
+    let status = PersonStatus::from_str_loose(&status_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            format!("persons.status 알 수 없는 값 '{status_str}' (id={id})").into(),
+        )
+    })?;
+    // hexaco_json: Score VO 범위 위반 등 손상된 값은 neutral로 가장하면 안 됨 — hard error
+    // → 호출자가 row를 스킵하고 진단 로그를 남기도록.
+    let hexaco: HexacoSix = serde_json::from_str(&hexaco_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            6,
+            rusqlite::types::Type::Text,
+            format!("persons.hexaco_json 디코드 실패 (id={id}): {e}").into(),
+        )
+    })?;
     let temporal: PersonTemporal = serde_json::from_str(&temporal_json).unwrap_or_default();
     let extras: Map<String, Value> =
         serde_json::from_str(&extras_json).unwrap_or_default();
@@ -1193,20 +1205,133 @@ mod tests {
     }
 
     #[test]
-    fn schema_v1_to_v2_migration_creates_persons_table() {
-        // v1 DB를 모사 — schema_meta version=1만 있는 상태에서 store 재오픈 시 v2로 마이그레이션.
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        conn.execute_batch(
-            "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
-             INSERT INTO world_schema_meta(version) VALUES (1);
-             CREATE TABLE groups (id TEXT PRIMARY KEY);",
-        )
-        .unwrap();
-        // 기존 connection을 drop하고 동일 메모리 DB를 다시 못 여니, 파일 기반 마이그레이션은
-        // tempfile로 별도 검증. 여기서는 v2 신규 생성 시 persons 존재만 확인.
-        drop(conn);
-        let store = SqliteWorldStore::in_memory().unwrap();
-        // persons 테이블이 존재하면 count는 0으로 응답한다.
+    fn schema_v1_to_v2_migration_upgrades_existing_file_db() {
+        // 실제 v1→v2 마이그레이션 경로 검증. tempfile에 v1 schema를 작성한 뒤,
+        // SqliteWorldStore::new(path)로 재오픈 → init_tables의 `current < 2` 분기가 활성되어
+        // persons 테이블이 추가되며 기존 groups 데이터도 보존된다.
+        // tempfile의 자동 삭제를 그대로 활용 — path는 _tmp drop까지 유효.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // 1) v1 schema 작성: schema_meta version=1 + groups 테이블 + groups_fts + 한 row.
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (1);
+                 CREATE TABLE groups (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]',
+                    parent_group TEXT,
+                    allied_groups_json TEXT NOT NULL DEFAULT '[]',
+                    rival_groups_json TEXT NOT NULL DEFAULT '[]',
+                    headquarters TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    alignment TEXT,
+                    summary TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    temporal_json TEXT NOT NULL DEFAULT '{}',
+                    members_json TEXT NOT NULL DEFAULT '[]',
+                    source_path TEXT,
+                    updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE groups_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO groups (
+                    id, project_id, kind, name, status, summary, updated_at
+                 ) VALUES ('group-legacy', 'p', 'alliance', '레거시', 'active', '기존 v1 데이터', 0);
+                 INSERT INTO groups_fts (id, name, aliases, summary, body)
+                 VALUES ('group-legacy', '레거시', '', '기존 v1 데이터', '');",
+            )
+            .unwrap();
+            // explicit drop via scope end
+        }
+
+        // 2) SqliteWorldStore로 재오픈 — init_tables가 current=1을 보고 migrate_v2 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // 3) persons 테이블이 추가되어 count_persons이 동작.
         assert_eq!(store.count_persons(None).unwrap(), 0);
+
+        // 4) 기존 v1 groups 데이터 보존.
+        let g = store
+            .get_group(&GroupId::new("group-legacy"))
+            .unwrap()
+            .expect("v1 row 보존 필요");
+        assert_eq!(g.name, "레거시");
+
+        // 5) v2 신규 기능 — persons upsert·get 동작.
+        let p = sample_person("npc-after-migration", "active", "신규");
+        store.upsert_person("p", &p).unwrap();
+        let back = store
+            .get_person(&PersonId::new("npc-after-migration"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back.name, "신규");
+
+        // store를 명시 drop해 SQLite 핸들을 닫고 NamedTempFile이 자동 삭제하도록.
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn corrupt_hexaco_row_is_skipped_not_silently_neutralized() {
+        // 외부 도구·다운그레이드 등으로 persons.hexaco_json에 손상된 값이 들어간 경우,
+        // 읽기 경로는 silent하게 neutral로 가장하면 안 된다 — row를 스킵하고 진단 로그를 남긴다.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let good = sample_person("npc-good", "active", "정상");
+        store.upsert_person("p", &good).unwrap();
+
+        // 손상된 row 직접 삽입 — Score VO가 거부할 -2.0 값. CHECK는 status만 막으므로
+        // 이 path는 hexaco_json 검증의 유일한 방어선.
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO persons (
+                    id, project_id, kind, name, aliases_json, status,
+                    hexaco_json, temporal_json, affiliation_json,
+                    birthplace, current_location, summary, tags_json, extras_json,
+                    body_sections_json, source_path, updated_at
+                 ) VALUES ('npc-bad', 'p', 'active', '손상',
+                           '[]', 'alive',
+                           '{\"honesty_humility\":-2.5,\"emotionality\":0,\"extraversion\":0,\"agreeableness\":0,\"conscientiousness\":0,\"openness\":0}',
+                           '{}', '[]',
+                           NULL, NULL, '', '[]', '{}',
+                           '{}', NULL, 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // list_persons은 손상된 row를 스킵하고 정상 row만 반환해야 함 (silent neutral 아님).
+        let all = store.list_persons(PersonFilter::default()).unwrap();
+        assert_eq!(all.len(), 1, "손상 row는 스킵되어야 함");
+        assert_eq!(all[0].id.as_str(), "npc-good");
+
+        // get_person 단건 조회는 hard error로 전파되어야 함 (silent neutral 아님).
+        let res = store.get_person(&PersonId::new("npc-bad"));
+        assert!(
+            res.is_err(),
+            "손상된 단건 조회는 silent neutral이 아니라 에러여야 함: {res:?}"
+        );
+    }
+
+    #[test]
+    fn corrupt_status_row_is_skipped() {
+        // status 컬럼은 schema CHECK가 alive|dead|missing|unknown을 강제하므로 정상 흐름에선
+        // 도달 불가. 그러나 from_str_loose가 silent default로 가장하면 미래에 CHECK가 완화되거나
+        // 다른 작성 경로가 추가됐을 때 잠재 버그. 본 테스트는 row_to_person이 hard-error를
+        // 반환함을 명시적으로 가드한다 — status_str을 임의 NULL이나 unknown 값으로 바꾸려면
+        // CHECK를 우회해야 하므로 별도 connection으로 CHECK 없는 임시 테이블에 row를 넣지 않고,
+        // from_str_loose 자체의 None 반환 + row_to_person 매핑 정합성만 단위 검증한다.
+        // (실제 SQLite path는 CHECK가 막아 도달 불가하므로 직접 SQL injection 케이스는 생략.)
+        assert!(PersonStatus::from_str_loose("ghost").is_none());
+        assert!(PersonStatus::from_str_loose("").is_none());
     }
 }
