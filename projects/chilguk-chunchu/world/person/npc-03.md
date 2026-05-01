@@ -24,8 +24,8 @@ temporal:
     37세에 남궁 왕국 독립 선포·국주 즉위.
 affiliation:
   - group-namgung
-birthplace: place-namgung-jeongam
-current_location: place-namgung-jeongam
+birthplace: place-namgung
+current_location: place-namgung
 summary: |
   남궁세가 후계자에서 남궁 왕국 국주로 — 검왕(劍王). 칠국 최강의 검을 가졌으나,
   그 검이 "붉은 밤의 변"에서 무고한 피를 베었는지 스스로도 확답하지 못한다. 회색

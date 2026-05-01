@@ -312,7 +312,14 @@ fn build_api_router(state: AppState) -> Router {
             "/api/world/persons/sync",
             post(handlers::world_persons::sync_persons),
         )
-        .route("/api/world/persons/{id}", get(handlers::world_persons::get_person));
+        .route("/api/world/persons/{id}", get(handlers::world_persons::get_person))
+        // Phase 3 Worldbuilding — Place 조회.
+        .route("/api/world/places", get(handlers::world_places::list_places))
+        .route(
+            "/api/world/places/search",
+            get(handlers::world_places::search_places),
+        )
+        .route("/api/world/places/{id}", get(handlers::world_places::get_place));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());

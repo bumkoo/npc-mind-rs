@@ -117,6 +117,9 @@ pub mod world_groups;
 // Phase 2 Worldbuilding — Person 조회.
 #[cfg(feature = "embed")]
 pub mod world_persons;
+// Phase 3 Worldbuilding — Place 조회.
+#[cfg(feature = "embed")]
+pub mod world_places;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

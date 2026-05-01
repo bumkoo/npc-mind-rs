@@ -25,7 +25,7 @@ temporal:
 affiliation:
   - group-cheonma-shingyo       # 천마신교 객경 수제자 (비공식이나 frontmatter엔 일급)
 birthplace: place-bukwon-grasslands
-current_location: place-daejin-luoyang
+current_location: place-daejin
 summary: |
   17세 여성, 북원 늑대왕 바투의 외동딸. 12세에 대진과의 평화 담보로 볼모가 되었고,
   5년 갇혀 지내던 중 3대 천마에게 발견되어 비밀리에 무공을 배운다. "아버지의

@@ -8,9 +8,11 @@
 pub mod frontmatter;
 pub mod group;
 pub mod person;
+pub mod place;
 
 pub use frontmatter::{
     Frontmatter, FrontmatterError, parse_frontmatter, parse_h2_sections,
 };
 pub use group::{GroupMarkdownError, group_from_markdown};
 pub use person::{PersonMarkdownError, person_from_markdown};
+pub use place::{PlaceMarkdownError, place_from_markdown};

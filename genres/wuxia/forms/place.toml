@@ -1,0 +1,104 @@
+# 무협(wuxia) Place 폼 — Phase N 폼 시스템 자리.
+#
+# Phase 3에서는 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase N부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "place"
+
+# layer 옵션 — Place의 두 결.
+[[fields.layer.options]]
+value = "settlement"
+label = "공동체"
+
+[[fields.layer.options]]
+value = "geography"
+label = "자연 지형"
+
+# kind 옵션 — layer별 선택지.
+[[fields.kind.options]]
+value = "nation"
+label = "국가"
+layer = "settlement"
+
+[[fields.kind.options]]
+value = "autonomous-zone"
+label = "자치령"
+layer = "settlement"
+
+[[fields.kind.options]]
+value = "city"
+label = "도시"
+layer = "settlement"
+
+[[fields.kind.options]]
+value = "sect"
+label = "문파/세가"
+layer = "settlement"
+
+[[fields.kind.options]]
+value = "mountain-range"
+label = "산악"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "coast"
+label = "해안"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "jungle"
+label = "밀림"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "grassland"
+label = "초원"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "desert"
+label = "사막"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "forest"
+label = "삼림"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "river"
+label = "강"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "lake"
+label = "호수"
+layer = "geography"
+
+[[fields.kind.options]]
+value = "landmark"
+label = "랜드마크"
+layer = "geography"
+
+# 무협 특화 외래키 — sect 이중 등록 패턴.
+# settlement layer + kind=sect 일 때 controlling_group이 필수 — Place(공간) ↔ Group(조직)
+# 양방향 외래키. Phase 3 world-load가 sect kind에 한해 필수 검증.
+[[fields]]
+key = "controlling_group"
+label = "관할 그룹"
+description = "sect 이중 등록 — 이 장소가 본거지인 조직(group ID)"
+type = "id"
+target = "group"
+required_when = { layer = "settlement", kind = "sect" }
+
+# 무협 특화 — 기 농도 (지역 기 자원). 게임 내 무공 수련·내공 회복에 영향.
+[[fields]]
+key = "ki_concentration"
+label = "기 농도"
+description = "이 장소의 기 자원 — 무공 수련에 영향"
+type = "enum"
+options = [
+  { value = "희박", label = "희박" },
+  { value = "보통", label = "보통" },
+  { value = "농후", label = "농후" },
+]

@@ -29,7 +29,7 @@ members:
   - display_name: 현 방주 (미설정)
     role: 방주
     note: N04 자리. Phase 2에서 작성 예정.
-headquarters: place-free-city
+headquarters: place-jiyu-doshi
 parent_group: ~
 allied_groups:
   - group-mulim-mang
