@@ -1,11 +1,17 @@
-//! `WorldRepository` 포트 — Phase 1엔 groups 메서드만.
+//! `WorldRepository` 포트 — Phase 1 Group + Phase 2 Person.
 //!
 //! sync trait — `LoreStore`/`MemoryStore`/`RumorStore`와 동일 패턴. SQLite·인메모리
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
-use crate::domain::world::{Group, GroupFilter, GroupId, WorldError};
+use crate::domain::world::{
+    Group, GroupFilter, GroupId, Person, PersonFilter, PersonId, WorldError,
+};
 
 pub trait WorldRepository: Send + Sync {
+    // ---------------------------------------------------------------------
+    // Phase 1 — Group
+    // ---------------------------------------------------------------------
+
     /// 필터 조건으로 그룹 목록 조회. 결과는 id 오름차순.
     fn list_groups(&self, filter: GroupFilter) -> Result<Vec<Group>, WorldError>;
 
@@ -20,4 +26,23 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_groups(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 2 — Person
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 인물 목록 조회. 결과는 id 오름차순.
+    fn list_persons(&self, filter: PersonFilter) -> Result<Vec<Person>, WorldError>;
+
+    /// id로 단일 인물 조회. 없으면 Ok(None).
+    fn get_person(&self, id: &PersonId) -> Result<Option<Person>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_persons(&self, query: &str, top_k: u32) -> Result<Vec<Person>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다. project_id는 `persons.project_id` 컬럼에 저장.
+    fn upsert_person(&self, project_id: &str, person: &Person) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_persons(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

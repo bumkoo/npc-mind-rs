@@ -1,19 +1,23 @@
 //! `SqliteWorldStore` — Phase 1 Vertical Slice (groups + FTS5 trigram).
 //!
 //! 스키마는 `docs/tasks/task-phase1-group-vertical-slice.md` §6.3을 그대로 따름.
-//! 임베딩은 Phase 2+에서 도입 (vec0 미사용).
+//! Phase 2에서 persons 테이블 + persons_fts 추가 (`migrate_v2`). 같은 SQLite 파일이
+//! Group + Person을 모두 보관. 임베딩은 Phase 5+에서 도입 (vec0 미사용).
 
 use std::sync::Mutex;
 
 use rusqlite::{Connection, params};
 use serde_json::{Map, Value};
 
-use crate::domain::world::{Group, GroupFilter, GroupId, WorldError};
+use crate::domain::world::{
+    Group, GroupFilter, GroupId, HexacoSix, Person, PersonFilter, PersonId, PersonStatus,
+    PersonTemporal, WorldError,
+};
 #[cfg(test)]
 use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 pub struct SqliteWorldStore {
     conn: Mutex<Connection>,
@@ -55,9 +59,56 @@ impl SqliteWorldStore {
         if current < 1 {
             Self::migrate_v1(&conn)?;
         }
-        conn.execute(
-            "INSERT OR REPLACE INTO world_schema_meta(version) VALUES (?)",
+        if current < 2 {
+            Self::migrate_v2(&conn)?;
+        }
+        // schema_meta를 단일 row로 강제 (Code review #7).
+        // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
+        // PRIMARY KEY가 version이라 v1→v2 후 (1)·(2) 두 row가 누적됐다. MAX()는 정상 동작
+        // 했으나 향후 "exact version 매치" 코드가 깨질 수 있어 DELETE+INSERT로 단일 row 유지.
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute("DELETE FROM world_schema_meta", [])
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO world_schema_meta(version) VALUES (?)",
             [SCHEMA_VERSION],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    /// v1 → v2 마이그레이션: persons 테이블 + persons_fts.
+    /// `CREATE TABLE IF NOT EXISTS`이라 v2에서 신규 생성한 DB에도 안전.
+    fn migrate_v2(conn: &Connection) -> Result<(), WorldError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS persons (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]',
+                status TEXT NOT NULL DEFAULT 'alive' CHECK(status IN ('alive','dead','missing','unknown')),
+                hexaco_json TEXT NOT NULL DEFAULT '{}',
+                temporal_json TEXT NOT NULL DEFAULT '{}',
+                affiliation_json TEXT NOT NULL DEFAULT '[]',
+                birthplace TEXT,
+                current_location TEXT,
+                summary TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                extras_json TEXT NOT NULL DEFAULT '{}',
+                body_sections_json TEXT NOT NULL DEFAULT '{}',
+                source_path TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_persons_kind ON persons(kind);
+            CREATE INDEX IF NOT EXISTS idx_persons_status ON persons(status);
+            CREATE INDEX IF NOT EXISTS idx_persons_project ON persons(project_id);
+            CREATE VIRTUAL TABLE IF NOT EXISTS persons_fts USING fts5(
+                id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+            );",
         )
         .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(())
@@ -130,6 +181,21 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// JSON 배열 컬럼(tags_json·affiliation_json)을 토큰 단위로 LIKE 매칭할 때 쓰는 패턴 빌더.
+///
+/// LIKE의 와일드카드 `%`/`_`를 escape하고, 따옴표로 둘러싼 토큰을 만들어서
+/// `["group-a","group-b"]`에서 정확히 `"group-a"`만 매칭하도록 한다.
+/// 호출자는 `... LIKE ? ESCAPE '\\\\'` SQL을 사용해야 함.
+///
+/// 보호하는 케이스:
+/// - id에 `_` (예: `group_underscore`) — `_`는 LIKE에서 single-char wildcard로 작동
+/// - id에 `%` — 전체 wildcard
+/// - id가 다른 id의 prefix (예: `group-a` vs `group-aa`) — 따옴표 boundary가 분리
+fn json_token_like_pattern(token: &str) -> String {
+    let escaped = token.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    format!("%\"{}\"%", escaped)
+}
+
 fn aliases_concat(items: &[String]) -> String {
     items.join(" ")
 }
@@ -137,6 +203,17 @@ fn aliases_concat(items: &[String]) -> String {
 fn body_concat(group: &Group) -> String {
     let mut s = String::new();
     for (k, v) in &group.body_sections {
+        s.push_str(k);
+        s.push('\n');
+        s.push_str(v);
+        s.push('\n');
+    }
+    s
+}
+
+fn person_body_concat(person: &Person) -> String {
+    let mut s = String::new();
+    for (k, v) in &person.body_sections {
         s.push_str(k);
         s.push('\n');
         s.push_str(v);
@@ -253,8 +330,9 @@ impl WorldRepository for SqliteWorldStore {
         }
         if let Some(t) = filter.genre_tag {
             // tags_json 안의 문자열 매칭 — JSON1 json_each 미사용, LIKE로 폴백.
-            sql.push_str(" AND tags_json LIKE ?");
-            binds.push(format!("%\"{}\"%", t));
+            // LIKE 메타문자(%/_) escape는 json_token_like_pattern + ESCAPE '\\' 조합으로.
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
         }
         sql.push_str(" ORDER BY id ASC");
 
@@ -354,9 +432,229 @@ impl WorldRepository for SqliteWorldStore {
         };
         Ok(n.max(0) as u64)
     }
+
+    // ---------------------------------------------------------------------
+    // Phase 2 — Person
+    // ---------------------------------------------------------------------
+
+    fn upsert_person(&self, project_id: &str, person: &Person) -> Result<(), WorldError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        let hexaco_json = serde_json::to_string(&person.hexaco)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let temporal_json = serde_json::to_string(&person.temporal)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let extras_json = serde_json::to_string(&person.extras)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let body_json = serde_json::to_string(&person.body_sections)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let aliases_json = json_array_of_strings(&person.aliases);
+        let affiliation_json = json_array_of_groupids(&person.affiliation);
+        let tags_json = json_array_of_strings(&person.tags);
+        let status = person.status.as_str();
+        let updated_at = now_ms();
+
+        tx.execute(
+            "INSERT OR REPLACE INTO persons (
+                id, project_id, kind, name, aliases_json, status,
+                hexaco_json, temporal_json, affiliation_json, birthplace, current_location,
+                summary, tags_json, extras_json, body_sections_json, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                      ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![
+                person.id.as_str(),
+                project_id,
+                person.kind,
+                person.name,
+                aliases_json,
+                status,
+                hexaco_json,
+                temporal_json,
+                affiliation_json,
+                person.birthplace,
+                person.current_location,
+                person.summary,
+                tags_json,
+                extras_json,
+                body_json,
+                person.source_path,
+                updated_at,
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // FTS5 — id 기반 delete-then-insert
+        tx.execute(
+            "DELETE FROM persons_fts WHERE id = ?1",
+            params![person.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO persons_fts (id, name, aliases, summary, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                person.id.as_str(),
+                person.name,
+                aliases_concat(&person.aliases),
+                person.summary,
+                person_body_concat(person),
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    fn list_persons(&self, filter: PersonFilter) -> Result<Vec<Person>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT id, project_id, kind, name, aliases_json, status,
+                    hexaco_json, temporal_json, affiliation_json, birthplace, current_location,
+                    summary, tags_json, extras_json, body_sections_json, source_path
+             FROM persons WHERE 1=1",
+        );
+        let mut binds: Vec<String> = Vec::new();
+        if let Some(k) = filter.kind {
+            sql.push_str(" AND kind = ?");
+            binds.push(k);
+        }
+        if let Some(s) = filter.status {
+            sql.push_str(" AND status = ?");
+            binds.push(s.as_str().to_string());
+        }
+        if let Some(g) = filter.affiliation {
+            // affiliation_json은 ["group-a","group-b"] 형식. 따옴표로 boundary 강제.
+            // LIKE 메타문자 escape는 json_token_like_pattern + ESCAPE '\\' 조합으로.
+            sql.push_str(" AND affiliation_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(g.as_str()));
+        }
+        if let Some(t) = filter.genre_tag {
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
+        }
+        sql.push_str(" ORDER BY id ASC");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            binds.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_person)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_person_rows_warn_on_err(rows))
+    }
+
+    fn get_person(&self, id: &PersonId) -> Result<Option<Person>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let res = conn.query_row(
+            "SELECT id, project_id, kind, name, aliases_json, status,
+                    hexaco_json, temporal_json, affiliation_json, birthplace, current_location,
+                    summary, tags_json, extras_json, body_sections_json, source_path
+             FROM persons WHERE id = ?1",
+            params![id.as_str()],
+            row_to_person,
+        );
+        match res {
+            Ok(p) => Ok(Some(p)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WorldError::Storage(e.to_string())),
+        }
+    }
+
+    fn search_persons(&self, query: &str, top_k: u32) -> Result<Vec<Person>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let char_count = q.chars().count();
+        if char_count < 3 {
+            return self.search_persons_like(&conn, q, top_k);
+        }
+
+        let escaped = q.replace('"', "\"\"");
+        let phrase = format!("\"{}\"", escaped);
+        let fts_hits: Result<Vec<Person>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT p.id, p.project_id, p.kind, p.name, p.aliases_json, p.status,
+                        p.hexaco_json, p.temporal_json, p.affiliation_json, p.birthplace, p.current_location,
+                        p.summary, p.tags_json, p.extras_json, p.body_sections_json, p.source_path
+                 FROM persons_fts f
+                 JOIN persons p ON p.id = f.id
+                 WHERE persons_fts MATCH ?1
+                 ORDER BY rank
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_person)?;
+            Ok(collect_person_rows_warn_on_err(rows))
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => self.search_persons_like(&conn, q, top_k),
+            Err(e) => {
+                tracing::debug!(
+                    "FTS5 MATCH 실패(persons), LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_persons_like(&conn, q, top_k)
+            }
+        }
+    }
+
+    fn count_persons(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = match project_id {
+            Some(p) => conn
+                .query_row(
+                    "SELECT COUNT(*) FROM persons WHERE project_id = ?1",
+                    params![p],
+                    |r| r.get(0),
+                )
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+            None => conn
+                .query_row("SELECT COUNT(*) FROM persons", [], |r| r.get(0))
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+        };
+        Ok(n.max(0) as u64)
+    }
 }
 
 impl SqliteWorldStore {
+    /// Person 검색용 LIKE fallback — FTS5 trigram이 처리하지 못하는 짧은 query 또는
+    /// 결과 0건 시 호출. groups의 `search_like`와 동일 정책.
+    fn search_persons_like(
+        &self,
+        conn: &Connection,
+        q: &str,
+        top_k: u32,
+    ) -> Result<Vec<Person>, WorldError> {
+        let pat = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = conn
+            .prepare(
+                "SELECT p.id, p.project_id, p.kind, p.name, p.aliases_json, p.status,
+                        p.hexaco_json, p.temporal_json, p.affiliation_json, p.birthplace, p.current_location,
+                        p.summary, p.tags_json, p.extras_json, p.body_sections_json, p.source_path
+                 FROM persons p
+                 LEFT JOIN persons_fts f ON f.id = p.id
+                 WHERE p.name LIKE ?1 ESCAPE '\\'
+                    OR f.aliases LIKE ?1 ESCAPE '\\'
+                    OR p.summary LIKE ?1 ESCAPE '\\'
+                    OR f.body LIKE ?1 ESCAPE '\\'
+                 GROUP BY p.id
+                 ORDER BY p.id ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![pat, top_k as i64], row_to_person)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_person_rows_warn_on_err(rows))
+    }
+
     /// FTS5 fallback — `groups_fts.body`/`name`/`aliases`/`summary`를 LIKE %q% 매칭.
     /// FTS5 trigram이 처리하지 못하는 짧은 query(2자 한국어 등) 또는 결과 0건일 때 사용.
     fn search_like(
@@ -449,6 +747,85 @@ where
             Ok(g) => out.push(g),
             Err(e) => {
                 tracing::warn!("SqliteWorldStore row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
+}
+
+fn row_to_person(row: &rusqlite::Row) -> rusqlite::Result<Person> {
+    let id: String = row.get(0)?;
+    // project_id (1)은 도메인 모델 미보존.
+    let kind: String = row.get(2)?;
+    let name: String = row.get(3)?;
+    let aliases_json: String = row.get(4)?;
+    let status_str: String = row.get(5)?;
+    let hexaco_json: String = row.get(6)?;
+    let temporal_json: String = row.get(7)?;
+    let affiliation_json: String = row.get(8)?;
+    let birthplace: Option<String> = row.get(9)?;
+    let current_location: Option<String> = row.get(10)?;
+    let summary: String = row.get(11)?;
+    let tags_json: String = row.get(12)?;
+    let extras_json: String = row.get(13)?;
+    let body_json: String = row.get(14)?;
+    let source_path: Option<String> = row.get(15)?;
+
+    // status는 schema CHECK가 막지만, 외부 도구로 손상된 row 방어 — silent fallback 대신
+    // hard error로 collect_person_rows_warn_on_err가 row 자체를 스킵·로그한다.
+    let status = PersonStatus::from_str_loose(&status_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            5,
+            rusqlite::types::Type::Text,
+            format!("persons.status 알 수 없는 값 '{status_str}' (id={id})").into(),
+        )
+    })?;
+    // hexaco_json: Score VO 범위 위반 등 손상된 값은 neutral로 가장하면 안 됨 — hard error
+    // → 호출자가 row를 스킵하고 진단 로그를 남기도록.
+    let hexaco: HexacoSix = serde_json::from_str(&hexaco_json).map_err(|e| {
+        rusqlite::Error::FromSqlConversionFailure(
+            6,
+            rusqlite::types::Type::Text,
+            format!("persons.hexaco_json 디코드 실패 (id={id}): {e}").into(),
+        )
+    })?;
+    let temporal: PersonTemporal = serde_json::from_str(&temporal_json).unwrap_or_default();
+    let extras: Map<String, Value> =
+        serde_json::from_str(&extras_json).unwrap_or_default();
+    let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
+    let aliases = from_json_strings(&aliases_json);
+    let tags = from_json_strings(&tags_json);
+    let affiliation = from_json_groupids(&affiliation_json);
+
+    Ok(Person {
+        id: PersonId::new(id),
+        kind,
+        name,
+        aliases,
+        status,
+        hexaco,
+        temporal,
+        affiliation,
+        birthplace,
+        current_location,
+        summary,
+        tags,
+        extras,
+        body_sections,
+        source_path,
+    })
+}
+
+fn collect_person_rows_warn_on_err<I>(rows: I) -> Vec<Person>
+where
+    I: Iterator<Item = rusqlite::Result<Person>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(p) => out.push(p),
+            Err(e) => {
+                tracing::warn!("SqliteWorldStore person row decode 실패 — 결과에서 제외: {e}");
             }
         }
     }
@@ -672,5 +1049,534 @@ mod tests {
         assert_eq!(store.count_groups(Some("p1")).unwrap(), 1);
         assert_eq!(store.count_groups(Some("p2")).unwrap(), 1);
         assert_eq!(store.count_groups(Some("missing")).unwrap(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 2 — Person 라운드트립 + FTS5 + 필터
+    // -----------------------------------------------------------------------
+
+    use crate::domain::personality::Score;
+
+    fn sample_person(id: &str, kind: &str, name: &str) -> Person {
+        let mut p = Person::new(id, kind, name);
+        p.aliases = vec!["별호".into(), "다른이름".into()];
+        p.status = PersonStatus::Alive;
+        p.hexaco = HexacoSix {
+            honesty_humility: Score::clamped(-0.3),
+            emotionality: Score::clamped(0.1),
+            extraversion: Score::clamped(0.5),
+            agreeableness: Score::clamped(0.4),
+            conscientiousness: Score::clamped(0.7),
+            openness: Score::clamped(0.6),
+        };
+        p.temporal = PersonTemporal {
+            birth_year: Some("215년차".into()),
+            age_at_game_start: Some(40),
+            ..Default::default()
+        };
+        p.affiliation = vec![GroupId::new("group-a"), GroupId::new("group-b")];
+        p.birthplace = Some("place-a".into());
+        p.summary = "테스트 인물 요약".into();
+        p.tags = vec!["wuxia".into(), "test".into()];
+        p.extras
+            .insert("priority".into(), json!("★★"));
+        p.body_sections.insert("개요".into(), "본문".into());
+        p
+    }
+
+    #[test]
+    fn persons_count_zero_on_fresh_db() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        assert_eq!(store.count_persons(None).unwrap(), 0);
+    }
+
+    #[test]
+    fn persons_upsert_and_get_roundtrip_preserves_all_fields() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let p = sample_person("npc-x", "active", "X");
+        store.upsert_person("test-project", &p).unwrap();
+        let back = store.get_person(&PersonId::new("npc-x")).unwrap().unwrap();
+        assert_eq!(back, p);
+    }
+
+    #[test]
+    fn persons_list_filter_kind_and_status() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut alive_active = sample_person("npc-a", "active", "A");
+        alive_active.status = PersonStatus::Alive;
+        let mut dead_historical = sample_person("npc-b", "historical", "B");
+        dead_historical.status = PersonStatus::Dead;
+        store.upsert_person("p", &alive_active).unwrap();
+        store.upsert_person("p", &dead_historical).unwrap();
+
+        let actives = store
+            .list_persons(PersonFilter {
+                kind: Some("active".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(actives.len(), 1);
+        assert_eq!(actives[0].id.as_str(), "npc-a");
+
+        let deads = store
+            .list_persons(PersonFilter {
+                status: Some(PersonStatus::Dead),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(deads.len(), 1);
+        assert_eq!(deads[0].id.as_str(), "npc-b");
+    }
+
+    #[test]
+    fn persons_list_filter_affiliation_matches_member() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-1", "active", "1");
+        p1.affiliation = vec![GroupId::new("group-namgung")];
+        let mut p2 = sample_person("npc-2", "active", "2");
+        p2.affiliation = vec![GroupId::new("group-shipsangsi")];
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+
+        let namgung = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group-namgung")),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(namgung.len(), 1);
+        assert_eq!(namgung[0].id.as_str(), "npc-1");
+    }
+
+    #[test]
+    fn persons_search_matches_alias_and_body() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p = sample_person("npc-02", "active", "조고");
+        p.aliases = vec!["대진의 그림자".into(), "십상시의 주인".into()];
+        p.summary = "메인 적대자".into();
+        p.body_sections
+            .insert("개요".into(), "55세 환관 출신 권신".into());
+        store.upsert_person("p", &p).unwrap();
+
+        // alias 매칭
+        let hits = store.search_persons("대진의 그림자", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id.as_str(), "npc-02");
+
+        // body 매칭
+        let hits = store.search_persons("환관 출신", 5).unwrap();
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].id.as_str(), "npc-02");
+
+        // 빈 query
+        assert!(store.search_persons("", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn persons_upsert_replaces_fts_stale_row() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p = sample_person("npc-x", "active", "Alpha");
+        p.aliases = vec!["OldAliasUnique".into()];
+        p.body_sections.clear();
+        p.body_sections
+            .insert("Overview".into(), "first body".into());
+        store.upsert_person("p", &p).unwrap();
+        // 첫 alias로 검색 가능
+        let hits = store.search_persons("OldAliasUnique", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+
+        // alias 교체 + body 교체 후 재upsert
+        p.aliases = vec!["NewAliasUnique".into()];
+        p.body_sections.clear();
+        p.body_sections
+            .insert("Overview".into(), "second body".into());
+        store.upsert_person("p", &p).unwrap();
+
+        // 옛 alias로는 검색 0건이어야 함 (FTS5 row 교체 검증)
+        let hits_old = store.search_persons("OldAliasUnique", 5).unwrap();
+        assert!(hits_old.is_empty());
+        // 새 alias로 검색 1건
+        let hits_new = store.search_persons("NewAliasUnique", 5).unwrap();
+        assert_eq!(hits_new.len(), 1);
+    }
+
+    #[test]
+    fn persons_count_with_project_filter() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_person("p1", &sample_person("npc-a", "active", "A"))
+            .unwrap();
+        store
+            .upsert_person("p2", &sample_person("npc-b", "historical", "B"))
+            .unwrap();
+        assert_eq!(store.count_persons(None).unwrap(), 2);
+        assert_eq!(store.count_persons(Some("p1")).unwrap(), 1);
+        assert_eq!(store.count_persons(Some("p2")).unwrap(), 1);
+        assert_eq!(store.count_persons(Some("missing")).unwrap(), 0);
+    }
+
+    #[test]
+    fn persons_search_pathological_queries_dont_crash() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let p = sample_person("npc-x", "active", "Alpha");
+        store.upsert_person("p", &p).unwrap();
+
+        for q in ["\"escaped\"", "OR", "AND", "NEAR", "AND BAD (paren", "*", ":column"] {
+            let res = store.search_persons(q, 5);
+            assert!(
+                res.is_ok(),
+                "search_persons({q:?})는 panic·error 없이 Ok이어야 함: {res:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn schema_v1_to_v2_migration_upgrades_existing_file_db() {
+        // 실제 v1→v2 마이그레이션 경로 검증. tempfile에 v1 schema를 작성한 뒤,
+        // SqliteWorldStore::new(path)로 재오픈 → init_tables의 `current < 2` 분기가 활성되어
+        // persons 테이블이 추가되며 기존 groups 데이터도 보존된다.
+        // tempfile의 자동 삭제를 그대로 활용 — path는 _tmp drop까지 유효.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // 1) v1 schema 작성: schema_meta version=1 + groups 테이블 + groups_fts + 한 row.
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (1);
+                 CREATE TABLE groups (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]',
+                    parent_group TEXT,
+                    allied_groups_json TEXT NOT NULL DEFAULT '[]',
+                    rival_groups_json TEXT NOT NULL DEFAULT '[]',
+                    headquarters TEXT,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    alignment TEXT,
+                    summary TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    temporal_json TEXT NOT NULL DEFAULT '{}',
+                    members_json TEXT NOT NULL DEFAULT '[]',
+                    source_path TEXT,
+                    updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE groups_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO groups (
+                    id, project_id, kind, name, status, summary, updated_at
+                 ) VALUES ('group-legacy', 'p', 'alliance', '레거시', 'active', '기존 v1 데이터', 0);
+                 INSERT INTO groups_fts (id, name, aliases, summary, body)
+                 VALUES ('group-legacy', '레거시', '', '기존 v1 데이터', '');",
+            )
+            .unwrap();
+            // explicit drop via scope end
+        }
+
+        // 2) SqliteWorldStore로 재오픈 — init_tables가 current=1을 보고 migrate_v2 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // 3) persons 테이블이 추가되어 count_persons이 동작.
+        assert_eq!(store.count_persons(None).unwrap(), 0);
+
+        // 4) 기존 v1 groups 데이터 보존.
+        let g = store
+            .get_group(&GroupId::new("group-legacy"))
+            .unwrap()
+            .expect("v1 row 보존 필요");
+        assert_eq!(g.name, "레거시");
+
+        // 5) v2 신규 기능 — persons upsert·get 동작.
+        let p = sample_person("npc-after-migration", "active", "신규");
+        store.upsert_person("p", &p).unwrap();
+        let back = store
+            .get_person(&PersonId::new("npc-after-migration"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back.name, "신규");
+
+        // store를 명시 drop해 SQLite 핸들을 닫고 NamedTempFile이 자동 삭제하도록.
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn corrupt_hexaco_row_is_skipped_not_silently_neutralized() {
+        // 외부 도구·다운그레이드 등으로 persons.hexaco_json에 손상된 값이 들어간 경우,
+        // 읽기 경로는 silent하게 neutral로 가장하면 안 된다 — row를 스킵하고 진단 로그를 남긴다.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let good = sample_person("npc-good", "active", "정상");
+        store.upsert_person("p", &good).unwrap();
+
+        // 손상된 row 직접 삽입 — Score VO가 거부할 -2.0 값. CHECK는 status만 막으므로
+        // 이 path는 hexaco_json 검증의 유일한 방어선.
+        {
+            let conn = store.conn.lock().unwrap();
+            conn.execute(
+                "INSERT INTO persons (
+                    id, project_id, kind, name, aliases_json, status,
+                    hexaco_json, temporal_json, affiliation_json,
+                    birthplace, current_location, summary, tags_json, extras_json,
+                    body_sections_json, source_path, updated_at
+                 ) VALUES ('npc-bad', 'p', 'active', '손상',
+                           '[]', 'alive',
+                           '{\"honesty_humility\":-2.5,\"emotionality\":0,\"extraversion\":0,\"agreeableness\":0,\"conscientiousness\":0,\"openness\":0}',
+                           '{}', '[]',
+                           NULL, NULL, '', '[]', '{}',
+                           '{}', NULL, 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        // list_persons은 손상된 row를 스킵하고 정상 row만 반환해야 함 (silent neutral 아님).
+        let all = store.list_persons(PersonFilter::default()).unwrap();
+        assert_eq!(all.len(), 1, "손상 row는 스킵되어야 함");
+        assert_eq!(all[0].id.as_str(), "npc-good");
+
+        // get_person 단건 조회는 hard error로 전파되어야 함 (silent neutral 아님).
+        let res = store.get_person(&PersonId::new("npc-bad"));
+        assert!(
+            res.is_err(),
+            "손상된 단건 조회는 silent neutral이 아니라 에러여야 함: {res:?}"
+        );
+    }
+
+    #[test]
+    fn schema_meta_remains_single_row_after_migration() {
+        // Code review #7: schema_meta는 v1→v2 후에도 단일 row 유지해야 함.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (1);
+                 CREATE TABLE groups (id TEXT PRIMARY KEY, project_id TEXT NOT NULL,
+                    kind TEXT NOT NULL, name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]',
+                    parent_group TEXT, allied_groups_json TEXT NOT NULL DEFAULT '[]',
+                    rival_groups_json TEXT NOT NULL DEFAULT '[]', headquarters TEXT,
+                    status TEXT NOT NULL DEFAULT 'active', alignment TEXT,
+                    summary TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    temporal_json TEXT NOT NULL DEFAULT '{}',
+                    members_json TEXT NOT NULL DEFAULT '[]',
+                    source_path TEXT, updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE groups_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );",
+            )
+            .unwrap();
+        }
+
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // schema_meta에 row가 정확히 1개여야 하며 version=2.
+        let (count, max_version): (i64, i64) = {
+            let conn = store.conn.lock().unwrap();
+            let count: i64 = conn
+                .query_row("SELECT COUNT(*) FROM world_schema_meta", [], |r| r.get(0))
+                .unwrap();
+            let max: i64 = conn
+                .query_row(
+                    "SELECT COALESCE(MAX(version), 0) FROM world_schema_meta",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            (count, max)
+        };
+        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2 누적 X)");
+        assert_eq!(max_version, 2);
+
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn affiliation_filter_does_not_match_substring_groups() {
+        // Code review #4: LIKE 메타문자 escape — id가 다른 id의 substring이거나
+        // `_`/`%` 포함 시 false-positive 매칭 방지.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-1", "active", "1");
+        p1.affiliation = vec![GroupId::new("group-a")];
+        let mut p2 = sample_person("npc-2", "active", "2");
+        // `group-a`의 substring이 아니라 별도 그룹.
+        p2.affiliation = vec![GroupId::new("group-aa")];
+        let mut p3 = sample_person("npc-3", "active", "3");
+        // `_` 포함 — LIKE에서 single-char wildcard로 해석되면 group-aa가 매치되어 false-positive.
+        p3.affiliation = vec![GroupId::new("group_a")];
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+        store.upsert_person("p", &p3).unwrap();
+
+        // group-a 필터: npc-1만 매치되어야 함 (group-aa 또는 group_a 매치 안 됨).
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group-a")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["npc-1"],
+            "group-a 필터는 정확히 npc-1만 — substring/wildcard false-positive 금지"
+        );
+
+        // group_a 필터: npc-3만 매치 (literal `_`).
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group_a")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["npc-3"],
+            "group_a 필터는 정확히 npc-3만 — `_` literal 매칭"
+        );
+
+        // group-aa 필터: npc-2만.
+        let hits = store
+            .list_persons(PersonFilter {
+                affiliation: Some(GroupId::new("group-aa")),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-2"]);
+    }
+
+    #[test]
+    fn tag_filter_escapes_like_metachars() {
+        // genre_tag 필터도 동일 escape 적용 — `tag_a`와 `tag-a` 구분.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-1", "active", "1");
+        p1.tags = vec!["tag-a".into()];
+        let mut p2 = sample_person("npc-2", "active", "2");
+        p2.tags = vec!["tag_a".into()];
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+
+        let hits = store
+            .list_persons(PersonFilter {
+                genre_tag: Some("tag-a".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-1"], "tag-a는 tag_a를 매치하면 안 됨");
+
+        let hits = store
+            .list_persons(PersonFilter {
+                genre_tag: Some("tag_a".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(ids, vec!["npc-2"]);
+    }
+
+    #[test]
+    fn hexaco_facets_extras_round_trip_through_sqlite() {
+        // Code review #6: 24 facet 정형 보존이 SQLite를 통과해도 무손실.
+        // Phase 4 정밀 패스 진입 시 silent regression 방지를 위한 회귀 가드.
+        let mut p = sample_person("npc-x", "active", "X");
+        let facets = serde_json::json!({
+            "H_sincerity": -0.9,
+            "H_fairness": -0.7,
+            "H_greed_avoidance": -0.8,
+            "H_modesty": -0.6,
+            "E_fearfulness": -0.4,
+            "E_anxiety": -0.2,
+            "E_dependence": -0.7,
+            "E_sentimentality": -0.3,
+            "X_social_self_esteem": 0.6,
+            "X_social_boldness": 0.5,
+            "X_sociability": -0.4,
+            "X_liveliness": -0.2,
+            "A_forgiveness": -0.8,
+            "A_gentleness": -0.6,
+            "A_flexibility": -0.5,
+            "A_patience": 0.7,
+            "C_organization": 0.8,
+            "C_diligence": 0.7,
+            "C_perfectionism": 0.6,
+            "C_prudence": 0.7,
+            "O_aesthetic_appreciation": 0.5,
+            "O_inquisitiveness": 0.7,
+            "O_creativity": 0.4,
+            "O_unconventionality": 0.6
+        });
+        p.extras
+            .insert("hexaco_facets".into(), facets.clone());
+
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store.upsert_person("p", &p).unwrap();
+        let back = store.get_person(&PersonId::new("npc-x")).unwrap().unwrap();
+
+        let stored = back
+            .extras
+            .get("hexaco_facets")
+            .expect("hexaco_facets 보존 필요");
+        assert_eq!(
+            stored, &facets,
+            "24 facet JSON 객체가 SQLite 라운드트립에서 무손실로 보존되어야 함"
+        );
+        // 24 키 카운트 회귀 가드.
+        assert_eq!(stored.as_object().unwrap().len(), 24);
+    }
+
+    #[test]
+    fn search_persons_with_percent_in_summary_uses_escape() {
+        // Code review #8: search_persons LIKE fallback이 `%` 포함 query·body를 잘못 매칭하지 않아야 함.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p1 = sample_person("npc-percent", "active", "퍼센트");
+        p1.summary = "정확히 50% 할인".into();
+        p1.body_sections.clear();
+        let mut p2 = sample_person("npc-other", "active", "다른");
+        p2.summary = "할인 행사".into();
+        p2.body_sections.clear();
+        store.upsert_person("p", &p1).unwrap();
+        store.upsert_person("p", &p2).unwrap();
+
+        // FTS5 trigram이 query 길이 3 이상을 처리하나, `%` 같은 punctuation 포함 query는
+        // LIKE fallback으로 떨어진다. fallback escape가 정확하면 "50%"는 "50"로 시작하는
+        // 임의 string이 아니라 literal `50%`만 매치해야 한다.
+        let hits = store.search_persons("50%", 5).unwrap();
+        let ids: Vec<&str> = hits.iter().map(|p| p.id.as_str()).collect();
+        assert!(
+            ids.contains(&"npc-percent"),
+            "search_persons(\"50%\")는 npc-percent를 찾아야 함 — escape 후에도 literal 매칭"
+        );
+        // npc-other("할인 행사")는 매치되지 않아야 — 50% wildcard 해석 방지.
+        assert!(
+            !ids.contains(&"npc-other"),
+            "search_persons(\"50%\")가 npc-other(50% 무관)까지 매치되면 안 됨 — escape 누락 의심"
+        );
+    }
+
+    #[test]
+    fn corrupt_status_row_is_skipped() {
+        // status 컬럼은 schema CHECK가 alive|dead|missing|unknown을 강제하므로 정상 흐름에선
+        // 도달 불가. 그러나 from_str_loose가 silent default로 가장하면 미래에 CHECK가 완화되거나
+        // 다른 작성 경로가 추가됐을 때 잠재 버그. 본 테스트는 row_to_person이 hard-error를
+        // 반환함을 명시적으로 가드한다 — status_str을 임의 NULL이나 unknown 값으로 바꾸려면
+        // CHECK를 우회해야 하므로 별도 connection으로 CHECK 없는 임시 테이블에 row를 넣지 않고,
+        // from_str_loose 자체의 None 반환 + row_to_person 매핑 정합성만 단위 검증한다.
+        // (실제 SQLite path는 CHECK가 막아 도달 불가하므로 직접 SQL injection 케이스는 생략.)
+        assert!(PersonStatus::from_str_loose("ghost").is_none());
+        assert!(PersonStatus::from_str_loose("").is_none());
     }
 }

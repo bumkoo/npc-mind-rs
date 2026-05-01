@@ -135,6 +135,23 @@ async fn main() {
                             Arc::new(store) as Arc<dyn npc_mind::worldbuilding::WorldRepository>,
                         );
                         tracing::info!("World store 부착 완료: {}", path.display());
+                        // Phase 2 — active/player Person을 인메모리 MindRepository에 자동 등록.
+                        // dialogue_start 등 v2 dispatch 경로가 npc-NN ID를 즉시 인식하게 한다.
+                        match state.sync_world_persons_into_repo().await {
+                            Ok(0) => {
+                                tracing::info!(
+                                    "Phase 2: world_store에 등록된 active/player 인물이 없음"
+                                );
+                            }
+                            Ok(n) => {
+                                tracing::info!(
+                                    "Phase 2: {n}명의 Person을 mind repository에 자동 등록 완료"
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!("Phase 2: Person 자동 등록 실패: {e}");
+                            }
+                        }
                     }
                     Err(e) => {
                         tracing::warn!(
@@ -283,7 +300,14 @@ fn build_api_router(state: AppState) -> Router {
             "/api/world/groups/search",
             get(handlers::world_groups::search_groups),
         )
-        .route("/api/world/groups/{id}", get(handlers::world_groups::get_group));
+        .route("/api/world/groups/{id}", get(handlers::world_groups::get_group))
+        // Phase 2 Worldbuilding — Person 조회.
+        .route("/api/world/persons", get(handlers::world_persons::list_persons))
+        .route(
+            "/api/world/persons/search",
+            get(handlers::world_persons::search_persons),
+        )
+        .route("/api/world/persons/{id}", get(handlers::world_persons::get_person));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());

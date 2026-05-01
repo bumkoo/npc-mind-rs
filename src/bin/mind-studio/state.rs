@@ -410,10 +410,55 @@ impl AppState {
 
     /// Phase 1 Worldbuilding 저장소를 부착 (embed feature).
     /// `list_groups`/`get_group`/`search_groups` MCP·REST 도구가 이 핸들로 동작한다.
+    /// Phase 2부터는 `list_persons`/`get_person`/`search_persons`도 같은 store에서.
     #[cfg(feature = "embed")]
     pub fn with_world(mut self, store: Arc<dyn WorldRepository>) -> Self {
         self.world_store = Some(store);
         self
+    }
+
+    /// Phase 2 — world_store에 등록된 active/player Person을 inner.npcs에 자동 등록.
+    ///
+    /// 호출 시점: 부착 직후(`with_world` 호출 다음) 또는 시나리오 로드 후.
+    ///
+    /// **덮어쓰기 정책 (Code review #5)**:
+    /// - 같은 NpcId가 inner.npcs에 이미 있으면 `NpcProfile` 전체를 SQLite의 값으로 **완전히 교체**.
+    ///   사용자가 UI에서 description·HEXACO facet을 수동 편집한 적이 있어도 그 편집은 사라진다.
+    ///   현재 호출 site는 mind-studio 부팅 시 1회뿐이라 실해는 발생하지 않으나, 향후 런타임
+    ///   재동기화 endpoint(`task-phase2-followup-runtime-sync.md`)가 추가될 경우 작가의 in-memory
+    ///   편집을 보호하려면 (a) 이 메서드를 그대로 사용하되 작가에게 "수동 편집은 sync 후 사라진다"
+    ///   고 명시하거나 (b) merge 정책을 도입(기존 description/facets 유지) — 둘 중 하나를 명확히
+    ///   결정해야 한다. 본 메서드는 (a)를 채택.
+    /// - emotion_state · 관계 · scene · memory는 **보존**된다. 이는 `inner.emotions` /
+    ///   `inner.relationships` / `inner.scene_*` 가 별도 필드이며 본 메서드는 `inner.npcs`만
+    ///   교체하기 때문이다. `rebuild_repo_from_inner()`은 inner의 다른 필드를 그대로 다시
+    ///   shared repo에 반영한다.
+    ///
+    /// 반환: 등록된 인물 수 (필터링 후). world_store가 부재하면 0.
+    #[cfg(feature = "embed")]
+    pub async fn sync_world_persons_into_repo(&self) -> Result<usize, npc_mind::domain::world::WorldError> {
+        let store = match self.world_store.as_ref() {
+            Some(s) => s.clone(),
+            None => return Ok(0),
+        };
+        // PersonFilter::default()로 전체 조회 후 mind 적격성으로 필터.
+        // (kind 필터를 SQL 단에 두면 active/player를 두 번 호출해야 하므로 메모리 필터가 단순.)
+        let persons = store.list_persons(npc_mind::domain::world::PersonFilter::default())?;
+        let mut count = 0;
+        let mut inner = self.inner.write().await;
+        for p in &persons {
+            if !p.is_mind_eligible() {
+                continue;
+            }
+            let profile = NpcProfile::from_person(p);
+            inner.npcs.insert(profile.id.clone(), profile);
+            count += 1;
+        }
+        drop(inner);
+        if count > 0 {
+            self.rebuild_repo_from_inner().await;
+        }
+        Ok(count)
     }
 }
 
@@ -606,6 +651,55 @@ use npc_mind::domain::personality::{Npc, NpcBuilder, Score};
 use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
 
 impl NpcProfile {
+    /// Phase 2: worldbuilding `Person` → `NpcProfile` 변환.
+    /// HEXACO 6 dim 값을 4 facet에 spread (`worldbuilding::mind_sync`와 동일 정책).
+    /// `kind in {active, player}`만 호출 — 호출자가 사전 필터링.
+    #[cfg(feature = "embed")]
+    pub fn from_person(person: &npc_mind::domain::world::Person) -> Self {
+        let h = &person.hexaco;
+        let hh = h.honesty_humility.value();
+        let em = h.emotionality.value();
+        let ex = h.extraversion.value();
+        let ag = h.agreeableness.value();
+        let co = h.conscientiousness.value();
+        let op = h.openness.value();
+        Self {
+            id: person.id.as_str().to_string(),
+            name: person.name.clone(),
+            description: person.summary.clone(),
+            // H
+            sincerity: hh,
+            fairness: hh,
+            greed_avoidance: hh,
+            modesty: hh,
+            // E
+            fearfulness: em,
+            anxiety: em,
+            dependence: em,
+            sentimentality: em,
+            // X
+            social_self_esteem: ex,
+            social_boldness: ex,
+            sociability: ex,
+            liveliness: ex,
+            // A
+            forgiveness: ag,
+            gentleness: ag,
+            flexibility: ag,
+            patience: ag,
+            // C
+            organization: co,
+            diligence: co,
+            perfectionism: co,
+            prudence: co,
+            // O
+            aesthetic_appreciation: op,
+            inquisitiveness: op,
+            creativity: op,
+            unconventionality: op,
+        }
+    }
+
     /// NPC 도메인 객체로 변환
     pub fn to_npc(&self) -> Npc {
         let s = |v: f32| Score::clamped(v);

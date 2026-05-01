@@ -1,0 +1,82 @@
+# 무협(wuxia) Person 폼 — Phase 2 폼 시스템 자리.
+#
+# Phase 2엔 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase N+에서 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+#
+# 사용 예 (Phase N): mind-studio가 이 파일을 읽어 NPC 등록 폼을 동적 생성.
+
+extends = "person"
+
+# kind 옵션 — Phase 2 무협에서 사용하는 4 종류.
+[[fields.kind.options]]
+value = "active"
+label = "현역"
+
+[[fields.kind.options]]
+value = "historical"
+label = "역사 인물"
+
+[[fields.kind.options]]
+value = "legendary"
+label = "전설"
+
+[[fields.kind.options]]
+value = "player"
+label = "플레이어"
+
+# status 옵션
+[[fields.status.options]]
+value = "alive"
+label = "생존"
+
+[[fields.status.options]]
+value = "dead"
+label = "사망"
+
+[[fields.status.options]]
+value = "missing"
+label = "행방불명"
+
+[[fields.status.options]]
+value = "unknown"
+label = "미상"
+
+# 무협 특화 — 사문(師門) 스승. affiliation의 한 부분이지만 무협엔 강한 결.
+# Phase N에서 활성. Phase 2엔 자리만.
+[[fields]]
+key = "sect_master"
+label = "사문 스승"
+description = "사문(師門) 스승의 Person ID — 무협 특화 사제 관계"
+type = "person_id"
+
+[[fields]]
+key = "signature_skill"
+label = "성명절기"
+description = "대표 무공·기술 — extras에 보존"
+type = "string"
+
+[[fields]]
+key = "biography_short"
+label = "한줄 약력"
+description = "캐릭터 카드용 1-2문장 요약"
+type = "string"
+
+[[fields]]
+key = "game_role"
+label = "서사 역할"
+description = "메인 적대자, 거울형 동반자 등"
+type = "string"
+
+[[fields]]
+key = "priority"
+label = "우선순위"
+description = "★ 1~5개로 표기 — 서사 비중"
+type = "string"
+
+# Phase 2 빈 슬롯: 24 facet 정형 입력 (선택). 6 dim만 입력해도 mind 시스템이 동작.
+# 실제 24 facet 검증·UI는 Phase N+에서 활성.
+[[fields]]
+key = "hexaco_facets"
+label = "HEXACO 24 facet"
+description = "선택적 정형 보존 — extras.hexaco_facets에 저장"
+type = "object"

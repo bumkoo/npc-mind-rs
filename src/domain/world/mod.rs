@@ -20,3 +20,4 @@ pub use group::{
     Group, GroupFilter, GroupId, GroupStatus, MemberRef, Temporal, WorldError,
     detect_parent_group_cycle,
 };
+pub use person::{HexacoSix, Person, PersonFilter, PersonId, PersonStatus, PersonTemporal};
