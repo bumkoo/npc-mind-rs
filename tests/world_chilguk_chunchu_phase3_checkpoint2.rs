@@ -13,7 +13,7 @@
 #![cfg(feature = "embed")]
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
 use npc_mind::domain::world::{
@@ -307,7 +307,3 @@ fn place_daejin_borders_resolve_after_step4() {
 fn ids(places: &[Place]) -> Vec<&str> {
     places.iter().map(|p| p.id.as_str()).collect()
 }
-
-// 컴파일러가 안 쓰는 import를 경고 안 내도록.
-#[allow(dead_code)]
-fn _unused(_: &Path) {}

@@ -18,8 +18,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use super::group::WorldError;
-
 /// 장소 식별자 — `place-{slug}` 형식. slug는 ASCII 소문자·숫자·하이픈.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -234,12 +232,6 @@ fn rotate_to_min(cycle: &mut Vec<PlaceId>) {
     }
     cycle.rotate_left(min_idx);
 }
-
-/// `WorldError`는 group.rs의 enum을 재사용. Place 도메인의 cycle도 `ParentCycle`
-/// variant에 path로 표현된다 — 호출자가 path 형태("place-a → place-b → place-a")로
-/// 구분 가능.
-#[allow(dead_code)]
-fn _world_error_marker(_e: WorldError) {}
 
 // ---------------------------------------------------------------------------
 // 단위 테스트
