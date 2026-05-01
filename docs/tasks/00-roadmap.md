@@ -67,8 +67,8 @@ Phase N: 폼 시스템 · AI 협업 빈칸 · UI 패널
 | # | 카테고리 | 시작 조건 | 검증 게이트 | 상태 | TASK 파일 |
 |---|---|---|---|---|---|
 | 0 | Lore RAG | — | 22(공인 PD 3) 자료 인덱싱 + MCP 도구 3 | ✅ 완료 | `task-phase0-lore-rag-bootstrap.md` |
-| 1 | Group | Phase 0 | 5-6 Group + temporal·parent·allied/rival 검증 | 🔄 작전 완성 | `task-phase1-group-vertical-slice.md` |
-| 2 | Person | Phase 1 | NPC 12명 + Group 외래키 활성 | ⏳ | (작성 예정) |
+| 1 | Group | Phase 0 | 6 Group + temporal·parent·allied/rival 검증 | ✅ 완료 (2026-04-30) | `task-phase1-group-vertical-slice.md` + `phase1-implementation-report.md` |
+| 2 | Person | Phase 1 | 5-6 Person + Group 외래키 활성 + **NPC mind 자동 등록** | 🔄 작전 완성 | `task-phase2-person-vertical-slice.md` |
 | 3 | Place | Phase 2 | 7국 + 자연 1-2 + Atlas는 분리 | ⏳ | `task-phase3-place-vertical-slice.md` (보존) |
 | 4 | Atlas | Phase 3 | atlas-jungwon + 좌표·로직 + Place 합성 view | ⏳ | (Phase 3 TASK에서 분리 예정) |
 | 5 | Event + Era | Phase 4 | 270년 28사건 + Era 결합 | ⏳ | — |
@@ -94,11 +94,25 @@ Phase N: 폼 시스템 · AI 협업 빈칸 · UI 패널
 
 cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Claude Code에 위임 → 반영 완료.
 
-### Phase 1 — Group Vertical Slice 🔄
+### Phase 1 — Group Vertical Slice ✅
 
-**시작 대기 (2026-04-30 작전 완성)**
+**완료 (2026-04-30)** — 보고서 `phase1-implementation-report.md`
 
 목표: 첫 인스턴스 도메인 = Group을 끝까지 한 사이클. 시간성·멤버십·외래키(parent/allied/rival)·진영(wuxia extras) 검증.
+
+산출:
+- 6 Group 변환 (대진 황실·십상시·남궁가·무림맹·천마신교·개방)
+- `src/domain/world/group.rs` + `src/worldbuilding/markdown/{frontmatter,group}.rs` + `src/adapter/sqlite_world.rs` + `src/bin/world_load.rs`
+- MCP 도구 3개: `list_groups` · `get_group` · `search_groups`
+- 14 e2e 테스트 (라운드트립·필터·외래키·검색 자동 검증)
+- 인프라 결정 9개 (sync trait·FTS+LIKE fallback·alignment 캐시 컬럼 등)
+
+검증: 빌드·테스트 278+298+14 pass. 변환 결정 16개 + 인프라 결정 9개 합리적. 데이터 손실 없음.
+
+알려진 follow-up:
+- **체크포인트 분리 게이트 미준수** — 1회 commit 통합. Phase 2부터 강제 준수
+- `serde_yaml` 0.9 deprecated — `serde_yml` 마이그레이션 (선택)
+- Mind Studio MCP 직접 호출 평가는 `.mcp.json` env 설정 후 가능 (Phase와 별도)
 
 검증 게이트: 5-6 Group 변환
 - `group-daejin-court` (dynasty-court) ★ 체크포인트 1
@@ -113,18 +127,22 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 체크포인트 1: 대진 황실 단일 변환 — 십상시 분리 확정, allied/rival 후보 결정, alignment=imperial 시연.
 체크포인트 2: 5-6 Group + MCP 정성 평가 — rival 대칭(무림맹↔천마신교)·alignment 필터·parent_group 수직 시연.
 
-### Phase 2 — Person Vertical Slice ⏳
+### Phase 2 — Person Vertical Slice + NPC Mind 통합 🔄
 
-목표: 구체 사람 도메인. NPC mind 시스템과 직접 연결. Group 멤버십 외래키 활성.
+**작전 완성 (2026-04-30)** — TASK `task-phase2-person-vertical-slice.md`
 
-예정 시드: NPC 12명(npc-01~11 + 천순제) + 역사 인물 (history-characters.md).
+목표: 두 번째 인스턴스 도메인 + worldbuilding ↔ npc-mind 첫 다리.
 
-도메인 후보: id·kind(historical|active|legendary|player) · name·aliases · birth_year·death_year · affiliation(Group IDs) · birthplace(Place ID 텍스트) · hexaco(6값) · biography·body_sections · status(alive|dead|missing) · NPC mind 외래키.
+세 결: (1) Person 도메인 (2) Phase 1 Group 외래키 활성 (members.person_id·affiliation) (3) NPC Mind 자동 등록 (world-load → NpcRepository upsert).
 
-핵심 결정 예상:
-- HEXACO를 Person frontmatter에 직접 박을지, 별도 NPC 시트 분리할지
-- player character는 Person인가 별도 카테고리인가
-- 역사 인물(이미 사망)과 현역 NPC 구분
+핵심 결정 (5개 모두 사용자 confirm):
+- **Q1·B**: HEXACO 6 dim frontmatter 일급, 24 facet은 extras·본문
+- **Q2·B**: Player Character는 `Person.kind="player"` sub-kind (별도 카테고리 X)
+- **Q3·C**: status(alive/dead/missing/unknown) × kind(historical/active/legendary/player) 두 축
+- **Q4·A**: 첫 변환 = `npc-02 조고` (체크포인트 1)
+- **Q5·A**: NPC mind 통합을 Phase 2에 활성화. world-load가 `NpcRepository::upsert` 자동 호출. HEXACO·name 갱신, emotion_state·scene·memory는 보존(idempotent)
+
+검증 게이트: 조고 단독 변환 후 mind-studio에서 `dialogue_start("npc-02")` 동작. 체크포인트 1·2 분리 게이트 **강제 준수** (Phase 1 미준수 후속).
 
 ### Phase 3 — Place Vertical Slice ⏳
 
@@ -185,6 +203,9 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 | 2026-04-30 | Group의 allied/rival·alignment(wuxia)·enmity/fellowship(wuxia) | 외부 리뷰 |
 | 2026-04-30 | 십상시 별도 Group + parent_group=대진 황실 | 외부 리뷰 |
 | 2026-04-30 | Group은 인스턴스 도메인, Atlas는 관계 도메인 (다른 결) | 사용자 ↔ 외부 리뷰 |
+| 2026-04-30 | Phase 1 완료 — 6 Group + MCP + e2e 14 pass | Claude Code |
+| 2026-04-30 | 체크포인트 분리 게이트 Phase 2부터 강제 준수 (Phase 1 미준수 후 결정) | Cowork |
+| 2026-04-30 | Phase 2 결정 5개 — HEXACO 6 dim 일급 / Player=Person sub-kind / status×kind 두 축 / 첫 변환=조고 / NPC mind 자동 upsert | 사용자 |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 
