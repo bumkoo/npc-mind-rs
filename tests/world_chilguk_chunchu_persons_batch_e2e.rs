@@ -25,6 +25,8 @@ use npc_mind::worldbuilding::WorldRepository;
 use npc_mind::worldbuilding::markdown::{group_from_markdown, person_from_markdown};
 use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
+/// 체크포인트 2 핵심 7인 (active kind). player는 follow-up TASK 별도 테스트
+/// (`world_chilguk_chunchu_player_e2e`) — 본 슈트는 active 인물만 검증한다.
 const EXPECTED_PERSON_IDS: &[&str] = &[
     "npc-01", "npc-02", "npc-03", "npc-04", "npc-05", "npc-06", "npc-07",
 ];
@@ -33,6 +35,9 @@ fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
+/// 디렉토리 내 모든 .md 로드. player.md는 follow-up TASK 영역이지만 SQLite·필터
+/// 회귀 가드는 active 7인만 다룬다. 본 헬퍼는 active만 반환하고 player는 별도 슬라이스
+/// (`world_chilguk_chunchu_player_e2e`)에서 검증한다.
 fn load_all_persons() -> Vec<Person> {
     let dir = project_root().join("projects/chilguk-chunchu/world/person");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
@@ -48,6 +53,10 @@ fn load_all_persons() -> Vec<Person> {
         let mut person = person_from_markdown(&raw)
             .unwrap_or_else(|e| panic!("{}: {e}", p.display()));
         person.source_path = Some(p.to_string_lossy().to_string());
+        // player kind는 follow-up 슬라이스에서 별도 검증 — 본 슈트는 active 7인만.
+        if person.kind != "active" {
+            continue;
+        }
         out.push(person);
     }
     out
