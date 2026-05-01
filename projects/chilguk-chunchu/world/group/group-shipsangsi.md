@@ -30,7 +30,7 @@ members:
   - display_name: 외부 무인망
     role: 외부 협력자
     note: 무림 이탈자·범죄자·포로·배교자 등 60-80급 내공 무인 다수.
-headquarters: place-daejin-luoyang
+headquarters: place-daejin
 parent_group: group-daejin-court
 allied_groups: []
 rival_groups:

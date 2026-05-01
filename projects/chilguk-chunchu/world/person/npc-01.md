@@ -24,8 +24,8 @@ temporal:
     49세 현재 서량 독왕 당무괴의 압박 견디는 중.
 affiliation:
   - group-mulim-mang            # 구파일방·정파 — 무림맹 일원
-birthplace: place-aimi-shan
-current_location: place-aimi-shan
+birthplace: place-seoryang
+current_location: place-seoryang
 summary: |
   아미파 장문인. 49세 여성, 정파의 양심. 19세에 죽어가는 단운을 살렸으나 약속은
   지켜지지 않았고, 39세에 추양진인을 구하지 못했다. 의(義)를 지키고 싶지만 제자들의

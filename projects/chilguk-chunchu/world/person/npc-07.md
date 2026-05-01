@@ -24,8 +24,8 @@ temporal:
     Phase 4 정밀 캐릭터 패스에서 보강 예정.
 affiliation:
   - group-daejin-court          # 대진 황실 명목 원수
-birthplace: place-daejin-luoyang
-current_location: place-daejin-luoyang
+birthplace: place-daejin
+current_location: place-daejin
 summary: |
   대진의 명목 황제. 30대 중반 추정. 조고의 꼭두각시로 옥좌에 앉되 명령은 내리지
   못한다. 칙령은 형식적이며 실질 권력은 모두 십상시를 거친다. 본인의 진짜 의도·

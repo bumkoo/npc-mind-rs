@@ -24,8 +24,8 @@ temporal:
     떠돌이 생활을 거쳐 자유도시 빈민가에 안착. 17세 현재 자유도시 뒷골목에서
     소연과의 첫 만남으로 게임 시작.
 affiliation: []                  # 무소속 — 화산파는 멸문, 정식 입문 없음
-birthplace: place-east-coast
-current_location: place-free-cities
+birthplace: place-donghae
+current_location: place-jiyu-doshi
 summary: |
   17세, 화산파 멸문 유일 생존자. 5세 피의 실종 납치·7세 붉은 밤의 변 두 번의
   학살에서 어른들의 보호로 살아남은 "이용당한 아이". 검술이 아닌 생존술을 배운

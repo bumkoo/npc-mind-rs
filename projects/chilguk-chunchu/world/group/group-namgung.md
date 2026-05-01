@@ -27,7 +27,7 @@ members:
   - display_name: 남궁린
     role: 비공식 무력
     note: 동생. 공식 직위 없으나 연무장의 실력자. 진실의 위치에 따라 분기.
-headquarters: place-namgung-geomseong
+headquarters: place-namgung-sega
 parent_group: ~
 allied_groups:
   - group-mulim-mang

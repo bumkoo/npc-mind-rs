@@ -435,6 +435,44 @@ impl MindMcpService {
                 }
             }),
 
+            // Phase 3 Worldbuilding — Place 조회.
+            serde_json::json!({
+                "name": "list_places",
+                "description": "월드 인덱스에서 Place 목록 조회. 필터로 layer(settlement|geography)/kind/parent_place/genre_tag 지정 가능. world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "layer": { "type": "string", "description": "settlement|geography" },
+                        "kind": { "type": "string", "description": "settlement: nation|autonomous-zone|city|sect / geography: mountain-range|coast|jungle|grassland 등" },
+                        "parent_place": { "type": "string", "description": "수직 포함 — 자식 장소 필터 (예: place-namgung 의 sub-place)" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, settlement)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_place",
+                "description": "Place ID로 단일 장소의 전체 detail 조회. 없으면 에러. spatial(parent/bordering/geography_refs) + extras(controlling_group 등) 포함.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "place_id": { "type": "string" }
+                    },
+                    "required": ["place_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_places",
+                "description": "FTS5 trigram 매치로 Place 검색 (name + aliases + summary + body 결합). 별호/한자/한국어/영어 모두 매칭.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -1234,6 +1272,74 @@ impl MindMcpService {
                 #[cfg(not(feature = "embed"))]
                 {
                     Err("search_persons는 --features embed 필요".into())
+                }
+            }
+            "list_places" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::{PlaceFilter, PlaceId, PlaceLayer};
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let filter = PlaceFilter {
+                        layer: arguments
+                            .get("layer")
+                            .and_then(|v| v.as_str())
+                            .and_then(PlaceLayer::from_str_loose),
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        parent_place: arguments
+                            .get("parent_place")
+                            .and_then(|v| v.as_str())
+                            .map(|s| PlaceId::new(s.to_string())),
+                        genre_tag: arguments.get("genre_tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    };
+                    let places = store
+                        .list_places(filter)
+                        .map_err(|e| format!("list_places 실패: {e}"))?;
+                    Ok(serde_json::to_value(places).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_places는 --features embed 필요".into())
+                }
+            }
+            "get_place" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::PlaceId;
+                    let id = arguments["place_id"].as_str().ok_or("place_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let p = store
+                        .get_place(&PlaceId::new(id.to_string()))
+                        .map_err(|e| format!("get_place 실패: {e}"))?;
+                    match p {
+                        Some(p) => Ok(serde_json::to_value(p).map_err(|e| e.to_string())?),
+                        None => Err(format!("place '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_place는 --features embed 필요".into())
+                }
+            }
+            "search_places" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_places(q, top_k)
+                        .map_err(|e| format!("search_places 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_places는 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {

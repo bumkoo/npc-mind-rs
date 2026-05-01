@@ -25,8 +25,8 @@ temporal:
 affiliation:
   - group-daejin-court          # 대진 황실 — 실권자
   - group-shipsangsi            # 십상시 — 수장
-birthplace: place-daejin-luoyang
-current_location: place-daejin-luoyang
+birthplace: place-daejin
+current_location: place-daejin
 summary: |
   대진 황실의 그림자. 환관 출신으로 천순제를 꼭두각시 삼고 십상시를 통해 황실을 실질
   통치한다. 메인 적대자이자 영주 숙청·피의 실종·화산파 멸문 의혹의 배후. "사슴을 가리켜

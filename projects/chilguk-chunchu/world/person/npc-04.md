@@ -22,8 +22,8 @@ temporal:
     당가 300년 독학의 정점. 중년 후반 — 쇠퇴 진입기에서도 연구만은 가속.
     아미파 명경에게 정치적·기술적 압박 진행 중.
 affiliation: []                  # 서량/당가 그룹은 Phase 1에 없음 — Phase N+ 추가 예정
-birthplace: place-seoryang-dokgwanseong
-current_location: place-seoryang-dokgwanseong
+birthplace: place-seoryang
+current_location: place-seoryang
 summary: |
   당가 300년 독학의 정점에 선 천재. 연구를 위해 나라까지 세웠다. 아미파를 도구로
   삼고, 혈교의 기술에 손을 뻗으며, 사람을 재료로 본다. 악의가 없다는 것이 이

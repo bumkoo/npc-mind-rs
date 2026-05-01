@@ -25,8 +25,8 @@ temporal:
 affiliation:
   - group-gaebang               # 개방 정식 제자
   - group-mulim-mang            # 개방은 무림맹 일원
-birthplace: place-east-coast
-current_location: place-free-cities
+birthplace: place-donghae
+current_location: place-jiyu-doshi
 summary: |
   23세 여성, 별호 천이(千耳). 개방 정식 제자이자 칠국 최고의 정보꾼. 11세 때 혈교
   비밀 시설에서 살아남은 피의 실종 사건 생존자 — 12년째 그날의 진실을 추적한다.

@@ -25,7 +25,7 @@ members:
     display_name: 조고
     role: 실권자 (권신)
     note: 55세. 환관, 십상시 수장. 화산파 멸문 의혹.
-headquarters: place-daejin-luoyang
+headquarters: place-daejin
 parent_group: ~
 allied_groups: []
 rival_groups:
