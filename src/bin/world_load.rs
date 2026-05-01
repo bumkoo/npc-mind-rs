@@ -402,8 +402,11 @@ fn run() -> Result<(), String> {
                 Some(PlaceLayer::Geography) => {}
             }
         }
-        // sect kind만 controlling_group 외래키 검증 (다른 kind에서 controlling_group이
-        // 명시되어도 검증은 하되, 결손은 sect만 fatal로 취급).
+        // sect kind만 controlling_group 외래키 검증. 다른 kind(예: nation)에서
+        // controlling_group 텍스트가 명시되어도 Phase 3에선 검증하지 않는다 — sect
+        // 이중 등록이 명확한 양방향 외래키(Place ↔ Group)인 반면 nation의
+        // controlling_group은 통치 주체 메모 성격이라 Phase 1·2 텍스트 보존과 결이
+        // 같다. 비-sect 검증 확장은 Phase 5+에서 검토.
         if pl.kind == "sect"
             && let Some(cg) = pl.controlling_group()
             && !cg.is_empty()
