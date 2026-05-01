@@ -86,6 +86,14 @@ impl PlaceLayer {
 ///
 /// `relative_position`은 schematic 위치 라벨("center"/"west"/"south-west" 등)이며
 /// Phase 4 Atlas에서 다이어그램·맵 배치에 활용한다. Phase 3엔 텍스트만 보존.
+///
+/// **Cross-layer 정책 (Phase 3 결정)**: settlement-to-geography 관계는 settlement
+/// 쪽에서 `geography_refs`로만 정식 표현하며 (settlement→geography "위에 layered"),
+/// `bordering_places`는 같은 평면(settlement↔settlement, 또는 geography↔geography)
+/// 인접에 사용한다. 단, geography가 자기 위 settlement를 `bordering_places`에 적는
+/// 역방향은 데이터 문서화 편의상 허용되며 검증에서 거부하지 않는다 (예시:
+/// `place-bukwon-grasslands.bordering_places = [place-bukwon]`). Phase 4 Atlas는
+/// 이 비대칭을 인지하고 두 layer 다이어그램을 분리해 그릴 것.
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Spatial {
     /// 수직 포함 (영토상 1:1). 도시→국가, 문파→국가, 광역 영역. cycle 검증 활성.
@@ -95,10 +103,14 @@ pub struct Spatial {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relative_position: Option<String>,
     /// 수평 인접 Place들. 같은 도메인 내 외래키 검증.
+    ///
+    /// 운영 규칙은 type doc-comment의 "Cross-layer 정책" 참조 — 같은 layer 인접이
+    /// 정상 사용처. 역방향(geography → settlement) 등록은 허용되지만 정식 표현은
+    /// `geography_refs`다.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bordering_places: Vec<PlaceId>,
     /// (Settlement만 의미 있음) 어느 자연 지형 위에 layered. 외래키 검증 +
-    /// 대상 layer가 `Geography`인지 검증.
+    /// 대상 layer가 `Geography`인지 검증. settlement→geography 관계의 정식 표현.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub geography_refs: Vec<PlaceId>,
 }
