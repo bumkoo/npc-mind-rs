@@ -7,6 +7,7 @@
 
 pub mod builder;
 pub mod markdown;
+pub mod mind_sync;
 pub mod repository;
 
 pub use repository::WorldRepository;

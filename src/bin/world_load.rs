@@ -1,21 +1,32 @@
-//! `world-load` — Phase 1 Worldbuilding ingest CLI.
+//! `world-load` — Phase 1·2 Worldbuilding ingest CLI.
 //!
 //! 사용법:
 //!   cargo run --features embed --bin world-load -- --project chilguk-chunchu
 //!   cargo run --features embed --bin world-load -- --project chilguk-chunchu --reload
+//!   cargo run --features embed --bin world-load -- --project chilguk-chunchu --no-mind
 //!
 //! 환경변수:
 //!   NPC_MIND_WORLD_DB        SQLite 경로 오버라이드 (기본 projects/<id>/build/world.sqlite)
 //!   NPC_MIND_WORLD_PROJECTS  프로젝트 루트 (기본 ./projects)
+//!
+//! Phase 2 동작:
+//!   - `world/person/*.md` 스캔 → persons 테이블 upsert + FTS5
+//!   - 외래키 검증 활성: Group.members.person_id ↔ persons.id, Person.affiliation ↔ groups.id
+//!     결손 시 ERROR로 승급 (Phase 1엔 경고였음)
+//!   - npc-mind 변환 dry-run: kind in {active, player}인 Person을 `Npc`로 변환 시도
+//!     (HEXACO Score VO 범위 검증). 실제 mind store 등록은 mind-studio 시작 시점에 발생.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
-use npc_mind::domain::world::{Group, GroupId, WorldError, detect_parent_group_cycle};
+use npc_mind::domain::world::{
+    Group, GroupId, Person, WorldError, detect_parent_group_cycle,
+};
 use npc_mind::worldbuilding::WorldRepository;
-use npc_mind::worldbuilding::markdown::group_from_markdown;
+use npc_mind::worldbuilding::markdown::{group_from_markdown, person_from_markdown};
+use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
 #[derive(Debug)]
 struct Args {
@@ -24,6 +35,8 @@ struct Args {
     reload: bool,
     db_override: Option<PathBuf>,
     projects_root: Option<PathBuf>,
+    /// `--no-mind`: Person → Npc 변환 dry-run을 끔.
+    no_mind: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -31,6 +44,7 @@ fn parse_args() -> Result<Args, String> {
     let mut reload = false;
     let mut db_override = None;
     let mut projects_root = None;
+    let mut no_mind = false;
     let mut iter = std::env::args().skip(1);
     while let Some(a) = iter.next() {
         match a.as_str() {
@@ -38,6 +52,7 @@ fn parse_args() -> Result<Args, String> {
                 project = Some(iter.next().ok_or("--project requires a value")?);
             }
             "--reload" => reload = true,
+            "--no-mind" => no_mind = true,
             "--db" => {
                 db_override = Some(iter.next().ok_or("--db requires a value")?.into());
             }
@@ -56,17 +71,19 @@ fn parse_args() -> Result<Args, String> {
         reload,
         db_override,
         projects_root,
+        no_mind,
     })
 }
 
 fn print_help() {
     println!(
-        "world-load — Phase 1 Worldbuilding 인덱싱\n\n\
+        "world-load — Phase 1·2 Worldbuilding 인덱싱\n\n\
         USAGE:\n\
-        \tcargo run --features embed --bin world-load -- --project <id> [--reload] [--db <path>]\n\n\
+        \tcargo run --features embed --bin world-load -- --project <id> [--reload] [--no-mind] [--db <path>]\n\n\
         OPTIONS:\n\
         \t--project <id>       projects/<id>/ 하위를 ingest\n\
         \t--reload             기존 SQLite를 삭제 후 재생성\n\
+        \t--no-mind            Person → Npc 변환 dry-run 비활성 (Phase 2)\n\
         \t--db <path>          SQLite 경로 오버라이드\n\
         \t--projects-root <p>  projects 디렉토리 루트 (기본 ./projects)"
     );
@@ -136,34 +153,72 @@ fn run() -> Result<(), String> {
     .map_err(|e| format!("{e:?}"))?;
 
     let group_dir = project_dir.join("world").join("group");
-    if !group_dir.is_dir() {
+    let person_dir = project_dir.join("world").join("person");
+    if !group_dir.is_dir() && !person_dir.is_dir() {
         eprintln!(
-            "[world-load] warning: world/group/ 없음 ({}). 빈 인덱스로 마침.",
-            group_dir.display()
+            "[world-load] warning: world/group/ · world/person/ 둘 다 없음 ({}, {}). 빈 인덱스로 마침.",
+            group_dir.display(),
+            person_dir.display()
         );
         return Ok(());
     }
 
     let mut groups: Vec<Group> = Vec::new();
     let mut errors: Vec<String> = Vec::new();
-    for entry in walk_md(&group_dir).map_err(|e| e.to_string())? {
-        let path = entry;
-        let raw = match std::fs::read_to_string(&path) {
-            Ok(s) => s,
-            Err(e) => {
-                errors.push(format!("{}: read failed — {e}", path.display()));
-                continue;
-            }
-        };
-        match group_from_markdown(&raw) {
-            Ok(mut g) => {
-                g.source_path = Some(path_relative_str(&projects_root, &path));
-                groups.push(g);
-            }
-            Err(e) => {
-                errors.push(format!("{}: {e}", path.display()));
+    if group_dir.is_dir() {
+        for entry in walk_md(&group_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match group_from_markdown(&raw) {
+                Ok(mut g) => {
+                    g.source_path = Some(path_relative_str(&projects_root, &path));
+                    groups.push(g);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
             }
         }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/group/ 없음 ({}). Group 인덱싱 스킵.",
+            group_dir.display()
+        );
+    }
+
+    // Phase 2 — Person 스캔
+    let mut persons: Vec<Person> = Vec::new();
+    if person_dir.is_dir() {
+        for entry in walk_md(&person_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match person_from_markdown(&raw) {
+                Ok(mut p) => {
+                    p.source_path = Some(path_relative_str(&projects_root, &path));
+                    persons.push(p);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/person/ 없음 ({}). Person 인덱싱 스킵.",
+            person_dir.display()
+        );
     }
 
     if !errors.is_empty() {
@@ -173,11 +228,16 @@ fn run() -> Result<(), String> {
         }
     }
 
-    // upsert
+    // upsert — groups 먼저, persons 다음 (외래키 검증을 위해 두 테이블 모두 채움)
     for g in &groups {
         store
             .upsert_group(&args.project, g)
-            .map_err(|e: WorldError| format!("upsert {}: {e}", g.id))?;
+            .map_err(|e: WorldError| format!("upsert group {}: {e}", g.id))?;
+    }
+    for p in &persons {
+        store
+            .upsert_person(&args.project, p)
+            .map_err(|e: WorldError| format!("upsert person {}: {e}", p.id))?;
     }
 
     // parent_group cycle 검증 (경고)
@@ -194,15 +254,19 @@ fn run() -> Result<(), String> {
         }
     }
 
-    // 외래키 결손 경고 (Phase 1 — 같은 도메인 내만 검증)
+    // 외래키 결손 — Phase 1 같은 도메인 내 (경고)
     let id_set: HashSet<&str> = groups.iter().map(|g| g.id.as_str()).collect();
+    let person_id_set: HashSet<&str> = persons.iter().map(|p| p.id.as_str()).collect();
     let mut missing_parents: Vec<(String, String)> = Vec::new();
     let mut missing_allied: Vec<(String, String)> = Vec::new();
     let mut missing_rival: Vec<(String, String)> = Vec::new();
-    // 도메인 외 외래키(Person/Place)는 Phase 2/3에서 활성. Phase 1엔 전체 카운트만 보고.
-    // — `pending_member_refs`/`pending_hq_refs`는 누락 검출이 아니라 **모든** 참조 카운트다.
-    let mut pending_member_refs: u64 = 0;
+    // Phase 2 — 외래키 활성화 (에러로 승급)
+    let mut missing_member_persons: Vec<(String, String)> = Vec::new();
+    let mut missing_affiliations: Vec<(String, String)> = Vec::new();
+    // Phase 3 활성 예정 (Place) — 카운트만
     let mut pending_hq_refs: u64 = 0;
+    let mut pending_birthplace_refs: u64 = 0;
+    let mut pending_current_location_refs: u64 = 0;
     let mut allied_rival_overlap: Vec<(String, String)> = Vec::new();
     for g in &groups {
         if let Some(p) = &g.parent_group
@@ -220,12 +284,13 @@ fn run() -> Result<(), String> {
                 missing_rival.push((g.id.0.clone(), r.0.clone()));
             }
         }
+        // Phase 2 외래키 활성: members.person_id ↔ persons.id
         for m in &g.members {
             if let Some(pid) = &m.person_id
                 && !pid.is_empty()
+                && !person_id_set.contains(pid.as_str())
             {
-                pending_member_refs += 1;
-                let _ = pid; // Phase 2에서 person 도메인 활성 시 검증 활성
+                missing_member_persons.push((g.id.0.clone(), pid.clone()));
             }
         }
         if let Some(hq) = &g.headquarters
@@ -241,19 +306,56 @@ fn run() -> Result<(), String> {
             }
         }
     }
+    // Phase 2 외래키 활성: Person.affiliation ↔ groups.id
+    for p in &persons {
+        for a in &p.affiliation {
+            if !id_set.contains(a.as_str()) {
+                missing_affiliations.push((p.id.0.clone(), a.0.clone()));
+            }
+        }
+        if p.birthplace.as_ref().is_some_and(|s| !s.is_empty()) {
+            pending_birthplace_refs += 1;
+        }
+        if p.current_location.as_ref().is_some_and(|s| !s.is_empty()) {
+            pending_current_location_refs += 1;
+        }
+    }
+
     print_warnings("parent_group", &missing_parents);
     print_warnings("allied_groups", &missing_allied);
     print_warnings("rival_groups", &missing_rival);
-    if pending_member_refs > 0 {
+
+    // Phase 2 외래키 활성: 에러로 승급 — 결손 시 hard-fail.
+    let fk_errors_total = missing_member_persons.len() + missing_affiliations.len();
+    if !missing_member_persons.is_empty() {
         eprintln!(
-            "[world-load] ℹ Phase 2(Person) 도입 예정 — members.person_id {} 건은 텍스트 보존 (검증 비활성)",
-            pending_member_refs
+            "[world-load] ✗ Phase 2 외래키 활성: groups.members.person_id 결손 {} 건:",
+            missing_member_persons.len()
         );
+        for (g, missing) in &missing_member_persons {
+            eprintln!("  - {g}: person_id '{missing}' (persons.id에 없음)");
+        }
     }
+    if !missing_affiliations.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 2 외래키 활성: persons.affiliation 결손 {} 건:",
+            missing_affiliations.len()
+        );
+        for (p, missing) in &missing_affiliations {
+            eprintln!("  - {p}: affiliation '{missing}' (groups.id에 없음)");
+        }
+    }
+
     if pending_hq_refs > 0 {
         eprintln!(
             "[world-load] ℹ Phase 3(Place) 도입 예정 — headquarters {} 건은 텍스트 보존 (검증 비활성)",
             pending_hq_refs
+        );
+    }
+    if pending_birthplace_refs > 0 || pending_current_location_refs > 0 {
+        eprintln!(
+            "[world-load] ℹ Phase 3(Place) 도입 예정 — birthplace {} 건, current_location {} 건은 텍스트 보존 (검증 비활성)",
+            pending_birthplace_refs, pending_current_location_refs
         );
     }
     if !allied_rival_overlap.is_empty() {
@@ -289,19 +391,67 @@ fn run() -> Result<(), String> {
         }
     }
 
-    let total = store
+    // Phase 2 — npc-mind 변환 dry-run.
+    // active/player Person을 Npc로 변환 가능한지 검증 (HEXACO Score VO 범위 등).
+    // 실제 mind store 등록은 mind-studio 부착 시점에 발생.
+    let mut mind_eligible = 0u64;
+    let mut mind_failures: Vec<(String, String)> = Vec::new();
+    if !args.no_mind {
+        for p in &persons {
+            if p.is_mind_eligible() {
+                match person_to_npc(p) {
+                    Some(_) => mind_eligible += 1,
+                    None => {
+                        // is_mind_eligible() 통과 후에는 Some이어야 — 방어적.
+                        mind_failures.push((p.id.0.clone(), "person_to_npc 실패".into()));
+                    }
+                }
+            }
+        }
+        if !mind_failures.is_empty() {
+            eprintln!(
+                "[world-load] ✗ npc-mind 변환 실패 {} 건:",
+                mind_failures.len()
+            );
+            for (id, e) in &mind_failures {
+                eprintln!("  - {id}: {e}");
+            }
+        }
+    }
+
+    // 카운트
+    let group_total = store
         .count_groups(Some(&args.project))
-        .map_err(|e| format!("count: {e:?}"))?;
+        .map_err(|e| format!("count groups: {e:?}"))?;
+    let person_total = store
+        .count_persons(Some(&args.project))
+        .map_err(|e| format!("count persons: {e:?}"))?;
+
     println!("\n=== 결과 ===");
     println!("project           = {}", args.project);
-    println!("groups indexed    = {total}");
-    println!("parsed (this run) = {}", groups.len());
+    println!("groups indexed    = {group_total}");
+    println!("persons indexed   = {person_total}");
+    println!("groups parsed     = {}", groups.len());
+    println!("persons parsed    = {}", persons.len());
     println!("errors            = {}", errors.len());
     println!("cycles            = {}", cycles.len());
+    println!("fk errors (활성)  = {fk_errors_total}");
+    if !args.no_mind {
+        println!("mind eligible     = {mind_eligible}");
+        // 활성 mind 등록은 mind-studio 측에서 발생. 여기는 변환 가능성만 보고.
+        let active_or_player =
+            persons.iter().filter(|p| p.is_mind_eligible()).count() as u64;
+        if active_or_player != mind_eligible {
+            println!(
+                "mind conversion failures = {}",
+                active_or_player - mind_eligible
+            );
+        }
+    } else {
+        println!("mind eligible     = (--no-mind: 비활성)");
+    }
 
     if !errors.is_empty() {
-        // 부분 실패 시 SQLite는 성공한 파일만 적재된 partial 상태이다.
-        // 사용자가 일관된 인덱스를 원하면 `--reload`로 재실행하거나 `.md` 오류를 고친 뒤 재실행.
         eprintln!(
             "\n[world-load] ⚠ {} 파일 파싱 실패 — DB는 partial 상태일 수 있음. \
              오류 수정 후 `--reload`로 재실행하면 일관된 인덱스 보장.",
@@ -310,6 +460,18 @@ fn run() -> Result<(), String> {
         return Err(format!(
             "{} 파일 파싱 실패 (DB partial; 위 가이드 참조)",
             errors.len()
+        ));
+    }
+    if fk_errors_total > 0 {
+        return Err(format!(
+            "{} 외래키 결손 — Phase 2 활성. 위 진단을 보고 .md를 수정한 뒤 `--reload`로 재실행하세요.",
+            fk_errors_total
+        ));
+    }
+    if !args.no_mind && !mind_failures.is_empty() {
+        return Err(format!(
+            "{} 인물의 npc-mind 변환 실패 — HEXACO 범위 또는 정합성 점검 후 재실행.",
+            mind_failures.len()
         ));
     }
     Ok(())
