@@ -1,4 +1,4 @@
-//! `world-load` — Phase 1·2 Worldbuilding ingest CLI.
+//! `world-load` — Phase 1·2·3 Worldbuilding ingest CLI.
 //!
 //! 사용법:
 //!   cargo run --features embed --bin world-load -- --project chilguk-chunchu
@@ -9,12 +9,16 @@
 //!   NPC_MIND_WORLD_DB        SQLite 경로 오버라이드 (기본 projects/<id>/build/world.sqlite)
 //!   NPC_MIND_WORLD_PROJECTS  프로젝트 루트 (기본 ./projects)
 //!
-//! Phase 2 동작:
-//!   - `world/person/*.md` 스캔 → persons 테이블 upsert + FTS5
-//!   - 외래키 검증 활성: Group.members.person_id ↔ persons.id, Person.affiliation ↔ groups.id
-//!     결손 시 ERROR로 승급 (Phase 1엔 경고였음)
-//!   - npc-mind 변환 dry-run: kind in {active, player}인 Person을 `Npc`로 변환 시도
-//!     (HEXACO Score VO 범위 검증). 실제 mind store 등록은 mind-studio 시작 시점에 발생.
+//! Phase 3 동작:
+//!   - `world/place/*.md` 스캔 → places 테이블 upsert + FTS5
+//!   - 외래키 검증 활성 (에러 승급, Phase 1·2의 경고/보류에서 승급):
+//!     - `Group.headquarters` ↔ `places.id`
+//!     - `Person.birthplace`/`current_location` ↔ `places.id`
+//!     - `Place.spatial.parent_place` cycle (같은 도메인 내)
+//!     - `Place.spatial.bordering_places`/`geography_refs` 존재
+//!     - `Place.spatial.geography_refs` layer 일치 (target이 `Geography`이어야)
+//!     - `Place.extras.controlling_group` (sect kind만) ↔ `groups.id`
+//!   - 결손 시 partial commit 방지 — DB 미수정 유지 (Phase 1·2 정책 그대로)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -22,10 +26,13 @@ use std::process::ExitCode;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
 use npc_mind::domain::world::{
-    Group, GroupId, Person, WorldError, detect_parent_group_cycle,
+    Group, GroupId, Person, Place, PlaceLayer, WorldError, detect_parent_group_cycle,
+    detect_parent_place_cycle,
 };
 use npc_mind::worldbuilding::WorldRepository;
-use npc_mind::worldbuilding::markdown::{group_from_markdown, person_from_markdown};
+use npc_mind::worldbuilding::markdown::{
+    group_from_markdown, person_from_markdown, place_from_markdown,
+};
 use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
 #[derive(Debug)]
@@ -154,11 +161,13 @@ fn run() -> Result<(), String> {
 
     let group_dir = project_dir.join("world").join("group");
     let person_dir = project_dir.join("world").join("person");
-    if !group_dir.is_dir() && !person_dir.is_dir() {
+    let place_dir = project_dir.join("world").join("place");
+    if !group_dir.is_dir() && !person_dir.is_dir() && !place_dir.is_dir() {
         eprintln!(
-            "[world-load] warning: world/group/ · world/person/ 둘 다 없음 ({}, {}). 빈 인덱스로 마침.",
+            "[world-load] warning: world/group/ · world/person/ · world/place/ 모두 없음 ({}, {}, {}). 빈 인덱스로 마침.",
             group_dir.display(),
-            person_dir.display()
+            person_dir.display(),
+            place_dir.display()
         );
         return Ok(());
     }
@@ -221,6 +230,35 @@ fn run() -> Result<(), String> {
         );
     }
 
+    // Phase 3 — Place 스캔
+    let mut places: Vec<Place> = Vec::new();
+    if place_dir.is_dir() {
+        for entry in walk_md(&place_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match place_from_markdown(&raw) {
+                Ok(mut p) => {
+                    p.source_path = Some(path_relative_str(&projects_root, &path));
+                    places.push(p);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/place/ 없음 ({}). Place 인덱싱 스킵.",
+            place_dir.display()
+        );
+    }
+
     if !errors.is_empty() {
         eprintln!("[world-load] {} 파일 파싱 실패:", errors.len());
         for e in &errors {
@@ -244,19 +282,44 @@ fn run() -> Result<(), String> {
         }
     }
 
-    // 외래키 결손 — Phase 1 같은 도메인 내 (경고)
+    // Phase 3 — Place parent_place cycle 검증 (에러)
+    let place_cycles = detect_parent_place_cycle(&places);
+    if !place_cycles.is_empty() {
+        eprintln!("[world-load] ✗ parent_place cycle {} 건:", place_cycles.len());
+        for c in &place_cycles {
+            let path = c
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>()
+                .join(" → ");
+            eprintln!("  - {path} → ({})", c[0]);
+        }
+    }
+
+    // 외래키 결손 — 같은 도메인 내 (Phase 1 경고 그대로)
     let id_set: HashSet<&str> = groups.iter().map(|g| g.id.as_str()).collect();
     let person_id_set: HashSet<&str> = persons.iter().map(|p| p.id.as_str()).collect();
+    // Phase 3 신규: place id 집합 + layer lookup (geography_refs 검증용)
+    let place_id_set: HashSet<&str> = places.iter().map(|p| p.id.as_str()).collect();
+    let place_layer_by_id: HashMap<&str, PlaceLayer> =
+        places.iter().map(|p| (p.id.as_str(), p.layer)).collect();
+
     let mut missing_parents: Vec<(String, String)> = Vec::new();
     let mut missing_allied: Vec<(String, String)> = Vec::new();
     let mut missing_rival: Vec<(String, String)> = Vec::new();
-    // Phase 2 — 외래키 활성화 (에러로 승급)
+    // Phase 2 — 외래키 활성 (에러)
     let mut missing_member_persons: Vec<(String, String)> = Vec::new();
     let mut missing_affiliations: Vec<(String, String)> = Vec::new();
-    // Phase 3 활성 예정 (Place) — 카운트만
-    let mut pending_hq_refs: u64 = 0;
-    let mut pending_birthplace_refs: u64 = 0;
-    let mut pending_current_location_refs: u64 = 0;
+    // Phase 3 — 외래키 활성 (에러로 승급)
+    let mut missing_hq: Vec<(String, String)> = Vec::new();
+    let mut missing_birthplace: Vec<(String, String)> = Vec::new();
+    let mut missing_current_location: Vec<(String, String)> = Vec::new();
+    let mut missing_place_parent: Vec<(String, String)> = Vec::new();
+    let mut missing_bordering: Vec<(String, String)> = Vec::new();
+    let mut missing_geography: Vec<(String, String)> = Vec::new();
+    // geography_refs target이 settlement layer면 layer mismatch (해당 ref가 자연 지형이 아님).
+    let mut geography_layer_mismatch: Vec<(String, String)> = Vec::new();
+    let mut missing_controlling_group: Vec<(String, String)> = Vec::new();
     let mut allied_rival_overlap: Vec<(String, String)> = Vec::new();
     for g in &groups {
         if let Some(p) = &g.parent_group
@@ -283,11 +346,12 @@ fn run() -> Result<(), String> {
                 missing_member_persons.push((g.id.0.clone(), pid.clone()));
             }
         }
+        // Phase 3 외래키 활성: Group.headquarters ↔ places.id
         if let Some(hq) = &g.headquarters
             && !hq.is_empty()
+            && !place_id_set.contains(hq.as_str())
         {
-            pending_hq_refs += 1;
-            let _ = hq; // Phase 3에서 place 도메인 활성 시 검증 활성
+            missing_hq.push((g.id.0.clone(), hq.clone()));
         }
         let allied: HashSet<&GroupId> = g.allied_groups.iter().collect();
         for r in &g.rival_groups {
@@ -297,17 +361,55 @@ fn run() -> Result<(), String> {
         }
     }
     // Phase 2 외래키 활성: Person.affiliation ↔ groups.id
+    // Phase 3 외래키 활성: Person.birthplace/current_location ↔ places.id
     for p in &persons {
         for a in &p.affiliation {
             if !id_set.contains(a.as_str()) {
                 missing_affiliations.push((p.id.0.clone(), a.0.clone()));
             }
         }
-        if p.birthplace.as_ref().is_some_and(|s| !s.is_empty()) {
-            pending_birthplace_refs += 1;
+        if let Some(bp) = &p.birthplace
+            && !bp.is_empty()
+            && !place_id_set.contains(bp.as_str())
+        {
+            missing_birthplace.push((p.id.0.clone(), bp.clone()));
         }
-        if p.current_location.as_ref().is_some_and(|s| !s.is_empty()) {
-            pending_current_location_refs += 1;
+        if let Some(cl) = &p.current_location
+            && !cl.is_empty()
+            && !place_id_set.contains(cl.as_str())
+        {
+            missing_current_location.push((p.id.0.clone(), cl.clone()));
+        }
+    }
+    // Phase 3 외래키 활성: Place.spatial.* + extras.controlling_group
+    for pl in &places {
+        if let Some(parent) = &pl.spatial.parent_place
+            && !place_id_set.contains(parent.as_str())
+        {
+            missing_place_parent.push((pl.id.0.clone(), parent.0.clone()));
+        }
+        for b in &pl.spatial.bordering_places {
+            if !place_id_set.contains(b.as_str()) {
+                missing_bordering.push((pl.id.0.clone(), b.0.clone()));
+            }
+        }
+        for gref in &pl.spatial.geography_refs {
+            match place_layer_by_id.get(gref.as_str()) {
+                None => missing_geography.push((pl.id.0.clone(), gref.0.clone())),
+                Some(PlaceLayer::Settlement) => {
+                    geography_layer_mismatch.push((pl.id.0.clone(), gref.0.clone()));
+                }
+                Some(PlaceLayer::Geography) => {}
+            }
+        }
+        // sect kind만 controlling_group 외래키 검증 (다른 kind에서 controlling_group이
+        // 명시되어도 검증은 하되, 결손은 sect만 fatal로 취급).
+        if pl.kind == "sect"
+            && let Some(cg) = pl.controlling_group()
+            && !cg.is_empty()
+            && !id_set.contains(cg)
+        {
+            missing_controlling_group.push((pl.id.0.clone(), cg.to_string()));
         }
     }
 
@@ -316,7 +418,6 @@ fn run() -> Result<(), String> {
     print_warnings("rival_groups", &missing_rival);
 
     // Phase 2 외래키 활성: 에러로 승급 — 결손 시 hard-fail.
-    let fk_errors_total = missing_member_persons.len() + missing_affiliations.len();
     if !missing_member_persons.is_empty() {
         eprintln!(
             "[world-load] ✗ Phase 2 외래키 활성: groups.members.person_id 결손 {} 건:",
@@ -335,19 +436,91 @@ fn run() -> Result<(), String> {
             eprintln!("  - {p}: affiliation '{missing}' (groups.id에 없음)");
         }
     }
+    // Phase 3 외래키 활성 — 모두 hard-fail.
+    if !missing_hq.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: groups.headquarters 결손 {} 건:",
+            missing_hq.len()
+        );
+        for (g, missing) in &missing_hq {
+            eprintln!("  - {g}: headquarters '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_birthplace.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: persons.birthplace 결손 {} 건:",
+            missing_birthplace.len()
+        );
+        for (p, missing) in &missing_birthplace {
+            eprintln!("  - {p}: birthplace '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_current_location.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: persons.current_location 결손 {} 건:",
+            missing_current_location.len()
+        );
+        for (p, missing) in &missing_current_location {
+            eprintln!("  - {p}: current_location '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_place_parent.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: places.spatial.parent_place 결손 {} 건:",
+            missing_place_parent.len()
+        );
+        for (p, missing) in &missing_place_parent {
+            eprintln!("  - {p}: parent_place '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_bordering.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: places.spatial.bordering_places 결손 {} 건:",
+            missing_bordering.len()
+        );
+        for (p, missing) in &missing_bordering {
+            eprintln!("  - {p}: bordering_places '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_geography.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: places.spatial.geography_refs 결손 {} 건:",
+            missing_geography.len()
+        );
+        for (p, missing) in &missing_geography {
+            eprintln!("  - {p}: geography_refs '{missing}' (places.id에 없음)");
+        }
+    }
+    if !geography_layer_mismatch.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: places.spatial.geography_refs layer 불일치 {} 건 (target이 geography이어야):",
+            geography_layer_mismatch.len()
+        );
+        for (p, target) in &geography_layer_mismatch {
+            eprintln!("  - {p}: geography_refs '{target}' (layer=settlement, 자연 지형 아님)");
+        }
+    }
+    if !missing_controlling_group.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 3 외래키 활성: places.extras.controlling_group(sect) 결손 {} 건:",
+            missing_controlling_group.len()
+        );
+        for (p, missing) in &missing_controlling_group {
+            eprintln!("  - {p}: controlling_group '{missing}' (groups.id에 없음)");
+        }
+    }
 
-    if pending_hq_refs > 0 {
-        eprintln!(
-            "[world-load] ℹ Phase 3(Place) 도입 예정 — headquarters {} 건은 텍스트 보존 (검증 비활성)",
-            pending_hq_refs
-        );
-    }
-    if pending_birthplace_refs > 0 || pending_current_location_refs > 0 {
-        eprintln!(
-            "[world-load] ℹ Phase 3(Place) 도입 예정 — birthplace {} 건, current_location {} 건은 텍스트 보존 (검증 비활성)",
-            pending_birthplace_refs, pending_current_location_refs
-        );
-    }
+    let fk_errors_total = missing_member_persons.len()
+        + missing_affiliations.len()
+        + missing_hq.len()
+        + missing_birthplace.len()
+        + missing_current_location.len()
+        + missing_place_parent.len()
+        + missing_bordering.len()
+        + missing_geography.len()
+        + geography_layer_mismatch.len()
+        + missing_controlling_group.len();
+    let cycle_errors_total = place_cycles.len();
     if !allied_rival_overlap.is_empty() {
         eprintln!(
             "[world-load] ⚠ allied/rival 모순 {} 건:",
@@ -413,16 +586,19 @@ fn run() -> Result<(), String> {
     // (이전 동작은 upsert를 먼저 수행해 SQLite에 partial row가 남았다. Code review #3.)
     let fatal_parse = !errors.is_empty();
     let fatal_fk = fk_errors_total > 0;
+    let fatal_cycle = cycle_errors_total > 0;
     let fatal_mind = !args.no_mind && !mind_failures.is_empty();
 
-    if fatal_parse || fatal_fk || fatal_mind {
+    if fatal_parse || fatal_fk || fatal_cycle || fatal_mind {
         // 진단 위주 result 블록 — DB가 미수정임을 명시.
         println!("\n=== 결과 (DB 미수정) ===");
         println!("project           = {}", args.project);
         println!("groups parsed     = {}", groups.len());
         println!("persons parsed    = {}", persons.len());
+        println!("places parsed     = {}", places.len());
         println!("errors            = {}", errors.len());
-        println!("cycles            = {}", cycles.len());
+        println!("group cycles      = {}", cycles.len());
+        println!("place cycles      = {}", place_cycles.len());
         println!("fk errors (활성)  = {fk_errors_total}");
         if !args.no_mind {
             println!("mind failures     = {}", mind_failures.len());
@@ -438,9 +614,15 @@ fn run() -> Result<(), String> {
             );
             return Err(format!("{} 파일 파싱 실패 (DB unchanged)", errors.len()));
         }
+        if fatal_cycle {
+            return Err(format!(
+                "{} parent_place cycle — Phase 3 활성. DB 미수정. .md 수정 후 재실행하세요.",
+                cycle_errors_total
+            ));
+        }
         if fatal_fk {
             return Err(format!(
-                "{} 외래키 결손 — Phase 2 활성. DB 미수정. .md 수정 후 재실행하세요.",
+                "{} 외래키 결손 — Phase 2·3 활성. DB 미수정. .md 수정 후 재실행하세요.",
                 fk_errors_total
             ));
         }
@@ -450,7 +632,7 @@ fn run() -> Result<(), String> {
                 mind_failures.len()
             ));
         }
-        unreachable!("fatal_* 위 세 분기가 모든 case를 cover");
+        unreachable!("fatal_* 위 네 분기가 모든 case를 cover");
     }
 
     // 모든 검증 통과 — 이제 upsert. 부분 실패가 발생하면(SQLite IO 오류 등) 그 시점까지의
@@ -466,6 +648,11 @@ fn run() -> Result<(), String> {
             .upsert_person(&args.project, p)
             .map_err(|e: WorldError| format!("upsert person {}: {e}", p.id))?;
     }
+    for pl in &places {
+        store
+            .upsert_place(&args.project, pl)
+            .map_err(|e: WorldError| format!("upsert place {}: {e}", pl.id))?;
+    }
 
     // 최종 카운트 + 결과 출력 — upsert 완료 후의 인덱스 상태.
     let group_total = store
@@ -474,15 +661,21 @@ fn run() -> Result<(), String> {
     let person_total = store
         .count_persons(Some(&args.project))
         .map_err(|e| format!("count persons: {e:?}"))?;
+    let place_total = store
+        .count_places(Some(&args.project))
+        .map_err(|e| format!("count places: {e:?}"))?;
 
     println!("\n=== 결과 ===");
     println!("project           = {}", args.project);
     println!("groups indexed    = {group_total}");
     println!("persons indexed   = {person_total}");
+    println!("places indexed    = {place_total}");
     println!("groups parsed     = {}", groups.len());
     println!("persons parsed    = {}", persons.len());
+    println!("places parsed     = {}", places.len());
     println!("errors            = {}", errors.len());
-    println!("cycles            = {}", cycles.len());
+    println!("group cycles      = {}", cycles.len());
+    println!("place cycles      = {}", place_cycles.len());
     println!("fk errors (활성)  = {fk_errors_total}");
     if !args.no_mind {
         println!("mind eligible     = {mind_eligible}");

@@ -1,8 +1,9 @@
-//! `SqliteWorldStore` — Phase 1 Vertical Slice (groups + FTS5 trigram).
+//! `SqliteWorldStore` — Phase 1·2·3 Vertical Slice (groups + persons + places + FTS5 trigram).
 //!
-//! 스키마는 `docs/tasks/task-phase1-group-vertical-slice.md` §6.3을 그대로 따름.
-//! Phase 2에서 persons 테이블 + persons_fts 추가 (`migrate_v2`). 같은 SQLite 파일이
-//! Group + Person을 모두 보관. 임베딩은 Phase 5+에서 도입 (vec0 미사용).
+//! 스키마는 task-phase{1,2,3}-vertical-slice §6.3을 그대로 따름.
+//! Phase 2에서 persons 테이블 + persons_fts 추가 (`migrate_v2`). Phase 3에서 places +
+//! places_fts 추가 (`migrate_v3`). 같은 SQLite 파일이 Group + Person + Place 모두 보관.
+//! 임베딩은 Phase 5+에서 도입 (vec0 미사용).
 
 use std::sync::Mutex;
 
@@ -11,13 +12,13 @@ use serde_json::{Map, Value};
 
 use crate::domain::world::{
     Group, GroupFilter, GroupId, HexacoSix, Person, PersonFilter, PersonId, PersonStatus,
-    PersonTemporal, WorldError,
+    PersonTemporal, Place, PlaceFilter, PlaceId, PlaceLayer, Spatial, WorldError,
 };
 #[cfg(test)]
 use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub struct SqliteWorldStore {
     conn: Mutex<Connection>,
@@ -61,6 +62,9 @@ impl SqliteWorldStore {
         }
         if current < 2 {
             Self::migrate_v2(&conn)?;
+        }
+        if current < 3 {
+            Self::migrate_v3(&conn)?;
         }
         // schema_meta를 단일 row로 강제 (Code review #7).
         // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
@@ -107,6 +111,39 @@ impl SqliteWorldStore {
             CREATE INDEX IF NOT EXISTS idx_persons_status ON persons(status);
             CREATE INDEX IF NOT EXISTS idx_persons_project ON persons(project_id);
             CREATE VIRTUAL TABLE IF NOT EXISTS persons_fts USING fts5(
+                id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+            );",
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    /// v2 → v3 마이그레이션: places 테이블 + places_fts.
+    /// `CREATE TABLE IF NOT EXISTS`이라 v3에서 신규 생성한 DB에도 안전.
+    /// `place_atlas_refs` 자리는 Phase 4(Atlas)에서 추가 — Phase 3엔 미생성.
+    fn migrate_v3(conn: &Connection) -> Result<(), WorldError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS places (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                layer TEXT NOT NULL CHECK(layer IN ('settlement','geography')),
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]',
+                summary TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                extras_json TEXT NOT NULL DEFAULT '{}',
+                body_sections_json TEXT NOT NULL DEFAULT '{}',
+                spatial_json TEXT NOT NULL DEFAULT '{}',
+                parent_place TEXT,
+                source_path TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_places_layer ON places(layer);
+            CREATE INDEX IF NOT EXISTS idx_places_kind ON places(kind);
+            CREATE INDEX IF NOT EXISTS idx_places_parent ON places(parent_place);
+            CREATE INDEX IF NOT EXISTS idx_places_project ON places(project_id);
+            CREATE VIRTUAL TABLE IF NOT EXISTS places_fts USING fts5(
                 id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
             );",
         )
@@ -214,6 +251,17 @@ fn body_concat(group: &Group) -> String {
 fn person_body_concat(person: &Person) -> String {
     let mut s = String::new();
     for (k, v) in &person.body_sections {
+        s.push_str(k);
+        s.push('\n');
+        s.push_str(v);
+        s.push('\n');
+    }
+    s
+}
+
+fn place_body_concat(place: &Place) -> String {
+    let mut s = String::new();
+    for (k, v) in &place.body_sections {
         s.push_str(k);
         s.push('\n');
         s.push_str(v);
@@ -621,6 +669,188 @@ impl WorldRepository for SqliteWorldStore {
         };
         Ok(n.max(0) as u64)
     }
+
+    // ---------------------------------------------------------------------
+    // Phase 3 — Place
+    // ---------------------------------------------------------------------
+
+    fn upsert_place(&self, project_id: &str, place: &Place) -> Result<(), WorldError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        let extras_json = serde_json::to_string(&place.extras)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let body_json = serde_json::to_string(&place.body_sections)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let spatial_json = serde_json::to_string(&place.spatial)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let aliases_json = json_array_of_strings(&place.aliases);
+        let tags_json = json_array_of_strings(&place.tags);
+        let parent_place = place
+            .spatial
+            .parent_place
+            .as_ref()
+            .map(|p| p.as_str().to_string());
+        let layer = place.layer.as_str();
+        let updated_at = now_ms();
+
+        tx.execute(
+            "INSERT OR REPLACE INTO places (
+                id, project_id, layer, kind, name, aliases_json,
+                summary, tags_json, extras_json, body_sections_json, spatial_json,
+                parent_place, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                place.id.as_str(),
+                project_id,
+                layer,
+                place.kind,
+                place.name,
+                aliases_json,
+                place.summary,
+                tags_json,
+                extras_json,
+                body_json,
+                spatial_json,
+                parent_place,
+                place.source_path,
+                updated_at,
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // FTS5 — id 기반 delete-then-insert
+        tx.execute("DELETE FROM places_fts WHERE id = ?1", params![place.id.as_str()])
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO places_fts (id, name, aliases, summary, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                place.id.as_str(),
+                place.name,
+                aliases_concat(&place.aliases),
+                place.summary,
+                place_body_concat(place),
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    fn list_places(&self, filter: PlaceFilter) -> Result<Vec<Place>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT id, project_id, layer, kind, name, aliases_json,
+                    summary, tags_json, extras_json, body_sections_json, spatial_json,
+                    parent_place, source_path
+             FROM places WHERE 1=1",
+        );
+        let mut binds: Vec<String> = Vec::new();
+        if let Some(l) = filter.layer {
+            sql.push_str(" AND layer = ?");
+            binds.push(l.as_str().to_string());
+        }
+        if let Some(k) = filter.kind {
+            sql.push_str(" AND kind = ?");
+            binds.push(k);
+        }
+        if let Some(p) = filter.parent_place {
+            sql.push_str(" AND parent_place = ?");
+            binds.push(p.as_str().to_string());
+        }
+        if let Some(t) = filter.genre_tag {
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
+        }
+        sql.push_str(" ORDER BY id ASC");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            binds.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_place)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_place_rows_warn_on_err(rows))
+    }
+
+    fn get_place(&self, id: &PlaceId) -> Result<Option<Place>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let res = conn.query_row(
+            "SELECT id, project_id, layer, kind, name, aliases_json,
+                    summary, tags_json, extras_json, body_sections_json, spatial_json,
+                    parent_place, source_path
+             FROM places WHERE id = ?1",
+            params![id.as_str()],
+            row_to_place,
+        );
+        match res {
+            Ok(p) => Ok(Some(p)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WorldError::Storage(e.to_string())),
+        }
+    }
+
+    fn search_places(&self, query: &str, top_k: u32) -> Result<Vec<Place>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let char_count = q.chars().count();
+        if char_count < 3 {
+            return self.search_places_like(&conn, q, top_k);
+        }
+
+        let escaped = q.replace('"', "\"\"");
+        let phrase = format!("\"{}\"", escaped);
+        let fts_hits: Result<Vec<Place>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT pl.id, pl.project_id, pl.layer, pl.kind, pl.name, pl.aliases_json,
+                        pl.summary, pl.tags_json, pl.extras_json, pl.body_sections_json, pl.spatial_json,
+                        pl.parent_place, pl.source_path
+                 FROM places_fts f
+                 JOIN places pl ON pl.id = f.id
+                 WHERE places_fts MATCH ?1
+                 ORDER BY rank
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_place)?;
+            Ok(collect_place_rows_warn_on_err(rows))
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => self.search_places_like(&conn, q, top_k),
+            Err(e) => {
+                tracing::debug!(
+                    "FTS5 MATCH 실패(places), LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_places_like(&conn, q, top_k)
+            }
+        }
+    }
+
+    fn count_places(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = match project_id {
+            Some(p) => conn
+                .query_row(
+                    "SELECT COUNT(*) FROM places WHERE project_id = ?1",
+                    params![p],
+                    |r| r.get(0),
+                )
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+            None => conn
+                .query_row("SELECT COUNT(*) FROM places", [], |r| r.get(0))
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+        };
+        Ok(n.max(0) as u64)
+    }
 }
 
 impl SqliteWorldStore {
@@ -653,6 +883,37 @@ impl SqliteWorldStore {
             .query_map(params![pat, top_k as i64], row_to_person)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(collect_person_rows_warn_on_err(rows))
+    }
+
+    /// Place 검색용 LIKE fallback — FTS5 trigram이 처리하지 못하는 짧은 query 또는
+    /// 결과 0건 시 호출.
+    fn search_places_like(
+        &self,
+        conn: &Connection,
+        q: &str,
+        top_k: u32,
+    ) -> Result<Vec<Place>, WorldError> {
+        let pat = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = conn
+            .prepare(
+                "SELECT pl.id, pl.project_id, pl.layer, pl.kind, pl.name, pl.aliases_json,
+                        pl.summary, pl.tags_json, pl.extras_json, pl.body_sections_json, pl.spatial_json,
+                        pl.parent_place, pl.source_path
+                 FROM places pl
+                 LEFT JOIN places_fts f ON f.id = pl.id
+                 WHERE pl.name LIKE ?1 ESCAPE '\\'
+                    OR f.aliases LIKE ?1 ESCAPE '\\'
+                    OR pl.summary LIKE ?1 ESCAPE '\\'
+                    OR f.body LIKE ?1 ESCAPE '\\'
+                 GROUP BY pl.id
+                 ORDER BY pl.id ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![pat, top_k as i64], row_to_place)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_place_rows_warn_on_err(rows))
     }
 
     /// FTS5 fallback — `groups_fts.body`/`name`/`aliases`/`summary`를 LIKE %q% 매칭.
@@ -826,6 +1087,66 @@ where
             Ok(p) => out.push(p),
             Err(e) => {
                 tracing::warn!("SqliteWorldStore person row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
+}
+
+fn row_to_place(row: &rusqlite::Row) -> rusqlite::Result<Place> {
+    let id: String = row.get(0)?;
+    // project_id (1)은 도메인 모델 미보존.
+    let layer_str: String = row.get(2)?;
+    let kind: String = row.get(3)?;
+    let name: String = row.get(4)?;
+    let aliases_json: String = row.get(5)?;
+    let summary: String = row.get(6)?;
+    let tags_json: String = row.get(7)?;
+    let extras_json: String = row.get(8)?;
+    let body_json: String = row.get(9)?;
+    let spatial_json: String = row.get(10)?;
+    // parent_place (11): spatial_json에서 동일 값 복원. 캐시 컬럼.
+    let source_path: Option<String> = row.get(12)?;
+
+    let layer = PlaceLayer::from_str_loose(&layer_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            2,
+            rusqlite::types::Type::Text,
+            format!("places.layer 알 수 없는 값 '{layer_str}' (id={id})").into(),
+        )
+    })?;
+    let extras: Map<String, Value> =
+        serde_json::from_str(&extras_json).unwrap_or_default();
+    let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
+    let spatial: Spatial = serde_json::from_str(&spatial_json).unwrap_or_default();
+    let aliases = from_json_strings(&aliases_json);
+    let tags = from_json_strings(&tags_json);
+
+    Ok(Place {
+        id: PlaceId::new(id),
+        layer,
+        kind,
+        name,
+        aliases,
+        summary,
+        tags,
+        extras,
+        body_sections,
+        spatial,
+        source_path,
+    })
+}
+
+fn collect_place_rows_warn_on_err<I>(rows: I) -> Vec<Place>
+where
+    I: Iterator<Item = rusqlite::Result<Place>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(p) => out.push(p),
+            Err(e) => {
+                tracing::warn!("SqliteWorldStore place row decode 실패 — 결과에서 제외: {e}");
             }
         }
     }
@@ -1395,8 +1716,8 @@ mod tests {
                 .unwrap();
             (count, max)
         };
-        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2 누적 X)");
-        assert_eq!(max_version, 2);
+        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2·v3 누적 X)");
+        assert_eq!(max_version, 3);
 
         drop(store);
         drop(tmp);
@@ -1578,5 +1899,258 @@ mod tests {
         // (실제 SQLite path는 CHECK가 막아 도달 불가하므로 직접 SQL injection 케이스는 생략.)
         assert!(PersonStatus::from_str_loose("ghost").is_none());
         assert!(PersonStatus::from_str_loose("").is_none());
+    }
+
+    // ---------------------------------------------------------------------
+    // Phase 3 — Place 테스트
+    // ---------------------------------------------------------------------
+
+    fn sample_settlement(id: &str, name: &str) -> Place {
+        let mut p = Place::new(id, PlaceLayer::Settlement, "nation", name);
+        p.aliases = vec!["별호".into(), "옛 이름".into()];
+        p.summary = "테스트 장소 요약".into();
+        p.tags = vec!["wuxia".into(), "place".into(), "settlement".into()];
+        p.extras
+            .insert("capital".into(), json!("수도명"));
+        p.extras
+            .insert("ki_concentration".into(), json!("보통"));
+        p.body_sections.insert("개요".into(), "본문".into());
+        p.spatial = Spatial {
+            parent_place: None,
+            relative_position: Some("center".into()),
+            bordering_places: vec![PlaceId::new("place-other")],
+            geography_refs: vec![PlaceId::new("place-mt-a")],
+        };
+        p
+    }
+
+    fn sample_geography(id: &str, name: &str) -> Place {
+        let mut p = Place::new(id, PlaceLayer::Geography, "mountain-range", name);
+        p.aliases = vec!["서령산맥".into()];
+        p.summary = "산악 요약".into();
+        p.tags = vec!["wuxia".into(), "place".into(), "geography".into()];
+        p.extras
+            .insert("terrain_type".into(), json!("mountain-range"));
+        p.extras
+            .insert("hazards".into(), serde_json::json!(["눈사태", "안개"]));
+        p.spatial = Spatial {
+            parent_place: None,
+            relative_position: Some("west".into()),
+            bordering_places: vec![PlaceId::new("place-seoryang")],
+            geography_refs: vec![],
+        };
+        p
+    }
+
+    #[test]
+    fn places_count_zero_on_fresh_db() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        assert_eq!(store.count_places(None).unwrap(), 0);
+    }
+
+    #[test]
+    fn places_upsert_and_get_roundtrip_preserves_all_fields() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let p = sample_settlement("place-x", "X국");
+        store.upsert_place("test-project", &p).unwrap();
+        let back = store.get_place(&PlaceId::new("place-x")).unwrap().unwrap();
+        assert_eq!(back, p);
+    }
+
+    #[test]
+    fn places_geography_layer_roundtrip() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let g = sample_geography("place-mt-a", "산악 A");
+        store.upsert_place("p", &g).unwrap();
+        let back = store.get_place(&PlaceId::new("place-mt-a")).unwrap().unwrap();
+        assert_eq!(back.layer, PlaceLayer::Geography);
+        assert_eq!(back.kind, "mountain-range");
+        // hazards 배열 보존
+        let hazards = back.extras.get("hazards").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(hazards.len(), 2);
+    }
+
+    #[test]
+    fn places_list_filter_layer_and_kind() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_place("p", &sample_settlement("place-s1", "S1"))
+            .unwrap();
+        let mut s2 = sample_settlement("place-s2", "S2");
+        s2.kind = "city".into();
+        store.upsert_place("p", &s2).unwrap();
+        store
+            .upsert_place("p", &sample_geography("place-g1", "G1"))
+            .unwrap();
+
+        let settlements = store
+            .list_places(PlaceFilter {
+                layer: Some(PlaceLayer::Settlement),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(settlements.len(), 2);
+
+        let cities = store
+            .list_places(PlaceFilter {
+                kind: Some("city".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(cities.len(), 1);
+        assert_eq!(cities[0].id.as_str(), "place-s2");
+
+        let geos = store
+            .list_places(PlaceFilter {
+                layer: Some(PlaceLayer::Geography),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(geos.len(), 1);
+    }
+
+    #[test]
+    fn places_list_filter_parent_place() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut parent = sample_settlement("place-parent", "Parent");
+        parent.spatial.parent_place = None;
+        store.upsert_place("p", &parent).unwrap();
+
+        let mut child = sample_settlement("place-child", "Child");
+        child.spatial.parent_place = Some(PlaceId::new("place-parent"));
+        store.upsert_place("p", &child).unwrap();
+
+        let kids = store
+            .list_places(PlaceFilter {
+                parent_place: Some(PlaceId::new("place-parent")),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(kids.len(), 1);
+        assert_eq!(kids[0].id.as_str(), "place-child");
+    }
+
+    #[test]
+    fn places_search_matches_name_and_alias() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p = sample_settlement("place-daejin", "대진");
+        p.aliases = vec!["낙양".into(), "중원 황도".into()];
+        store.upsert_place("p", &p).unwrap();
+
+        // alias 매칭 (FTS5 trigram)
+        let hits = store.search_places("낙양", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].id.as_str(), "place-daejin");
+
+        // 빈 query
+        assert!(store.search_places("", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn places_count_with_project_filter() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_place("p1", &sample_settlement("place-a", "A"))
+            .unwrap();
+        store
+            .upsert_place("p2", &sample_geography("place-mt", "Mt"))
+            .unwrap();
+        assert_eq!(store.count_places(None).unwrap(), 2);
+        assert_eq!(store.count_places(Some("p1")).unwrap(), 1);
+        assert_eq!(store.count_places(Some("p2")).unwrap(), 1);
+    }
+
+    #[test]
+    fn places_upsert_replaces_fts_stale_row() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut p = sample_settlement("place-x", "X");
+        p.aliases = vec!["OldAliasUnique".into()];
+        p.body_sections.clear();
+        p.body_sections.insert("Overview".into(), "first".into());
+        store.upsert_place("p", &p).unwrap();
+        let hits = store.search_places("OldAliasUnique", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+
+        p.aliases = vec!["NewAliasUnique".into()];
+        p.body_sections.clear();
+        p.body_sections.insert("Overview".into(), "second".into());
+        store.upsert_place("p", &p).unwrap();
+
+        let hits_old = store.search_places("OldAliasUnique", 5).unwrap();
+        assert!(hits_old.is_empty());
+        let hits_new = store.search_places("NewAliasUnique", 5).unwrap();
+        assert_eq!(hits_new.len(), 1);
+    }
+
+    #[test]
+    fn schema_v2_to_v3_migration_upgrades_existing_file_db() {
+        // 실제 v2→v3 마이그레이션 경로 검증. tempfile에 v2 schema를 작성한 뒤,
+        // SqliteWorldStore::new(path)로 재오픈 → init_tables의 `current < 3` 분기가 활성되어
+        // places 테이블이 추가되며 기존 groups/persons 데이터도 보존된다.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // 1) v2 schema 작성: world_schema_meta version=2 + groups + persons + 한 row씩.
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (2);
+                 CREATE TABLE groups (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+                    name TEXT NOT NULL, aliases_json TEXT NOT NULL DEFAULT '[]',
+                    parent_group TEXT, allied_groups_json TEXT NOT NULL DEFAULT '[]',
+                    rival_groups_json TEXT NOT NULL DEFAULT '[]', headquarters TEXT,
+                    status TEXT NOT NULL DEFAULT 'active', alignment TEXT,
+                    summary TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}', body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    temporal_json TEXT NOT NULL DEFAULT '{}', members_json TEXT NOT NULL DEFAULT '[]',
+                    source_path TEXT, updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE groups_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO groups (
+                    id, project_id, kind, name, status, summary, updated_at
+                 ) VALUES ('group-legacy', 'p', 'alliance', '레거시', 'active', 'v2 데이터', 0);
+                 CREATE TABLE persons (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+                    name TEXT NOT NULL, aliases_json TEXT NOT NULL DEFAULT '[]',
+                    status TEXT NOT NULL DEFAULT 'alive',
+                    hexaco_json TEXT NOT NULL DEFAULT '{}', temporal_json TEXT NOT NULL DEFAULT '{}',
+                    affiliation_json TEXT NOT NULL DEFAULT '[]', birthplace TEXT,
+                    current_location TEXT, summary TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]', extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}', source_path TEXT,
+                    updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE persons_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );",
+            )
+            .unwrap();
+        }
+
+        // 2) SqliteWorldStore로 재오픈 — init_tables가 current=2를 보고 migrate_v3 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // 3) places 테이블이 추가되어 count_places가 동작.
+        assert_eq!(store.count_places(None).unwrap(), 0);
+
+        // 4) 기존 v2 groups 데이터 보존.
+        let g = store
+            .get_group(&GroupId::new("group-legacy"))
+            .unwrap()
+            .expect("v2 row 보존 필요");
+        assert_eq!(g.name, "레거시");
+
+        // 5) v3 신규 기능 — places upsert·get 동작.
+        let p = sample_settlement("place-after", "신규");
+        store.upsert_place("p", &p).unwrap();
+        let back = store.get_place(&PlaceId::new("place-after")).unwrap().unwrap();
+        assert_eq!(back.name, "신규");
+
+        drop(store);
+        drop(tmp);
     }
 }

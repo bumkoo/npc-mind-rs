@@ -21,3 +21,6 @@ pub use group::{
     detect_parent_group_cycle,
 };
 pub use person::{HexacoSix, Person, PersonFilter, PersonId, PersonStatus, PersonTemporal};
+pub use place::{
+    Place, PlaceFilter, PlaceId, PlaceLayer, Spatial, detect_parent_place_cycle,
+};

@@ -4,7 +4,8 @@
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
 use crate::domain::world::{
-    Group, GroupFilter, GroupId, Person, PersonFilter, PersonId, WorldError,
+    Group, GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId,
+    WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -45,4 +46,23 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_persons(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 3 — Place
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 장소 목록 조회. 결과는 id 오름차순.
+    fn list_places(&self, filter: PlaceFilter) -> Result<Vec<Place>, WorldError>;
+
+    /// id로 단일 장소 조회. 없으면 Ok(None).
+    fn get_place(&self, id: &PlaceId) -> Result<Option<Place>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_places(&self, query: &str, top_k: u32) -> Result<Vec<Place>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다.
+    fn upsert_place(&self, project_id: &str, place: &Place) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_places(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }
