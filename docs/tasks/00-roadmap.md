@@ -41,14 +41,16 @@ Timeline (Event × Era) · OrgChart (Group × Group) · FamilyTree (Person × Gr
 ## 3. 작업 순서·이유
 
 ```
-Phase 0: Lore RAG MCP                   ✅ 완료 (2026-04-29)
-Phase 1: Group                          🔄 시작 대기 — 작전 완성됨
-Phase 2: Person                         ⏳ 예정
-Phase 3: Place                          ⏳ 예정 (구 Phase 1 — 보존)
-Phase 4: Atlas (Place의 view 도메인)    ⏳ 예정
-Phase 5: Event + Era 결합              ⏳ 예정
-Phase 6+: Skill · Item · Knowledge · Lore
-Phase N: 폼 시스템 · AI 협업 빈칸 · UI 패널
+Phase 0:   Lore RAG MCP                   ✅ 완료 (2026-04-29)
+Phase 1:   Group                          ✅ 완료 (2026-04-30)
+Phase 2:   Person + NPC mind 통합         ✅ 완료 (2026-05-01)
+Phase 2.1: Player follow-up               ✅ 완료 (2026-05-01)
+Phase 2.2: Runtime sync follow-up         ✅ 완료 (2026-05-01)
+Phase 3:   Place + Phase 1·2 FK 활성      🔄 작전 완성 (2026-05-01)
+Phase 4:   Atlas (도메인+뷰 이중성)       ⏳ Phase 3 종결 후 작성
+Phase 5:   Event + Era + Timeline view    ⏳ 예정
+Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
+Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
 
 **왜 Group 먼저** (2026-04-30 결정 — 원래 Place였음):
@@ -68,9 +70,11 @@ Phase N: 폼 시스템 · AI 협업 빈칸 · UI 패널
 |---|---|---|---|---|---|
 | 0 | Lore RAG | — | 22(공인 PD 3) 자료 인덱싱 + MCP 도구 3 | ✅ 완료 | `task-phase0-lore-rag-bootstrap.md` |
 | 1 | Group | Phase 0 | 6 Group + temporal·parent·allied/rival 검증 | ✅ 완료 (2026-04-30) | `task-phase1-group-vertical-slice.md` + `phase1-implementation-report.md` |
-| 2 | Person | Phase 1 | 5-6 Person + Group 외래키 활성 + **NPC mind 자동 등록** | 🔄 작전 완성 | `task-phase2-person-vertical-slice.md` |
-| 3 | Place | Phase 2 | 7국 + 자연 1-2 + Atlas는 분리 | ⏳ | `task-phase3-place-vertical-slice.md` (보존) |
-| 4 | Atlas | Phase 3 | atlas-jungwon + 좌표·로직 + Place 합성 view | ⏳ | (Phase 3 TASK에서 분리 예정) |
+| 2 | Person | Phase 1 | 7 Person + Group 외래키 활성 + **NPC mind 자동 등록** | ✅ 완료 (2026-05-01) | `task-phase2-person-vertical-slice.md` + `phase2-checkpoint{1,2}-report.md` |
+| 2.1 | Player follow-up | Phase 2 | id="player" + HEXACO 시작값 + mind eligible = 8 | ✅ 완료 | `task-phase2-followup-player-character.md` + `phase2-followup-player-report.md` |
+| 2.2 | Runtime sync follow-up | Phase 2 | POST /api/world/persons/sync + emotion 보존 검증 | ✅ 완료 | `task-phase2-followup-runtime-sync.md` + `phase2-followup-runtime-sync-report.md` |
+| 3 | Place | Phase 2 | 7국 + 자연 1-2 + sect 1-2 + Phase 1·2 외래키 활성 | 🔄 작전 완성 (2026-05-01) | `task-phase3-place-vertical-slice.md` (+ `.archive.md` 참고용 보존) |
+| 4 | Atlas | Phase 3 | atlas-jungwon + 좌표·로직 + Place 합성 view (도메인+뷰 이중성) | ⏳ | (Phase 3 종결 후 작성) |
 | 5 | Event + Era | Phase 4 | 270년 28사건 + Era 결합 | ⏳ | — |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
@@ -127,37 +131,90 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 체크포인트 1: 대진 황실 단일 변환 — 십상시 분리 확정, allied/rival 후보 결정, alignment=imperial 시연.
 체크포인트 2: 5-6 Group + MCP 정성 평가 — rival 대칭(무림맹↔천마신교)·alignment 필터·parent_group 수직 시연.
 
-### Phase 2 — Person Vertical Slice + NPC Mind 통합 🔄
+### Phase 2 — Person Vertical Slice + NPC Mind 통합 ✅
 
-**작전 완성 (2026-04-30)** — TASK `task-phase2-person-vertical-slice.md`
+**완료 (2026-05-01)** — 보고서 `phase2-checkpoint{1,2}-report.md`
 
 목표: 두 번째 인스턴스 도메인 + worldbuilding ↔ npc-mind 첫 다리.
 
-세 결: (1) Person 도메인 (2) Phase 1 Group 외래키 활성 (members.person_id·affiliation) (3) NPC Mind 자동 등록 (world-load → NpcRepository upsert).
+세 결 통합:
+1. **Person 도메인** — id·kind(active/historical/legendary/player) · status × kind 두 축 · HEXACO 6 dim 일급 · aliases · affiliation · birthplace · current_location · temporal · extras
+2. **Phase 1 Group 외래키 활성** — `Group.members.person_id`·`Person.affiliation` 검증 텍스트 → 에러 승급
+3. **NPC Mind 자동 등록** — `world-load`가 `NpcRepository::upsert` 자동 호출. HEXACO·name 갱신, emotion_state·scene·memory 보존(idempotent)
 
-핵심 결정 (5개 모두 사용자 confirm):
-- **Q1·B**: HEXACO 6 dim frontmatter 일급, 24 facet은 extras·본문
-- **Q2·B**: Player Character는 `Person.kind="player"` sub-kind (별도 카테고리 X)
-- **Q3·C**: status(alive/dead/missing/unknown) × kind(historical/active/legendary/player) 두 축
-- **Q4·A**: 첫 변환 = `npc-02 조고` (체크포인트 1)
-- **Q5·A**: NPC mind 통합을 Phase 2에 활성화. world-load가 `NpcRepository::upsert` 자동 호출. HEXACO·name 갱신, emotion_state·scene·memory는 보존(idempotent)
+산출:
+- 7 Person 변환 (체크포인트 1: npc-02 조고 / 체크포인트 2: npc-01·03·04·05·06·07)
+- `src/domain/world/person.rs` + `src/worldbuilding/markdown/person.rs` + `src/worldbuilding/mind_sync.rs` + `SqliteWorldStore` migrate_v2 + `bin/world_load` 확장
+- MCP 도구 3개: `list_persons` · `get_person` · `search_persons`
+- 41 e2e (12 batch + 11 npc-02 + 18 group 회귀) + 342 lib
 
-검증 게이트: 조고 단독 변환 후 mind-studio에서 `dialogue_start("npc-02")` 동작. 체크포인트 1·2 분리 게이트 **강제 준수** (Phase 1 미준수 후속).
+핵심 결정 (5개 사용자 confirm):
+- Q1·B: HEXACO 6 dim 일급
+- Q2·B: Player = Person.kind="player" sub-kind
+- Q3·C: status × kind 두 축
+- Q4·A: 첫 변환 = npc-02 조고
+- Q5·A: NPC mind 자동 upsert (Phase 2에)
 
-### Phase 3 — Place Vertical Slice ⏳
+추가 결정:
+- HEXACO 범위 = -1.0~+1.0 + Score VO 재사용 (사용자 코드 정보 + 외부 리뷰)
+- 십상시 분리 + parent_group=대진 황실
+- Big5 → HEXACO 변환 표 7인 (npc-07만 신뢰도 "낮음", `source_status: heritage-pending`)
+- npc-04 빈 affiliation + `extras.pending_groups` 메타 (서량/당가 그룹 부재)
 
-**구 Phase 1, 2026-04-30 연기.** TASK 보존: `task-phase3-place-vertical-slice.md`.
+체크포인트 분리 게이트 **정상 준수** (Phase 1 미준수 후속 회복).
 
-목표: 공간 도메인. Settlement·Geography 두 layer. 칠국 7개 + 서부 산악지대 1개 시범.
+#### Phase 2.1 — Player Follow-up ✅
 
-진입 시 추가 손질:
-- sect kind에 `controlling_group_id` 외래키 활성화 (Group 정의된 후라)
-- Group·Person 외래키 검증 추가
-- Atlas 부분은 Phase 4로 분리
+**완료 (2026-05-01)** — 보고서 `phase2-followup-player-report.md`
 
-도메인 핵심: layer(Settlement|Geography) · kind · aliases · summary · spatial(parent_place·atlas·bordering·geography_refs) · extras · body_sections.
+Q2·B 정책 단독 검증. `player.md` 1개 (110 라인) — id="player" + HEXACO baseline (+0.5/+0.3/0/+0.4/+0.5/+0.5) + 17세 화산파 유일 생존자 배경 + 4 비밀 (혈매화검·임서운 정체 오인·혈교 약물·임서운 생존 가능성).
+
+코드 변경 0 — Phase 2 본문 일반화가 player를 흡수. **Q2·B 정책 정합성 입증**. mind eligible = 8.
+
+#### Phase 2.2 — Runtime Sync Follow-up ✅
+
+**완료 (2026-05-01)** — 보고서 `phase2-followup-runtime-sync-report.md`
+
+POST `/api/world/persons/sync` endpoint 추가 (~35 LOC). 작가가 `world-load --reload` 후 mind-studio 재시작 없이 변경된 HEXACO 반영.
+
+**핵심 발견**: `rebuild_repo_from_inner`이 `inner.emotions`를 명시 재적용 — Phase 2 본문 §3.5 "idempotent + 동적 상태 보존" 보장이 정합. **신규 보존 로직 0 LOC** (사양 §7 추정 50-80 LOC 최악 시나리오 회피).
+
+회귀 가드 e2e: `sync_preserves_emotion_state_across_reloads` — sync 전 감정 설정 → sync 후 감정 유지 자동 검증.
+
+#### npc-11 heritage-pending Stub (사용자 직접 작성)
+
+Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) FK 결손 2건 발견 (group-gaebang·group-mulim-mang 양쪽 참조). 사용자가 npc-07 패턴 그대로 stub `npc-11.md` 직접 작성 — kind=active, `source_status: heritage-pending`, 잠정 HEXACO. **persons indexed = 9** (8 + npc-11 stub) 도달.
+
+**최종 상태**: Phase 1 6 Group + Phase 2 9 Person (heritage-pending 2명: npc-07·11) + Player 1명. mind eligible = 9.
+
+알려진 한계:
+- dialogue_start REST 경로는 `/api/chat/start` (dialogue_start는 MCP 도구 이름) — Phase 2 종결 시점에 명료화
+- Mind Studio가 NPC mind 통합 시 Scene·관계·Beat 없이는 의미 있는 dialogue 시연 어려움 → Phase 5+ "두 결의 다리"에서 해결 예정
+
+### Phase 3 — Place Vertical Slice 🔄
+
+**작전 완성 (2026-05-01)** — TASK `task-phase3-place-vertical-slice.md` (보존본은 `.archive.md`로 참고용)
+
+목표: 공간 도메인 + Phase 1·2 외래키 활성 + sect 이중 등록 시연.
+
+세 결:
+1. **Place 도메인** — Settlement·Geography 두 layer + spatial(parent_place·bordering·geography_refs) + aliases
+2. **Phase 1·2 외래키 활성** — `Group.headquarters`·`Person.birthplace`·`Person.current_location` 검증 텍스트 → 에러 승급. 첫 외래키 정합성 검증.
+3. **sect kind 이중 등록** — Place(공간 인스턴스, kind=sect) + Group(조직, Phase 1 등록) 양방향 외래키. `extras.controlling_group` ↔ `Group.headquarters`
+
+검증 게이트: 7국 settlement + 자연 1-2 + sect 1-2 = 8-10 Place. 외래키 결손 0건. `list_places(layer="settlement")` → 7-8건 / `list_places(layer="geography")` → 1-2건.
+
+체크포인트 분리 게이트 **강제 적용**:
+- 체크포인트 1: 대진(settlement) + 서부 산악(geography) → 외래키 결손 분석 → commit pause
+- 체크포인트 2: 6 settlement 추가 + 자연 1-2 + sect 1-2 + MCP 정성 → Phase 3 종결
+
+**Atlas는 Phase 4로 명시 분리** — 도메인+뷰 이중성을 가진 관계 도메인이라 Phase 3와 결이 다름.
+
+자유도시 sub-place(`back-alleys` 등) 정밀도는 체크포인트 1 보고서 디렉터 결정 사항.
 
 ### Phase 4 — Atlas (Place의 view 도메인) ⏳
+
+**Phase 3 종결 후 작전 작성**.
 
 목표: 첫 관계 도메인. 도메인+뷰 이중성 검증. 좌표계·projection·distance·세력권 로직.
 
@@ -167,6 +224,7 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 - schematic projection만 Phase 4, 좌표·SVG는 Phase N
 - Era overlay (시기별 정치 지도) 분리 시점 — Phase 5 Era 결합 시
 - View trait 일반화 (두 번째 view 등장 시 = Phase 5 Timeline)
+- Phase 3 sect 이중 등록 패턴이 Atlas references에 자연스럽게 흡수되는지
 
 ### Phase 5 — Event + Era 결합 ⏳
 
@@ -206,6 +264,15 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 | 2026-04-30 | Phase 1 완료 — 6 Group + MCP + e2e 14 pass | Claude Code |
 | 2026-04-30 | 체크포인트 분리 게이트 Phase 2부터 강제 준수 (Phase 1 미준수 후 결정) | Cowork |
 | 2026-04-30 | Phase 2 결정 5개 — HEXACO 6 dim 일급 / Player=Person sub-kind / status×kind 두 축 / 첫 변환=조고 / NPC mind 자동 upsert | 사용자 |
+| 2026-05-01 | HEXACO 범위 = -1.0~+1.0 확정 + Score VO 재사용 (외부 리뷰 + 사용자 코드 정보) | 외부 리뷰 + 사용자 |
+| 2026-05-01 | Phase 2 종결 — 7 Person + 41 e2e + commit pause 게이트 정상 회복 | Claude Code |
+| 2026-05-01 | Player Character ID = "player" 채택 (단일 플레이어 가정) | Cowork |
+| 2026-05-01 | Phase 2 본문 §3.5 무결성 검증 통과 — `rebuild_repo_from_inner`이 emotion_state 명시 재적용. 신규 보존 로직 0 LOC | Claude Code (Track C) |
+| 2026-05-01 | Q2·B 정책 단독 검증 통과 — player 추가가 src/ 코드 변경 0으로 흡수 | Claude Code (Track B) |
+| 2026-05-01 | **도구 추상화 두 결 명시** — Phase 0~4=worldbuilding(정적·작가), Phase 5+=gameplay(동적·런타임). 두 결 잇는 다리(Scenario Builder·Relationship 자동 시드·Memory 자동 시드·Object→Item)가 Phase 5+ 핵심 결정 | 사용자 |
+| 2026-05-01 | Phase 3 작전 완성 — Place 도메인 + Phase 1·2 외래키 활성(headquarters·birthplace·current_location 검증 승급) + sect 이중 등록 + Atlas 분리 (Phase 4) | Cowork |
+| 2026-05-01 | npc-11 heritage-pending stub 사용자 직접 작성 — FK 결손 2건 해소, persons indexed = 9 도달 | 사용자 |
+| 2026-05-01 | dialogue REST 경로 = `/api/chat/start` 명료화 (`dialogue_start`는 MCP 도구 이름) | Cowork |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 
@@ -214,16 +281,46 @@ cleanup 후속: 노이즈 청크 필터(Cover·封面·目錄·짧은 청크) Cl
 
 슬러그는 한국어 발음(`chilguk-chunchu`). 중국어 병음·영문 의미역 사용 안 함.
 
-## 8. 입력 자료 위치
+## 8. 입력 자료 + 산출물
 
-- 무협 원전: `wuxia-core/docs/Chinese-Literature/` (PD 3권만 인덱싱, 나머지는 라이선스 검증 후)
-- 중국 정사: `wuxia-core/docs/Chinese-History/` (사기·한서, 추후 인덱싱)
+### 입력 자료 (wuxia-core/docs/)
+
+- 무협 원전: `Chinese-Literature/` (Phase 0 PD 3권 인덱싱 — 水滸傳·江湖奇俠傳·蜀山劍俠傳. 나머지는 라이선스 검증 후)
+- 중국 정사: `Chinese-History/` (사기·한서, Phase 5+ 인덱싱)
 - 칠국춘추 시드:
-  - `wuxia-core/docs/world/seven-nations.md` — 칠국 v1.1 (1076줄)
-  - `wuxia-core/docs/world/history.md` — 270년 연표
-  - `wuxia-core/docs/world/history-characters.md` — 역사 인물·문파 배치
-  - `wuxia-core/docs/characters/character-roster.md` — 인물 총람 v1.1
-  - `wuxia-core/docs/characters/npc-01~11.md` — NPC 11명 열전
+  - `world/seven-nations.md` — 칠국 v1.1 (1076줄) — Phase 1·3 입력
+  - `world/history.md` — 270년 연표 — Phase 5 입력
+  - `world/history-characters.md` — 역사 인물·문파 배치 — Phase 2·5 입력
+  - `characters/character-roster.md` — 인물 총람 v1.1 — Phase 2 입력
+  - `characters/npc-01·02·03·04·05·06·11.md` — 열전 완성 7명 (★ 우선순위)
+  - `characters/npc-07·08·09·10` — 열전 미작성 (heritage-pending 잠정 매핑 또는 Phase 5+ 풍부화)
+  - `characters/칠국춘추_플레이어_캐릭터_시트.md` — 플레이어 시트 (Phase 2.1 입력)
+
+### 산출물 (projects/chilguk-chunchu/world/)
+
+- **Phase 1 산출** — `group/*.md` × 6:
+  - group-daejin-court (dynasty-court, imperial)
+  - group-shipsangsi (covert-band, parent=daejin-court)
+  - group-namgung (clan, orthodox)
+  - group-mulim-mang (alliance, orthodox)
+  - group-cheonma-shingyo (sect-religious, heterodox)
+  - group-gaebang (mendicant-order, orthodox)
+- **Phase 2 산출** — `person/*.md` × 9:
+  - npc-01 명경 / npc-02 조고 / npc-03 남궁혁 / npc-04 당무괴 / npc-05 소연 / npc-06 야율설화 (열전 풍부)
+  - npc-07 천순제 (heritage-pending 잠정)
+  - npc-11 소풍자 (heritage-pending 잠정 — 사용자 직접 작성)
+  - player (Q2·B sub-kind)
+- **Phase 3 산출 (예정)** — `place/*.md` × 8-10 (settlement 7-8 + geography 1-2)
+- **Phase 4 산출 (예정)** — `atlas/atlas-jungwon.md` × 1
+- **빌드 산출물 (gitignore)** — `build/world.sqlite` (~370 KB Phase 2 시점, Phase 3 후 +α)
+
+### 미작성 인물 (Phase 5+ 풍부화 후보)
+
+- npc-08 바투 (북원 늑대왕 / 야율설화 부친) ★★★★
+- npc-09 진대인 (동해 진씨 상방 당주) ★★★
+- npc-10 3대 천마 (천마신교 교주) ★★★★★
+
+이 셋은 character-roster ★★★★+ 우선순위지만 열전 미작성 — Phase 5+에서 character-roster + history 자료로 풍부화 + heritage-pending 마커 해제.
 
 ## 9. 진행 가이드
 
