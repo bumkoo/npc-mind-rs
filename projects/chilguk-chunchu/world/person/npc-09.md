@@ -63,9 +63,9 @@ extras:
     bok: 0.2                                # 복 — "복수보다 거래로 처리"
     yah: 0.7                                # 야 — 상방 확장 + 칠국 경제 패권
   hexaco_facets: {}                         # Phase 6+ 정밀 패스
-  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: precise                # npc-05 §사부의 판단 + 8년 전 파견 + 표면/실체 이중 구조 묘사 다중
-  secret: |                                 # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                                 # `## 비밀` H2 미러 (사양 §3.4b)
     1. 소연이 개방 침투 요원임 — 본인은 모르거나 의심 단계. 발각 시 거래 깨짐.
     2. 혈교 잔당 거래 의혹 — character-roster N24 "혈교 연구자" 흐름과 연결 가능.
        당무괴(npc-04)와 거래 채널 추정. 당무괴의 혈교 비술 연구에 자본 제공 가능성.
@@ -115,7 +115,7 @@ extras:
 
 ## HEXACO 분석
 character-roster N9 + npc-05-soyeon.md "8년 전 파견" 절·"표면/실체 이중 구조"·"진대인이
-보는 소연" 묘사 다중 출처에서 추론한 6 dim. **사양 §3.3 직교 플래그 적용** — 단독
+보는 소연" 묘사 다중 출처에서 추론한 6 dim. **사양 §3.4 직교 플래그 적용** — 단독
 열전 .md 부재(`heritage_doc_pending: true`)이나 npc-05-soyeon.md의 깊은 묘사 (소연
 관점에서 본 진대인의 거래 본위·도구적 평가·자본가 능력)가 다중 측면에서 일관되어
 매핑 신뢰도 정밀 등급(`hexaco_confidence: precise`).

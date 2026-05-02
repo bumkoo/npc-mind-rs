@@ -23,7 +23,8 @@ temporal:
     결성)의 핵심 인물. 무림-조정 상호존중 맹약(구두) 270년 전 출발점. character-roster
     H01 + history.md §1.1 + history-characters.md §1·§13 단편 출처만. 단독 열전 부재 —
     매핑 신뢰도 pending. 본 Phase 등록은 event-empire-founding(원년 사건) FK 활성용.
-affiliation: []                   # 대진 황실(group-daejin-court) Phase 1 등록되어 있으나 historical 시점이라 명목만
+affiliation:
+  - group-daejin-court             # 대진 황실 시조 (사양 §6.4 정합 — historical 멤버라도 group 등록 시 affiliation 유지)
 birthplace: ~
 current_location: ~               # 사망 (대진 황실 추정)
 summary: |
@@ -56,9 +57,9 @@ extras:
     bok: 0.3                           # 복 — 혈교 격퇴 후 추가 복수 자제
     yah: 0.5                           # 야 — 신질서 수립 야망 (정복 야심은 아님)
   hexaco_facets: {}                     # heritage-pending 잠정 매핑
-  heritage_doc_pending: true            # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true            # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: pending            # history-characters 단편만 — 신뢰도 낮음, 추정값
-  secret: |                             # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                             # `## 비밀` H2 미러 (사양 §3.4b)
     1. 혈교 "멸망 판정"의 진짜 인지 — 270년 전 격퇴 시 본 인물이 혈교 잔당 가능성을
        알고도 "멸망"으로 공식화했는지, 진짜 모르고 판단했는지. 80년 후·240년 후 부활의
        원인이 본 인물의 판단 미스인지 시대적 한계인지.
@@ -107,7 +108,7 @@ extras:
 
 ## HEXACO 분석
 character-roster H01 + history.md §1.1 + history-characters §1·§13 단편 출처에서
-추론한 6 dim. **사양 §3.3 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending:
+추론한 6 dim. **사양 §3.4 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending:
 true`) + 단편 출처만이라 매핑 신뢰도 pending(`hexaco_confidence: pending`). Phase 6+
 단독 .md 작성 시 재검토 필수.
 
@@ -126,9 +127,10 @@ true`) + 단편 출처만이라 매핑 신뢰도 pending(`hexaco_confidence: pen
 매핑 신뢰도 pending — 본 인물 단독 .md 작성 시 재검토 필수.
 
 ## 관계
-- **affiliation 빈** — 대진 황실(group-daejin-court)은 Phase 1 등록되어 있으나
-  historical 시점이라 명목만. Phase 6+ historical group 카테고리 추가 시 affiliation
-  승격 또는 group의 founding_member 필드로 이관.
+- **affiliation = [group-daejin-court]** — 대진 황실 시조. 사양 §6.4 정합 (historical
+  멤버라도 group이 Phase 1 등록되어 있으면 affiliation 유지). Phase 6+ historical
+  group 카테고리 분리 시 founding_member 필드로 이관 검토 가능. mind 시스템 등록은
+  `kind=historical`이라 여전히 제외.
 - **현무진인(H02, 미등록)·원혜대사(H03, 미등록)·자양진인(H04, 미등록)·천리안(H06,
   미등록)**: 원년 동지. 구파일방 결성 동지. 본 인물의 통합 노력의 직접 협력자.
 - **적마존(H05, 미등록)**: 270년 전 패퇴된 혈교 교주. 본 인물의 직접 적대자.

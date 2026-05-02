@@ -63,9 +63,9 @@ extras:
     bok: 0.3                                # 복 — "복수보다 우월" — 분노 절제하고 행동
     yah: 0.7                                # 야 — 천마신교 강성 + 사파 정통성 확립
   hexaco_facets: {}                         # Phase 6+ 정밀 패스
-  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: precise                # npc-06 §3대 천마 관계 + §사상 인용 + §수련 묘사 다중 일관
-  secret: |                                 # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                                 # `## 비밀` H2 미러 (사양 §3.4b)
     1. 설화를 가르치는 진짜 동기 — (a) 재능있는 제자 (b) 북원 견제 패 (c) 대진 침투
        자산. 본인도 "셋 다"라 답할 수 있음. 설화 자신이 결국 어느 쪽으로 정착할지가
        메인 분기 트리거.
@@ -113,7 +113,7 @@ extras:
 
 ## HEXACO 분석
 character-roster N10 + npc-06-yayulseolhwa.md §관계·§3대 천마와의 관계·§사상 인용
-("강한 자가 옳다") 다중 출처에서 추론한 6 dim. **사양 §3.3 직교 플래그 적용** —
+("강한 자가 옳다") 다중 출처에서 추론한 6 dim. **사양 §3.4 직교 플래그 적용** —
 단독 열전 .md 부재(`heritage_doc_pending: true`)이나 npc-06의 사부 묘사가 다중
 측면(수련·사상·이용 vs 사랑 분석)에서 일관되어 매핑 신뢰도 정밀 등급
 (`hexaco_confidence: precise`).

@@ -57,9 +57,9 @@ extras:
     bok: 0.4                           # 복 — 혈교에 대한 분노 보존, 다만 행동은 절제
     yah: 0.2                           # 야 — 야망 없음, 사문 보존이 본분
   hexaco_facets: {}                     # heritage-pending 잠정 매핑
-  heritage_doc_pending: true            # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true            # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: pending            # history-characters 단편만 — 신뢰도 낮음, 추정값
-  secret: |                             # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                             # `## 비밀` H2 미러 (사양 §3.4b)
     1. 80년 혈교 경고의 진짜 출처 — 190년차 진여(H23)·수월진인(H25)이 혈교 잔당
        발견 후 화산파 혈교감시단 수립. 본 인물이 그 80년 후예. 정보의 다층 단계가
        메인 퀘스트 후반 단서.
@@ -111,7 +111,7 @@ characters §9.1·§11.1·§11.2 단편 출처. 80년 전(190년차)부터 혈�
 
 ## HEXACO 분석
 character-roster H27 + history-characters §9.1·§11.1·§11.2 단편 출처에서 추론한 6 dim.
-**사양 §3.3 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending: true`) +
+**사양 §3.4 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending: true`) +
 단편 출처만이라 매핑 신뢰도 pending(`hexaco_confidence: pending`). Phase 6+ 단독 .md
 작성 시 재검토 필수.
 

@@ -25,7 +25,8 @@ temporal:
     npc-11-taemuje.md 본기(本紀)에 Big Five + 가치관 + 성격 변질 곡선 + 7개 시각
     회상 명시 — heritage_doc_pending=false + hexaco_confidence=precise (디렉터 사양의
     "heritage-pending" 분류와 다름, 보고서 §디렉터 사양 갱신 명시).
-affiliation: []                   # 대진 황실은 historical 시점이라 명목만
+affiliation:
+  - group-daejin-court             # 대진 황실 17대 황제 (사양 §6.4 정합 — historical 멤버라도 group 등록 시 affiliation 유지)
 birthplace: ~
 current_location: ~               # 사망/행방불명 (15년 전)
 summary: |
@@ -66,9 +67,9 @@ extras:
     bok: 0.5                          # 복 — 혈교 격퇴 영웅의 분노, 다만 거래로 변질
     yah: 0.9                          # 야 — 처음부터 끝까지 변하지 않은 유일한 값
   hexaco_facets: {}                    # Phase 6+ 정밀 패스 (현재 Big Five만 명시)
-  heritage_doc_pending: false          # wuxia-core npc-11-taemuje.md 본기 존재 (사양 §3.3 — 직교 플래그)
+  heritage_doc_pending: false          # wuxia-core npc-11-taemuje.md 본기 존재 (사양 §3.4 — 직교 플래그)
   hexaco_confidence: precise           # 본기에 Big Five + 가치관 + 성격 변질 곡선 + 7시각 회상 명시
-  secret: |                             # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                             # `## 비밀` H2 미러 (사양 §3.4b)
     1. 혈교와의 비밀 거래 — 240년차 격퇴 후에도 "수명 연장"을 위해 혈교 비술과 거래
        지속. 거래 대가로 혈교 잔당의 재건을 묵인. 80년 후·240년 후 부활의 직접 원인.
        메인 퀘스트 후반 진실 추적의 정점.
@@ -131,7 +132,7 @@ heritage_doc_pending: false + hexaco_confidence: precise** — 디렉터 사양 
 
 ## HEXACO 분석
 **wuxia-core/docs/characters/npc-11-taemuje.md 본기 §2(Big Five) + §3(가치관) 정밀
-출처**. 사양 §3.3 직교 플래그 적용 — 단독 본기 .md 존재(`heritage_doc_pending: false`)
+출처**. 사양 §3.4 직교 플래그 적용 — 단독 본기 .md 존재(`heritage_doc_pending: false`)
 + Big Five·가치관·성격 변질 곡선 명시(`hexaco_confidence: precise`). 디렉터 사양의
 "historical = pending" 분류와 다른 결정 (보고서 §결정 명시).
 
@@ -168,8 +169,9 @@ heritage_doc_pending: false + hexaco_confidence: precise** — 디렉터 사양 
 core 본기 존재로 다르게 분류. 보고서 §결정에 명시.
 
 ## 관계
-- **affiliation 빈** — 대진 황실은 historical 시점. group의 founding_member 라인으로
-  Phase 6+ 이관 가능.
+- **affiliation = [group-daejin-court]** — 대진 황실 17대 황제. 사양 §6.4 정합
+  (historical 멤버라도 group Phase 1 등록 시 affiliation 유지). mind 시스템 등록은
+  `kind=historical`이라 여전히 제외.
 - **npc-08 바투**: "형이라 부른 자". 청년기 동지. 본 인물의 약속 저버림이 바투의 분노
   근원. 본기 §관계 "③ 바투의 분노".
 - **npc-01 명경**: "내가 살린 사람". 240년차 19세 명경이 단운 부상 치료. 본 인물은

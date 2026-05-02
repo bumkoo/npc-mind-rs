@@ -61,9 +61,9 @@ extras:
     bok: 0.6                                # 복 — 적에 대한 분노 보존, 다만 행동은 절제
     yah: 0.5                                # 야 — 북원 강성, 다만 정복욕은 아님
   hexaco_facets: {}                         # Phase 6+ 정밀 패스
-  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: precise                # npc-06 다중 묘사(부친 회상·이름 짓기·충혈된 눈) 일관 → 정밀
-  secret: |                                 # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                                 # `## 비밀` H2 미러 (사양 §3.4b)
     1. 설화 송치의 진짜 이유 — 단순 평화 조약인지, 대진 내부 정보 수집을 위한 잠입자
        파견인지. 본인도 "둘 다"라 답할 수 있음. 메인 서사 분기 트리거.
     2. 늑대왕 무공의 비전 — 부족 비전이라 외부에 공개 안 됨. 설화에게 일부 전수했는지 미상.
@@ -108,7 +108,7 @@ N8 우선순위 ★★★★. 12년 전(258년차) 5세 외동딸 설화를 대�
 
 ## HEXACO 분석
 character-roster N8 + history.md 단편 + npc-06 야율설화 §관계의 다중 출처에서 추론한
-6 dim. **사양 §3.3 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending: true`)
+6 dim. **사양 §3.4 직교 플래그 적용** — 단독 열전 .md 부재(`heritage_doc_pending: true`)
 이나 npc-06의 부친 묘사 (이름 짓기·충혈된 눈·송치 결단·재회 갈등)가 다중 측면에서
 일관되어 매핑 신뢰도 정밀 등급(`hexaco_confidence: precise`).
 

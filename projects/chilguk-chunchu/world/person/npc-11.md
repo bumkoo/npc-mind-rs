@@ -66,9 +66,9 @@ extras:
     bok: 0.2                                # 복 — "바람은 복수하지 않는다" 사부 가르침
     yah: 0.4                                # 야 — 개방 재건 + 차세대 후계 양성
   hexaco_facets: {}                         # Phase 6+ 정밀 패스
-  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.3)
+  heritage_doc_pending: true                # 단독 열전 .md 부재 (사양 §3.4)
   hexaco_confidence: precise                # npc-05-soyeon.md §사부 소풍자 + §12년 전 + §8년 전 파견 묘사 다중 일관
-  secret: |                                 # `## 비밀` H2 미러 (사양 §3.8)
+  secret: |                                 # `## 비밀` H2 미러 (사양 §3.4b)
     1. 소연을 진대인에게 파견한 진짜 동기 — 표면은 "개방의 임무 + 상방 정보망 학습"이나
        실체는 (a) 소연의 복수심을 거리 두기 (b) 진대인 정보망에 개방 침투 (c) 둘 다.
        소연 자신도 8년이 지나며 둘 사이의 경계가 흐려짐.
@@ -85,7 +85,7 @@ extras:
 포함한 일부 아이들 구출 성공 후 십상시 급습에서 등에 칼을 맞고 생존. 동료 12명 사망,
 3명만 귀환. 일소옹(170년 전 방주)의 정신적 후계로 "웃을 수 없으면 죽은 거다" 가르침의
 인물. **Phase 5c.1 체크포인트 2에서 사용자 작성 stub → 정밀 매핑 승급** (legacy
-`source_status: heritage-pending` 제거 + 사양 §3.3 직교 플래그 적용 + 산문 풍부화).
+`source_status: heritage-pending` 제거 + 사양 §3.4 직교 플래그 적용 + 산문 풍부화).
 
 ## 배경
 약 215년차 출생, 떠돌이 출신. 청년기에 개방 정식 입문 후 자유도시 분타에 정착.
@@ -121,7 +121,7 @@ extras:
 
 ## HEXACO 분석
 character-roster N11 + npc-05-soyeon.md §사부 소풍자·§12년 전 사건·§8년 전 파견·
-§소연이 본 사부 다중 출처에서 추론한 6 dim. **사양 §3.3 직교 플래그 적용** — 단독
+§소연이 본 사부 다중 출처에서 추론한 6 dim. **사양 §3.4 직교 플래그 적용** — 단독
 열전 .md 부재(`heritage_doc_pending: true`)이나 npc-05의 사부 묘사가 다중 측면(가르침
 인용·12년 전 회상·8년 전 결단·"바람처럼 웃는다" 인물상)에서 일관되어 매핑 신뢰도
 정밀 등급(`hexaco_confidence: precise`). **legacy `source_status: heritage-pending`
