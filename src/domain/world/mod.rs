@@ -19,6 +19,9 @@ pub mod place;
 pub mod skill;
 
 pub use atlas::{Atlas, AtlasExtent, AtlasFilter, AtlasId};
+pub use event::{
+    Event, EventCategory, EventFilter, EventId, EventTemporal, ParticipantsRefs,
+};
 pub use group::{
     Group, GroupFilter, GroupId, GroupStatus, MemberRef, Temporal, WorldError,
     detect_parent_group_cycle,

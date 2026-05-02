@@ -26,6 +26,17 @@
 //!     - `Atlas.references` ↔ `places.id` (모두 존재해야 — references = atlas의 핵심)
 //!     - `Atlas.references` 중복 금지 (place_atlas_refs composite PK 위반 방지)
 //!   - `Atlas.extras.era_id`는 텍스트만 보존 (Phase 5 Era 도메인 진입 시 외래키 활성)
+//!
+//! Phase 5a 동작 (Event — 두 번째 인스턴스 도메인):
+//!   - `world/event/*.md` 스캔 → events 테이블 upsert + FTS5 + event_participants_refs 양방향 인덱스
+//!   - 외래키 검증 활성 (에러):
+//!     - `Event.participants.people` ↔ `persons.id`
+//!     - `Event.participants.groups` ↔ `groups.id`
+//!     - `Event.participants.places` ↔ `places.id`
+//!     - `Event.related_events` ↔ `events.id` (자체 도메인 — cycle 검증은 비활성)
+//!     - `Event.participants.{people,groups,places}` 카테고리 내 중복 금지
+//!       (event_participants_refs composite PK 위반 방지)
+//!   - `Event.era_id`는 텍스트만 보존 (Phase 5b Era 도메인 진입 시 외래키 활성)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -33,12 +44,13 @@ use std::process::ExitCode;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
 use npc_mind::domain::world::{
-    Atlas, Group, GroupId, Person, Place, PlaceLayer, WorldError, detect_parent_group_cycle,
+    Atlas, Event, Group, GroupId, Person, Place, PlaceLayer, WorldError, detect_parent_group_cycle,
     detect_parent_place_cycle,
 };
 use npc_mind::worldbuilding::WorldRepository;
 use npc_mind::worldbuilding::markdown::{
-    atlas_from_markdown, group_from_markdown, person_from_markdown, place_from_markdown,
+    atlas_from_markdown, event_from_markdown, group_from_markdown, person_from_markdown,
+    place_from_markdown,
 };
 use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
@@ -170,9 +182,15 @@ fn run() -> Result<(), String> {
     let person_dir = project_dir.join("world").join("person");
     let place_dir = project_dir.join("world").join("place");
     let atlas_dir = project_dir.join("world").join("atlas");
-    if !group_dir.is_dir() && !person_dir.is_dir() && !place_dir.is_dir() && !atlas_dir.is_dir() {
+    let event_dir = project_dir.join("world").join("event");
+    if !group_dir.is_dir()
+        && !person_dir.is_dir()
+        && !place_dir.is_dir()
+        && !atlas_dir.is_dir()
+        && !event_dir.is_dir()
+    {
         eprintln!(
-            "[world-load] warning: world/group/ · world/person/ · world/place/ · world/atlas/ 모두 없음. 빈 인덱스로 마침."
+            "[world-load] warning: world/group/ · world/person/ · world/place/ · world/atlas/ · world/event/ 모두 없음. 빈 인덱스로 마침."
         );
         return Ok(());
     }
@@ -290,6 +308,35 @@ fn run() -> Result<(), String> {
         eprintln!(
             "[world-load] ℹ world/atlas/ 없음 ({}). Atlas 인덱싱 스킵.",
             atlas_dir.display()
+        );
+    }
+
+    // Phase 5a — Event 스캔
+    let mut events: Vec<Event> = Vec::new();
+    if event_dir.is_dir() {
+        for entry in walk_md(&event_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match event_from_markdown(&raw) {
+                Ok(mut e) => {
+                    e.source_path = Some(path_relative_str(&projects_root, &path));
+                    events.push(e);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/event/ 없음 ({}). Event 인덱싱 스킵.",
+            event_dir.display()
         );
     }
 
@@ -465,6 +512,63 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // Phase 5a — Event 외래키 활성: participants.{people,groups,places} 모두 존재 +
+    // related_events ↔ events.id (자체 도메인) + 카테고리 내 중복 금지
+    // (event_participants_refs composite PK 위반 방지).
+    let event_id_set: HashSet<&str> = events.iter().map(|e| e.id.as_str()).collect();
+    let mut missing_event_people: Vec<(String, String)> = Vec::new();
+    let mut missing_event_groups: Vec<(String, String)> = Vec::new();
+    let mut missing_event_places: Vec<(String, String)> = Vec::new();
+    let mut missing_related_events: Vec<(String, String)> = Vec::new();
+    let mut duplicate_event_participants: Vec<(String, String, String)> = Vec::new();
+    for ev in &events {
+        // 카테고리별 중복 검출 — 같은 (kind, id) 쌍은 composite PK 위반.
+        let mut people_seen: HashSet<&str> = HashSet::new();
+        for pid in &ev.participants.people {
+            if !person_id_set.contains(pid.as_str()) {
+                missing_event_people.push((ev.id.0.clone(), pid.clone()));
+            }
+            if !people_seen.insert(pid.as_str()) {
+                duplicate_event_participants.push((
+                    ev.id.0.clone(),
+                    "person".into(),
+                    pid.clone(),
+                ));
+            }
+        }
+        let mut groups_seen: HashSet<&str> = HashSet::new();
+        for gid in &ev.participants.groups {
+            if !id_set.contains(gid.as_str()) {
+                missing_event_groups.push((ev.id.0.clone(), gid.clone()));
+            }
+            if !groups_seen.insert(gid.as_str()) {
+                duplicate_event_participants.push((
+                    ev.id.0.clone(),
+                    "group".into(),
+                    gid.clone(),
+                ));
+            }
+        }
+        let mut places_seen: HashSet<&str> = HashSet::new();
+        for plid in &ev.participants.places {
+            if !place_id_set.contains(plid.as_str()) {
+                missing_event_places.push((ev.id.0.clone(), plid.clone()));
+            }
+            if !places_seen.insert(plid.as_str()) {
+                duplicate_event_participants.push((
+                    ev.id.0.clone(),
+                    "place".into(),
+                    plid.clone(),
+                ));
+            }
+        }
+        for rel in &ev.related_events {
+            if !event_id_set.contains(rel.as_str()) {
+                missing_related_events.push((ev.id.0.clone(), rel.0.clone()));
+            }
+        }
+    }
+
     print_warnings("parent_group", &missing_parents);
     print_warnings("allied_groups", &missing_allied);
     print_warnings("rival_groups", &missing_rival);
@@ -580,6 +684,53 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // Phase 5a — Event 외래키 결손 보고 (모두 hard-fail).
+    if !missing_event_people.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5a 외래키 활성: events.participants.people 결손 {} 건:",
+            missing_event_people.len()
+        );
+        for (e, missing) in &missing_event_people {
+            eprintln!("  - {e}: participants.people '{missing}' (persons.id에 없음)");
+        }
+    }
+    if !missing_event_groups.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5a 외래키 활성: events.participants.groups 결손 {} 건:",
+            missing_event_groups.len()
+        );
+        for (e, missing) in &missing_event_groups {
+            eprintln!("  - {e}: participants.groups '{missing}' (groups.id에 없음)");
+        }
+    }
+    if !missing_event_places.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5a 외래키 활성: events.participants.places 결손 {} 건:",
+            missing_event_places.len()
+        );
+        for (e, missing) in &missing_event_places {
+            eprintln!("  - {e}: participants.places '{missing}' (places.id에 없음)");
+        }
+    }
+    if !missing_related_events.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5a 외래키 활성: events.related_events 결손 {} 건:",
+            missing_related_events.len()
+        );
+        for (e, missing) in &missing_related_events {
+            eprintln!("  - {e}: related_events '{missing}' (events.id에 없음)");
+        }
+    }
+    if !duplicate_event_participants.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5a 데이터 결함: events.participants 카테고리 내 중복 {} 건 (event_participants_refs PK 위반):",
+            duplicate_event_participants.len()
+        );
+        for (ev, kind, dup) in &duplicate_event_participants {
+            eprintln!("  - {ev}: participants.{kind} '{dup}' (배열 내 중복)");
+        }
+    }
+
     let fk_errors_total = missing_member_persons.len()
         + missing_affiliations.len()
         + missing_hq.len()
@@ -591,7 +742,12 @@ fn run() -> Result<(), String> {
         + geography_layer_mismatch.len()
         + missing_controlling_group.len()
         + missing_atlas_refs.len()
-        + duplicate_atlas_refs.len();
+        + duplicate_atlas_refs.len()
+        + missing_event_people.len()
+        + missing_event_groups.len()
+        + missing_event_places.len()
+        + missing_related_events.len()
+        + duplicate_event_participants.len();
     let cycle_errors_total = place_cycles.len();
     if !allied_rival_overlap.is_empty() {
         eprintln!(
@@ -669,6 +825,7 @@ fn run() -> Result<(), String> {
         println!("persons parsed    = {}", persons.len());
         println!("places parsed     = {}", places.len());
         println!("atlases parsed    = {}", atlases.len());
+        println!("events parsed     = {}", events.len());
         println!("errors            = {}", errors.len());
         println!("group cycles      = {}", cycles.len());
         println!("place cycles      = {}", place_cycles.len());
@@ -695,7 +852,7 @@ fn run() -> Result<(), String> {
         }
         if fatal_fk {
             return Err(format!(
-                "{} 외래키 결손 — Phase 2·3 활성. DB 미수정. .md 수정 후 재실행하세요.",
+                "{} 외래키 결손 — Phase 2·3·4·5a 활성. DB 미수정. .md 수정 후 재실행하세요.",
                 fk_errors_total
             ));
         }
@@ -731,6 +888,11 @@ fn run() -> Result<(), String> {
             .upsert_atlas(&args.project, at)
             .map_err(|e: WorldError| format!("upsert atlas {}: {e}", at.id))?;
     }
+    for ev in &events {
+        store
+            .upsert_event(&args.project, ev)
+            .map_err(|e: WorldError| format!("upsert event {}: {e}", ev.id))?;
+    }
 
     // 최종 카운트 + 결과 출력 — upsert 완료 후의 인덱스 상태.
     let group_total = store
@@ -745,6 +907,9 @@ fn run() -> Result<(), String> {
     let atlas_total = store
         .count_atlases(Some(&args.project))
         .map_err(|e| format!("count atlases: {e:?}"))?;
+    let event_total = store
+        .count_events(Some(&args.project))
+        .map_err(|e| format!("count events: {e:?}"))?;
 
     println!("\n=== 결과 ===");
     println!("project           = {}", args.project);
@@ -752,10 +917,12 @@ fn run() -> Result<(), String> {
     println!("persons indexed   = {person_total}");
     println!("places indexed    = {place_total}");
     println!("atlases indexed   = {atlas_total}");
+    println!("events indexed    = {event_total}");
     println!("groups parsed     = {}", groups.len());
     println!("persons parsed    = {}", persons.len());
     println!("places parsed     = {}", places.len());
     println!("atlases parsed    = {}", atlases.len());
+    println!("events parsed     = {}", events.len());
     println!("errors            = {}", errors.len());
     println!("group cycles      = {}", cycles.len());
     println!("place cycles      = {}", place_cycles.len());

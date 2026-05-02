@@ -123,6 +123,9 @@ pub mod world_places;
 // Phase 4 Worldbuilding — Atlas 조회 (첫 관계 도메인).
 #[cfg(feature = "embed")]
 pub mod world_atlases;
+// Phase 5a Worldbuilding — Event 조회 (두 번째 인스턴스 도메인).
+#[cfg(feature = "embed")]
+pub mod world_events;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

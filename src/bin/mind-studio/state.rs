@@ -64,7 +64,7 @@ pub struct AppState {
     pub llm_detector: Option<Arc<dyn npc_mind::ports::LlmModelDetector>>,
     /// llama-server 모니터링 (health, slots, metrics)
     #[cfg(feature = "chat")]
-    pub llm_monitor: Option<Arc<dyn npc_mind::ports::LlamaServerMonitor>>,
+    pub llm_monitor: Option<Arc<dyn npc_mind::ports::InferenceServerMonitor>>,
     /// MCP 서버 인스턴스 (정적 타입)
     pub mcp_server: Option<Arc<crate::mcp_server::MindMcpService>>,
     /// chat feature 비활성 시 컴파일 호환용
@@ -383,7 +383,7 @@ impl AppState {
 
     /// llama-server 모니터를 설정한다.
     #[cfg(feature = "chat")]
-    pub fn with_llm_monitor(mut self, monitor: Arc<dyn npc_mind::ports::LlamaServerMonitor>) -> Self {
+    pub fn with_llm_monitor(mut self, monitor: Arc<dyn npc_mind::ports::InferenceServerMonitor>) -> Self {
         self.llm_monitor = Some(monitor);
         self
     }
