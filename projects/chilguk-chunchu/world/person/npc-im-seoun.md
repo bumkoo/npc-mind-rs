@@ -57,9 +57,9 @@ extras:
     bok: 0.4                              # 복 — "복수보다 보호" — 멸문 시 player 도주 우선
     yah: 0.2                              # 야 — 야망 없음, 기록·전승이 본분
   hexaco_facets: {}                       # Phase 6+ 정밀 패스에서 채움
-  heritage_doc_pending: true               # 열전 단독 .md 부재 (사양 §3.3 직교 플래그)
-  hexaco_confidence: precise               # 다중 출처 일관 → 정밀 등급 (사양 §3.3 직교 플래그)
-  secret: |                                 # `## 비밀` H2의 머신 리더블 미러 (사양 §3.8 컨벤션)
+  heritage_doc_pending: true               # 열전 단독 .md 부재 (사양 §3.4 직교 플래그)
+  hexaco_confidence: precise               # 다중 출처 일관 → 정밀 등급 (사양 §3.4 직교 플래그)
+  secret: |                                 # `## 비밀` H2의 머신 리더블 미러 (사양 §3.4b 컨벤션)
     1. 추양진인 수제자 — player는 7세 시점에 "말단 제자"로 오인식. 화산파 진상 조사
        퀘스트의 반전 요소. (player 캐릭터 시트 v1.2 §2 명시 의도)
     2. 혈매화검의 진짜 주인 — 화산파 보물이 아닌 본인 개인 검. player 양도가 마지막
@@ -123,7 +123,7 @@ H29의 "👻 행방불명" 표기 유지. mind 시스템 등록 X (`kind=histori
 
 ## HEXACO 분석
 character-roster H29 + history-characters §11.1 + player 캐릭터 시트 v1.2 §2의
-다중 출처에서 추론한 6 dim. **사양 §3.3 직교 플래그 적용** — 열전 단독 .md 부재
+다중 출처에서 추론한 6 dim. **사양 §3.4 직교 플래그 적용** — 열전 단독 .md 부재
 (`extras.heritage_doc_pending: true`)이나 다중 출처의 일관된 묘사로 매핑 신뢰도는
 정밀 등급(`extras.hexaco_confidence: precise`). 가치관 5축은 player 캐릭터 시트의
 "임서운 희생 기억" 측면을 직접 채택.
@@ -152,7 +152,7 @@ character-roster H29 + history-characters §11.1 + player 캐릭터 시트 v1.2 
 
 24 facet은 빈 객체(`extras.hexaco_facets: {}`) — Phase 6+ 정밀 패스에서 채움.
 **매핑 신뢰도 = `precise`(Phase 2 npc-06 등급) + 열전 부재 표기 = `heritage_doc_pending: true`**.
-두 플래그는 직교 — 신뢰도와 열전 부재는 별개 차원이다 (사양 §3.3 정책 갱신).
+두 플래그는 직교 — 신뢰도와 열전 부재는 별개 차원이다 (사양 §3.4 정책 갱신).
 회귀 가드: `extras.heritage_doc_pending = true` 키가 있는 동안 단독 열전 .md 작성은
 Phase 6+ 정밀 패스 후보, 작성 시 본 6 dim 재검토 필수.
 

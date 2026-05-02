@@ -21,7 +21,8 @@ temporal:
     Phase 5b Era 결합 시 era_id="era-founding"으로 정형 시간 승급 예정.
 era_id: era-founding              # Phase 5b 외래키 활성 (Phase 5a 텍스트 → 활성)
 participants:
-  people: []
+  people:
+    - npc-jincheonmyeong            # 진천명 — 대진 태조, 본 사건의 핵심 인물 (Phase 5c.2 외래키 활성)
   groups:
     - group-mulim-mang              # 무림맹 — 본 사건에서 구파일방 토벌 연합으로 결성
     - group-daejin-court            # 대진 황실 — 태조 진천명 등극
@@ -45,6 +46,12 @@ extras:
     - 혈교 미등록(D1) — participants.groups에 누락. 산문에 명시.
     - era_id=~ (Phase 5b "era-founding").
     - related_events: empire-founding → bloody-cult-rebellion-2nd 인과 사슬의 시작점.
+    Phase 5c.2 외래키 활성:
+    - npc-jincheonmyeong(진천명) participants.people 추가 — 대진 태조, 본 사건의 핵심.
+      character-roster H01 + history.md §1.1 + history-characters §1·§13. 산문 "(npc 미등록)
+      태조 진천명" 마커 정정.
+    - 현무진인·원혜대사·자양진인·적마존·천리안은 본 Phase 미등록 (선택 추가 4건 후보 또는
+      Phase 6+ 이관). 산문에 (npc 미등록) 마커 유지.
 ---
 
 ## 개요
@@ -56,8 +63,8 @@ extras:
 남지 않아 270년의 모든 해석 분쟁의 근원이 된다.
 
 ## 발단
-혈교가 대륙을 장악, 각 지역에서 압정·살생이 자행. 대진 태조 진천명(npc 미등록)을 중심으로
-무림 연합이 구성되었고, 구파일방 + 개방의 힘으로 혈교에 대항했다.
+혈교가 대륙을 장악, 각 지역에서 압정·살생이 자행. 대진 태조 진천명(npc-jincheonmyeong)을
+중심으로 무림 연합이 구성되었고, 구파일방 + 개방의 힘으로 혈교에 대항했다.
 
 ## 전개
 - **혈교 토벌**: 화산파 개조 자양진인이 선봉, 혈교 본거지에 최초 진입. 소림 방장 원혜대사
@@ -74,7 +81,8 @@ extras:
 - 무림-조정 맹약: "침범하지 않는다" / "자발적 협력" — 양측의 해석권이 모호한 채로 시작.
 
 ## 핵심 인물
-- (npc 미등록) 태조 진천명: 대진 건국 황제. "건국의 영웅, 무림과의 약속을 지킨 유일한 황제".
+- npc-jincheonmyeong 태조 진천명: 대진 건국 황제. "건국의 영웅, 무림과의 약속을 지킨
+  유일한 황제". 270년 후 모든 NPC의 "선조의 영광" 인용 화자. character-roster H01.
 - (npc 미등록) 현무진인: 무당파. 초대 무림맹주.
 - (npc 미등록) 자양진인: 화산파 개조. 혈교 토벌 선봉. "화산파가 혈교에 집착하는 이유의 근원".
 - (npc 미등록) 원혜대사: 소림 방장. 혈교 마공 봉인 불법 주도.
