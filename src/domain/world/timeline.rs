@@ -12,7 +12,7 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use super::era::{Era, EraId};
 use super::event::{Event, EventId};
@@ -167,15 +167,22 @@ impl Timeline {
     /// timeline 경계 밖의 related_events는 무시 (timeline-국한 transitive closure).
     /// 결과는 BFS 순서이며 seed 자신은 첫 항목으로 포함.
     /// seed가 events_in 안에 없으면 빈 Vec.
+    ///
+    /// **F1+F2 (review 후 정리)**: events_in으로 한 번에 모든 사건을 로드한 뒤
+    /// HashMap으로 사전 인덱싱 — BFS는 O(N) lookup, 결과 합성은 in-memory에서
+    /// 직접 (이전 구현은 BFS 후 `get_events_batch(&order)` 재호출로 2× round-trip).
     pub fn causal_chain<R: WorldRepository + ?Sized>(
         &self,
         seed: &EventId,
         repo: &R,
     ) -> Result<Vec<Event>, WorldError> {
         let in_scope: Vec<Event> = self.events_in(repo)?;
-        let scope_ids: HashSet<EventId> =
-            in_scope.iter().map(|e| e.id.clone()).collect();
-        if !scope_ids.contains(seed) {
+        // F2: O(1) lookup용 HashMap (id → Event). BFS의 `iter().find` O(N²) 제거.
+        let by_id: HashMap<EventId, Event> = in_scope
+            .into_iter()
+            .map(|e| (e.id.clone(), e))
+            .collect();
+        if !by_id.contains_key(seed) {
             return Ok(Vec::new());
         }
         // BFS — seed부터 related_events traversal, timeline 경계 밖은 무시.
@@ -185,17 +192,22 @@ impl Timeline {
         queue.push_back(seed.clone());
         visited.insert(seed.clone());
         while let Some(cur) = queue.pop_front() {
-            order.push(cur.clone());
-            // events_in 결과에서 cur의 related_events 추출.
-            if let Some(ev) = in_scope.iter().find(|e| e.id == cur) {
+            // F2: O(1) lookup으로 related_events traversal.
+            if let Some(ev) = by_id.get(&cur) {
+                order.push(cur.clone());
                 for rel in &ev.related_events {
-                    if scope_ids.contains(rel) && visited.insert(rel.clone()) {
+                    if by_id.contains_key(rel) && visited.insert(rel.clone()) {
                         queue.push_back(rel.clone());
                     }
                 }
             }
         }
-        repo.get_events_batch(&order)
+        // F1: order에 해당하는 Event를 by_id에서 직접 꺼내 합성 — 추가 round-trip X.
+        let mut by_id = by_id;
+        Ok(order
+            .into_iter()
+            .filter_map(|id| by_id.remove(&id))
+            .collect())
     }
 }
 
