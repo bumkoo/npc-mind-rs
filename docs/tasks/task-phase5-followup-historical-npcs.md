@@ -1,380 +1,273 @@
-# Phase 5 Follow-up: Historical NPCs (Phase 5c.1)
+# Phase 5 Follow-up — Historical NPC 시드 확장 (D2 처리)
 
-> **For Claude Code.** 이 문서는 자급 자족이며 외부 링크 없이도 작업 시작 가능.
-> 결정 사항을 임의 변경하지 말 것. 변경이 필요하면 보고서에서 디렉터 승인 요청.
-> **선행 조건**: Phase 0·1·2(+2.1·2.2)·3·4·5a·5b 모두 종결.
-> **체크포인트 분리 게이트 강제 적용** — Phase 1 미준수 후속, Phase 2·3·4·5a·5b 정상 준수.
+> **For Claude Code.** Phase 5a Q&A의 D2 결정 후속 작업. 짧은 follow-up TASK.
+> **선행 조건**: Phase 5a·5b 모두 종결.
+> **체크포인트 분리 게이트 강제 적용** — 1회 통합 commit 금지.
 
 ---
 
 ## 1. 목표
 
-Phase 5b §6 Decision Log (2026-05-02 D2) 후속:
+Phase 5a/5b 본문에 `(npc 미등록)` 텍스트로 보존된 historical NPC들을 정식 시드로 등록하고 외래키 활성. character-roster v1.1의 ★★★★+ 우선순위 인물 + 5a/5b body에 등장한 메인 서사 인물.
 
-> historical npc 시드 확장(임서운·추양진인·바투·진대인·천마 등) = Phase 5b 종결 후 follow-up TASK (D2) | Cowork
-
-**Phase 5c.1 = "historical NPCs follow-up"** — Phase 5a Event 산문에서 `(npc 미등록)`으로
-우회 보존된 인물들을 정식 `Person` 등록으로 승급하고, 영향 받는 Phase 5a Event participants
-외래키를 활성화한다.
-
-세 결 통합:
-
-1. **historical NPC 시드 확장** — `kind=historical` Person 7-11명 신규 변환. mind 시스템
-   업서트 대상 아님(`is_mind_eligible()` = false), 외래키 매트릭스에만 등록.
-2. **heritage-pending NPC 4명 정식 변환** — npc-08 바투·npc-09 진대인·npc-10 3대 천마·
-   npc-11 소풍자(현재 stub) 정밀 매핑.
-3. **Phase 5a Event 외래키 활성** — 6 Event 중 historical NPC 등장 사건의 `participants.people`
-   배열에 신규 ID 추가. `(npc 미등록)` 산문 마커 제거 또는 정정.
+**스코프**:
+- character-roster ★★★★+ 미작성 인물 풍부화: **npc-08 바투** · **npc-09 진대인** · **npc-10 3대 천마** + npc-11 소풍자 풍부화(stub → 정식)
+- Phase 5a/5b body 핵심 인물 신규 등록: **임서운**(player 부친) · **추양진인**(화산 장문인) · **진천명**(대진 태조) · **단운**(태무제)
+- 선택 추가: 풍만리(개방 초대)·설무한(천마신교 초대)·자양진인(화산 조사)·천리안(개방 정보)
 
 **검증 게이트**:
-- 체크포인트 1: 임서운 단독 변환 + 임서운 등장 Event 외래키 활성 (3-4건)
-- 체크포인트 2: 7-11 추가 historical npc + Phase 5a 6 Event 외래키 모두 활성
+- 체크포인트 1: **임서운** 단독 변환 (player 부친·메인 비밀의 핵심)
+- 체크포인트 2: 5-7 historical npc 추가 + Phase 5a/5b body 외래키 활성
 
 ## 2. 연관 컨텍스트
 
-- `CLAUDE.md` 프로젝트 루트
-- `docs/tasks/00-roadmap.md` — 전체 흐름·결정 로그
-- `docs/tasks/task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` — Phase 5a 결과
-- `docs/tasks/task-phase2-person-vertical-slice.md` + `phase2-checkpoint{1,2}-report.md` — Person 도메인·HEXACO 매핑 패턴 (npc-06 정밀 / npc-07 heritage-pending 기준선)
+- `docs/tasks/00-roadmap.md` — D2 결정 로그 (2026-05-02)
+- `docs/tasks/task-phase2-person-vertical-slice.md` + Phase 2 보고서들 — Person 도메인·HEXACO 시작값 패턴
+- `docs/tasks/phase5a-checkpoint{1,2}-report.md` — Phase 5a body의 `(npc 미등록)` 인물 일람
+- 메모리: Person.kind="historical", Person.status=dead/missing/unknown 두 축 (Phase 2 Q3·C)
 - 입력 자료:
-  - `wuxia-core/docs/characters/character-roster.md` — H1-H29 historical 인물 + N1-N11 active 인물
-  - `wuxia-core/docs/world/history-characters.md` — 시기별 인물 배치 (§9·§10·§11·§13)
-  - `wuxia-core/docs/characters/npc-{08,09,10}-*.md` — 열전 미작성, character-roster 보강 필요
-  - 기존 Phase 5a 6 Event 산문 — `(npc 미등록)` 마커 제거·정정 대상
+  - `wuxia-core/docs/world/history-characters.md` v1.2 — 역사 인물 매핑 (★ 핵심 입력)
+  - `wuxia-core/docs/characters/character-roster.md` v1.1 — npc-08·09·10·11 우선순위
+  - Phase 5a 6 Event + Phase 5b 5 Era body — 참조 인물 일람
+  - Phase 2 산출 9 Person — 양식·매핑 패턴
 
 ## 3. 제약
 
-### 3.1 장르 중립 vs 의존
+### 3.1 도메인 변경 X — 데이터 추가만
 
-Phase 5c.1은 **새 도메인을 추가하지 않음**. 기존 `Person` 도메인(`src/domain/world/person.rs`)
-+ Phase 5a Event 도메인의 인스턴스 데이터만 추가. `src/`·`genres/wuxia/` 변경 금지.
+Phase 2 Person 도메인 그대로. 코드 변경 0. **데이터 + 테스트만 추가**:
+- `projects/chilguk-chunchu/world/person/{npc-08,09,10,임서운id,...}.md` 추가
+- `tests/world_chilguk_chunchu_followup_historical_npcs.rs` 신규
+- world-load 결과: persons indexed 9 → 14-17
 
-| 위치 | 책임 |
-|---|---|
-| `src/domain/world/person.rs` | **변경 금지** — 도메인 정의 그대로 |
-| `src/worldbuilding/markdown/person.rs` | **변경 금지** |
-| `src/bin/world_load.rs` | **변경 금지** — Phase 5a FK 검증 그대로 활용 |
-| `projects/chilguk-chunchu/world/person/{npc-im-seoun,...}.md` | 신규 historical Person 마크다운 |
-| `projects/chilguk-chunchu/world/event/event-*.md` | participants.people 배열 + 산문 정정 |
+### 3.2 kind = "historical" 또는 "active"
 
-**`src/`에 wuxia 단어 X.** 작업 결과물은 `projects/chilguk-chunchu/`에만 집중.
-
-### 3.2 historical NPC ID 네이밍 정책
-
-- 11 active/heritage-pending Person은 `npc-{01..11}` 숫자 ID 보존 (Phase 2 결정).
-- historical Person은 **`npc-{descriptive-romanized-name}`** 패턴 (예: `npc-im-seoun`,
-  `npc-chuyangjinin`, `npc-jincheonmyeong`, `npc-danun`).
-- 이유: 숫자 ID는 character-roster N1-N11과 1:1 매핑 의미가 있어 historical(H##) 분리 필요.
-  descriptive ID가 검색·디버깅 친숙.
-
-### 3.3 HEXACO 매핑 정밀도 — 직교 플래그 두 개
-
-**Phase 5c.1 정책 갱신** (체크포인트 1 디렉터 리뷰 후속): Phase 2의 단일 `source_status: heritage-pending` 플래그가 두 의미를 혼합 표기하던 문제를 직교 플래그 두 개로 분리한다.
-
-| 필드 | 타입 | 의미 |
-|---|---|---|
-| `extras.heritage_doc_pending` | `bool` | **열전 단독 .md 부재** — `wuxia-core/docs/characters/npc-{XX}-{name}.md` 같은 단독 캐릭터 시트가 없음. character-roster · history-characters 단편만으로 매핑 |
-| `extras.hexaco_confidence` | `enum` (`precise` / `pending` / `unknown`) | **HEXACO 6 dim 매핑 신뢰도** — 출처의 양·일관성에 따른 매핑 자체의 확신도 |
-
-두 플래그는 독립이며 4 조합 모두 의미 있음:
-
-| heritage_doc_pending | hexaco_confidence | 사례 |
-|---|---|---|
-| false | precise | 열전 + 다중 출처 일관 — 이상적 (Phase 2 npc-01·02·03·04·05·06) |
-| **true** | **precise** | 열전 부재이나 character-roster + history-characters + 타 NPC 묘사 다중 출처 일관 (**npc-im-seoun**) |
-| true | pending | 열전 부재 + 단편 출처만, 추정 필요 (npc-chuyangjinin · npc-jincheonmyeong · npc-danun) |
-| true | unknown | 열전 부재 + 자료 거의 없음. 6 dim 모두 0.0 중립 (Phase 6+ 보강 예정) |
-
-**`extras.source_status: heritage-pending` (legacy)** — Phase 2에 도입된 단일 플래그. 의미상 `heritage_doc_pending=true ∧ hexaco_confidence=pending`에 해당. 기존 npc-07·11에 잔존하나 마이그레이션은 별도 작업(체크포인트 2 또는 Phase 6+ 정밀 패스 시 자연 정리). Phase 5c.1+ 신규 person은 직교 플래그 사용.
-
-Phase 5c.1 매핑 (체크포인트 2 보고서에 명시):
-
-| Person ID | heritage_doc_pending | hexaco_confidence | 사유 |
+| 인물 | kind | status | 근거 |
 |---|---|---|---|
-| `npc-im-seoun` (임서운) | **true** | **precise** | 열전 부재이나 character-roster H29 + history-characters §11.1 + player.md + 캐릭터 시트 v1.2 + 타 NPC 회상 다중 출처 일관 |
-| `npc-08` 바투 | true | precise | 열전 부재이나 character-roster N8 + history.md + npc-06 부친 묘사 다중 |
-| `npc-09` 진대인 | true | precise | 열전 부재이나 character-roster N9 + npc-09-jinyarim 부친 묘사 |
-| `npc-10` 3대 천마 | true | precise | 열전 부재이나 character-roster N10 + npc-06 사부 묘사 |
-| `npc-11` 소풍자 | true | precise (stub 승급) | 사용자 작성 stub → 정식 매핑. legacy `source_status` 제거 동시 |
-| `npc-chuyangjinin` (추양진인) | true | pending | history-characters §9·§11.1 단편만 |
-| `npc-jincheonmyeong` (진천명) | true | pending | history-characters §1·§13 단편만 |
-| `npc-danun` (단운, 태무제) | true | pending | history-characters §10·§11 단편 + character-roster H1 |
+| npc-08 바투 | active | alive | 게임 시작 시 생존, 직접 만남 (character-roster) |
+| npc-09 진대인 | active | alive | 동해 상방의회 의장, 생존 |
+| npc-10 3대 천마 | active | alive | 게임 시작 시 생존 (천마신교 교주) |
+| npc-11 소풍자 | active | alive | 이미 stub, 풍부화 (개방 장로) |
+| 임서운 | historical | missing | 10년 전 행방불명 — player 메인 비밀 |
+| 추양진인 | historical | dead | 10년 전 화산 멸문 시 사망(추정) |
+| 진천명 | historical | dead | 270년 전 대진 태조, 캐논 사망 |
+| 단운(태무제) | historical | dead | 30년 전 행방불명/사망 |
+| (선택) 풍만리·설무한·자양진인·천리안 | historical | dead | 100년+ 전 인물, 캐논 사망 |
 
-**선택 추가 4건** (디렉터 결정): 풍만리·설무한·자양진인·천리안 — 모두 `heritage_doc_pending=true / hexaco_confidence=pending`.
+**npc-08·09·10·11은 kind=active**라 mind eligible 등록 (Phase 2 NPC mind 통합).
+**나머지 historical은 mind 등록 안 함** (Phase 2 §3.5 정책 — `kind ∈ {active, player}`만 upsert).
 
-권장 7건 = 필수 4(npc-08·09·10·11) + 핵심 historical 3(추양진인·진천명·단운).
-선택 추가 4건은 별도 follow-up 또는 Phase 6+로 이관 후보. 체크포인트 2 시작 시 디렉터 결정.
+### 3.3 ID 명명
 
-### 3.4 affiliation 정책 — pending_groups 패턴 (npc-04 미러)
+character-roster의 `npc-XX` 명명 따름. 추가 historical npc는:
+- `npc-imseowoon` (임서운, player 부친) — character-roster 미명명이라 한국어 발음 슬러그
+- `npc-chuyangjinin` (추양진인) — 동일 패턴
+- `npc-jincheonmyeong` (진천명, 대진 태조) — 동일 패턴
+- `npc-danwoon` (단운, 태무제) — 동일 패턴
 
-화산파(group-hwasan-pa)·청성파·아미파·해남파 등은 Phase 1 미등록. 등록될 때까지:
+선택 추가 인물(풍만리·설무한 등)도 같은 패턴.
 
-```yaml
-affiliation: []                  # 정식 외래키 없음
-extras:
-  pending_groups: [group-hwasan-pa]   # Phase 6+ historical/legendary group 카테고리에서 등록 예정
-```
+### 3.4 HEXACO 잠정 매핑 — heritage-pending 또는 정밀
 
-이 패턴은 npc-04 당무괴(서량/당가 그룹 미등록)에서 정착. 외래키 hard-fail 회피 + 정보 보존.
+historical npc는 열전 미작성이라 HEXACO 잠정 매핑. 두 옵션:
+- (a) **heritage-pending 마커** (npc-07 천순제·npc-11 소풍자 패턴) — `extras.source_status: heritage-pending` + 잠정 6 dim
+- (b) **정밀 매핑** — character-roster + history-characters에서 정성 추론 후 신뢰도 표기 (Phase 2 npc-06 패턴)
 
-### 3.5 Phase 5a Event 외래키 활성
+**권장**: 임서운(체크포인트 1)·npc-08·09·10은 (b) 정밀 매핑, 나머지 historical은 (a) heritage-pending. 이유:
+- 임서운은 player 메인 비밀 → 정밀 가치 큼
+- npc-08·09·10은 character-roster ★★★★+ → 게임 캐논
+- 나머지 historical은 NPC 대사·서적·비문에만 등장 → 잠정 충분
 
-| 검증 | 정책 |
-|---|---|
-| `Event.participants.people` → `persons.id` 존재 | **에러** (Phase 5a 활성, 그대로 유지) |
+체크포인트 1 보고서에서 디렉터 검토.
 
-신규 historical Person이 등록되면, 해당 인물이 산문에 명시된 Event의 `participants.people`
-배열에 ID를 추가한다. 산문의 `(npc 미등록) 인물명` 마커는 제거하거나 ID 참조로 정정.
+### 3.5 외래키 활성
 
-**boundary 케이스**: 산문에 직접 등장하지 않으나 history-characters의 시기별 배치
-(§13 인물·문파 배치 요약표)를 통해 추론되는 인물의 외래키 추가 여부는 디렉터 결정.
-임의 추가 금지 — 출처 보수성 유지.
+Phase 5a/5b body의 텍스트 ID들이 실제 person 시드 등록 후 활성:
+- Phase 5a 6 Event participants.people 검증 (이미 활성, 추가 인물 추가 시 검증 통과)
+- Phase 5b 5 Era body 핵심 인물 (텍스트만, 외래키 활성 X — 본 follow-up 외)
+- Phase 1 Group members.person_id (이미 활성)
 
-### 3.6 mind eligible 변화 검증 (체크포인트 2)
+### 3.6 체크포인트 분리 게이트
 
-- 현재(Phase 5b 종결): mind eligible = 9 (npc-01·02·03·04·05·06·07·11 + player)
-- 체크포인트 2 후: **mind eligible = 13** (player + npc-01·02·03·04·05·06·07·08·09·10·11 = 12 active + player = 13)
-- historical npc는 mind 등록 X (`is_mind_eligible()` = false 가드).
-
-회귀 가드: `world-load` 후 `npc_repository.list_active_persons()` 카운트 13 검증.
-
-### 3.7 SoT = 마크다운, 검색 = FTS5 + LIKE fallback
-
-기존 흐름.
-
-### 3.8 `extras.secret` 컨벤션 — `## 비밀` H2의 머신 리더블 미러
-
-**Phase 5c.1 신규 컨벤션** (체크포인트 1 디렉터 리뷰 후속). Phase 2까지 person의 비밀은
-`## 비밀` H2 산문 섹션에만 보존됐다. Phase 5c.1부터 신규 person은 frontmatter에 `extras.secret`을 함께 둔다:
-
-```yaml
-extras:
-  secret: |
-    1. 비밀 1 — 짧은 라벨. 출처 또는 게임 내 공개 시점.
-    2. 비밀 2 — ...
-    3. 비밀 3 — ...
-```
-
-| 위치 | 책임 |
-|---|---|
-| `## 비밀` H2 (산문) | **권위 출처(SoT)** — 전체 맥락·근거·게임 내 단계별 공개 흐름 등 자유 산문 |
-| `extras.secret` (frontmatter) | **머신 리더블 미러** — SQL 필터 (`WHERE extras LIKE '%secret%'`), FTS5 검색 (frontmatter도 인덱스 대상), MCP `get_person` 도구 응답 빠른 요약 |
-
-**일관성 정책**:
-- 두 위치는 같은 비밀 목록을 다뤄야 한다. 산문이 권위 — 산문에 없는 비밀을 frontmatter에만 두지 말 것.
-- frontmatter는 "라벨 + 한 줄 요약" 수준 (3-5 라인). 산문은 자유 길이.
-- 산문 추가 시 frontmatter 동기화 (체크포인트 분리 게이트 시 검토).
-- player 메인 비밀과 1:1 매핑되는 person은 본 컨벤션 강제 (`extras.player_relevance ≥ 4`).
-
-**적용 범위**:
-- Phase 5c.1+ 신규 person 모두 적용 (npc-im-seoun이 첫 사례).
-- 기존 npc-01..07·11 + player는 마이그레이션 강제 안 함 — 차후 정밀 패스 또는 본인 .md 갱신 시 자연 추가.
-
-### 3.9 체크포인트 분리 게이트
-
-1. **체크포인트 1**: 임서운 단독 변환 + 임서운 등장 Phase 5a Event 외래키 활성 (3-4건) →
-   commit pause → `phase5-followup-historical-npcs-checkpoint1-report.md` → Cowork 리뷰
-2. **체크포인트 2**: 7-11 추가 historical/heritage-pending Person + Phase 5a 6 Event 외래키
-   매트릭스 모두 활성 + mind eligible 13 검증 → commit pause →
-   `phase5-followup-historical-npcs-checkpoint2-report.md` → Phase 5c.1 종결
-
-**1회 통합 commit 금지.**
+1. **체크포인트 1**: 임서운 단독 변환 + Phase 5a 6 Event participants에 임서운 추가 → commit pause
+2. **체크포인트 2**: 5-7 추가 historical npc + 외래키 통과 → commit pause → Phase 5 follow-up 종결
 
 ## 4. Done Criteria
 
-### 체크포인트 1 (임서운 단독)
-
-- [ ] `projects/chilguk-chunchu/world/person/npc-im-seoun.md` 작성 (kind=historical, status=missing)
-- [ ] HEXACO 6 dim 매핑 + 직교 플래그 (`heritage_doc_pending: true` + `hexaco_confidence: precise`)
-- [ ] `extras.priority: "★★★★★"` (player 메인 비밀의 핵심)
-- [ ] `extras.secret` 명시 (`## 비밀` H2 미러, §3.8 컨벤션 — 3-4 비밀 라벨)
-- [ ] affiliation 결정 — empty + `extras.pending_groups: [group-hwasan-pa]` (npc-04 패턴)
-- [ ] 임서운 등장 Phase 5a Event 외래키 활성:
-  - [ ] `event-bloody-night.md` participants.people에 `npc-im-seoun` 추가
-  - [ ] `event-hwasan-fall.md` participants.people에 `npc-im-seoun` 추가
-  - [ ] `event-blood-disappearance.md` participants.people에 `npc-im-seoun` 추가
-  - [ ] (조건부) `event-bloody-cult-rebellion-2nd.md` — 산문에 임서운 미등장이면 외래키
-        추가 보류, 보고서에 명시 (보류·추가 둘 중 하나 선택 후 체크 처리).
-        추양진인 등록 시 함께 처리(체크포인트 2 후보).
-- [ ] 산문 `(npc 미등록) 임서운` 마커 제거·정정 (player 부친 → player 보호자 사실 정정 포함)
-- [ ] `cargo build` + `cargo test --features embed` 통과 (회귀 가드)
-- [ ] world-load FK 검증 통과 (persons indexed = 10, eligible = 9 변동 없음)
-
-### 체크포인트 2 (7-11 추가)
-
-- [ ] 권장 7건 또는 11건 — 디렉터 결정
-- [ ] HEXACO 매핑 직교 플래그 표기 (`heritage_doc_pending` + `hexaco_confidence: precise|pending|unknown`)
-- [ ] Phase 5a 6 Event 외래키 매트릭스 모두 활성 (산문 (npc 미등록) 마커 0건)
-- [ ] mind eligible = 13 검증 (npc-08·09·10·11 mind 등록 시점)
-- [ ] `cargo build` + `cargo test --features embed` 통과
-- [ ] 회귀 가드: 기존 9 active person mind upsert 영향 없음(idempotent)
-- [ ] (선택) npc-07·11 legacy `source_status` → 직교 플래그 마이그레이션 (별도 작업도 가능)
+- [ ] 임서운 단독 변환 (체크포인트 1) + HEXACO 정밀 매핑 + status=missing
+- [ ] 5-7 historical npc 추가 (체크포인트 2)
+- [ ] character-roster ★★★★+ 미작성 인물 (npc-08·09·10) 풍부화 + npc-11 stub → 정식
+- [ ] Phase 5a 6 Event body의 `(npc 미등록)` → 정식 person_id 외래키 활성 (가능한 인물만)
+- [ ] world-load: persons indexed 9 → 14-17 (선택 추가 인물 수에 따라)
+- [ ] mind eligible 9 → 12-13 (npc-08·09·10·11 + player가 active)
+- [ ] e2e 테스트 — historical npc 시드 라운드트립 + Phase 5a Event participants 외래키 활성 검증
+- [ ] `cargo build` + `cargo test --features embed` + 기존 e2e 회귀 통과
 
 ## 5. 단계별 작업
 
-### Step 1 — 체크포인트 1: 임서운 단독 변환
+### Step 1 — 임서운 단독 변환 ★체크포인트 1★
 
-#### 5.1.1 `npc-im-seoun.md` frontmatter 골격
+대상: 임서운 (player 부친). Phase 2 player.md `## 비밀` + Phase 5a body 다수 참조.
 
-```yaml
----
-id: npc-im-seoun
-kind: historical
-name: 임서운(林書雲)
-aliases:
-  - 화산파 수제자
-  - 구름에 글을 쓰다
-  - 그 사람 (player 화법)
-status: missing
-hexaco:
-  honesty_humility: 0.7    # 정파 정직 + 추양진인 수제자 신분 숨김(modesty 강함)
-  emotionality: 0.5         # player 보호 자기희생 + 행방불명 결심(sentimentality·anxiety 양수)
-  extraversion: -0.2        # 검학 + 기록자 ("구름에 글을 쓰다") + 사문 일에 집중
-  agreeableness: 0.5        # 정파 의리 + player 무조건 보호 + 추양진인 충실
-  conscientiousness: 0.7    # 화산파 수제자 = 검학 정점 + 270년 전통 보존자
-  openness: 0.4             # 검학 + 기록 + 비공식 player 양육 결단(unconventionality 양수)
-temporal:
-  birth_year: 미상 (220년대 후반 추정)
-  death_year: ~                 # missing — 사망 미확인
-  age_at_game_start: ~          # 행방불명 — 추정 40~50대
-  notes: |
-    추양진인 수제자라는 직위를 보면 260년차 화산파 멸문 시점 30대 후반~50대 초반
-    추정. character-roster H29 + history-characters §11.1 출처. 정확한 출생 연도 불명.
-    10년 전 행방불명, 본 Phase 등록 시점 기준 status=missing. 메인 퀘스트 후반에서
-    생존 가능성 분기 트리거.
-affiliation: []                  # 화산파(group-hwasan-pa) Phase 1 미등록
-birthplace: ~                     # 미상
-current_location: ~               # 행방불명
-summary: |
-  ...
-tags:
-  - wuxia
-  - person
-  - historical
-  - hwasan-disciple
-  - player-protector
-  - missing
-extras:
-  signature_skill: 화산파 검학(추양진인 직계 비전) + 기록·문서화 + 혈매화검(개인검)
-  biography_short: 화산파 추양진인 수제자. player 보호자. 10년 전 멸문 직후 행방불명.
-  game_role: 메인 서사 비밀 축 — player의 정체·혈매화검 출처·생사 진실 모두 본 인물에 수렴
-  priority: "★★★★★"
-  combat_style: 화산파 검학 + 기록자 성향. 정면 전투력보다 보호·도주 우선.
-  story_role: player의 "그 사람". 사망 인식이지만 행방불명. 메인 퀘스트 후반 반전.
-  pending_groups: [group-hwasan-pa]
-  big_five_legacy: {}
-  values:
-    chung: 0.7
-    eui: 0.8
-    hyo: 0.6
-    bok: 0.4
-    yah: 0.2
-  hexaco_facets: {}
-  heritage_doc_pending: true     # 열전 단독 .md 부재 (§3.3 직교 플래그)
-  hexaco_confidence: precise      # 다중 출처 일관 → 정밀 등급 (§3.3 직교 플래그)
-  secret: |                       # `## 비밀` H2의 머신 리더블 미러 (§3.8 컨벤션)
-    1. 추양진인 수제자 — player는 "말단 제자"로 오인식.
-    2. 혈매화검의 진짜 주인 — 화산파 보물이 아닌 본인 개인 검.
-    3. 생존 가능성 — history-characters H29 "행방불명·생사 불명".
-  player_relevance: 5
----
-```
+작업:
+1. `wuxia-core/docs/world/history-characters.md` v1.2 임서운 항목 통독
+2. Phase 2 player.md + Phase 5a 6 Event body의 임서운 언급 종합
+3. `projects/chilguk-chunchu/world/person/npc-imseowoon.md` 작성
+4. **HEXACO 정밀 매핑** (정파·검학·player 보호자·10년 전 행방불명 결로):
+   - H: +0.7 (화산파 정파적 정직성·player 보호의 자비)
+   - E: +0.5 (player에 대한 부성애·신경증)
+   - X: 0.0 (수도자 평균)
+   - A: +0.7 (자비·player에 대한 헌신)
+   - C: +0.6 (화산파 수련 규율)
+   - O: +0.4 (전통 수도자, 약간 보수적)
+5. `status = missing` (10년 전 행방불명)
+6. `kind = historical`
+7. `extras.player_relevance: ★★★★★`
+8. `extras.secret: player 부친 + 추양진인 수제자 + 혈매화검 보유자` (player 메인 비밀의 핵심)
+9. Phase 5a 6 Event body의 임서운 언급을 정식 person_id로 갱신:
+   - bloody-night participants.people에 npc-imseowoon 추가
+   - hwasan-fall participants.people에 npc-imseowoon 추가
+   - blood-disappearance participants.people에 npc-imseowoon 추가
+10. world-load 통과 — persons=10, fk errors=0
 
-#### 5.1.2 산문 섹션 — npc-06/07 패턴 미러
+**체크포인트 1 보고서** (`docs/tasks/phase5-followup-historical-npcs-checkpoint1-report.md`):
+- npc-imseowoon.md 전문
+- HEXACO 결정 근거 (정밀 매핑 6 dim)
+- Phase 5a 6 Event body 외래키 갱신 결과
+- world-load 통과 (persons=10, fk=0)
+- mind eligible 변화 (9 → 9, historical은 mind 등록 X)
+- 막힌 결정 (예: 임서운의 group 소속 — group-mulim-mang? 또는 group-hwasan(미등록)?)
 
-7개 H2 섹션:
-- `## 개요`
-- `## 배경`
-- `## 동기`
-- `## 비밀`
-- `## HEXACO 분석`
-- `## 관계`
-- `## 게임에서의 역할`
+→ Cowork 리뷰 → **commit pause 유지** → 통과 신호 받고 Step 2.
 
-#### 5.1.3 Phase 5a Event 외래키 활성 (3건 + 1 boundary)
+### Step 2 — 5-7 historical npc 추가 ★체크포인트 2★
 
-3 명시 사건:
-- `event-bloody-night.md` participants.people: `npc-im-seoun` 추가 (셋째 밤 player 도주)
-- `event-hwasan-fall.md` participants.people: `npc-im-seoun` 추가 (추양진인 수제자, player 구출)
-- `event-blood-disappearance.md` participants.people: `npc-im-seoun` 추가 (개방으로부터 player(5세) 위탁)
+후보 (디렉터 결정 받기):
 
-1 boundary:
-- `event-bloody-cult-rebellion-2nd.md`: 산문에 임서운 미등장. 추양진인이 등장하지만 임서운은
-  240년차 시점 화산 일반 제자였을 추정만 가능. 출처 보수성 유지 — **체크포인트 1에선 추가
-  보류**. 추양진인 등록 시(체크포인트 2) 함께 결정.
+**필수 4건** (★★★★+):
+- npc-08 바투 (북원 늑대왕, kind=active) — character-roster 우선순위
+- npc-09 진대인 (동해 상방의회 의장, active) — Phase 1 group-donghae 멤버
+- npc-10 3대 천마 (천마신교 교주, active) — character-roster ★★★★★
+- npc-11 소풍자 풍부화 (stub → 정식, active)
 
-산문 정정:
-- `(npc 미등록) 임서운: player 부친` → `(npc-im-seoun) 임서운: player 보호자`
-  (player.md 기준 player의 친부모 미상, 임서운은 5세 위탁 후 비공식 양육자).
-- `(npc 미등록) 임서운` 마커 제거 또는 ID 참조로 정정.
+**Phase 5a body 핵심 historical 3건**:
+- 추양진인 (화산 장문인, dead, 10년 전 멸문 시) — Phase 5a hwasan-fall body
+- 진천명 (대진 태조, dead, 270년 전) — Phase 5a empire-founding body
+- 단운 (태무제, dead/missing, 30년 전) — Phase 5a bloody-cult-rebellion-2nd body
 
-### Step 2 — 체크포인트 2: 7-11 추가
+**선택 추가 4건** (history-characters.md 우선순위 ★★★ 이하):
+- 풍만리 (개방 초대) — era-founding body
+- 설무한 (천마신교 초대) — era-prosperity·era-turning 시드
+- 자양진인 (화산 조사) — era-founding body
+- 천리안 (개방 정보망 초대) — era-founding body
 
-권장 7건 = 필수 4 + 핵심 historical 3.
+**권장**: **필수 4 + Phase 5a 핵심 3 = 7건**. 선택 4건은 별도 follow-up 또는 Phase 6+. 단 디렉터 결정.
 
-#### 5.2.1 필수 4 (heritage-pending 승급)
+**필수 4건 (active)**:
+- HEXACO 정밀 매핑 권장 (character-roster + history-characters 시드 풍부)
+- mind eligible 활성
 
-- `npc-08` 바투 (북원 늑대왕 / 야율설화 부친) — character-roster N8 + npc-06 부친 묘사
-- `npc-09` 진대인 (동해 진씨 상방 당주) — character-roster N9 + npc-09-jinyarim 부친
-- `npc-10` 3대 천마 (천마신교 교주) — character-roster N10 + npc-06 사부
-- `npc-11` 소풍자 (개방 장로) — 기존 stub 정밀 매핑 승급
+**핵심 historical 3건 (dead)**:
+- HEXACO heritage-pending 마커 권장 (잠정 6 dim + `extras.source_status: heritage-pending`)
+- mind 등록 X
 
-#### 5.2.2 핵심 historical 3
+**체크포인트 2 보고서**:
+- 7-11건 historical npc 일람 (id·kind·status·HEXACO 신뢰도)
+- Phase 5a 6 Event participants 외래키 활성 결과
+- world-load: persons indexed 9 → 16-20
+- mind eligible 9 → 13 (player + 9 active = 13: 1·2·3·4·5·6·7·8·9·10·11·player + 1 = 13)
+- 외래키 결손 0건
+- search 정성 평가 — "임서운"·"바투"·"진대인"·"3대 천마"·"태무제"·"진천명"
+- Phase 5+ follow-up 진입 가능 여부 (mid-era-events)
 
-- `npc-chuyangjinin` 추양진인 (화산 장문인, 260년차 멸문 시 전사) — heritage-pending
-- `npc-jincheonmyeong` 진천명 (태조, 270년 전 건국) — heritage-pending
-- `npc-danun` 단운 (태무제, 30년 전 직접 참전) — heritage-pending
+→ Cowork 리뷰 → 통과 시 Phase 5 historical-npcs follow-up 종결.
 
-#### 5.2.3 선택 추가 4 — 디렉터 결정
+## 6. 결정 사항 (변경 시 디렉터 승인)
 
-- `npc-pungmanri` 풍만리 / `npc-seolmuhan` 설무한 / `npc-jayangjinin` 자양진인 / `npc-cheonrian` 천리안.
+### 6.1 ID 명명 규칙
 
-#### 5.2.4 Phase 5a 6 Event 외래키 매트릭스 활성
+- character-roster `npc-XX`: npc-08·09·10·11 그대로
+- 추가 historical: `npc-{한국어슬러그}` (예: `npc-imseowoon`·`npc-chuyangjinin`·`npc-jincheonmyeong`·`npc-danwoon`)
 
-각 Event participants.people 배열에서 `(npc 미등록)` 마커 0건 도달.
+### 6.2 HEXACO 매핑 정밀도
 
-#### 5.2.5 mind eligible 검증
+- 임서운·npc-08·09·10·11: 정밀 매핑 (Phase 2 npc-06 패턴, 신뢰도 "보통" 이상)
+- Phase 5a 핵심 historical (추양진인·진천명·단운): heritage-pending 마커 (npc-07 패턴)
+- 선택 추가 historical: heritage-pending
 
-- 현재: 9 → 체크포인트 2 후: **13** (player + npc-01..11 = 12 active + 1 player)
-- npc-08·09·10·11 정식 변환 시 `is_mind_eligible()` = true → mind upsert 자동 등록
-- historical 7-11명은 `is_mind_eligible()` = false → mind 등록 X
+### 6.3 status × kind 매트릭스
 
-회귀 가드: `world-load` 후 SQLite `mind_eligible_persons` 뷰 또는 직접 카운트 13 검증.
-
-## 6. 핵심 결정 (체크포인트 1 입력)
-
-| 결정 | 옵션 | 권장 | 비고 |
+| 인물 그룹 | kind | status | mind eligible |
 |---|---|---|---|
-| 임서운 ID | `npc-im-seoun` / `npc-h29` / `H29` | `npc-im-seoun` | descriptive Romanized, npc- prefix 일관 |
-| 임서운 affiliation | empty + pending_groups / group-mulim-mang proxy | empty + pending_groups | npc-04 정착 패턴 |
-| 임서운 status | alive / dead / missing | **missing** | history-characters H29 명시 "행방불명·생사 불명" |
-| HEXACO 신뢰도 표기 | 단일 `source_status` (legacy) / 직교 플래그 두 개 | **`heritage_doc_pending: true` + `hexaco_confidence: precise`** | §3.3 정책 갱신. 열전 부재(true)이나 다중 출처 일관(precise) — 두 의미 분리 |
-| 비밀 보존 | `## 비밀` H2 only / + `extras.secret` 미러 | **양쪽 보존 (§3.8 컨벤션)** | 산문이 SoT, frontmatter는 SQL/FTS5 머신 리더블 미러 |
-| Event 외래키 추가 | 3건(명시) / 4건(boundary 포함) | **3건 + 1 boundary 보고** | bloody-cult-rebellion-2nd는 산문 미등장. 출처 보수성 유지 |
-| 산문 정정 | "player 부친" → "player 보호자" | **정정 적용** | player.md 기준 사실 일치 |
+| npc-08·09·10·11 (active) | active | alive | ⭕ |
+| 임서운 | historical | missing | ❌ |
+| 추양진인·진천명·단운 | historical | dead | ❌ |
+| 선택 추가 | historical | dead/legendary | ❌ |
 
-## 7. 알려진 한계 / Phase 6+ 후보
+### 6.4 group_id 매핑
 
-- **화산파 group 등록**: Phase 1 group 카테고리는 active 6 group만. 멸문된 화산파(historical)는
-  Phase 6+ "historical/legendary group" 카테고리에서 처리. 임서운·추양진인의 affiliation은
-  그때까지 empty + pending_groups.
-- **혈교 잔당 group**: Phase 5a Decision Log D1 "영구 누락 + 산문 명시". Phase 6+ 후보 그대로.
-- **historical Person mind 등록**: 현재 정책으로 대화 불가. Phase 6+에서 "기억의 인물"로
-  플레이어 회상 시 등장하는 흐름 추가 검토 가능 (Memory 시스템 통합).
-- **age_at_game_start**: historical NPCs는 추정값만 가능. character-roster·history-characters
-  추정 텍스트 그대로 보존.
+| 인물 | affiliation 후보 |
+|---|---|
+| npc-08 바투 | group-bukwon-tribes(미등록) — 텍스트만, Phase 6+ |
+| npc-09 진대인 | group-donghae-merchant-council(미등록) — 텍스트만 |
+| npc-10 3대 천마 | group-cheonma-shingyo (Phase 1 등록) — 외래키 활성 |
+| npc-11 소풍자 | group-mulim-mang + group-gaebang(미등록) — 부분 활성 |
+| 임서운 | group-mulim-mang? 또는 group-hwasan-pa(미등록)? — 디렉터 결정 |
+| 추양진인 | 동일 — group-hwasan-pa(미등록) |
+| 진천명 | group-daejin-court(Phase 1 등록 — 단 270년 전 시점이라 era 결합 시 분리 필요?) |
+| 단운 | group-daejin-court (Phase 1 등록) |
 
-## 8. 후속
+**미등록 group은 affiliation에서 누락 처리** (Phase 5a D1 정책 그대로). 본문에 텍스트 명시.
 
-Phase 5c.1 종결 후:
-- Cowork에서 `task-phase5-followup-mid-era-events.md` 작성 — 본 Phase 산출 historical npc를
-  mid-era(전성기·변곡기·쇠퇴기) 사건의 participants로 활용. history.md §0.2의 미시드 14사건
-  중 핵심 5-10건 변환.
-- 그 후 Phase 6+ (Skill·Item·Knowledge·Lore) 진입.
+### 6.5 Phase 5a 6 Event body 외래키 갱신
 
-## 9. 변경 이력
+본 follow-up 진행 시 다음 갱신:
+- bloody-night.participants.people: 임서운·추양진인 추가 (둘 다 historical)
+- hwasan-fall.participants.people: 임서운·추양진인 추가
+- blood-disappearance.participants.people: 임서운 추가
+- bloody-cult-rebellion-2nd.participants.people: 단운 추가
+- empire-founding.participants.people: 진천명·풍만리(선택)·설무한(선택)·자양진인(선택)·천리안(선택) 추가
 
-| 버전 | 날짜 | 변경 내용 |
-|------|------|-----------|
-| v1.0 | 2026-05-02 | 초안 작성 — Phase 5b D2 follow-up 정형. 체크포인트 1·2 분리. 권장 7건 / 선택 11건. |
-| v1.1 | 2026-05-02 | 체크포인트 1 디렉터 리뷰 반영 — §3.3 단일 `source_status` → 직교 플래그(`heritage_doc_pending` + `hexaco_confidence`) 분리. §3.8 신규 — `extras.secret` 컨벤션 정형화 (산문 SoT + frontmatter 미러). §5.1.1 템플릿·§6 결정 표·§4 Done Criteria 동기화. |
+이 갱신이 외래키 활성 검증의 핵심 — historical npc 등록 후 6 Event body가 정식 외래키로 정합.
+
+### 6.6 SQLite·MCP·기타 — 변경 없음
+
+Phase 2 Person 패턴 그대로. 코드 변경 X.
+
+## 7. Out of Scope
+
+- mid-era-events follow-up (별도 TASK — 본 follow-up 종결 후)
+- 시기별 atlas 분기 (별도 follow-up 또는 Phase 6+)
+- 미등록 group 추가 (group-hwasan-pa·group-bukwon-tribes·group-donghae-merchant-council 등) — Phase 6+ legendary/historical group 카테고리 등장 시
+- player 메인 퀘스트 시드 (예: 임서운 추적 quest) — Phase 6+ gameplay 다리
+- HEXACO 24 facet 정형 — Phase 4+ 영구 보류 (Phase 5+ 작전과 일관)
+- npc-mind 시스템에서 historical npc 활용 (예: 죽은 인물의 dialogue·기억) — Phase 6+
+
+## 8. 코드 위치 가이드
+
+| 위치 | 무엇을 볼지 |
+|---|---|
+| `projects/chilguk-chunchu/world/person/npc-02.md` (Phase 2) | 정밀 매핑 패턴 (정밀 6 dim + biography_short + game_role) |
+| `projects/chilguk-chunchu/world/person/npc-07.md` (Phase 2) | heritage-pending 마커 패턴 |
+| `projects/chilguk-chunchu/world/person/npc-11.md` (사용자 작성 stub) | 사용자 직접 stub 패턴 — 본 follow-up이 풍부화 |
+| `projects/chilguk-chunchu/world/person/player.md` (Phase 2.1) | player.md 비밀 4종에 임서운 직접 등장 — 임서운 작성 시 정합 검증 |
+| `wuxia-core/docs/world/history-characters.md` v1.2 | ★ 핵심 입력. character-roster + history 시드 |
+
+## 9. 시작 체크리스트
+
+1. `task-phase2-person-vertical-slice.md` + Phase 2 보고서 빠르게 훑기
+2. `wuxia-core/docs/world/history-characters.md` v1.2 통독 — 본 follow-up 핵심 입력
+3. `wuxia-core/docs/characters/character-roster.md` v1.1 통독 — npc-08·09·10·11 우선순위
+4. Phase 5a 6 Event body의 `(npc 미등록)` 인물 일람 추출
+5. **임서운 단독 변환** → ★체크포인트 1★ 보고 → **commit pause**
+6. 7-11 historical npc 추가 → 체크포인트 2
+
+## 10. 리뷰 채널
+
+체크포인트 1·2 보고서를 디렉터(사용자)가 Cowork 세션에 복붙. 형식:
+- **Done** · **Diff** · **데모 명령** · **결정** · **막힌 것** · **다음 의견**
+- HEXACO 매핑 결정 근거 (정밀 vs heritage-pending) + group affiliation 처리 + Phase 5a Event body 외래키 갱신 결과 명시
+
+보고서 파일명:
+- 체크포인트 1: `docs/tasks/phase5-followup-historical-npcs-checkpoint1-report.md`
+- 체크포인트 2: `docs/tasks/phase5-followup-historical-npcs-checkpoint2-report.md`
