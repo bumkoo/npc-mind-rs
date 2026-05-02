@@ -1,44 +1,37 @@
-# Phase 5b: Era + Timeline Vertical Slice (Phase 5 분리 후반부)
+# Phase 5b: Era + Timeline view + Atlas overlay (관계 도메인 두 번째 + Phase 5a era_id 활성)
 
 > **For Claude Code.** 이 문서는 자급 자족이며 외부 링크 없이도 작업 시작 가능.
 > 결정 사항을 임의 변경하지 말 것. 변경이 필요하면 보고서에서 디렉터 승인 요청.
-> **선행 조건**: Phase 5a 종결 ✅
-> **체크포인트 분리 게이트 강제 적용** — Phase 2·3·4·5a 패턴 그대로. 1회 통합 commit 금지.
+> **선행 조건**: Phase 0·1·2(+2.1·2.2)·3·4·5a 모두 종결.
+> **체크포인트 분리 게이트 강제 적용** — Phase 1 미준수 후속, Phase 2·3·4·5a에서 정상.
 
 ---
 
 ## 1. 목표
 
-Phase 5의 후반부 — **Era 인스턴스 도메인** + **Timeline 관계 도메인** + Phase 4·5a의
-era_id 외래키 활성. Phase 5a에서 모든 사건이 `era_id=~`로 비워진 상태였던 것을
-정형 시간 축으로 승급한다.
+Phase 5b는 **세 결의 통합 검증**:
 
-**Phase 5b의 책임**:
-1. **Era 도메인** — 5 시대(`history.md` §0.2 그대로) 정형. id·kind·name·aliases·summary·
-   tags·extras·temporal(start/end_year_relative)·key_events·body_sections.
-2. **Timeline 도메인** — 첫 두 번째 관계 도메인. Atlas와 결이 같은 도메인+뷰
-   이중성. references(Vec<EventId>) + view 메서드 (events_in/events_during/causal_chain).
-3. **Event.era_id 외래키 활성** — Phase 5a 6 사건의 era_id를 era 인스턴스로 매핑.
-4. **Atlas.era_id 외래키 활성** — Phase 4 atlas-jungwon의 era_id 텍스트를 외래키로 승급.
-5. **Atlas overlay** — Q3 (a) 결정에 따라 atlas.era_id 외래키 단일 매핑. 시기별
-   atlas 분기는 Phase 6+ follow-up TASK.
-6. **검증 게이트**:
-   - 체크포인트 1: 5 era 변환 + Phase 5a 6 Event era_id 활성 + atlas-jungwon era_id 활성
-   - 체크포인트 2: 1 Timeline + view 메서드 4종 e2e + MCP 도구 6개 정성 평가
+1. **Era 인스턴스 도메인** — 5 시대(history.md §0.2: 건국기·전성기·변곡기·쇠퇴기·붕괴기). Phase 5a `Event.era_id` 텍스트 → 정식 외래키 활성.
+2. **Timeline 관계 도메인** — Atlas와 같은 결의 도메인+뷰 이중성. Era × Event 합성 view.
+3. **Atlas overlay 활성** — `atlas.era_id` 외래키 (Q3·a 결정). atlas-jungwon이 era-fall-of-empire 시점임을 명시.
 
-**Phase 5b의 책임 외**:
-- View trait 일반화 — Q2 결정에 따라 보류. Atlas + Timeline 각자 view 메서드 자체 구현.
-- 시기별 atlas 분기 (atlas-daejin-empire 등) — `task-phase5-followup-era-atlases.md`
-- Historical NPC 시드 확장 — `task-phase5-followup-historical-npcs.md`
-- Era 외래키 매트릭스의 다른 도메인 확장 (예: Person 활동 시기·Group 존속 시기) — Phase 6+
+**핵심 결정 — View trait 일반화 보류 (Q2 결정)**: Atlas와 Timeline 각자 view 메서드를 자체 구현. trait 추출은 두 사례를 충분히 사용한 뒤 Phase 5+ 또는 별도 작업.
 
-## 2. 사용자 결정 3건 반영
+**검증 게이트**:
+- 체크포인트 1: 5 Era 변환 + Phase 5a 6 Event era_id 외래키 활성
+- 체크포인트 2: 1 Timeline + Atlas overlay + MCP 도구 + 정성 평가
 
-| ID | 질문 | 결정 |
-|---|---|---|
-| Q1 | Era 개수·분할 | **5 era** — `history.md` §0.2 그대로 (founding/prosperity/turning/decline/fall) |
-| Q2 | View trait 일반화 | **보류** — Atlas + Timeline 각자 view 메서드 자체 구현. 두 사례로는 정형 추출 시기상조 (Phase 6+ 세 번째 관계 도메인 등장 시 재검토) |
-| Q3 | Atlas overlay | **(a) atlas.era_id 외래키** — 시기별 atlas 분기는 별 atlas 인스턴스 (Phase 6+ follow-up) |
+## 2. 연관 컨텍스트
+
+- `CLAUDE.md` 프로젝트 루트
+- `docs/tasks/00-roadmap.md` — 전체 흐름·결정 로그
+- `docs/tasks/task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` — Phase 5a 결과
+- `docs/tasks/task-phase4-atlas-vertical-slice.md` — Atlas의 도메인+뷰 이중성 패턴 (Timeline이 미러링)
+- 메모리(Cowork 세션 보유): 9 인스턴스 + 1 관계 도메인 → **Phase 5b로 1 관계 도메인 추가 (Atlas, Timeline)**, Phase 5b Q1·Q2·Q3 결정
+- 입력 자료:
+  - `wuxia-core/docs/world/history.md` — 270년 연표 (5 시대 + 28 사건). **Phase 5b 핵심 입력**
+  - Phase 5a 산출 — `projects/chilguk-chunchu/world/event/*.md` × 6 (era_id 외래키 활성 대상)
+  - Phase 4 산출 — `atlas-jungwon` (era_id 외래키 활성 대상)
 
 ## 3. 제약
 
@@ -46,177 +39,335 @@ era_id 외래키 활성. Phase 5a에서 모든 사건이 `era_id=~`로 비워진
 
 | 위치 | 책임 |
 |---|---|
-| `src/domain/world/era.rs` | **장르 영원히 모름** — id·kind(String)·name·aliases·summary·tags·extras·temporal·key_events(Vec<EventId>)·body_sections |
-| `src/domain/world/timeline.rs` | **장르 영원히 모름** — id·kind·name·aliases·summary·tags·extras·references(Vec<EraId>)·body_sections + view 메서드 (eras_in/events_in/events_during/causal_chain). **체크포인트 2 디렉터 변경**: 원래 `Vec<EventId>`였으나 timeline=era 묶음 + era=event 묶음 두 단계 합성으로 정형화. `events_in` view가 era.key_events 평면화. |
+| `src/domain/world/era.rs` | **장르 영원히 모름** — id·name·aliases·kind(String)·summary·tags·extras·temporal(year_relative_start/end·label·duration)·key_events(Vec<EventId>)·body_sections |
+| `src/domain/world/timeline.rs` | **장르 영원히 모름** — id·name·aliases·kind·summary·extras·extent(year_relative_min/max·projection)·references(Vec<EraId>)·body_sections + view 메서드 (`eras_in`·`events_in`·`events_during`·`causal_chain`) |
 | `src/worldbuilding/markdown/{era,timeline}.rs` | 장르 중립 frontmatter+섹션 파서 |
-| `src/adapter/sqlite_world.rs` (확장) | `eras` 테이블 + FTS5 (체크포인트 1, `migrate_v6`) + `timelines` 테이블 + `timeline_era_refs` 양방향 인덱스 (체크포인트 2, `migrate_v7`) |
-| `genres/wuxia/forms/{era,timeline}.toml` | Phase N 빈 슬롯 + kind 옵션 (founding/prosperity/turning/decline/fall) |
-| `genres/wuxia/markdown_template/{era,timeline}.md` | 무협 era/timeline 양식 |
-| `projects/chilguk-chunchu/world/{era,timeline}/*.md` | 칠국춘추 era·timeline 인스턴스 |
+| `src/adapter/sqlite_world.rs` (확장) | `eras` + `timelines` + FTS5 + `event_era_refs` (양방향) + `migrate_v6` + atlases.era_id 컬럼 추가 |
+| `genres/wuxia/forms/{era,timeline}.toml` | Phase N 빈 슬롯 |
+| `genres/wuxia/markdown_template/{era,timeline}.md` | 무협 양식 |
+| `projects/chilguk-chunchu/world/{era,timeline}/*.md` | 칠국춘추 인스턴스 |
 
-**`src/`에 wuxia 단어 X.** "붕괴기"·"칠국춘추" 등은 모두 `genres/wuxia/`·`projects/`에만.
+**`src/`에 wuxia 단어 X.** 건국기·붕괴기·칠국춘추 같은 어휘는 `genres/wuxia/`·`projects/`에만.
 
-### 3.2 외래키 매트릭스 확장 (Phase 5b 활성)
+### 3.2 5 Era — `history.md` §0.2 정확 매핑
 
-| 검증 | Phase 5a까지 | Phase 5b |
-|---|---|---|
-| `Era.key_events` ↔ `events.id` | — | **에러** (활성, 자체 도메인 외래키 X — Era→Event) |
-| `Event.era_id` ↔ `eras.id` | 텍스트만 (Phase 5a) | **에러** (활성) |
-| `Atlas.era_id` ↔ `eras.id` | 텍스트만 (Phase 4) | **에러** (활성) — Atlas 도메인 모델 변경 없이 `extras["era_id"]` 헬퍼로 추출 후 검증 |
-| `Timeline.references` ↔ `events.id` | — | **에러** (체크포인트 2) |
-| `Timeline.references` 중복 금지 | — | **에러** (composite PK 보호) |
+5 시대 boundary는 history.md §0.2를 정확히 따름. boundary 케이스(예: bloody-cult-rebellion-2nd가 -30년이라 쇠퇴기 끝 vs 붕괴기 시작 어느 era에 속할지)는 **체크포인트 1 보고서에서 디렉터 결정 사항**으로 명시.
 
-partial commit 방지 — 검증 → upsert 순서. Phase 1·2·3·4·5a 패턴 그대로.
+추정 매핑 (history.md §0.2 확인 후 정정):
 
-### 3.3 Era boundary 정책 — `start_year_relative` inclusive · `end_year_relative` exclusive
+| Era ID | 시대명 | year_relative 범위 | Phase 5a Event 매핑 (잠정) |
+|---|---|---|---|
+| `era-empire-founding` | 건국기 | -270 ~ -200 | event-empire-founding |
+| `era-prosperity` | 전성기 | -200 ~ -140 | (미시드) |
+| `era-turning` | 변곡기 | -140 ~ -100 | (미시드) |
+| `era-decline` | 쇠퇴기 | -100 ~ -30 | (boundary 케이스) |
+| `era-fall-of-empire` | 붕괴기 | -30 ~ 0 | bloody-cult-2nd · blood-disappearance · bloody-night · hwasan-fall · six-states-independence (5건) |
 
+**boundary 케이스**: `event-bloody-cult-rebellion-2nd`(-30)이 쇠퇴기 끝(-30)인지 붕괴기 시작(-30)인지. history.md §0.2 정확 boundary 표기 따름. 5b는 inclusive/exclusive boundary 정책도 결정.
+
+### 3.3 Phase 5a Event era_id 외래키 활성
+
+| 검증 (Phase 5b 활성) | 정책 |
+|---|---|
+| `Event.era_id` → `eras.id` 존재 | **에러** (활성, Phase 5a 텍스트 → 승급) |
+| `Atlas.era_id` → `eras.id` 존재 | **에러** (활성, Phase 4 텍스트 → 승급) |
+| `Timeline.references` 각 EraId → `eras.id` 존재 | **에러** (5b 신규) |
+| `Era.key_events` 각 EventId → `events.id` 존재 | **에러** (자체 도메인) |
+
+Phase 5a era_id가 비워진 6 Event 모두 Phase 5b 진입 시 매핑 필요. 매핑 안 한 era_id=null은 허용 (선택적 외래키).
+
+### 3.4 Atlas overlay 활성 — Q3·a 결정
+
+`Atlas.era_id: Option<EraId>` 외래키 활성. atlas-jungwon = `era-fall-of-empire` (현재 시점). 시기별 atlas 분기(atlas-daejin-empire = era-empire-founding 등)는 **Phase 5b 미포함, Phase 5b 종결 후 follow-up 또는 Phase 6+**.
+
+### 3.5 View trait 일반화 보류 — Q2 결정
+
+Atlas의 view 메서드(`places_in`·`settlements_in`·`adjacent_to`)와 Timeline의 view 메서드(`eras_in`·`events_in`·`events_during`·`causal_chain`)는 각자 자체 구현. **trait 추출은 Phase 5b 종결 후 두 사례 충분히 사용한 뒤 결정.** Phase 5b는 trait 도입 X.
+
+### 3.6 Timeline 관계 도메인 — Atlas 패턴 미러
+
+Timeline은 Atlas와 같은 결의 도메인+뷰 이중성:
+
+```rust
+pub struct TimelineExtent {
+    pub year_relative_min: i32,
+    pub year_relative_max: i32,
+    pub projection: String,    // "linear" (Phase 5b 단일 옵션). Phase N+ "tree"·"branching" 가능
+}
+
+pub struct Timeline {
+    pub id: TimelineId,
+    pub kind: String,            // "main-history" | "character-arc" | "war-chronicle"
+    pub name: String,
+    pub aliases: Vec<String>,
+    pub summary: String,
+    pub tags: Vec<String>,
+    pub extras: serde_json::Map<String, Value>,
+    pub extent: TimelineExtent,
+    pub references: Vec<EraId>,  // 핵심 — timeline에 등장하는 era들
+    pub body_sections: BTreeMap<String, String>,
+    pub source_path: Option<String>,
+}
+
+impl Timeline {
+    pub fn eras_in<R: WorldRepository>(&self, repo: &R) -> Result<Vec<Era>, WorldError>;
+    pub fn events_in<R: WorldRepository>(&self, repo: &R) -> Result<Vec<Event>, WorldError>;
+    pub fn events_during<R: WorldRepository>(&self, era_id: &EraId, repo: &R) -> Result<Vec<Event>, WorldError>;
+    pub fn causal_chain<R: WorldRepository>(&self, event_id: &EventId, repo: &R) -> Result<Vec<EventId>, WorldError>;
+}
 ```
-era-founding         start=-270, end=-220   → -270 ≤ year < -220
-era-prosperity       start=-220, end=-150   → -220 ≤ year < -150
-era-turning          start=-150, end=-70    → -150 ≤ year < -70
-era-decline          start=-70,  end=-30    → -70  ≤ year < -30
-era-fall-of-empire   start=-30,  end=0      → -30  ≤ year < 0  (현재 270년차 = 0)
-```
 
-**boundary 케이스 처리**:
-- `event-bloody-cult-rebellion-2nd` (year_relative=-30) → `era-fall-of-empire` (start inclusive)
-  - history.md §0.2의 "쇠퇴기 200~240" 표기는 inclusive-exclusive로 해석.
-  - 디렉터 권장: 240년차(=−30)는 붕괴기 시작 트리거.
-- `event-empire-founding` (year_relative=-270) → `era-founding` (start inclusive)
-- 270년차(현재, year_relative=0)은 어느 era에도 속하지 않음 (모든 era end exclusive).
-  → 현재 시점 사건은 별도 era 추가 시까지 era_id 비울 것 (Phase 5b 6 Event 모두 -7 이하라 영향 없음).
+검증 게이트: timeline-jungwon-history (270년 칠국 역사) 1건 변환 + view 메서드 e2e.
 
-이 정책은 view 메서드 `events_during(era_id)`에 인코딩 — `e.year_relative >= era.start AND e.year_relative < era.end`.
+### 3.7 SoT = 마크다운, 검색 = FTS5 + LIKE fallback
 
-### 3.4 Atlas 도메인 모델 — extras["era_id"] 그대로 유지
+기존 흐름.
 
-Atlas의 era_id를 top-level 필드로 승격하는 breaking change는 Phase 6+로 미룬다. Phase 5b엔
-**최소 변경 원칙**:
-- Atlas 도메인 모델: 그대로 (`Atlas::era_id() -> Option<&str>` 헬퍼만).
-- world-load CLI: `atlas.era_id()` 호출 → era_id_set에 없으면 hard-fail.
-- atlas-jungwon.md: `extras.era_id`를 `era-fall-of-empire`로 변경 (텍스트 → 외래키 승급).
+### 3.8 체크포인트 분리 게이트
 
-Event는 이미 top-level `era_id` 필드라 양식 변경 없음.
-
-### 3.5 SoT (Source of Truth)
-
-기존 흐름. 마크다운 = SoT, SQLite는 빌드 산출물(.gitignore).
-
-### 3.6 검색 범위
-
-FTS5 trigram + LIKE fallback (Phase 1·2·3·4·5a 패턴 그대로).
-
-### 3.7 체크포인트 분리 게이트 — 강제 적용
-
-1. **체크포인트 1**: 5 Era 변환 + Phase 5a 6 Event era_id 외래키 활성 + atlas-jungwon era_id 외래키 활성 → commit pause → `phase5b-checkpoint1-report.md` → 디렉터 리뷰
-2. **체크포인트 2**: 1 Timeline 변환 + view 메서드 4종 e2e + MCP 도구 6개 정성 평가 → commit pause → `phase5b-checkpoint2-report.md` → Phase 5b 종결
+1. **체크포인트 1**: 5 Era 변환 + Phase 5a 6 Event era_id 외래키 활성 + Atlas era_id 외래키 활성 → commit pause → `phase5b-checkpoint1-report.md` → Cowork 리뷰
+2. **체크포인트 2**: 1 Timeline 변환 + view 메서드 e2e + MCP 도구 + 정성 평가 → commit pause → `phase5b-checkpoint2-report.md` → Phase 5b 종결
 
 **1회 통합 commit 금지.**
 
 ## 4. Done Criteria
 
-### 체크포인트 1
-- [ ] `src/domain/world/era.rs` — Era 애그리거트 + EraId + EraTemporal + EraFilter + 단위 테스트
-- [ ] `src/worldbuilding/markdown/era.rs` — Era 마크다운 파서 + 단위 테스트
-- [ ] `genres/wuxia/markdown_template/era.md` 템플릿
-- [ ] `genres/wuxia/forms/era.toml` 자리 (Phase N) + 5 kind 옵션
-- [ ] `SqliteWorldStore::migrate_v6` — `eras` + `eras_fts` (Era는 단순 인스턴스 도메인 — Atlas의 place_atlas_refs 같은 양방향 인덱스 불필요)
-- [ ] `WorldRepository`: `list_eras`/`get_era`/`search_eras`/`upsert_era`/`count_eras`
-- [ ] `bin/world-load` 확장 — `world/era/*.md` 스캔 + Era.key_events 외래키 + Event.era_id 외래키 + Atlas.era_id 외래키 (셋 모두 활성, 결손 시 hard-fail)
-- [ ] `bin/mind-studio` REST + MCP 도구 3개: `list_eras` / `get_era` / `search_eras`
-- [ ] `tests/world_load_fk_negative_era.rs` — era 결손 e2e (N1 패턴 미러)
-- [ ] **5 Era 변환** (founding/prosperity/turning/decline/fall) — `projects/chilguk-chunchu/world/era/*.md`
-- [ ] **6 Event 업데이트** — era_id 활성 (1 founding + 5 fall-of-empire, boundary 정책 §3.3 적용)
-- [ ] **atlas-jungwon 업데이트** — `extras.era_id = era-fall-of-empire` 활성
-- [ ] world-load 통과 — `eras indexed = 5`, `events indexed = 6`, `atlases indexed = 1`, fk errors = 0
-
-### 체크포인트 2
-- [ ] `src/domain/world/timeline.rs` — Timeline 애그리거트 + TimelineId + TimelineFilter + view 메서드 (events_in / events_during / causal_chain) + 단위 테스트
-- [ ] `src/worldbuilding/markdown/timeline.rs` — Timeline 마크다운 파서 + 단위 테스트
-- [ ] `genres/wuxia/markdown_template/timeline.md` 템플릿
-- [ ] `genres/wuxia/forms/timeline.toml` 자리
-- [ ] `SqliteWorldStore::migrate_v7` — `timelines` + `timelines_fts` + `timeline_era_refs` 양방향 인덱스 (composite PK)
-- [ ] `WorldRepository`: `list_timelines`/`get_timeline`/`search_timelines`/`upsert_timeline`/`count_timelines`
-- [ ] `bin/world-load` 확장 — `world/timeline/*.md` 스캔 + Timeline.references 외래키 + 중복 금지
-- [ ] `bin/mind-studio` REST + MCP 도구 3개: `list_timelines` / `get_timeline` / `search_timelines`
-- [ ] `tests/world_load_fk_negative_timeline.rs` — timeline 결손 e2e
-- [ ] **1 Timeline 변환** — `timeline-jungwon-history`
-- [ ] view 메서드 4종 e2e — `eras_in` / `events_in` / `events_during(era-fall-of-empire)` / `causal_chain`
-- [ ] MCP 도구 6개 정성 평가
-- [ ] cargo build + cargo test --features embed --lib 통과
+- [ ] 디렉토리 골격: `src/domain/world/{era,timeline}.rs` (stub 채움), `src/worldbuilding/markdown/{era,timeline}.rs`
+- [ ] `Era` 애그리거트 + `EraId` + `EraTemporal` + 단위 테스트
+- [ ] `Timeline` 애그리거트 + `TimelineId` + `TimelineExtent` + view 메서드(`eras_in`·`events_in`·`events_during`·`causal_chain`) + 단위 테스트
+- [ ] 마크다운 frontmatter+섹션 파서 (era·timeline 두 양식) + 단위 테스트
+- [ ] `genres/wuxia/markdown_template/{era,timeline}.md` 템플릿
+- [ ] `genres/wuxia/forms/{era,timeline}.toml` 자리 (Phase N 빈 슬롯)
+- [ ] `SqliteWorldStore` 확장 — `eras` + `timelines` + `event_era_refs` (양방향) + `atlases.era_id` 컬럼 + `migrate_v6`
+- [ ] `bin/world-load` 확장 — `world/{era,timeline}/*.md` 스캔 + Event/Atlas era_id 외래키 활성
+- [ ] `bin/mind-studio` MCP 도구 6개: `list_eras` · `get_era` · `search_eras` · `list_timelines` · `get_timeline` · `search_timelines`
+- [ ] **체크포인트 1**: 5 Era 변환 + 6 Event era_id 매핑 통과 + atlas-jungwon.era_id 활성
+- [ ] **체크포인트 2**: 1 Timeline 변환 + view 메서드 e2e + MCP 정성 + 외래키 결손 0건
+- [ ] `cargo build` + `cargo test --features embed` + 기존 e2e 회귀 통과
+- [ ] 정성 검증: `list_eras()` → 5건 / `get_timeline("timeline-jungwon-history").events_during("era-fall-of-empire", repo)` → 5건 (붕괴기 사건들)
 
 ## 5. 단계별 작업
 
-### Step 1 — Era 도메인 + 마크다운 파서 (체크포인트 1)
+### Step 1 — Era 도메인 + 마크다운 파이프라인
 
-```
-src/domain/world/
-├── era.rs                # Era + EraId + EraTemporal + EraFilter (Phase 5a stub 채움)
-└── ...
-
-src/worldbuilding/
-├── markdown/
-│   ├── era.rs            # Era .md → 도메인 (신규)
-│   └── ...
-├── repository.rs         # WorldRepository — list_eras/get_era/search_eras/upsert_era/count_eras 추가
-```
-
-**`Era` 애그리거트**:
+#### `Era` 애그리거트
 
 ```rust
+// src/domain/world/era.rs
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct EraId(pub String);
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct EraTemporal {
-    /// 270년차 기준 절대 연도 (inclusive). 예: era-founding = -270.
-    pub start_year_relative: Option<i32>,
-    /// 270년차 기준 절대 연도 (exclusive). 예: era-founding = -220 → era-prosperity 시작.
-    pub end_year_relative: Option<i32>,
-    pub notes: Option<String>,
+    pub year_relative_start: i32,    // 270년차 기준. era-empire-founding은 -270
+    pub year_relative_end: i32,       // era-fall-of-empire는 0 (현재)
+    pub year_label: String,            // "270~200년 전" 자유 텍스트
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_years: Option<i32>,   // 캐시 (end - start)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Era {
     pub id: EraId,
-    pub kind: String,                          // "founding"|"prosperity"|"turning"|"decline"|"fall"
+    pub kind: String,                  // "founding" | "prosperity" | "turning" | "decline" | "fall" — 장르가 채움
     pub name: String,
     pub aliases: Vec<String>,
     pub summary: String,
     pub tags: Vec<String>,
-    pub extras: Map<String, Value>,
+    pub extras: serde_json::Map<String, Value>,
     pub temporal: EraTemporal,
-    pub key_events: Vec<EventId>,              // Phase 5a Event 외래키 활성 (Era → Event 단방향)
+    pub key_events: Vec<EventId>,      // 자체 도메인 외래키 (events.id)
     pub body_sections: BTreeMap<String, String>,
     pub source_path: Option<String>,
 }
 
-impl Era {
-    /// 본 era의 시간 범위 안에 year_relative가 속하는지 (start inclusive, end exclusive).
-    pub fn contains_year(&self, year_relative: i32) -> bool { ... }
-
-    /// 본 era의 길이 (연단위). start/end 모두 있어야 Some.
-    pub fn duration_years(&self) -> Option<u32> { ... }
-}
-```
-
-**`EraFilter`**:
-
-```rust
 pub struct EraFilter {
     pub kind: Option<String>,
-    /// 본 era가 포함하는 year_relative (start_year_relative <= ? AND end_year_relative > ?).
-    pub contains_year: Option<i32>,
+    pub year_relative_min: Option<i32>,
+    pub year_relative_max: Option<i32>,
     pub genre_tag: Option<String>,
 }
 ```
 
-산출물 검증: `cargo build` 통과. 단위 테스트 — Era 인스턴스 생성, contains_year boundary, EraTemporal 직렬화, key_events 빈 배열 default.
+#### 마크다운 양식 — era-fall-of-empire 예시
 
-### Step 2 — SqliteWorldStore migrate_v6 + world-load 확장 (체크포인트 1)
+```yaml
+---
+id: era-fall-of-empire
+kind: fall
+name: 붕괴기
+aliases: [말기, 말세, 종말기]
+summary: |
+  단운(태무제) 즉위 후 30년간의 황실 권위 붕괴와 6국 독립 운동. 칠국춘추 270년차의
+  직전 시기. 모든 메인 서사 트리거 사건들이 이 시기에 집중.
+tags: [wuxia, era, fall-period, current-era]
+temporal:
+  year_relative_start: -30
+  year_relative_end: 0
+  year_label: 30~0년 전 (240~270년차)
+  duration_years: 30
+key_events:
+  - event-bloody-cult-rebellion-2nd
+  - event-blood-disappearance
+  - event-bloody-night
+  - event-hwasan-fall
+  - event-six-states-independence
+extras:
+  notable_npcs: [npc-02, npc-07, npc-01]
+  status: 현재 진행 중
+  source_section: history.md §0.2 붕괴기
+---
 
-#### SQLite 스키마 (체크포인트 1)
+## 개요
+산문 — 시대 핵심 묘사.
+
+## 시대 트리거
+산문 — 이전 era에서 어떻게 전환됐는가.
+
+## 주요 사건 흐름
+산문 — key_events의 인과 흐름.
+
+## 핵심 인물
+- 조고(npc-02): 시기 권력 장악
+- 천순제(npc-07): 즉위
+- 명경(npc-01): 정파 정보망
+
+## 게임 시점에서의 의미
+산문 — 270년차에 NPC들이 이 시기를 어떻게 기억하는가.
+```
+
+권장 H2 섹션: `## 개요` · `## 시대 트리거` · `## 주요 사건 흐름` · `## 핵심 인물` · `## 게임 시점에서의 의미`.
+
+### Step 2 — Timeline 도메인 + 마크다운 파이프라인
+
+#### `Timeline` 애그리거트 (§3.6 참조)
+
+view 메서드 4종 구현:
+- `eras_in<R>(&self, repo) -> Vec<Era>` — references 따라 Era 정합 list
+- `events_in<R>(&self, repo) -> Vec<Event>` — 모든 era들에 속한 events 합성 (era별 events.era_id 매칭)
+- `events_during<R>(&self, era_id, repo) -> Vec<Event>` — 특정 era의 events
+- `causal_chain<R>(&self, event_id, repo) -> Vec<EventId>` — related_events traversal (timeline 안의 events만 필터)
+
+#### 마크다운 양식 — timeline-jungwon-history 예시
+
+```yaml
+---
+id: timeline-jungwon-history
+kind: main-history
+name: 칠국춘추 270년사
+aliases: [중원사, 칠국 역사, 대륙사]
+summary: |
+  대륙 단일 정치체 = 대진제국에서 7국 분열 = 칠국춘추까지 270년의 흐름.
+  5 시대 + 6 핵심 사건 + 인과 사슬을 합성하는 main timeline.
+tags: [wuxia, timeline, main-history]
+extent:
+  year_relative_min: -270
+  year_relative_max: 0
+  projection: linear                 # Phase 5b 단일 옵션
+references:
+  - era-empire-founding
+  - era-prosperity
+  - era-turning
+  - era-decline
+  - era-fall-of-empire
+extras:
+  source_section: history.md §0.1·§0.2
+  era_id: ~                          # timeline 자체는 era에 안 속함
+---
+
+## 개요
+대륙 270년 흐름의 종론.
+
+## Era 변천
+산문 — 5 era 차례로 어떻게 이어지는가.
+
+## 핵심 인과 사슬
+산문 — 6 Event의 인과 표현 (related_events 기반). bloody-cult-2nd → blood-disappearance →
+bloody-night ↔ hwasan-fall → six-states-independence.
+
+## 게임 시점에서의 활용
+산문 — NPC 대사·서적·기억 시드로 어떻게 활용되는가.
+```
+
+### Step 3 — 5 Era 변환 + Phase 5a Event era_id 활성 ★체크포인트 1★
+
+작업:
+1. `wuxia-core/docs/world/history.md` §0.2 통독 → 5 era boundary 정확 매핑
+2. 5 era .md 작성 (`projects/chilguk-chunchu/world/era/era-{empire-founding,prosperity,turning,decline,fall-of-empire}.md`)
+3. Phase 5a 6 Event의 `era_id` 매핑 갱신:
+   - `event-empire-founding.era_id = "era-empire-founding"`
+   - `event-bloody-cult-rebellion-2nd.era_id` = boundary 결정 (era-decline 끝 vs era-fall-of-empire 시작)
+   - `event-blood-disappearance.era_id = "era-fall-of-empire"`
+   - `event-bloody-night.era_id = "era-fall-of-empire"`
+   - `event-hwasan-fall.era_id = "era-fall-of-empire"`
+   - `event-six-states-independence.era_id = "era-fall-of-empire"`
+4. atlas-jungwon.era_id = "era-fall-of-empire" 갱신
+5. world-load 실행 — fk errors = 0 도달
+
+**체크포인트 1 보고서** (`docs/tasks/phase5b-checkpoint1-report.md`):
+- `git diff --stat`
+- 5 era .md 핵심 부분 (frontmatter + §개요 1단락)
+- 6 Event era_id 매핑 결과
+- atlas-jungwon.era_id 활성 결과
+- world-load 출력 (fk errors = 0)
+- **변환 시 결정한 것**:
+  - 5 era boundary 정확 매핑 (history.md §0.2)
+  - bloody-cult-rebellion-2nd boundary 케이스 (-30 → era-decline 또는 era-fall-of-empire)
+  - kind 결정 (founding·prosperity·turning·decline·fall)
+  - aliases (각 era 2-3개)
+  - key_events 정렬 순서 (시간순 권장)
+- **막힌 결정**: 디렉터 결정 필요 사항 (boundary 정책·kind 명명 등)
+- Step 4 진행 가능 여부 의견
+
+→ Cowork 리뷰 → **commit pause 유지** → 통과 신호 받고 다음 단계.
+
+### Step 4 — Timeline 도메인 + atlas overlay 활성
+
+체크포인트 1 통과 후:
+1. `Timeline` 도메인 구현 + view 메서드 4종 + 단위 테스트
+2. `timeline-jungwon-history.md` 작성 (§Step 2 양식)
+3. SqliteWorldStore migrate (timelines 테이블 + atlases.era_id 컬럼)
+4. world-load 통합 — atlas-jungwon.era_id 활성 시연
+5. view 메서드 자동 e2e:
+   - `events_during("era-fall-of-empire", repo)` → 5 (또는 boundary 결정에 따라 6)
+   - `causal_chain("event-bloody-night", repo)` → bloody-night의 related_events traversal 결과
+
+### Step 5 — MCP 도구 6개 + 정성 평가 ★체크포인트 2★
+
+```
+list_eras(filter) -> Vec<Era>
+get_era(era_id) -> Option<Era>
+search_eras(query, top_k) -> Vec<Era>
+
+list_timelines(filter) -> Vec<Timeline>
+get_timeline(timeline_id) -> Option<Timeline>
+search_timelines(query, top_k) -> Vec<Timeline>
+```
+
+**체크포인트 2 보고서** (`docs/tasks/phase5b-checkpoint2-report.md`):
+- `list_eras()` 결과 (5건 — 시간순)
+- `get_era("era-fall-of-empire")` 전체 detail + key_events 5건
+- `get_timeline("timeline-jungwon-history")` 전체 detail + references 5 era
+- view 메서드 호출 결과 (eras_in·events_in·events_during·causal_chain)
+- search 6쿼리 — "건국기"·"붕괴기"·"칠국춘추 270년사"·"붕괴 시대" 등
+- 외래키 결손 0건 검증 (Phase 5a Event era_id + Atlas era_id 모두 활성)
+- Phase 6+ 진입 가능 여부 의견
+
+→ Cowork 리뷰 → 통과 시 Phase 5b 종결.
+
+## 6. 결정 사항 (변경 시 디렉터 승인)
+
+### 6.1 Era frontmatter 양식 — §Step 1 예시 그대로
+
+권장 H2 섹션: `## 개요` · `## 시대 트리거` · `## 주요 사건 흐름` · `## 핵심 인물` · `## 게임 시점에서의 의미`.
+
+### 6.2 Timeline frontmatter 양식 — §Step 2 예시 그대로
+
+권장 H2 섹션: `## 개요` · `## Era 변천` · `## 핵심 인과 사슬` · `## 게임 시점에서의 활용`.
+
+### 6.3 SQLite 스키마
 
 ```sql
 CREATE TABLE eras (
@@ -229,152 +380,20 @@ CREATE TABLE eras (
     tags_json TEXT NOT NULL DEFAULT '[]',
     extras_json TEXT NOT NULL DEFAULT '{}',
     temporal_json TEXT NOT NULL DEFAULT '{}',
-    start_year_relative INTEGER,                -- 캐시 컬럼 (inclusive, 정렬·필터용)
-    end_year_relative INTEGER,                  -- 캐시 컬럼 (exclusive)
+    year_relative_start INTEGER NOT NULL,    -- 캐시 (정렬·범위 필터용)
+    year_relative_end INTEGER NOT NULL,
     key_events_json TEXT NOT NULL DEFAULT '[]',
     body_sections_json TEXT NOT NULL DEFAULT '{}',
     source_path TEXT,
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_eras_kind ON eras(kind);
-CREATE INDEX idx_eras_start_year ON eras(start_year_relative);
-CREATE INDEX idx_eras_end_year ON eras(end_year_relative);
-CREATE INDEX idx_eras_project ON eras(project_id);
+CREATE INDEX idx_eras_year_range ON eras(year_relative_start, year_relative_end);
+
 CREATE VIRTUAL TABLE eras_fts USING fts5(
     id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
 );
-```
 
-`schema_meta.version = 6` 마이그레이션. v5 DB는 자동 ALTER + eras·eras_fts 추가.
-
-**Era는 인스턴스 도메인이라 Atlas의 place_atlas_refs 같은 양방향 인덱스 불필요.**
-key_events는 events.id 외래키지만 역방향 lookup("이 사건이 어느 era의 key_events에
-포함됐나")이 흔하지 않다 — 필요 시 Phase 6+에서 추가.
-
-#### world-load CLI 확장 (체크포인트 1)
-
-동작:
-1. Phase 1·2·3·4·5a 동작 — group/person/place/atlas/event 로드
-2. Phase 5b 동작 — `world/era/*.md` 로드 → eras 테이블 upsert
-3. **외래키 검증 활성**:
-   - `Era.key_events` 각 ID → events 테이블 존재 — **에러**
-   - `Event.era_id` (있으면) → eras 테이블 존재 — **에러** (Phase 5a 텍스트 → Phase 5b 활성)
-   - `Atlas.era_id` (있으면) → eras 테이블 존재 — **에러** (Phase 4 텍스트 → Phase 5b 활성)
-4. partial commit 방지 (Phase 1·2·3·4·5a 패턴 그대로)
-
-산출물 검증: `tests/world_load_fk_negative_era.rs` — N1 패턴 미러 (era-99 주입 → 실패 → 복구 → 통과).
-
-### Step 3 — 5 Era 변환 + Phase 5a Event/atlas-jungwon era_id 활성 (체크포인트 1)
-
-5 Era 매핑 (history.md §0.2 정확):
-
-| id | kind | start | end | aliases | key_events |
-|---|---|---|---|---|---|
-| era-founding | founding | -270 | -220 | [건국기, 원년대] | [event-empire-founding] |
-| era-prosperity | prosperity | -220 | -150 | [전성기, 태평성세] | [] (Phase 5a 시드 없음) |
-| era-turning | turning | -150 | -70 | [변곡기, 균열기] | [] (Phase 5a 시드 없음) |
-| era-decline | decline | -70 | -30 | [쇠퇴기, 태무제 시기] | [] (Phase 5a 시드 없음) |
-| era-fall-of-empire | fall | -30 | 0 | [붕괴기, 6국 분열기] | [event-bloody-cult-rebellion-2nd, event-blood-disappearance, event-bloody-night, event-hwasan-fall, event-six-states-independence] |
-
-6 Event era_id 매핑:
-- `event-empire-founding` (-270) → `era-founding`
-- `event-bloody-cult-rebellion-2nd` (-30) → `era-fall-of-empire` (boundary 정책 §3.3 — 240년차는 붕괴기 시작 트리거)
-- `event-blood-disappearance` (-12) → `era-fall-of-empire`
-- `event-bloody-night` (-10) → `era-fall-of-empire`
-- `event-hwasan-fall` (-10) → `era-fall-of-empire`
-- `event-six-states-independence` (-7) → `era-fall-of-empire`
-
-atlas-jungwon era_id:
-- `extras.era_id` = `"era-fall-of-empire"` (현재 270년차의 정치 지도)
-
-작업:
-1. `cargo run --features embed --bin world-load -- --project chilguk-chunchu --reload`
-2. SQLite eras 5행 + Event 6 row의 era_id + Atlas 1 row의 era_id 모두 외래키 통과 검증
-3. **외래키 활성 시연** — era-99 같은 미존재 ID를 Event.era_id에 주입했다가 빌드 실패 확인 → 복구 → 빌드 성공
-
-**체크포인트 1 보고서** (`docs/tasks/phase5b-checkpoint1-report.md`):
-- diff stat
-- 5 Era 일람 (id·kind·start/end·key_events 카운트)
-- 6 Event era_id 매핑 결과 + atlas-jungwon era_id
-- world-load 결과 (`eras indexed = 5`, fk errors = 0)
-- 외래키 활성 시연 (의도적 결손 + 복구)
-- 변환 결정:
-  - 5 era kind 결정
-  - aliases 2-3개씩
-  - boundary 정책 §3.3 적용 결과 (특히 bloody-cult-rebellion-2nd)
-  - key_events 정렬 (시간순)
-- Step 4 (체크포인트 2) 진행 가능 여부
-
-→ commit pause → 디렉터 리뷰 → 통과 후 체크포인트 2 진입.
-
-### Step 4 — Timeline 도메인 + view 메서드 + MCP 도구 (체크포인트 2)
-
-```
-src/domain/world/
-├── timeline.rs          # Timeline + TimelineId + TimelineFilter + view 메서드 (신규)
-
-src/worldbuilding/
-├── markdown/
-│   └── timeline.rs      # Timeline .md → 도메인 (신규)
-└── repository.rs        # list_timelines/get_timeline/search_timelines/upsert_timeline/count_timelines 추가
-```
-
-**`Timeline` 애그리거트** (Atlas와 결이 같은 도메인+뷰 이중성, Q2 결정에 따라 자체 view 메서드):
-
-```rust
-pub struct TimelineId(pub String);
-
-pub struct Timeline {
-    pub id: TimelineId,
-    pub kind: String,                          // 장르가 채움 (wuxia: "history" | "biographical" 등)
-    pub name: String,
-    pub aliases: Vec<String>,
-    pub summary: String,
-    pub tags: Vec<String>,
-    pub extras: Map<String, Value>,
-    pub references: Vec<EventId>,              // 본 timeline에 포함된 사건들 (작성 순서 = 시간 순)
-    pub body_sections: BTreeMap<String, String>,
-    pub source_path: Option<String>,
-}
-
-impl Timeline {
-    /// 본 timeline의 references에 등장하는 모든 era 조회 (event.era_id를 모아 era_id 셋 반환).
-    /// 합성: WorldRepository를 통해 references → events → era_id 조회.
-    pub fn eras_in<R: WorldRepository + ?Sized>(&self, repo: &R) -> Result<Vec<EraId>, WorldError>;
-
-    /// 본 timeline의 references를 Event 객체로 합성 (작성 순서 보존).
-    pub fn events_in<R: WorldRepository + ?Sized>(&self, repo: &R) -> Result<Vec<Event>, WorldError>;
-
-    /// 특정 era에 속하는 본 timeline의 사건들 (year_relative inclusive-exclusive 정책).
-    pub fn events_during<R: WorldRepository + ?Sized>(
-        &self,
-        era_id: &EraId,
-        repo: &R,
-    ) -> Result<Vec<Event>, WorldError>;
-
-    /// 특정 사건의 인과 사슬 — references 안에서 related_events를 따라 BFS 합성.
-    /// timeline 경계 안에 머무르며 (timeline-국한 transitive closure), 결과는 BFS 순서.
-    pub fn causal_chain<R: WorldRepository + ?Sized>(
-        &self,
-        seed: &EventId,
-        repo: &R,
-    ) -> Result<Vec<Event>, WorldError>;
-}
-```
-
-**`TimelineFilter`**:
-
-```rust
-pub struct TimelineFilter {
-    pub kind: Option<String>,
-    pub references_event: Option<EventId>,     // 특정 사건을 포함하는 timeline 검색
-    pub genre_tag: Option<String>,
-}
-```
-
-#### SQLite 스키마 (체크포인트 2)
-
-```sql
 CREATE TABLE timelines (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL,
@@ -384,168 +403,85 @@ CREATE TABLE timelines (
     summary TEXT NOT NULL DEFAULT '',
     tags_json TEXT NOT NULL DEFAULT '[]',
     extras_json TEXT NOT NULL DEFAULT '{}',
-    references_json TEXT NOT NULL DEFAULT '[]',  -- 단일 권위 (Atlas 패턴)
+    extent_json TEXT NOT NULL DEFAULT '{}',
+    references_json TEXT NOT NULL DEFAULT '[]',
     body_sections_json TEXT NOT NULL DEFAULT '{}',
     source_path TEXT,
     updated_at INTEGER NOT NULL
 );
 CREATE INDEX idx_timelines_kind ON timelines(kind);
-CREATE INDEX idx_timelines_project ON timelines(project_id);
+
 CREATE VIRTUAL TABLE timelines_fts USING fts5(
     id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
 );
+
+-- Era ↔ Timeline 양방향 인덱스 (atlas ↔ place 패턴 미러)
 CREATE TABLE timeline_era_refs (
     timeline_id TEXT NOT NULL,
-    event_id TEXT NOT NULL,
+    era_id TEXT NOT NULL,
     ref_order INTEGER NOT NULL,
-    PRIMARY KEY (timeline_id, event_id)         -- composite PK 보호
+    PRIMARY KEY (timeline_id, era_id)
 );
-CREATE INDEX idx_ter_event ON timeline_era_refs(event_id);
+CREATE INDEX idx_ter_era ON timeline_era_refs(era_id);
 CREATE INDEX idx_ter_timeline ON timeline_era_refs(timeline_id);
+
+-- atlases.era_id 컬럼 추가 (Phase 4 atlases 테이블 ALTER)
+ALTER TABLE atlases ADD COLUMN era_id TEXT;
+CREATE INDEX idx_atlases_era ON atlases(era_id);
+
+-- events.era_id 컬럼은 Phase 5a에 이미 있음. 인덱스만 추가/유지 확인.
 ```
 
-`schema_meta.version = 7` 마이그레이션.
+`schema_meta.version = 6` 마이그레이션. Phase 5a v5 DB는 자동 ALTER + eras·timelines·timeline_era_refs 추가 + atlases.era_id 컬럼.
 
-#### `timeline-jungwon-history` 변환 + view 메서드 e2e
-
-`projects/chilguk-chunchu/world/timeline/timeline-jungwon-history.md`:
-
-```yaml
----
-id: timeline-jungwon-history
-kind: history
-name: 칠국춘추 270년사
-aliases: [중원사, 270년 연표]
-summary: 원년부터 현재(270년차)까지의 핵심 분기점 6 사건.
-tags: [wuxia, timeline, history]
-references:
-  - event-empire-founding
-  - event-bloody-cult-rebellion-2nd
-  - event-blood-disappearance
-  - event-bloody-night
-  - event-hwasan-fall
-  - event-six-states-independence
----
-
-## 개요
-...
-```
-
-view 메서드 e2e:
-- `eras_in(repo)` → `[era-founding, era-fall-of-empire]` (2 era)
-- `events_in(repo)` → 6 Event (작성 순서 = 시간 순)
-- `events_during(era-fall-of-empire, repo)` → 5 Event (boundary 정책 §3.3)
-- `causal_chain(event-bloody-night, repo)` → BFS 결과 (related_events 따라 timeline 경계 안 transitive closure)
-
-#### MCP 도구 6개
-
-체크포인트 2까지 누적:
-1. `list_eras(filter)` / 2. `get_era(era_id)` / 3. `search_eras(query)` (체크포인트 1)
-4. `list_timelines(filter)` / 5. `get_timeline(timeline_id)` / 6. `search_timelines(query)` (체크포인트 2)
-
-Atlas 패턴 그대로.
-
-**체크포인트 2 보고서** (`docs/tasks/phase5b-checkpoint2-report.md`):
-- diff stat (체크포인트 1 → 체크포인트 2)
-- 1 Timeline 변환 결과
-- view 메서드 4종 e2e 출력
-- MCP 도구 6개 정성 평가
-- Atlas overlay 시연 (atlas-jungwon.era_id = era-fall-of-empire)
-- Phase 5b 종결 후 follow-up TASK 작성 진입 의견
-
-→ commit pause → 디렉터 리뷰 → 통과 시 Phase 5b 종결 → follow-up TASK 작성.
-
-## 6. 결정 사항 (변경 시 디렉터 승인)
-
-### 6.1 Frontmatter 양식 — era 예시 (era-fall-of-empire)
-
-```yaml
----
-id: era-fall-of-empire
-kind: fall
-name: 붕괴기
-aliases:
-  - 6국 분열기
-  - 240-270년차
-summary: |
-  240~270년차의 30년. 통일제국 대진의 영토 와해와 칠국 형성이 일어난 시기.
-  이 시기에 일어난 분기점 5 사건이 게임 시작 시점(270년차)의 정치 지도를 만듦.
-tags: [wuxia, era, historical, fall-of-empire]
-temporal:
-  start_year_relative: -30
-  end_year_relative: 0
-  notes: |
-    Phase 5b §3.3 boundary 정책: start inclusive · end exclusive.
-    270년차(=0)는 본 era 외 — 현재 시점 사건은 별도 era 추가 시까지 era_id 비움.
-key_events:
-  - event-bloody-cult-rebellion-2nd
-  - event-blood-disappearance
-  - event-bloody-night
-  - event-hwasan-fall
-  - event-six-states-independence
-extras:
-  game_role: 게임 시작 시점의 정치 지도가 본 시대에서 형성됨
-  player_relevance: 5
----
-
-## 개요
-산문 — 본 시대의 핵심 흐름.
-
-## 핵심 트리거
-산문 — 직전 시대(쇠퇴기)에서 본 시대로 넘어가는 트리거.
-
-## 결과
-산문 — 본 시대가 만든 칠국춘추의 정치 지도.
-
-## 게임에서의 역할
-- 메인 서사 분기점들의 시간 컨테이너
-- player의 출생·트라우마·현재 시점 모두 본 시대 안
-```
-
-### 6.2 `genres/wuxia/forms/era.toml` (Phase N 빈 슬롯)
-
-```toml
-extends = "era"
-
-[[fields.kind.options]]
-value = "founding"; label = "건국기"
-[[fields.kind.options]]
-value = "prosperity"; label = "전성기"
-[[fields.kind.options]]
-value = "turning"; label = "변곡기"
-[[fields.kind.options]]
-value = "decline"; label = "쇠퇴기"
-[[fields.kind.options]]
-value = "fall"; label = "붕괴기"
-```
-
-### 6.3 환경변수
+### 6.4 환경변수
 
 `NPC_MIND_WORLD_DB` 그대로.
 
-### 6.4 라이브러리
+### 6.5 라이브러리
 
 기존 — Phase 0 D2·D3 의존성 회피 원칙 계승.
 
-### 6.5 외래키 매트릭스 (Phase 5b 활성)
+### 6.6 외래키 매트릭스 (Phase 5b 활성)
 
-| 검증 | Phase 1 | 2 | 3 | 4 | 5a | 5b |
-|---|---|---|---|---|---|---|
-| (이전 Phase 외래키 — 그대로) | ... | ... | ... | ... | ... | 그대로 |
-| **`Era.key_events`** | — | — | — | — | — | **에러** (활성) |
-| **`Event.era_id`** | — | — | — | — | 텍스트 | **에러** (활성) |
-| **`Atlas.era_id`** | — | — | — | 텍스트 | (그대로) | **에러** (활성) |
-| **`Timeline.references`** | — | — | — | — | — | **에러** (체크포인트 2) |
-| **`Timeline.references` 중복 금지** | — | — | — | — | — | **에러** (체크포인트 2) |
+| 검증 | Phase 5a | Phase 5b |
+|---|---|---|
+| Group / Person / Place / Atlas / Event (이전 Phase) | (Phase 별) | 그대로 |
+| **`Event.era_id` → `eras.id`** | 텍스트만 | **에러** (활성) |
+| **`Atlas.era_id` → `eras.id`** | 텍스트만 (Phase 4) | **에러** (활성) |
+| **`Timeline.references` → `eras.id`** | (5b 신규) | **에러** |
+| **`Era.key_events` → `events.id`** | (5b 신규) | **에러** |
+
+### 6.7 Phase 5a 6 Event era_id 매핑 가이드
+
+체크포인트 1 보고서에서 디렉터 검토:
+
+| Event | year_relative | 권장 era_id | 비고 |
+|---|---|---|---|
+| event-empire-founding | -270 | era-empire-founding | 명확 |
+| event-bloody-cult-rebellion-2nd | -30 | era-decline 끝 vs era-fall-of-empire 시작 | **boundary 케이스 — 디렉터 결정** |
+| event-blood-disappearance | -12 | era-fall-of-empire | 명확 |
+| event-bloody-night | -10 | era-fall-of-empire | 명확 |
+| event-hwasan-fall | -10 | era-fall-of-empire | 명확 |
+| event-six-states-independence | -7 | era-fall-of-empire | 명확 |
+
+boundary 정책 옵션:
+- (a) inclusive end — `era-decline.year_relative_end = -30`이면 -30 사건은 era-decline에 포함
+- (b) exclusive end — `era-decline.year_relative_end = -31`이면 -30 사건은 era-fall-of-empire
+- (c) bloody-cult-2nd는 사건 본질이 era-fall-of-empire 시작 트리거라 후자에 포함
+
+내 권장: **(c)** — bloody-cult-rebellion-2nd가 붕괴기 시작 트리거라 era-fall-of-empire에 매핑. 단 디렉터 결정.
 
 ## 7. Out of Scope (Phase 5b)
 
-- View trait 일반화 — Q2 보류
-- 시기별 atlas 분기 (atlas-daejin-empire 등) — Phase 6+ follow-up
-- Era 외래키의 다른 도메인 확장 (Person 활동 시기·Group 존속 시기) — Phase 6+
-- Timeline 다중 (timeline-hwasan-fall-only·timeline-blood-cult-arc 등) — 체크포인트 2엔 1건만, 다중은 follow-up
-- Historical NPC 시드 확장 — `task-phase5-followup-historical-npcs.md`
-- Timeline 자동 정렬 (year_relative 오름차순 자동) — Phase 5b엔 작성 순서 보존만
+- **View trait 일반화** — Q2 결정. Phase 5b 종결 후 두 사례 충분 사용 후 결정
+- **시기별 atlas 분기** (atlas-daejin-empire 등) — Phase 5b 종결 후 follow-up 또는 Phase 6+
+- **다중 Timeline** (character-arc·war-chronicle 등) — Phase 6+
+- **`atlas_overlay` 관계 테이블** (한 atlas가 여러 era에 등장) — Phase 6+ (Q3·a 단순 결정 채택)
+- **Era cycle 검증** (era 그래프 cycle) — Phase 5+ (era는 보통 선형이라 단순 결손 검증만)
+- **Era hierarchy** (era → sub-era) — Phase 6+
+- **gameplay 다리** (Scenario·Scene·Beat·Memory 통합) — Phase 6+
+- **historical NPC 시드 확장** (임서운·추양진인 등) — Phase 5b 종결 후 follow-up TASK
 
 ## 8. 코드 위치 가이드
 
@@ -553,30 +489,32 @@ value = "fall"; label = "붕괴기"
 
 | 위치 | 무엇을 볼지 |
 |---|---|
-| `src/domain/world/event.rs` (Phase 5a) | EventId·EventTemporal·Event·EventFilter — Era·Timeline의 도메인 패턴 미러 |
-| `src/domain/world/atlas.rs` (Phase 4) | 관계 도메인 + 도메인+뷰 이중성 — Timeline 미러 |
-| `src/worldbuilding/markdown/{event,atlas}.rs` | 마크다운 파서 패턴 |
-| `src/adapter/sqlite_world.rs` migrate_v5 (Phase 5a) | 인스턴스 도메인 마이그레이션 패턴 — Era 미러 |
-| `src/adapter/sqlite_world.rs` migrate_v4 (Phase 4) | 관계 도메인 양방향 인덱스 패턴 — Timeline 미러 |
-| `src/bin/world_load.rs` Phase 5a section | 외래키 검증 흐름 + N1 자동화 패턴 |
-| `tests/world_load_fk_negative_event.rs` | FK negative e2e 패턴 — era·timeline 미러 |
+| `Cargo.toml` `[features]` | feature 게이팅 |
+| `src/domain/world/atlas.rs` (Phase 4) | **Timeline의 도메인+뷰 패턴 그대로 미러링** — view 메서드 구현 참고 |
+| `src/domain/world/event.rs` (Phase 5a) | era_id 텍스트 보존 패턴, related_events 자체 외래키 |
+| `src/worldbuilding/markdown/{atlas,event}.rs` | 마크다운 파서 패턴 |
+| `src/adapter/sqlite_world.rs` (Phase 5a) | migrate_v5·event_participants_refs 양방향 — Phase 5b `migrate_v6` + eras·timelines·timeline_era_refs 미러 |
+| `src/bin/world_load.rs` (Phase 5a) | 외래키 활성 흐름 |
+| `src/bin/mind-studio/handlers/{world_atlases,world_events}.rs` | MCP·REST 패턴 — eras·timelines 동일 패턴 |
 
 ## 9. 시작 체크리스트
 
-1. `CLAUDE.md` + Phase 5a 보고서 빠르게 훑기
-2. **`wuxia-core/docs/world/history.md` §0.1·§0.2** 통독 — 5 era boundary 정확 매핑 입력
-3. Phase 5a 6 Event (`projects/chilguk-chunchu/world/event/*.md`) 통독 — era_id 매핑 입력
-4. Phase 4 atlas-jungwon (`projects/chilguk-chunchu/world/atlas/atlas-jungwon.md`) 확인 — era_id 매핑 입력
-5. Era 도메인 + EraTemporal + EraFilter + 마크다운 파서 + 단위 테스트 (Step 1·2)
+1. `CLAUDE.md` + Phase 0~5a 산출 빠르게 훑기
+2. **`wuxia-core/docs/world/history.md` §0.1·§0.2** 통독 — 5 era boundary 정확 확인
+3. **Phase 5a 6 Event** (`projects/chilguk-chunchu/world/event/*.md`) 통독 — era_id 매핑 입력
+4. Phase 4 atlas-jungwon 확인 — era_id 매핑 입력
+5. Era 도메인 + 마크다운 파서 + 단위 테스트 (Step 1)
 6. SqliteWorldStore migrate_v6 + eras + 라운드트립 테스트
-7. world-load 확장 — Era.key_events + Event.era_id + Atlas.era_id 외래키 활성
-8. **5 Era 변환 + 6 Event era_id 활성 + atlas-jungwon era_id 활성** → ★체크포인트 1★ 보고 → **commit pause**
+7. world-load 확장 — Event/Atlas era_id 외래키 활성
+8. **5 Era 변환 + Phase 5a 6 Event era_id 매핑** → ★체크포인트 1★ 보고 → **commit pause**
+9. Timeline 도메인 + view 메서드 + Atlas overlay 활성 → 체크포인트 2
 
 ## 10. 리뷰 채널
 
 체크포인트 1·2 보고서를 디렉터(사용자)가 Cowork 세션에 복붙. 형식:
 - **Done** · **Diff** · **데모 명령** · **결정** · **막힌 것** · **다음 의견**
-- 변환 시 모든 추론·결정 (특히 boundary 정책 적용 결과·5 era kind 결정·view 메서드 e2e)을 본문에 상세히 명시
+- 5 era boundary 정확 매핑 + bloody-cult-rebellion-2nd boundary 결정을 본문에 상세히 명시
+- view 메서드 호출 결과 (eras_in·events_in·events_during·causal_chain) 표 형식
 
 보고서 파일명:
 - 체크포인트 1: `docs/tasks/phase5b-checkpoint1-report.md`
