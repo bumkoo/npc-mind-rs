@@ -57,17 +57,8 @@ impl EventHandler for EmotionPolicy {
             return Ok(HandlerResult::default());
         };
 
-        let npc = ctx
-            .repo
-            .get_npc(npc_id)
-            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
-        let relationship = ctx
-            .repo
-            .get_relationship(npc_id, partner_id)
-            .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner_id: npc_id.clone(),
-                target_id: partner_id.clone(),
-            })?;
+        let npc = ctx.get_npc(npc_id)?;
+        let relationship = ctx.get_relationship(npc_id, partner_id)?;
 
         let emotion_state =
             self.appraiser

@@ -15,6 +15,7 @@ use crate::domain::aggregate::AggregateKey;
 use crate::domain::emotion::{EmotionState, Scene};
 use crate::domain::event::{DomainEvent, EventKind};
 use crate::domain::guide::ActingGuide;
+use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 
 use crate::application::event_store::EventStore;
@@ -128,6 +129,42 @@ pub struct EventHandlerContext<'a> {
     pub shared: &'a mut HandlerShared,
     pub prior_events: &'a [DomainEvent],
     pub aggregate_key: AggregateKey,
+}
+
+impl<'a> EventHandlerContext<'a> {
+    /// NPC를 저장소에서 조회하거나 에러를 반환합니다.
+    pub fn get_npc(&self, id: &str) -> Result<Npc, HandlerError> {
+        self.repo
+            .get_npc(id)
+            .ok_or_else(|| HandlerError::NpcNotFound(id.to_string()))
+    }
+
+    /// 관계를 공유 상태 또는 저장소에서 조회하거나 에러를 반환합니다.
+    pub fn get_relationship(
+        &self,
+        owner_id: &str,
+        target_id: &str,
+    ) -> Result<Relationship, HandlerError> {
+        self.shared
+            .relationship
+            .as_ref()
+            .cloned()
+            .or_else(|| self.repo.get_relationship(owner_id, target_id))
+            .ok_or_else(|| HandlerError::RelationshipNotFound {
+                owner_id: owner_id.to_string(),
+                target_id: target_id.to_string(),
+            })
+    }
+
+    /// 감정 상태를 공유 상태 또는 저장소에서 조회하거나 에러를 반환합니다.
+    pub fn get_emotion_state(&self, npc_id: &str) -> Result<EmotionState, HandlerError> {
+        self.shared
+            .emotion_state
+            .as_ref()
+            .cloned()
+            .or_else(|| self.repo.get_emotion_state(npc_id))
+            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))
+    }
 }
 
 // ---------------------------------------------------------------------------

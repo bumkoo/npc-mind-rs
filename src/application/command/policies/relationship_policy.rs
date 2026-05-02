@@ -129,19 +129,8 @@ impl RelationshipPolicy {
         cause: crate::domain::event::RelationshipChangeCause,
         ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
-        let relationship = ctx
-            .repo
-            .get_relationship(npc_id, partner_id)
-            .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner_id: npc_id.to_string(),
-                target_id: partner_id.to_string(),
-            })?;
-        let emotion = ctx
-            .shared
-            .emotion_state
-            .clone()
-            .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
+        let relationship = ctx.get_relationship(npc_id, partner_id)?;
+        let emotion = ctx.get_emotion_state(npc_id)?;
 
         let updated = relationship.after_dialogue(&emotion, significance);
         let (bc, bt, bp) = (
@@ -191,19 +180,8 @@ impl RelationshipPolicy {
         ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
         let sig = significance.unwrap_or(profile().beat_default_significance);
-        let relationship = ctx
-            .repo
-            .get_relationship(npc_id, partner_id)
-            .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner_id: npc_id.to_string(),
-                target_id: partner_id.to_string(),
-            })?;
-        let emotion = ctx
-            .shared
-            .emotion_state
-            .clone()
-            .or_else(|| ctx.repo.get_emotion_state(npc_id))
-            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))?;
+        let relationship = ctx.get_relationship(npc_id, partner_id)?;
+        let emotion = ctx.get_emotion_state(npc_id)?;
 
         let updated = relationship.after_dialogue(&emotion, sig);
         let (bc, bt, bp) = (

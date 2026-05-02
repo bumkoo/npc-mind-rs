@@ -71,23 +71,9 @@ impl EventHandler for GuidePolicy {
             _ => return Ok(HandlerResult::default()),
         };
 
-        let npc = ctx
-            .repo
-            .get_npc(npc_id)
-            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
-        // B4.1: EmotionAppraised/StimulusApplied 경로는 shared.emotion_state에 이미 설정됨.
-        //        GuideRequested(standalone) 경로는 shared가 비어있으므로 repo에서 조회.
-        //        cloned로 소유권을 얻어 borrow 충돌 회피.
-        let emotion_state = match ctx.shared.emotion_state.clone() {
-            Some(s) => s,
-            None => ctx
-                .repo
-                .get_emotion_state(npc_id)
-                .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.clone()))?,
-        };
-        let relationship = ctx.shared.relationship.as_ref().cloned().or_else(|| {
-            ctx.repo.get_relationship(npc_id, partner_id)
-        });
+        let npc = ctx.get_npc(npc_id)?;
+        let emotion_state = ctx.get_emotion_state(npc_id)?;
+        let relationship = ctx.get_relationship(npc_id, partner_id).ok();
 
         let partner_name = ctx
             .repo

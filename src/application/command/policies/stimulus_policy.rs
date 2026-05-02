@@ -189,21 +189,9 @@ impl EventHandler for StimulusPolicy {
             return Ok(HandlerResult::default());
         };
 
-        let npc = ctx
-            .repo
-            .get_npc(npc_id)
-            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
-        let relationship = ctx
-            .repo
-            .get_relationship(npc_id, partner_id)
-            .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner_id: npc_id.clone(),
-                target_id: partner_id.clone(),
-            })?;
-        let current = ctx
-            .repo
-            .get_emotion_state(npc_id)
-            .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.clone()))?;
+        let npc = ctx.get_npc(npc_id)?;
+        let relationship = ctx.get_relationship(npc_id, partner_id)?;
+        let current = ctx.get_emotion_state(npc_id)?;
 
         let pad_struct = Pad {
             pleasure: pad.0,
