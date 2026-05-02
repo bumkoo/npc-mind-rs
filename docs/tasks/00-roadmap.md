@@ -49,7 +49,9 @@ Phase 2.2: Runtime sync follow-up         ✅ 완료 (2026-05-01)
 Phase 3:   Place + Phase 1·2 FK 활성      ✅ 완료 (2026-05-01)
 Phase 4:   Atlas (도메인+뷰 이중성)       ✅ 완료 (2026-05-01)
 Phase 5a:  Event (인스턴스)               ✅ 완료 (2026-05-02)
-Phase 5b:  Era + Timeline + Atlas overlay (View trait 보류)   🔄 작전 완성 (2026-05-02)
+Phase 5b:  Era + Timeline + Atlas overlay (View trait 보류)   ✅ 완료 (2026-05-02)
+Phase 5c.1: Historical NPCs follow-up (D2 처리)   🔄 작전 완성 (2026-05-02)
+Phase 5c.2: Mid-era Events follow-up               ⏳ 5c.1 종결 후
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
@@ -77,7 +79,9 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 3 | Place | Phase 2 | 11 Place(8 settlement+3 geography) + 외래키 0건 + sect/geography_refs 양방향 | ✅ 완료 (2026-05-01) | `task-phase3-place-vertical-slice.md` + `phase3-checkpoint{1,2}-report.md` |
 | 4 | Atlas | Phase 3 | atlas-jungwon + references 11 Place + ASCII 4단계 byte-exact + view 메서드 (도메인+뷰 이중성) | ✅ 완료 (2026-05-01) | `task-phase4-atlas-vertical-slice.md` + `phase4-checkpoint{1,2}-report.md` |
 | 5a | Event | Phase 4 | 6 Event + participants 외래키 0건 + related_events 양방향 + alias 패턴 일관 | ✅ 완료 (2026-05-02) | `task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` |
-| 5b | Era + Timeline + Atlas overlay | Phase 5a | 5 Era + Timeline + Phase 5a Event era_id 활성 + atlas-jungwon era 활성 (View trait 보류) | 🔄 작전 완성 (2026-05-02) | `task-phase5b-era-timeline-vertical-slice.md` |
+| 5b | Era + Timeline + Atlas overlay | Phase 5a | 5 Era + 1 Timeline + view 메서드 4종 + Atlas overlay 양방향 + 외래키 0건 | ✅ 완료 (2026-05-02) | `task-phase5b-era-timeline-vertical-slice.md` + `phase5b-checkpoint{1,2}-report.md` |
+| 5c.1 | Historical NPCs follow-up | Phase 5b | 임서운 + 7-11 historical npc + Phase 5a Event 외래키 갱신 | 🔄 작전 완성 (2026-05-02) | `task-phase5-followup-historical-npcs.md` |
+| 5c.2 | Mid-era Events follow-up | 5c.1 | era-prosperity·turning·decline 6-7 사건 추가 | ⏳ 5c.1 종결 후 작성 | (5c.1 종결 후 작성) |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
 | 8 | Knowledge·Lore | — | 학문·예술 / 짐승·영물 | ⏳ | — |
@@ -265,9 +269,22 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 
 검증 게이트: 5-10 Event + 외래키 0건 + MCP 도구 3 (`list_events`·`get_event`·`search_events`).
 
-#### Phase 5b — Era + Timeline + Atlas overlay 🔄
+#### Phase 5b — Era + Timeline + Atlas overlay ✅
 
-**작전 완성 (2026-05-02)** — TASK `task-phase5b-era-timeline-vertical-slice.md`
+**완료 (2026-05-02)** — 보고서 `phase5b-checkpoint{1,2}-report.md`
+
+산출:
+- 5 Era 변환 (founding/prosperity/turning/decline/fall, history.md §0.2 정확 매핑, 50+70+80+40+30=270 정합)
+- 1 Timeline (timeline-jungwon-history) — references=Vec<EraId> 두 단계 합성
+- view 메서드 4종 e2e (eras_in 5 / events_in 6 / events_during 5 / causal_chain 6 BFS)
+- Atlas overlay 양방향 (atlas-jungwon ↔ era-fall-of-empire)
+- migrate_v6·v7 (eras·timelines·timeline_era_refs)
+- MCP 도구 6개 + REST 6개
+
+핵심 발견:
+- **두 단계 합성 패턴** — timeline=era 묶음, era=event 묶음. 미래 관계 도메인의 시드.
+- **causal_chain BFS = 6** — bloody-night에서 시작한 인과 사슬이 timeline 전체 6 사건을 도달. Phase 5a related_events 양방향 시드의 자연 결과.
+- **boundary 정책 정확** — start inclusive · end exclusive. 270년차(year_relative=0)는 어느 era에도 무소속(미래 era 시드).
 
 세 결 통합:
 1. **Era 인스턴스 도메인** — 5 시대(history.md §0.2: 건국기·전성기·변곡기·쇠퇴기·붕괴기). Phase 5a Event era_id 외래키 활성.
@@ -344,6 +361,11 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 | 2026-05-02 | Phase 5a 사이드 픽스 — `LlamaServerMonitor` → `InferenceServerMonitor` 정정 (mind-studio 빌드 차단 해제) | Claude Code |
 | 2026-05-02 | Phase 5b 사전 결정 3건 — 5 era 채택 / View trait 보류 / atlas.era_id 외래키 (Q1·Q2·Q3) | 사용자 |
 | 2026-05-02 | Phase 5b 작전 완성 — Era 5 + Timeline + Atlas overlay + Phase 5a Event era_id 활성. View trait 일반화는 Phase 5+ 두 사례 사용 후 결정 | Cowork |
+| 2026-05-02 | Phase 5b 종결 — 5 Era + 1 Timeline + 두 단계 합성 + causal_chain BFS = timeline 전체 6 사건 도달 + Atlas overlay 양방향 | Claude Code |
+| 2026-05-02 | boundary 정책 = start inclusive · end exclusive. bloody-cult-rebellion-2nd(-30) → era-fall-of-empire (붕괴기 시작 트리거) | Claude Code |
+| 2026-05-02 | Atlas 모델 비변경 결정 — `extras["era_id"]` + 헬퍼 그대로. top-level 필드 승격은 Phase 6+ breaking change로 미룸 | Claude Code |
+| 2026-05-02 | Phase 5+ follow-up 흐름 = (C) historical-npcs + mid-era-events 동시 → Phase 6 진입. 단 의존성으로 5c.1 → 5c.2 순서 진행 | 사용자 |
+| 2026-05-02 | Phase 5c.1 작전 완성 — 임서운(체크포인트 1) + 7-11 historical npc + HEXACO 정밀(active 4)/heritage-pending(historical 3-7) | Cowork |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 
@@ -385,7 +407,9 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
   - 8 settlement: place-daejin·namgung·seoryang·bukwon·namman·donghae·jiyu-doshi·namgung-sega(sect)
   - 3 geography: place-western-mountains·bukwon-grasslands·namman-jungle
   - 6 distinct kind: nation·autonomous-zone·sect·mountain-range·grassland·jungle
-- **Phase 4 산출** — `atlas/atlas-jungwon.md` × 1 (kind=continent, references 좌상→우하 11, extent 7×7 schematic)
+- **Phase 4 산출** — `atlas/atlas-jungwon.md` × 1 (kind=continent, references 좌상→우하 11, extent 7×7 schematic, era_id=era-fall-of-empire 활성)
+- **Phase 5a 산출** — `event/*.md` × 6 (1 era-founding + 5 era-fall-of-empire, related_events 양방향 인과 사슬)
+- **Phase 5b 산출** — `era/*.md` × 5 (founding·prosperity·turning·decline·fall, 270년 정합) + `timeline/timeline-jungwon-history.md` × 1 (Vec<EraId> 두 단계 합성)
 - **빌드 산출물 (gitignore)** — `build/world.sqlite` (Phase 3 후 +α)
 
 ### 미작성 인물 (Phase 5+ 풍부화 후보)
