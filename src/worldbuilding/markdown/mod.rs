@@ -6,6 +6,7 @@
 //! H2 섹션 파싱은 line-based 단순 분할로 처리 (pulldown-cmark 미사용).
 
 pub mod atlas;
+pub mod era;
 pub mod event;
 pub mod frontmatter;
 pub mod group;
@@ -13,6 +14,7 @@ pub mod person;
 pub mod place;
 
 pub use atlas::{AtlasMarkdownError, atlas_from_markdown};
+pub use era::{EraMarkdownError, era_from_markdown};
 pub use event::{EventMarkdownError, event_from_markdown};
 pub use frontmatter::{
     Frontmatter, FrontmatterError, parse_frontmatter, parse_h2_sections,

@@ -4,8 +4,8 @@
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
 use crate::domain::world::{
-    Atlas, AtlasFilter, AtlasId, Event, EventFilter, EventId, Group, GroupFilter, GroupId, Person,
-    PersonFilter, PersonId, Place, PlaceFilter, PlaceId, WorldError,
+    Atlas, AtlasFilter, AtlasId, Era, EraFilter, EraId, Event, EventFilter, EventId, Group,
+    GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId, WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -132,4 +132,26 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_events(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 5b — Era (세 번째 인스턴스 도메인)
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 시대 목록 조회. 결과는 id 오름차순.
+    ///
+    /// `EraFilter::contains_year`는 boundary 정책 §3.3 적용 — `start_year_relative <= ?
+    /// AND end_year_relative > ?` (start inclusive · end exclusive).
+    fn list_eras(&self, filter: EraFilter) -> Result<Vec<Era>, WorldError>;
+
+    /// id로 단일 시대 조회. 없으면 Ok(None). key_events·body_sections 전체 포함.
+    fn get_era(&self, id: &EraId) -> Result<Option<Era>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_eras(&self, query: &str, top_k: u32) -> Result<Vec<Era>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다.
+    fn upsert_era(&self, project_id: &str, era: &Era) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_eras(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

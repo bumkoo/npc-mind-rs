@@ -1,0 +1,48 @@
+# 무협(wuxia) Era 폼 — Phase N 폼 시스템 자리.
+#
+# Phase 5b에서는 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase N부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "era"
+
+# kind 옵션 — 무협 270년 5 시대 (history.md §0.2 그대로).
+[[fields.kind.options]]
+value = "founding"
+label = "건국기"
+
+[[fields.kind.options]]
+value = "prosperity"
+label = "전성기"
+
+[[fields.kind.options]]
+value = "turning"
+label = "변곡기"
+
+[[fields.kind.options]]
+value = "decline"
+label = "쇠퇴기"
+
+[[fields.kind.options]]
+value = "fall"
+label = "붕괴기"
+
+# Boundary 정책 — Phase 5b §3.3 — start inclusive · end exclusive.
+[[fields]]
+key = "temporal.start_year_relative"
+label = "시작 연도 (270년차 기준, inclusive)"
+description = "음수 = 과거. 예: era-founding=-270 (원년부터 시작 inclusive)."
+type = "integer"
+
+[[fields]]
+key = "temporal.end_year_relative"
+label = "종료 연도 (270년차 기준, exclusive)"
+description = "다음 era 시작 연도 = 본 era 종료 (exclusive). 예: era-founding=-220."
+type = "integer"
+
+# Era → Event 단방향 외래키 — Phase 5b 활성.
+[[fields]]
+key = "key_events"
+label = "본 시대 핵심 사건 (외래키)"
+description = "events.id 배열. 작성 순서 = 시간순 권장."
+type = "id_array"
+target = "event"

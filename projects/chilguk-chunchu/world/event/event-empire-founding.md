@@ -19,7 +19,7 @@ temporal:
   notes: |
     history.md §1.1 "창세 전쟁" — 사건의 정확한 지속 기간 명시 없음. 한 시대 분기점으로만 정형.
     Phase 5b Era 결합 시 era_id="era-founding"으로 정형 시간 승급 예정.
-era_id: ~
+era_id: era-founding              # Phase 5b 외래키 활성 (Phase 5a 텍스트 → 활성)
 participants:
   people: []
   groups:

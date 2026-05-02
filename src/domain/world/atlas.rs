@@ -246,6 +246,7 @@ pub struct AtlasFilter {
 mod tests {
     use super::*;
     use crate::domain::world::{
+        era::{Era, EraFilter, EraId},
         event::{Event, EventFilter, EventId},
         place::{Place, PlaceFilter, PlaceLayer},
         person::{Person, PersonFilter, PersonId},
@@ -347,6 +348,21 @@ mod tests {
             unimplemented!()
         }
         fn count_events(&self, _: Option<&str>) -> Result<u64, WorldError> {
+            unimplemented!()
+        }
+        fn list_eras(&self, _: EraFilter) -> Result<Vec<Era>, WorldError> {
+            unimplemented!()
+        }
+        fn get_era(&self, _: &EraId) -> Result<Option<Era>, WorldError> {
+            unimplemented!()
+        }
+        fn search_eras(&self, _: &str, _: u32) -> Result<Vec<Era>, WorldError> {
+            unimplemented!()
+        }
+        fn upsert_era(&self, _: &str, _: &Era) -> Result<(), WorldError> {
+            unimplemented!()
+        }
+        fn count_eras(&self, _: Option<&str>) -> Result<u64, WorldError> {
             unimplemented!()
         }
     }

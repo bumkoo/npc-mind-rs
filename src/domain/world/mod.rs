@@ -19,6 +19,7 @@ pub mod place;
 pub mod skill;
 
 pub use atlas::{Atlas, AtlasExtent, AtlasFilter, AtlasId};
+pub use era::{Era, EraFilter, EraId, EraTemporal};
 pub use event::{
     Event, EventCategory, EventFilter, EventId, EventTemporal, ParticipantsRefs,
 };
