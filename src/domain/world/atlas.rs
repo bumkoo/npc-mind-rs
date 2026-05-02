@@ -246,6 +246,7 @@ pub struct AtlasFilter {
 mod tests {
     use super::*;
     use crate::domain::world::{
+        event::{Event, EventFilter, EventId},
         place::{Place, PlaceFilter, PlaceLayer},
         person::{Person, PersonFilter, PersonId},
         group::{Group, GroupFilter, GroupId},
@@ -331,6 +332,21 @@ mod tests {
             unimplemented!()
         }
         fn count_atlases(&self, _: Option<&str>) -> Result<u64, WorldError> {
+            unimplemented!()
+        }
+        fn list_events(&self, _: EventFilter) -> Result<Vec<Event>, WorldError> {
+            unimplemented!()
+        }
+        fn get_event(&self, _: &EventId) -> Result<Option<Event>, WorldError> {
+            unimplemented!()
+        }
+        fn search_events(&self, _: &str, _: u32) -> Result<Vec<Event>, WorldError> {
+            unimplemented!()
+        }
+        fn upsert_event(&self, _: &str, _: &Event) -> Result<(), WorldError> {
+            unimplemented!()
+        }
+        fn count_events(&self, _: Option<&str>) -> Result<u64, WorldError> {
             unimplemented!()
         }
     }

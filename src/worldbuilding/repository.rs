@@ -4,8 +4,8 @@
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
 use crate::domain::world::{
-    Atlas, AtlasFilter, AtlasId, Group, GroupFilter, GroupId, Person, PersonFilter, PersonId,
-    Place, PlaceFilter, PlaceId, WorldError,
+    Atlas, AtlasFilter, AtlasId, Event, EventFilter, EventId, Group, GroupFilter, GroupId, Person,
+    PersonFilter, PersonId, Place, PlaceFilter, PlaceId, WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -105,4 +105,31 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_atlases(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 5a — Event (두 번째 인스턴스 도메인)
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 사건 목록 조회. 결과는 id 오름차순.
+    ///
+    /// `EventFilter::participants_*`는 `event_participants_refs` 인덱스를 활용해
+    /// 특정 인물·그룹·장소가 관여한 사건만 추리는 데 사용. `year_relative_min/max`는
+    /// `events.year_relative` 캐시 컬럼으로 시기별 정렬.
+    fn list_events(&self, filter: EventFilter) -> Result<Vec<Event>, WorldError>;
+
+    /// id로 단일 사건 조회. 없으면 Ok(None). participants·body_sections 전체 포함.
+    fn get_event(&self, id: &EventId) -> Result<Option<Event>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_events(&self, query: &str, top_k: u32) -> Result<Vec<Event>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다.
+    ///
+    /// **Source-of-truth**: `events.participants_json`이 단일 권위. `event_participants_refs`는
+    /// 역방향 인덱스 전용이며 같은 트랜잭션 안에서 delete-then-insert로 동기화된다.
+    /// 외부 도구가 둘 중 하나만 변경하면 silent drift 발생 가능 — Atlas와 동일한 SoT 계약.
+    fn upsert_event(&self, project_id: &str, event: &Event) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_events(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

@@ -1,10 +1,11 @@
-//! `SqliteWorldStore` — Phase 1·2·3·4 Vertical Slice (groups + persons + places + atlases + FTS5 trigram).
+//! `SqliteWorldStore` — Phase 1·2·3·4·5a Vertical Slice (groups + persons + places + atlases + events + FTS5 trigram).
 //!
-//! 스키마는 task-phase{1,2,3,4}-vertical-slice §6.3을 그대로 따름.
+//! 스키마는 task-phase{1,2,3,4,5a}-vertical-slice §6.3을 그대로 따름.
 //! Phase 2에서 persons 테이블 + persons_fts 추가 (`migrate_v2`). Phase 3에서 places +
 //! places_fts 추가 (`migrate_v3`). Phase 4에서 atlases + atlases_fts + place_atlas_refs
-//! 양방향 인덱스 추가 (`migrate_v4`). 같은 SQLite 파일이 4 도메인 모두 보관.
-//! 임베딩은 Phase 5+에서 도입 (vec0 미사용).
+//! 양방향 인덱스 추가 (`migrate_v4`). Phase 5a에서 events + events_fts +
+//! event_participants_refs 양방향 인덱스 추가 (`migrate_v5`). 같은 SQLite 파일이
+//! 5 도메인 모두 보관. 임베딩은 Phase N+에서 도입 (vec0 미사용).
 
 use std::sync::Mutex;
 
@@ -12,15 +13,16 @@ use rusqlite::{Connection, params};
 use serde_json::{Map, Value};
 
 use crate::domain::world::{
-    Atlas, AtlasExtent, AtlasFilter, AtlasId, Group, GroupFilter, GroupId, HexacoSix, Person,
-    PersonFilter, PersonId, PersonStatus, PersonTemporal, Place, PlaceFilter, PlaceId, PlaceLayer,
-    Spatial, WorldError,
+    Atlas, AtlasExtent, AtlasFilter, AtlasId, Event, EventCategory, EventFilter, EventId,
+    EventTemporal, Group, GroupFilter, GroupId, HexacoSix, ParticipantsRefs, Person, PersonFilter,
+    PersonId, PersonStatus, PersonTemporal, Place, PlaceFilter, PlaceId, PlaceLayer, Spatial,
+    WorldError,
 };
 #[cfg(test)]
 use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
-const SCHEMA_VERSION: i64 = 4;
+const SCHEMA_VERSION: i64 = 5;
 
 pub struct SqliteWorldStore {
     conn: Mutex<Connection>,
@@ -70,6 +72,9 @@ impl SqliteWorldStore {
         }
         if current < 4 {
             Self::migrate_v4(&conn)?;
+        }
+        if current < 5 {
+            Self::migrate_v5(&conn)?;
         }
         // schema_meta를 단일 row로 강제 (Code review #7).
         // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
@@ -169,6 +174,65 @@ impl SqliteWorldStore {
             );
             CREATE INDEX IF NOT EXISTS idx_par_place ON place_atlas_refs(place_id);
             CREATE INDEX IF NOT EXISTS idx_par_atlas ON place_atlas_refs(atlas_id);",
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    /// v4 → v5 마이그레이션: events 테이블 + events_fts + event_participants_refs.
+    ///
+    /// **Source-of-truth 계약 (중요)** — Phase 4 atlases와 동일 패턴:
+    /// - `events.participants_json`이 **단일 권위** — `row_to_event`가 본 컬럼만 읽어
+    ///   `Event.participants`를 복원한다. 도메인·HTTP 응답에서 보이는 participants는
+    ///   모두 여기에서 나온다.
+    /// - `event_participants_refs`는 **역방향 인덱스 전용** — "이 person/group/place_id를
+    ///   참조하는 event 찾기" 같은 reverse lookup용. `get_event`/`list_events`는
+    ///   ref_kind/ref_id 필터를 본 테이블로 조회하지만 결과 row는 events 테이블을 권위로 한다.
+    /// - 두 곳의 일관성은 `upsert_event` 단일 트랜잭션 내에서만 보장된다 — 외부 도구가
+    ///   둘 중 하나만 변경하면 silent drift 발생 가능.
+    ///
+    /// `year_relative` 캐시 컬럼은 `temporal_json.year_relative`와 동일 — 정렬·필터용.
+    /// `era_id` 컬럼은 텍스트 보존만 (Phase 5b에서 era 도메인 외래키로 활성).
+    fn migrate_v5(conn: &Connection) -> Result<(), WorldError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS events (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'historical' CHECK(category IN ('historical','scheduled','legendary')),
+                name TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]',
+                summary TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                extras_json TEXT NOT NULL DEFAULT '{}',
+                temporal_json TEXT NOT NULL DEFAULT '{}',
+                year_relative INTEGER,
+                era_id TEXT,
+                participants_json TEXT NOT NULL DEFAULT '{}',
+                body_sections_json TEXT NOT NULL DEFAULT '{}',
+                related_events_json TEXT NOT NULL DEFAULT '[]',
+                source_path TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_events_kind ON events(kind);
+            CREATE INDEX IF NOT EXISTS idx_events_category ON events(category);
+            CREATE INDEX IF NOT EXISTS idx_events_year_relative ON events(year_relative);
+            CREATE INDEX IF NOT EXISTS idx_events_era_id ON events(era_id);
+            CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id);
+            CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+                id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+            );
+            CREATE TABLE IF NOT EXISTS event_participants_refs (
+                event_id TEXT NOT NULL,
+                ref_kind TEXT NOT NULL CHECK(ref_kind IN ('person','group','place')),
+                ref_id TEXT NOT NULL,
+                ref_order INTEGER NOT NULL,
+                PRIMARY KEY (event_id, ref_kind, ref_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_epr_person ON event_participants_refs(ref_id) WHERE ref_kind = 'person';
+            CREATE INDEX IF NOT EXISTS idx_epr_group ON event_participants_refs(ref_id) WHERE ref_kind = 'group';
+            CREATE INDEX IF NOT EXISTS idx_epr_place ON event_participants_refs(ref_id) WHERE ref_kind = 'place';
+            CREATE INDEX IF NOT EXISTS idx_epr_event ON event_participants_refs(event_id);",
         )
         .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(())
@@ -318,6 +382,20 @@ fn person_body_concat(person: &Person) -> String {
 fn place_body_concat(place: &Place) -> String {
     let mut s = String::new();
     for (k, v) in &place.body_sections {
+        s.push_str(k);
+        s.push('\n');
+        s.push_str(v);
+        s.push('\n');
+    }
+    s
+}
+
+fn event_body_concat(event: &Event) -> String {
+    // Event body는 산문 위주 (`## 개요`/`## 발단`/`## 결과` 등). 코드블록 strip은
+    // 미적용 — Atlas만큼 ASCII art가 흔하지 않다. 필요해지면 strip_fenced_code_blocks를
+    // 적용 (group/person/place와 동일 정책).
+    let mut s = String::new();
+    for (k, v) in &event.body_sections {
         s.push_str(k);
         s.push('\n');
         s.push_str(v);
@@ -1201,6 +1279,267 @@ impl WorldRepository for SqliteWorldStore {
         };
         Ok(n.max(0) as u64)
     }
+
+    // ---------------------------------------------------------------------
+    // Phase 5a — Event (두 번째 인스턴스 도메인)
+    // ---------------------------------------------------------------------
+
+    fn upsert_event(&self, project_id: &str, event: &Event) -> Result<(), WorldError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        let aliases_json = json_array_of_strings(&event.aliases);
+        let tags_json = json_array_of_strings(&event.tags);
+        let extras_json = serde_json::to_string(&event.extras)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let temporal_json = serde_json::to_string(&event.temporal)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let participants_json = serde_json::to_string(&event.participants)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let body_json = serde_json::to_string(&event.body_sections)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let related_events_json: String = serde_json::to_string(
+            &event
+                .related_events
+                .iter()
+                .map(|e| e.as_str())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let updated_at = now_ms();
+
+        tx.execute(
+            "INSERT OR REPLACE INTO events (
+                id, project_id, kind, category, name, aliases_json,
+                summary, tags_json, extras_json, temporal_json,
+                year_relative, era_id, participants_json, body_sections_json,
+                related_events_json, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
+                      ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![
+                event.id.as_str(),
+                project_id,
+                event.kind,
+                event.category.as_str(),
+                event.name,
+                aliases_json,
+                event.summary,
+                tags_json,
+                extras_json,
+                temporal_json,
+                event.temporal.year_relative,
+                event.era_id,
+                participants_json,
+                body_json,
+                related_events_json,
+                event.source_path,
+                updated_at,
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // FTS5 — id 기반 delete-then-insert
+        tx.execute(
+            "DELETE FROM events_fts WHERE id = ?1",
+            params![event.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO events_fts (id, name, aliases, summary, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                event.id.as_str(),
+                event.name,
+                aliases_concat(&event.aliases),
+                event.summary,
+                event_body_concat(event),
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // event_participants_refs — 양방향 인덱스 동기화 (event_id 기준 delete-then-insert).
+        // composite PK (event_id, ref_kind, ref_id)이라 동일 (kind, id) 중복 시 PK 위반 —
+        // 호출자가 participants 내 중복을 제거해야 한다 (world-load CLI가 검증).
+        tx.execute(
+            "DELETE FROM event_participants_refs WHERE event_id = ?1",
+            params![event.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        // 정방향 순서 보존 — people → groups → places 카테고리 순으로 ref_order 부여.
+        // 같은 카테고리 내에선 작성 순서 유지.
+        let mut order: i64 = 0;
+        for pid in &event.participants.people {
+            tx.execute(
+                "INSERT INTO event_participants_refs (event_id, ref_kind, ref_id, ref_order) VALUES (?1, ?2, ?3, ?4)",
+                params![event.id.as_str(), "person", pid, order],
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+            order += 1;
+        }
+        for gid in &event.participants.groups {
+            tx.execute(
+                "INSERT INTO event_participants_refs (event_id, ref_kind, ref_id, ref_order) VALUES (?1, ?2, ?3, ?4)",
+                params![event.id.as_str(), "group", gid, order],
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+            order += 1;
+        }
+        for plid in &event.participants.places {
+            tx.execute(
+                "INSERT INTO event_participants_refs (event_id, ref_kind, ref_id, ref_order) VALUES (?1, ?2, ?3, ?4)",
+                params![event.id.as_str(), "place", plid, order],
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+            order += 1;
+        }
+
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    fn list_events(&self, filter: EventFilter) -> Result<Vec<Event>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT e.id, e.project_id, e.kind, e.category, e.name, e.aliases_json,
+                    e.summary, e.tags_json, e.extras_json, e.temporal_json,
+                    e.year_relative, e.era_id, e.participants_json, e.body_sections_json,
+                    e.related_events_json, e.source_path
+             FROM events e",
+        );
+        let mut binds: Vec<String> = Vec::new();
+        // participants_* 필터는 event_participants_refs 인덱스를 활용한 EXISTS로 매핑.
+        // 셋 다 동시에 지정되면 AND로 결합 — 모두 관여한 사건만.
+        let mut where_clauses: Vec<String> = vec!["1=1".into()];
+        if let Some(k) = filter.kind {
+            where_clauses.push("e.kind = ?".into());
+            binds.push(k);
+        }
+        if let Some(c) = filter.category {
+            where_clauses.push("e.category = ?".into());
+            binds.push(c.as_str().to_string());
+        }
+        if let Some(p) = filter.participants_person {
+            where_clauses.push(
+                "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'person' AND r.ref_id = ?)".into(),
+            );
+            binds.push(p);
+        }
+        if let Some(g) = filter.participants_group {
+            where_clauses.push(
+                "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'group' AND r.ref_id = ?)".into(),
+            );
+            binds.push(g);
+        }
+        if let Some(pl) = filter.participants_place {
+            where_clauses.push(
+                "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'place' AND r.ref_id = ?)".into(),
+            );
+            binds.push(pl);
+        }
+        if let Some(min) = filter.year_relative_min {
+            where_clauses.push("e.year_relative IS NOT NULL AND e.year_relative >= ?".into());
+            binds.push(min.to_string());
+        }
+        if let Some(max) = filter.year_relative_max {
+            where_clauses.push("e.year_relative IS NOT NULL AND e.year_relative <= ?".into());
+            binds.push(max.to_string());
+        }
+        if let Some(t) = filter.genre_tag {
+            where_clauses.push("e.tags_json LIKE ? ESCAPE '\\'".into());
+            binds.push(json_token_like_pattern(&t));
+        }
+        sql.push_str(" WHERE ");
+        sql.push_str(&where_clauses.join(" AND "));
+        sql.push_str(" ORDER BY e.id ASC");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        // year_relative_min/max는 정수지만 binds는 String 통일 — SQLite는 텍스트→정수 자동 변환.
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            binds.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_event)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_event_rows_warn_on_err(rows))
+    }
+
+    fn get_event(&self, id: &EventId) -> Result<Option<Event>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let res = conn.query_row(
+            "SELECT id, project_id, kind, category, name, aliases_json,
+                    summary, tags_json, extras_json, temporal_json,
+                    year_relative, era_id, participants_json, body_sections_json,
+                    related_events_json, source_path
+             FROM events WHERE id = ?1",
+            params![id.as_str()],
+            row_to_event,
+        );
+        match res {
+            Ok(e) => Ok(Some(e)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WorldError::Storage(e.to_string())),
+        }
+    }
+
+    fn search_events(&self, query: &str, top_k: u32) -> Result<Vec<Event>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let char_count = q.chars().count();
+        if char_count < 3 {
+            return self.search_events_like(&conn, q, top_k);
+        }
+
+        let escaped = q.replace('"', "\"\"");
+        let phrase = format!("\"{}\"", escaped);
+        let fts_hits: Result<Vec<Event>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT e.id, e.project_id, e.kind, e.category, e.name, e.aliases_json,
+                        e.summary, e.tags_json, e.extras_json, e.temporal_json,
+                        e.year_relative, e.era_id, e.participants_json, e.body_sections_json,
+                        e.related_events_json, e.source_path
+                 FROM events_fts f
+                 JOIN events e ON e.id = f.id
+                 WHERE events_fts MATCH ?1
+                 ORDER BY rank
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_event)?;
+            Ok(collect_event_rows_warn_on_err(rows))
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => self.search_events_like(&conn, q, top_k),
+            Err(e) => {
+                tracing::debug!(
+                    "FTS5 MATCH 실패(events), LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_events_like(&conn, q, top_k)
+            }
+        }
+    }
+
+    fn count_events(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = match project_id {
+            Some(p) => conn
+                .query_row(
+                    "SELECT COUNT(*) FROM events WHERE project_id = ?1",
+                    params![p],
+                    |r| r.get(0),
+                )
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+            None => conn
+                .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+        };
+        Ok(n.max(0) as u64)
+    }
 }
 
 impl SqliteWorldStore {
@@ -1295,6 +1634,37 @@ impl SqliteWorldStore {
             .query_map(params![pat, top_k as i64], row_to_atlas)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(collect_atlas_rows_warn_on_err(rows))
+    }
+
+    /// Event 검색용 LIKE fallback — Phase 5a. atlases와 동일 패턴.
+    fn search_events_like(
+        &self,
+        conn: &Connection,
+        q: &str,
+        top_k: u32,
+    ) -> Result<Vec<Event>, WorldError> {
+        let pat = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = conn
+            .prepare(
+                "SELECT e.id, e.project_id, e.kind, e.category, e.name, e.aliases_json,
+                        e.summary, e.tags_json, e.extras_json, e.temporal_json,
+                        e.year_relative, e.era_id, e.participants_json, e.body_sections_json,
+                        e.related_events_json, e.source_path
+                 FROM events e
+                 LEFT JOIN events_fts f ON f.id = e.id
+                 WHERE e.name LIKE ?1 ESCAPE '\\'
+                    OR f.aliases LIKE ?1 ESCAPE '\\'
+                    OR e.summary LIKE ?1 ESCAPE '\\'
+                    OR f.body LIKE ?1 ESCAPE '\\'
+                 GROUP BY e.id
+                 ORDER BY e.id ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![pat, top_k as i64], row_to_event)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_event_rows_warn_on_err(rows))
     }
 
     /// FTS5 fallback — `groups_fts.body`/`name`/`aliases`/`summary`를 LIKE %q% 매칭.
@@ -1584,6 +1954,80 @@ where
             Ok(a) => out.push(a),
             Err(e) => {
                 tracing::warn!("SqliteWorldStore atlas row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
+}
+
+fn row_to_event(row: &rusqlite::Row) -> rusqlite::Result<Event> {
+    let id: String = row.get(0)?;
+    // project_id (1)은 도메인 모델 미보존.
+    let kind: String = row.get(2)?;
+    let category_str: String = row.get(3)?;
+    let name: String = row.get(4)?;
+    let aliases_json: String = row.get(5)?;
+    let summary: String = row.get(6)?;
+    let tags_json: String = row.get(7)?;
+    let extras_json: String = row.get(8)?;
+    let temporal_json: String = row.get(9)?;
+    // year_relative (10)·era_id (11): temporal_json·era_id에 동일 값. 캐시 컬럼.
+    // 도메인 복원은 temporal_json + era_id (text column) 권위 사용.
+    let _year_relative_cache: Option<i64> = row.get(10)?;
+    let era_id: Option<String> = row.get(11)?;
+    let participants_json: String = row.get(12)?;
+    let body_json: String = row.get(13)?;
+    let related_events_json: String = row.get(14)?;
+    let source_path: Option<String> = row.get(15)?;
+
+    let category = EventCategory::from_str_loose(&category_str).ok_or_else(|| {
+        rusqlite::Error::FromSqlConversionFailure(
+            3,
+            rusqlite::types::Type::Text,
+            format!("events.category 알 수 없는 값 '{category_str}' (id={id})").into(),
+        )
+    })?;
+    let extras: Map<String, Value> =
+        serde_json::from_str(&extras_json).unwrap_or_default();
+    let temporal: EventTemporal =
+        serde_json::from_str(&temporal_json).unwrap_or_default();
+    let participants: ParticipantsRefs =
+        serde_json::from_str(&participants_json).unwrap_or_default();
+    let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
+    let related_events: Vec<EventId> = serde_json::from_str::<Vec<String>>(&related_events_json)
+        .map(|v| v.into_iter().map(EventId::new).collect())
+        .unwrap_or_default();
+    let aliases = from_json_strings(&aliases_json);
+    let tags = from_json_strings(&tags_json);
+
+    Ok(Event {
+        id: EventId::new(id),
+        kind,
+        category,
+        name,
+        aliases,
+        summary,
+        tags,
+        extras,
+        temporal,
+        era_id,
+        participants,
+        body_sections,
+        related_events,
+        source_path,
+    })
+}
+
+fn collect_event_rows_warn_on_err<I>(rows: I) -> Vec<Event>
+where
+    I: Iterator<Item = rusqlite::Result<Event>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(e) => out.push(e),
+            Err(e) => {
+                tracing::warn!("SqliteWorldStore event row decode 실패 — 결과에서 제외: {e}");
             }
         }
     }
@@ -2941,5 +3385,398 @@ mod tests {
         let store = SqliteWorldStore::in_memory().unwrap();
         let got = store.get_places_batch(&[]).unwrap();
         assert!(got.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 5a — Event 라운드트립 + event_participants_refs 양방향 인덱스
+    // -----------------------------------------------------------------------
+
+    fn sample_event_with_participants(
+        id: &str,
+        people: &[&str],
+        groups: &[&str],
+        places: &[&str],
+    ) -> Event {
+        let mut e = Event::new(id, "betrayal", id);
+        e.aliases = vec!["별칭".into()];
+        e.summary = "테스트 사건".into();
+        e.tags = vec!["test".into(), "event".into(), "historical".into()];
+        e.category = EventCategory::Historical;
+        e.extras
+            .insert("trigger".into(), Value::String("발단".into()));
+        e.temporal = EventTemporal {
+            year: Some("10년 전 (260년차)".into()),
+            year_relative: Some(-10),
+            duration: Some("사흘 밤".into()),
+            notes: None,
+        };
+        e.era_id = None;
+        e.participants = ParticipantsRefs {
+            people: people.iter().map(|s| s.to_string()).collect(),
+            groups: groups.iter().map(|s| s.to_string()).collect(),
+            places: places.iter().map(|s| s.to_string()).collect(),
+        };
+        e.body_sections
+            .insert("개요".into(), "산문 본문".into());
+        e
+    }
+
+    #[test]
+    fn events_count_zero_on_fresh_db() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        assert_eq!(store.count_events(None).unwrap(), 0);
+    }
+
+    #[test]
+    fn event_full_roundtrip_through_sqlite() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let e = sample_event_with_participants(
+            "event-test",
+            &["npc-01", "npc-02"],
+            &["group-x"],
+            &["place-y"],
+        );
+        store.upsert_event("test", &e).unwrap();
+        let back = store.get_event(&EventId::new("event-test")).unwrap().unwrap();
+        assert_eq!(back, e);
+    }
+
+    #[test]
+    fn event_participants_refs_bidirectional_index_populated_on_upsert() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let e = sample_event_with_participants(
+            "event-x",
+            &["npc-01", "npc-02"],
+            &["group-a"],
+            &["place-c"],
+        );
+        store.upsert_event("test", &e).unwrap();
+
+        // 정방향 (event → participants, ref_kind 카테고리별 + ref_order 보존).
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT ref_kind, ref_id, ref_order FROM event_participants_refs
+                 WHERE event_id = ?1 ORDER BY ref_order ASC",
+            )
+            .unwrap();
+        let rows: Vec<(String, String, i64)> = stmt
+            .query_map(params!["event-x"], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+            })
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("person".to_string(), "npc-01".to_string(), 0),
+                ("person".to_string(), "npc-02".to_string(), 1),
+                ("group".to_string(), "group-a".to_string(), 2),
+                ("place".to_string(), "place-c".to_string(), 3),
+            ]
+        );
+
+        // 역방향 (participant → events) — idx_epr_person 인덱스 활용 가능.
+        let mut stmt2 = conn
+            .prepare(
+                "SELECT event_id FROM event_participants_refs
+                 WHERE ref_kind = 'person' AND ref_id = ?1
+                 ORDER BY event_id",
+            )
+            .unwrap();
+        let events_for_npc01: Vec<String> = stmt2
+            .query_map(params!["npc-01"], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(events_for_npc01, vec!["event-x".to_string()]);
+    }
+
+    #[test]
+    fn event_participants_refs_resyncs_on_re_upsert() {
+        // participants 변경 → 기존 매핑은 모두 사라지고 신규로 채워짐.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let e1 = sample_event_with_participants("event-x", &["npc-01"], &[], &[]);
+        store.upsert_event("test", &e1).unwrap();
+        let e2 = sample_event_with_participants("event-x", &[], &[], &["place-z"]);
+        store.upsert_event("test", &e2).unwrap();
+
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT ref_kind, ref_id FROM event_participants_refs
+                 WHERE event_id = ?1 ORDER BY ref_order",
+            )
+            .unwrap();
+        let rows: Vec<(String, String)> = stmt
+            .query_map(params!["event-x"], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(rows, vec![("place".to_string(), "place-z".to_string())]);
+    }
+
+    #[test]
+    fn list_events_filter_by_category_and_kind() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut e1 = sample_event_with_participants("event-a", &[], &[], &[]);
+        e1.category = EventCategory::Historical;
+        e1.kind = "betrayal".into();
+        let mut e2 = sample_event_with_participants("event-b", &[], &[], &[]);
+        e2.category = EventCategory::Legendary;
+        e2.kind = "war".into();
+        store.upsert_event("test", &e1).unwrap();
+        store.upsert_event("test", &e2).unwrap();
+
+        let hist = store
+            .list_events(EventFilter {
+                category: Some(EventCategory::Historical),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(hist.len(), 1);
+        assert_eq!(hist[0].id.as_str(), "event-a");
+
+        let wars = store
+            .list_events(EventFilter {
+                kind: Some("war".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(wars.len(), 1);
+        assert_eq!(wars[0].id.as_str(), "event-b");
+    }
+
+    #[test]
+    fn list_events_filter_by_participants() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_event(
+                "test",
+                &sample_event_with_participants(
+                    "event-a",
+                    &["npc-01", "npc-02"],
+                    &["group-x"],
+                    &["place-y"],
+                ),
+            )
+            .unwrap();
+        store
+            .upsert_event(
+                "test",
+                &sample_event_with_participants(
+                    "event-b",
+                    &["npc-02"],
+                    &[],
+                    &["place-z"],
+                ),
+            )
+            .unwrap();
+        store
+            .upsert_event(
+                "test",
+                &sample_event_with_participants("event-c", &[], &[], &[]),
+            )
+            .unwrap();
+
+        // npc-01 관여 사건은 event-a 하나만.
+        let by_npc01 = store
+            .list_events(EventFilter {
+                participants_person: Some("npc-01".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = by_npc01.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["event-a"]);
+
+        // npc-02 관여는 event-a + event-b.
+        let by_npc02 = store
+            .list_events(EventFilter {
+                participants_person: Some("npc-02".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = by_npc02.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["event-a", "event-b"]);
+
+        // group-x 관여는 event-a 하나만.
+        let by_group = store
+            .list_events(EventFilter {
+                participants_group: Some("group-x".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = by_group.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["event-a"]);
+
+        // place-y만 관여한 사건 = event-a.
+        let by_place = store
+            .list_events(EventFilter {
+                participants_place: Some("place-y".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = by_place.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["event-a"]);
+    }
+
+    #[test]
+    fn list_events_filter_by_year_relative_range() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut e_old = sample_event_with_participants("event-old", &[], &[], &[]);
+        e_old.temporal.year_relative = Some(-200);
+        let mut e_recent = sample_event_with_participants("event-recent", &[], &[], &[]);
+        e_recent.temporal.year_relative = Some(-10);
+        let mut e_now = sample_event_with_participants("event-now", &[], &[], &[]);
+        e_now.temporal.year_relative = Some(0);
+        store.upsert_event("test", &e_old).unwrap();
+        store.upsert_event("test", &e_recent).unwrap();
+        store.upsert_event("test", &e_now).unwrap();
+
+        // -30 ≤ year_relative ≤ 0 → recent + now.
+        let recent = store
+            .list_events(EventFilter {
+                year_relative_min: Some(-30),
+                year_relative_max: Some(0),
+                ..Default::default()
+            })
+            .unwrap();
+        let ids: Vec<&str> = recent.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["event-now", "event-recent"]); // id ASC
+    }
+
+    #[test]
+    fn search_events_fts_matches_name_alias_and_body() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut e = Event::new("event-bloody-night", "betrayal", "붉은 밤의 변");
+        e.aliases = vec!["붉은 밤".into(), "10년 전 변란".into()];
+        e.summary = "통일제국 대진의 영토 와해 사건".into();
+        e.body_sections
+            .insert("개요".into(), "사흘 밤 동안 이어진 변란".into());
+        store.upsert_event("test", &e).unwrap();
+
+        // alias 매칭 (FTS5 trigram, 3자 이상).
+        let hits = store.search_events("붉은 밤", 5).unwrap();
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].id.as_str(), "event-bloody-night");
+
+        // summary 매칭.
+        let hits = store.search_events("영토 와해", 5).unwrap();
+        assert!(!hits.is_empty());
+
+        // 빈 query.
+        assert!(store.search_events("", 5).unwrap().is_empty());
+    }
+
+    #[test]
+    fn events_upsert_replaces_fts_stale_row() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut e = Event::new("event-x", "betrayal", "Alpha Event");
+        e.aliases = vec!["OldAliasUnique".into()];
+        e.body_sections.clear();
+        e.body_sections.insert("Overview".into(), "first".into());
+        store.upsert_event("test", &e).unwrap();
+        let hits = store.search_events("OldAliasUnique", 5).unwrap();
+        assert_eq!(hits.len(), 1);
+
+        e.aliases = vec!["NewAliasUnique".into()];
+        e.body_sections.clear();
+        e.body_sections.insert("Overview".into(), "second".into());
+        store.upsert_event("test", &e).unwrap();
+
+        let hits_old = store.search_events("OldAliasUnique", 5).unwrap();
+        assert!(hits_old.is_empty(), "stale FTS5 row 검출");
+        let hits_new = store.search_events("NewAliasUnique", 5).unwrap();
+        assert_eq!(hits_new.len(), 1);
+    }
+
+    #[test]
+    fn schema_v4_to_v5_migration_upgrades_existing_file_db() {
+        // 실제 v4→v5 경로 검증. tempfile에 v4 schema를 작성한 뒤,
+        // SqliteWorldStore::new(path)로 재오픈 → init_tables의 `current < 5` 분기가 활성되어
+        // events / events_fts / event_participants_refs가 추가되며 기존 v4 데이터는 보존된다.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // 1) v4 schema 작성 — atlases까지만.
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (4);
+                 CREATE TABLE atlases (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+                    name TEXT NOT NULL, aliases_json TEXT NOT NULL DEFAULT '[]',
+                    summary TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}', extent_json TEXT NOT NULL DEFAULT '{}',
+                    references_json TEXT NOT NULL DEFAULT '[]',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}', source_path TEXT,
+                    updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE atlases_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO atlases (id, project_id, kind, name, updated_at)
+                    VALUES ('atlas-legacy', 'p', 'continent', '레거시', 0);",
+            )
+            .unwrap();
+        }
+
+        // 2) 재오픈 → migrate_v5 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // 3) events 테이블이 추가되어 count_events가 동작.
+        assert_eq!(store.count_events(None).unwrap(), 0);
+
+        // 4) 기존 v4 atlases 보존.
+        let a = store
+            .get_atlas(&AtlasId::new("atlas-legacy"))
+            .unwrap()
+            .expect("v4 atlases row 보존 필요");
+        assert_eq!(a.name, "레거시");
+
+        // 5) v5 신규 — events upsert·get + event_participants_refs 채워짐.
+        let e = sample_event_with_participants("event-after", &["npc-1"], &[], &[]);
+        store.upsert_event("p", &e).unwrap();
+        let back = store
+            .get_event(&EventId::new("event-after"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back.participants.people, vec!["npc-1".to_string()]);
+
+        let conn = store.conn.lock().unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM event_participants_refs WHERE event_id = ?1",
+                params!["event-after"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+
+        drop(conn);
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn events_count_with_project_filter() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_event(
+                "p1",
+                &sample_event_with_participants("event-a", &[], &[], &[]),
+            )
+            .unwrap();
+        store
+            .upsert_event(
+                "p2",
+                &sample_event_with_participants("event-b", &[], &[], &[]),
+            )
+            .unwrap();
+        assert_eq!(store.count_events(None).unwrap(), 2);
+        assert_eq!(store.count_events(Some("p1")).unwrap(), 1);
+        assert_eq!(store.count_events(Some("p2")).unwrap(), 1);
     }
 }

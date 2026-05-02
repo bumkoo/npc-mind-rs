@@ -1,0 +1,59 @@
+# 무협(wuxia) Event 폼 — Phase N 폼 시스템 자리.
+#
+# Phase 5a에서는 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase N부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "event"
+
+# kind 옵션 — 무협 사건의 6 결.
+[[fields.kind.options]]
+value = "betrayal"
+label = "변란/배신"
+
+[[fields.kind.options]]
+value = "war"
+label = "전쟁"
+
+[[fields.kind.options]]
+value = "founding"
+label = "건국"
+
+[[fields.kind.options]]
+value = "disaster"
+label = "재해"
+
+[[fields.kind.options]]
+value = "ritual"
+label = "의례"
+
+[[fields.kind.options]]
+value = "discovery"
+label = "발견"
+
+# category — 사실성·시제 분류.
+[[fields.category.options]]
+value = "historical"
+label = "역사 사건"
+
+[[fields.category.options]]
+value = "scheduled"
+label = "예정 사건 (Phase 6+)"
+
+[[fields.category.options]]
+value = "legendary"
+label = "전설"
+
+# 시대 외래키 — Phase 5b Era 도메인 진입 시 활성.
+[[fields]]
+key = "era_id"
+label = "Era 외래키 (Phase 5b)"
+description = "Phase 5a엔 텍스트 보존만, Phase 5b Era 도메인 진입 시 외래키 활성."
+type = "id"
+target = "era"
+
+# 270년차 기준 절대 연도 — Phase 5b Era 결합 전 임시 정렬 키.
+[[fields]]
+key = "year_relative"
+label = "270년차 기준 절대 연도"
+description = "정렬·필터용 정수. 음수 = 과거, 0 = 현재(270년차), Phase 5b에서 Era·연도 정형화."
+type = "integer"
