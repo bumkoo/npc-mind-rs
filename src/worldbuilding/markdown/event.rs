@@ -78,8 +78,9 @@ pub fn event_from_markdown(md: &str) -> Result<Event, EventMarkdownError> {
     let temporal = parse_temporal(map.get(&YamlValue::from("temporal")))?;
     let era_id = get_optional_str(map, "era_id").map(|s| s.to_string());
     let participants = parse_participants(map.get(&YamlValue::from("participants")))?;
-    let related_events = get_string_array(map, "related_events")
-        .unwrap_or_default()
+    // R4: related_events는 Phase 5a 외래키 활성 필드 — non-String 항목 silent skip 금지.
+    // alias/tags 같은 자유 메타와 달리 ID 시퀀스는 무결성 위험.
+    let related_events = get_string_array_strict(map, "related_events", "related_events")?
         .into_iter()
         .map(EventId::new)
         .collect();
@@ -140,6 +141,55 @@ fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>>
     }
 }
 
+/// R4: Phase 5a 외래키 활성 ID 시퀀스 전용 — non-String 항목을 silent skip 대신 hard error.
+/// 예: `participants.people: [npc-01, 42, npc-02]`처럼 정수가 섞이면 `42`만 사라지고
+/// world-load FK 검증을 통과해버리는 silent data loss를 차단한다.
+///
+/// `key`는 진단 메시지용 — top-level "related_events" 또는 nested
+/// "participants.people"/"participants.groups"/"participants.places".
+fn get_string_array_strict_at(
+    seq: &serde_yaml::Sequence,
+    field: &'static str,
+) -> Result<Vec<String>, EventMarkdownError> {
+    let mut out = Vec::with_capacity(seq.len());
+    for item in seq {
+        match item {
+            YamlValue::String(s) => out.push(s.clone()),
+            _ => {
+                return Err(EventMarkdownError::TypeMismatch {
+                    field,
+                    expected: "string item (외래키 ID)",
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 키로 strict 시퀀스 추출. 키 부재 또는 명시적 null은 빈 Vec.
+/// 시퀀스가 아닌 다른 타입은 TypeMismatch 에러.
+///
+/// `key`는 YAML mapping lookup용 (예: "people"·"related_events"), `field`는
+/// 진단 메시지용 도트-경로 (예: "participants.people"). 두 값이 다른 이유: nested
+/// mapping에서 lookup은 short key, 에러 메시지는 사용자 가독성 위해 full path.
+fn get_string_array_strict(
+    map: &serde_yaml::Mapping,
+    key: &str,
+    field: &'static str,
+) -> Result<Vec<String>, EventMarkdownError> {
+    let Some(v) = map.get(YamlValue::from(key)) else {
+        return Ok(Vec::new());
+    };
+    match v {
+        YamlValue::Sequence(seq) => get_string_array_strict_at(seq, field),
+        YamlValue::Null => Ok(Vec::new()),
+        _ => Err(EventMarkdownError::TypeMismatch {
+            field,
+            expected: "sequence",
+        }),
+    }
+}
+
 fn parse_temporal(v: Option<&YamlValue>) -> Result<EventTemporal, EventMarkdownError> {
     let Some(v) = v else {
         return Ok(EventTemporal::default());
@@ -187,9 +237,11 @@ fn parse_participants(
             field: "participants",
             expected: "mapping",
         })?;
-    let people = get_string_array(map, "people").unwrap_or_default();
-    let groups = get_string_array(map, "groups").unwrap_or_default();
-    let places = get_string_array(map, "places").unwrap_or_default();
+    // R4: participants는 Phase 5a 외래키 활성 — non-String 항목 silent skip 차단.
+    // lookup key는 nested map의 short key, field name은 진단용 도트-경로.
+    let people = get_string_array_strict(map, "people", "participants.people")?;
+    let groups = get_string_array_strict(map, "groups", "participants.groups")?;
+    let places = get_string_array_strict(map, "places", "participants.places")?;
     Ok(ParticipantsRefs {
         people,
         groups,
@@ -564,5 +616,95 @@ extras:
         assert_eq!(e.participants.places.len(), 2);
         assert!(e.body_sections.contains_key("개요"));
         assert!(e.body_sections.contains_key("발단"));
+    }
+
+    // R4 — participants/related_events의 non-String 항목은 hard error.
+    // alias/tags는 자유 메타라 silent skip 유지(permissive), participants.* 와
+    // related_events는 Phase 5a 외래키 활성 ID 시퀀스라 strict.
+
+    #[test]
+    fn participants_people_with_non_string_item_errs() {
+        // 정수가 섞이면 silent skip 대신 TypeMismatch 에러.
+        let md = "---\nid: event-x\nkind: war\nname: X\nparticipants:\n  people:\n    - npc-01\n    - 42\n    - npc-02\n---\n";
+        let res = event_from_markdown(md);
+        match res {
+            Err(EventMarkdownError::TypeMismatch { field, .. }) => {
+                assert_eq!(field, "participants.people");
+            }
+            other => panic!("expected TypeMismatch on participants.people, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn participants_groups_with_mapping_item_errs() {
+        // 매핑이 섞인 경우도 hard error.
+        let md = "---\nid: event-x\nkind: war\nname: X\nparticipants:\n  groups:\n    - group-a\n    - {nested: oops}\n---\n";
+        let res = event_from_markdown(md);
+        assert!(
+            matches!(
+                res,
+                Err(EventMarkdownError::TypeMismatch { field: "participants.groups", .. })
+            ),
+            "got {res:?}"
+        );
+    }
+
+    #[test]
+    fn participants_places_non_sequence_errs() {
+        // sequence가 아닌 다른 타입(여기선 mapping)이면 TypeMismatch.
+        let md = "---\nid: event-x\nkind: war\nname: X\nparticipants:\n  places:\n    a: b\n---\n";
+        let res = event_from_markdown(md);
+        assert!(
+            matches!(
+                res,
+                Err(EventMarkdownError::TypeMismatch { field: "participants.places", .. })
+            ),
+            "got {res:?}"
+        );
+    }
+
+    #[test]
+    fn related_events_with_non_string_errs() {
+        // related_events도 외래키 활성이라 동일 strict.
+        let md = "---\nid: event-x\nkind: war\nname: X\nrelated_events:\n  - event-a\n  - 99\n---\n";
+        let res = event_from_markdown(md);
+        assert!(
+            matches!(
+                res,
+                Err(EventMarkdownError::TypeMismatch { field: "related_events", .. })
+            ),
+            "got {res:?}"
+        );
+    }
+
+    #[test]
+    fn aliases_with_non_string_remains_permissive() {
+        // alias는 자유 메타 — 정수 등 섞여도 silent skip(현재 정책 유지). 외래키 아님.
+        // 회귀 가드: R4가 자유 메타까지 strict로 만들지 않음을 명시.
+        let md = "---\nid: event-x\nkind: war\nname: X\naliases:\n  - alias-a\n  - 42\n  - alias-b\n---\n";
+        let e = event_from_markdown(md).expect("aliases는 permissive — 에러 아님");
+        assert_eq!(e.aliases, vec!["alias-a".to_string(), "alias-b".to_string()]);
+    }
+
+    #[test]
+    fn tags_with_non_string_remains_permissive() {
+        let md = "---\nid: event-x\nkind: war\nname: X\ntags:\n  - wuxia\n  - 0\n  - historical\n---\n";
+        let e = event_from_markdown(md).expect("tags는 permissive");
+        assert_eq!(e.tags, vec!["wuxia".to_string(), "historical".to_string()]);
+    }
+
+    #[test]
+    fn participants_null_remains_empty() {
+        // ~ 명시는 빈 Vec — strict 변경 후에도 회귀 없음.
+        let md = "---\nid: event-x\nkind: war\nname: X\nparticipants:\n  people: ~\n  groups: ~\n  places: ~\n---\n";
+        let e = event_from_markdown(md).expect("null 시퀀스는 빈 Vec");
+        assert!(e.participants.is_empty());
+    }
+
+    #[test]
+    fn related_events_null_remains_empty() {
+        let md = "---\nid: event-x\nkind: war\nname: X\nrelated_events: ~\n---\n";
+        let e = event_from_markdown(md).expect("null 시퀀스는 빈 Vec");
+        assert!(e.related_events.is_empty());
     }
 }

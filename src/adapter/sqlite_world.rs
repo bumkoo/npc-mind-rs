@@ -1399,6 +1399,18 @@ impl WorldRepository for SqliteWorldStore {
     }
 
     fn list_events(&self, filter: EventFilter) -> Result<Vec<Event>, WorldError> {
+        // R2: 함수 진입 시 전체 destructure — non-Copy 필드가 추가될 때 borrow 충돌 방지.
+        let EventFilter {
+            kind,
+            category,
+            participants_person,
+            participants_group,
+            participants_place,
+            year_relative_min,
+            year_relative_max,
+            genre_tag,
+        } = filter;
+
         let conn = self.conn.lock().unwrap();
         let mut sql = String::from(
             "SELECT e.id, e.project_id, e.kind, e.category, e.name, e.aliases_json,
@@ -1407,47 +1419,50 @@ impl WorldRepository for SqliteWorldStore {
                     e.related_events_json, e.source_path
              FROM events e",
         );
-        let mut binds: Vec<String> = Vec::new();
+        // R1: heterogeneous bind — year_relative_min/max는 Integer로 바인딩해
+        // SQLite affinity 변환을 거치지 않고 idx_events_year_relative 인덱스를 직접 활용.
+        // 텍스트→정수 변환은 일부 케이스에서 인덱스 사용을 포기시키므로 영구 가드.
+        let mut binds: Vec<rusqlite::types::Value> = Vec::new();
         // participants_* 필터는 event_participants_refs 인덱스를 활용한 EXISTS로 매핑.
-        // 셋 다 동시에 지정되면 AND로 결합 — 모두 관여한 사건만.
+        // 셋 다 동시에 지정되면 AND로 결합 — 모두 관여한 사건만 (LLM/MCP 사용자 주의 사항).
         let mut where_clauses: Vec<String> = vec!["1=1".into()];
-        if let Some(k) = filter.kind {
+        if let Some(k) = kind {
             where_clauses.push("e.kind = ?".into());
-            binds.push(k);
+            binds.push(rusqlite::types::Value::Text(k));
         }
-        if let Some(c) = filter.category {
+        if let Some(c) = category {
             where_clauses.push("e.category = ?".into());
-            binds.push(c.as_str().to_string());
+            binds.push(rusqlite::types::Value::Text(c.as_str().to_string()));
         }
-        if let Some(p) = filter.participants_person {
+        if let Some(p) = participants_person {
             where_clauses.push(
                 "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'person' AND r.ref_id = ?)".into(),
             );
-            binds.push(p);
+            binds.push(rusqlite::types::Value::Text(p));
         }
-        if let Some(g) = filter.participants_group {
+        if let Some(g) = participants_group {
             where_clauses.push(
                 "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'group' AND r.ref_id = ?)".into(),
             );
-            binds.push(g);
+            binds.push(rusqlite::types::Value::Text(g));
         }
-        if let Some(pl) = filter.participants_place {
+        if let Some(pl) = participants_place {
             where_clauses.push(
                 "EXISTS (SELECT 1 FROM event_participants_refs r WHERE r.event_id = e.id AND r.ref_kind = 'place' AND r.ref_id = ?)".into(),
             );
-            binds.push(pl);
+            binds.push(rusqlite::types::Value::Text(pl));
         }
-        if let Some(min) = filter.year_relative_min {
+        if let Some(min) = year_relative_min {
             where_clauses.push("e.year_relative IS NOT NULL AND e.year_relative >= ?".into());
-            binds.push(min.to_string());
+            binds.push(rusqlite::types::Value::Integer(min as i64));
         }
-        if let Some(max) = filter.year_relative_max {
+        if let Some(max) = year_relative_max {
             where_clauses.push("e.year_relative IS NOT NULL AND e.year_relative <= ?".into());
-            binds.push(max.to_string());
+            binds.push(rusqlite::types::Value::Integer(max as i64));
         }
-        if let Some(t) = filter.genre_tag {
+        if let Some(t) = genre_tag {
             where_clauses.push("e.tags_json LIKE ? ESCAPE '\\'".into());
-            binds.push(json_token_like_pattern(&t));
+            binds.push(rusqlite::types::Value::Text(json_token_like_pattern(&t)));
         }
         sql.push_str(" WHERE ");
         sql.push_str(&where_clauses.join(" AND "));
@@ -1456,11 +1471,8 @@ impl WorldRepository for SqliteWorldStore {
         let mut stmt = conn
             .prepare(&sql)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
-        // year_relative_min/max는 정수지만 binds는 String 통일 — SQLite는 텍스트→정수 자동 변환.
-        let bind_refs: Vec<&dyn rusqlite::ToSql> =
-            binds.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
         let rows = stmt
-            .query_map(rusqlite::params_from_iter(bind_refs), row_to_event)
+            .query_map(rusqlite::params_from_iter(binds.iter()), row_to_event)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(collect_event_rows_warn_on_err(rows))
     }
