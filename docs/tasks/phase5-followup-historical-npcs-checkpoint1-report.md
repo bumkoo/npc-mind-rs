@@ -1,9 +1,9 @@
 # Phase 5c.1 체크포인트 1 보고서 — 임서운 단독 변환 + 임서운 등장 Event 외래키 활성
 
-> **상태**: ✅ 체크포인트 1 통과 — 디렉터 리뷰 대기. **commit pause 유지**.
+> **상태**: ✅ 체크포인트 1 통과 + 디렉터 리뷰 반영 follow-up 적용. **commit pause 유지**.
 > **작업 브랜치**: `claude/historical-npcs-phase5c-oR0fL`
-> **사양**: `docs/tasks/task-phase5-followup-historical-npcs.md`
-> **작성일**: 2026-05-02
+> **사양**: `docs/tasks/task-phase5-followup-historical-npcs.md` (v1.1 — §3.3 직교 플래그 + §3.8 `extras.secret` 컨벤션 추가)
+> **작성일**: 2026-05-02 (초안) / 2026-05-02 follow-up
 
 ## Done
 
@@ -301,8 +301,80 @@ Pad 벤치 등도 같은 이유로 환경 의존).
 
 1. **권장 7 vs 선택 11** — 사양 §3.3 권장은 7건. 선택 추가 4건은 별도 follow-up 또는 Phase 6+ 후보.
 2. **boundary 케이스 결과 처리** — `event-bloody-cult-rebellion-2nd` 임서운 추가 여부 (본 보고 §결정 6 참조).
-3. **HEXACO 등급 정책** — 추양진인·진천명·단운·바투 등은 출처 단편 → heritage-pending. npc-09
-   진대인은 npc-09-jinyarim.md에 부친으로 묘사가 깊어 정밀 가능 후보.
+3. **HEXACO 신뢰도 정책** — 추양진인·진천명·단운·바투 등은 출처 단편 → `hexaco_confidence: pending`.
+   npc-09 진대인은 npc-09-jinyarim.md에 부친으로 묘사가 깊어 `precise` 가능 후보.
 
 체크포인트 2 진입 후 본 보고서를 베이스라인으로 사용 — Phase 5c.1 종결 후 Cowork에서
 `task-phase5-followup-mid-era-events.md` 작성으로 자연 이행.
+
+---
+
+## 디렉터 리뷰 반영 (follow-up, 2026-05-02)
+
+체크포인트 1 PR #73 리뷰에서 제안된 두 건의 컨벤션 정형화를 반영한 follow-up.
+원본 commit(2d6c683) **이후** 추가 commit으로 적용 — 체크포인트 1의 산출물 자체는 그대로 유지하되 사양 컨벤션과 임서운 마크다운만 갱신.
+
+### F1. `extras.secret` 컨벤션 정형화 (사양 §3.8 신규)
+
+**문제**: 체크포인트 1 원본에서 `extras.secret` 필드는 npc-im-seoun에 처음 도입됐으나 사양 §3 컨벤션 절에 정형 계약이 없었음. 검토자 우려 — "다른 person들은 비밀을 `## 비밀` H2 산문에만 두는데 frontmatter 미러를 도입한 의미와 일관성 정책이 부재".
+
+**적용**:
+- 사양 §3.8 신규 — `## 비밀` H2를 SoT(권위 출처)로 두고, `extras.secret`은 SQL 필터·FTS5 인덱스·MCP 도구 응답용 머신 리더블 미러로 명시.
+- 일관성 정책 — 두 위치는 같은 비밀 목록 + frontmatter는 라벨 수준(3-5 라인) + 산문 추가 시 동기화.
+- 적용 범위 — Phase 5c.1+ 신규 person 강제, 기존 npc-01..07·11 + player는 자연 추가 (마이그레이션 비강제).
+
+### F2. `source_status: heritage-pending` → 직교 플래그 두 개 (사양 §3.3 갱신)
+
+**문제**: Phase 2 단일 `source_status: heritage-pending` 플래그가 두 의미를 혼합 — (a) 열전 단독 .md 부재 (b) HEXACO 매핑 신뢰도 낮음. 임서운은 (a) 참 + (b) 거짓(다중 출처 일관 → 정밀)인 케이스라 단일 플래그로 표현 불가능. 원본 commit은 산문에 "정밀 등급이지만 source_status 유지"라고 명시했으나 두 독자가 값을 어떻게 다룰지 갈릴 수 있음.
+
+**적용 — 직교 플래그 두 개**:
+
+| 필드 | 타입 | 의미 |
+|---|---|---|
+| `extras.heritage_doc_pending` | `bool` | 열전 단독 .md 부재 여부 |
+| `extras.hexaco_confidence` | `enum` (`precise` / `pending` / `unknown`) | HEXACO 6 dim 매핑 신뢰도 |
+
+npc-im-seoun 적용 결과:
+```yaml
+heritage_doc_pending: true      # 열전 단독 .md 부재 (사양 §3.3 직교 플래그)
+hexaco_confidence: precise      # 다중 출처 일관 → 정밀 등급
+```
+
+기존 `source_status: heritage-pending` 키 제거. `## HEXACO 분석` 산문도 새 표기로 정정.
+
+**기존 npc-07·11 마이그레이션**: legacy `source_status: heritage-pending` 유지. 의미상 두 플래그 모두 true에 해당. 강제 마이그레이션은 비강제 — 체크포인트 2 npc-11 stub 승급 시 또는 Phase 6+ npc-07 정밀 패스 시 자연 정리. 사양 §3.3에 legacy 처리 명시.
+
+### F3. 동반 정정 — 사양 §5.1.1 템플릿 typo
+
+`death_year` 주석에 있던 로마자 "sahcong" → "사망"으로 수정. 실제 npc-im-seoun.md에는 영향 없음(템플릿 예시만 수정).
+
+### Diff (follow-up 누적)
+
+```
+docs/tasks/task-phase5-followup-historical-npcs.md
+  §3.3  HEXACO 매핑 정밀도 표 — 단일 플래그 → 직교 플래그 두 개로 재구성 + legacy 처리 명시
+  §3.8  신규 — extras.secret 컨벤션 정형화
+  §3.9  (기존 §3.8 체크포인트 분리 게이트 → §3.9로 이동)
+  §4    Done Criteria 두 체크포인트 모두 새 플래그 명칭으로 갱신
+  §5.1.1 frontmatter 템플릿 — source_status 키 제거 + heritage_doc_pending + hexaco_confidence 추가, sahcong typo 정정
+  §6    핵심 결정 표 — HEXACO 등급 행을 직교 플래그 결정으로 갱신 + 비밀 보존 행 추가
+  §9    변경 이력 v1.1 항목 추가
+
+projects/chilguk-chunchu/world/person/npc-im-seoun.md
+  frontmatter — source_status 제거 + heritage_doc_pending: true + hexaco_confidence: precise
+  ## HEXACO 분석 — source_status 참조 두 단락을 직교 플래그 표기로 정정
+```
+
+### 회귀 가드 (follow-up)
+
+- world-load Phase 1·2·3·4·5a·5b·5c.1 통합 ingest 재실행 → `persons indexed = 10`, `mind eligible = 9`, `fk errors = 0` (변동 없음 — 새 키들은 `extras` Map의 자유 형식 필드라 도메인 파서 영향 없음).
+- `cargo build --features embed` 통과 (확인됨).
+- 산문/frontmatter 외 코드/스키마 변경 0건.
+
+### 미해결 디렉터 결정 (체크포인트 2 시점에 판단)
+
+본 follow-up은 체크포인트 1 디렉터 리뷰의 제안 두 건(F1·F2)만 반영. 다음은 별도 사항으로 대기:
+
+- **boundary 케이스 (`event-bloody-cult-rebellion-2nd`)** — 본 보고 §6 결정 6 참조. 체크포인트 2 추양진인 등록과 함께 결정.
+- **사용자 발화 "4건"** — 본 보고 §막힌 것 참조.
+- **legacy npc-07·11 `source_status` 마이그레이션** — 사양 §3.3에 비강제로 명시. 체크포인트 2 npc-11 stub 승급 시 자연 정리 또는 별도 작업.

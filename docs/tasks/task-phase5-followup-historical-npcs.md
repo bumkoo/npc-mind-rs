@@ -67,33 +67,40 @@ Phase 5c.1은 **새 도메인을 추가하지 않음**. 기존 `Person` 도메�
 - 이유: 숫자 ID는 character-roster N1-N11과 1:1 매핑 의미가 있어 historical(H##) 분리 필요.
   descriptive ID가 검색·디버깅 친숙.
 
-### 3.3 HEXACO 매핑 정밀도 — 두 등급
+### 3.3 HEXACO 매핑 정밀도 — 직교 플래그 두 개
 
-Phase 2의 두 등급 정책 그대로:
+**Phase 5c.1 정책 갱신** (체크포인트 1 디렉터 리뷰 후속): Phase 2의 단일 `source_status: heritage-pending` 플래그가 두 의미를 혼합 표기하던 문제를 직교 플래그 두 개로 분리한다.
 
-| 등급 | 출처 | 신뢰도 표기 |
+| 필드 | 타입 | 의미 |
 |---|---|---|
-| **정밀** | 열전 또는 character-roster + history-characters 다중 출처 + 명시적 가치관 | 신뢰도 보통+ |
-| **heritage-pending** | 열전 미작성, character-roster + history 단편만 | `extras.source_status: heritage-pending` |
+| `extras.heritage_doc_pending` | `bool` | **열전 단독 .md 부재** — `wuxia-core/docs/characters/npc-{XX}-{name}.md` 같은 단독 캐릭터 시트가 없음. character-roster · history-characters 단편만으로 매핑 |
+| `extras.hexaco_confidence` | `enum` (`precise` / `pending` / `unknown`) | **HEXACO 6 dim 매핑 신뢰도** — 출처의 양·일관성에 따른 매핑 자체의 확신도 |
+
+두 플래그는 독립이며 4 조합 모두 의미 있음:
+
+| heritage_doc_pending | hexaco_confidence | 사례 |
+|---|---|---|
+| false | precise | 열전 + 다중 출처 일관 — 이상적 (Phase 2 npc-01·02·03·04·05·06) |
+| **true** | **precise** | 열전 부재이나 character-roster + history-characters + 타 NPC 묘사 다중 출처 일관 (**npc-im-seoun**) |
+| true | pending | 열전 부재 + 단편 출처만, 추정 필요 (npc-chuyangjinin · npc-jincheonmyeong · npc-danun) |
+| true | unknown | 열전 부재 + 자료 거의 없음. 6 dim 모두 0.0 중립 (Phase 6+ 보강 예정) |
+
+**`extras.source_status: heritage-pending` (legacy)** — Phase 2에 도입된 단일 플래그. 의미상 `heritage_doc_pending=true ∧ hexaco_confidence=pending`에 해당. 기존 npc-07·11에 잔존하나 마이그레이션은 별도 작업(체크포인트 2 또는 Phase 6+ 정밀 패스 시 자연 정리). Phase 5c.1+ 신규 person은 직교 플래그 사용.
 
 Phase 5c.1 매핑 (체크포인트 2 보고서에 명시):
 
-| Person ID | 등급 | 사유 |
-|---|---|---|
-| `npc-im-seoun` (임서운) | **정밀** | character-roster H29 + history-characters §11.1 + player.md 다중 명시 + player 메인 비밀 4종 출처 |
-| `npc-08` 바투 | 정밀 | character-roster N8 + history.md 명시 |
-| `npc-09` 진대인 | 정밀 | character-roster N9 + npc-09-jinyarim 부친 |
-| `npc-10` 3대 천마 | 정밀 | character-roster N10 + npc-06 사부 |
-| `npc-11` 소풍자 | 정밀 (stub 승급) | 사용자 작성 stub → 정식 매핑 |
-| `npc-chuyangjinin` (추양진인) | heritage-pending | history-characters §9·§11.1 단편 |
-| `npc-jincheonmyeong` (진천명) | heritage-pending | history-characters §1·§13 단편 |
-| `npc-danun` (단운, 태무제) | heritage-pending | history-characters §10·§11 단편 + character-roster H1 |
+| Person ID | heritage_doc_pending | hexaco_confidence | 사유 |
+|---|---|---|---|
+| `npc-im-seoun` (임서운) | **true** | **precise** | 열전 부재이나 character-roster H29 + history-characters §11.1 + player.md + 캐릭터 시트 v1.2 + 타 NPC 회상 다중 출처 일관 |
+| `npc-08` 바투 | true | precise | 열전 부재이나 character-roster N8 + history.md + npc-06 부친 묘사 다중 |
+| `npc-09` 진대인 | true | precise | 열전 부재이나 character-roster N9 + npc-09-jinyarim 부친 묘사 |
+| `npc-10` 3대 천마 | true | precise | 열전 부재이나 character-roster N10 + npc-06 사부 묘사 |
+| `npc-11` 소풍자 | true | precise (stub 승급) | 사용자 작성 stub → 정식 매핑. legacy `source_status` 제거 동시 |
+| `npc-chuyangjinin` (추양진인) | true | pending | history-characters §9·§11.1 단편만 |
+| `npc-jincheonmyeong` (진천명) | true | pending | history-characters §1·§13 단편만 |
+| `npc-danun` (단운, 태무제) | true | pending | history-characters §10·§11 단편 + character-roster H1 |
 
-**선택 추가 4건** (디렉터 결정):
-- `npc-pungmanri` (풍만리) — heritage-pending
-- `npc-seolmuhan` (설무한) — heritage-pending
-- `npc-jayangjinin` (자양진인) — heritage-pending
-- `npc-cheonrian` (천리안) — heritage-pending
+**선택 추가 4건** (디렉터 결정): 풍만리·설무한·자양진인·천리안 — 모두 `heritage_doc_pending=true / hexaco_confidence=pending`.
 
 권장 7건 = 필수 4(npc-08·09·10·11) + 핵심 historical 3(추양진인·진천명·단운).
 선택 추가 4건은 별도 follow-up 또는 Phase 6+로 이관 후보. 체크포인트 2 시작 시 디렉터 결정.
@@ -135,7 +142,35 @@ extras:
 
 기존 흐름.
 
-### 3.8 체크포인트 분리 게이트
+### 3.8 `extras.secret` 컨벤션 — `## 비밀` H2의 머신 리더블 미러
+
+**Phase 5c.1 신규 컨벤션** (체크포인트 1 디렉터 리뷰 후속). Phase 2까지 person의 비밀은
+`## 비밀` H2 산문 섹션에만 보존됐다. Phase 5c.1부터 신규 person은 frontmatter에 `extras.secret`을 함께 둔다:
+
+```yaml
+extras:
+  secret: |
+    1. 비밀 1 — 짧은 라벨. 출처 또는 게임 내 공개 시점.
+    2. 비밀 2 — ...
+    3. 비밀 3 — ...
+```
+
+| 위치 | 책임 |
+|---|---|
+| `## 비밀` H2 (산문) | **권위 출처(SoT)** — 전체 맥락·근거·게임 내 단계별 공개 흐름 등 자유 산문 |
+| `extras.secret` (frontmatter) | **머신 리더블 미러** — SQL 필터 (`WHERE extras LIKE '%secret%'`), FTS5 검색 (frontmatter도 인덱스 대상), MCP `get_person` 도구 응답 빠른 요약 |
+
+**일관성 정책**:
+- 두 위치는 같은 비밀 목록을 다뤄야 한다. 산문이 권위 — 산문에 없는 비밀을 frontmatter에만 두지 말 것.
+- frontmatter는 "라벨 + 한 줄 요약" 수준 (3-5 라인). 산문은 자유 길이.
+- 산문 추가 시 frontmatter 동기화 (체크포인트 분리 게이트 시 검토).
+- player 메인 비밀과 1:1 매핑되는 person은 본 컨벤션 강제 (`extras.player_relevance ≥ 4`).
+
+**적용 범위**:
+- Phase 5c.1+ 신규 person 모두 적용 (npc-im-seoun이 첫 사례).
+- 기존 npc-01..07·11 + player는 마이그레이션 강제 안 함 — 차후 정밀 패스 또는 본인 .md 갱신 시 자연 추가.
+
+### 3.9 체크포인트 분리 게이트
 
 1. **체크포인트 1**: 임서운 단독 변환 + 임서운 등장 Phase 5a Event 외래키 활성 (3-4건) →
    commit pause → `phase5-followup-historical-npcs-checkpoint1-report.md` → Cowork 리뷰
@@ -150,16 +185,17 @@ extras:
 ### 체크포인트 1 (임서운 단독)
 
 - [ ] `projects/chilguk-chunchu/world/person/npc-im-seoun.md` 작성 (kind=historical, status=missing)
-- [ ] HEXACO 6 dim 정밀 매핑 (정파·검학·player 보호자·10년 전 행방불명 패턴)
+- [ ] HEXACO 6 dim 매핑 + 직교 플래그 (`heritage_doc_pending: true` + `hexaco_confidence: precise`)
 - [ ] `extras.priority: "★★★★★"` (player 메인 비밀의 핵심)
-- [ ] `extras.secret: "..."` 명시 (3-4 비밀: 추양진인 수제자 오인식 / 혈매화검 진짜 주인 / 생존 가능성)
+- [ ] `extras.secret` 명시 (`## 비밀` H2 미러, §3.8 컨벤션 — 3-4 비밀 라벨)
 - [ ] affiliation 결정 — empty + `extras.pending_groups: [group-hwasan-pa]` (npc-04 패턴)
 - [ ] 임서운 등장 Phase 5a Event 외래키 활성:
   - [ ] `event-bloody-night.md` participants.people에 `npc-im-seoun` 추가
   - [ ] `event-hwasan-fall.md` participants.people에 `npc-im-seoun` 추가
   - [ ] `event-blood-disappearance.md` participants.people에 `npc-im-seoun` 추가
-  - [ ] (boundary) `event-bloody-cult-rebellion-2nd.md` — 산문에 임서운 미등장 시 외래키
-        추가 보류, 보고서에 명시. 추양진인 등록 시 함께 처리(체크포인트 2 후보).
+  - [ ] (조건부) `event-bloody-cult-rebellion-2nd.md` — 산문에 임서운 미등장이면 외래키
+        추가 보류, 보고서에 명시 (보류·추가 둘 중 하나 선택 후 체크 처리).
+        추양진인 등록 시 함께 처리(체크포인트 2 후보).
 - [ ] 산문 `(npc 미등록) 임서운` 마커 제거·정정 (player 부친 → player 보호자 사실 정정 포함)
 - [ ] `cargo build` + `cargo test --features embed` 통과 (회귀 가드)
 - [ ] world-load FK 검증 통과 (persons indexed = 10, eligible = 9 변동 없음)
@@ -167,11 +203,12 @@ extras:
 ### 체크포인트 2 (7-11 추가)
 
 - [ ] 권장 7건 또는 11건 — 디렉터 결정
-- [ ] HEXACO 매핑 신뢰도 표기 (정밀 vs heritage-pending)
+- [ ] HEXACO 매핑 직교 플래그 표기 (`heritage_doc_pending` + `hexaco_confidence: precise|pending|unknown`)
 - [ ] Phase 5a 6 Event 외래키 매트릭스 모두 활성 (산문 (npc 미등록) 마커 0건)
 - [ ] mind eligible = 13 검증 (npc-08·09·10·11 mind 등록 시점)
 - [ ] `cargo build` + `cargo test --features embed` 통과
 - [ ] 회귀 가드: 기존 9 active person mind upsert 영향 없음(idempotent)
+- [ ] (선택) npc-07·11 legacy `source_status` → 직교 플래그 마이그레이션 (별도 작업도 가능)
 
 ## 5. 단계별 작업
 
@@ -198,7 +235,7 @@ hexaco:
   openness: 0.4             # 검학 + 기록 + 비공식 player 양육 결단(unconventionality 양수)
 temporal:
   birth_year: 미상 (220년대 후반 추정)
-  death_year: ~                 # missing — sahcong 미확인
+  death_year: ~                 # missing — 사망 미확인
   age_at_game_start: ~          # 행방불명 — 추정 40~50대
   notes: |
     추양진인 수제자라는 직위를 보면 260년차 화산파 멸문 시점 30대 후반~50대 초반
@@ -233,8 +270,9 @@ extras:
     bok: 0.4
     yah: 0.2
   hexaco_facets: {}
-  source_status: heritage-pending
-  secret: |
+  heritage_doc_pending: true     # 열전 단독 .md 부재 (§3.3 직교 플래그)
+  hexaco_confidence: precise      # 다중 출처 일관 → 정밀 등급 (§3.3 직교 플래그)
+  secret: |                       # `## 비밀` H2의 머신 리더블 미러 (§3.8 컨벤션)
     1. 추양진인 수제자 — player는 "말단 제자"로 오인식.
     2. 혈매화검의 진짜 주인 — 화산파 보물이 아닌 본인 개인 검.
     3. 생존 가능성 — history-characters H29 "행방불명·생사 불명".
@@ -310,7 +348,8 @@ extras:
 | 임서운 ID | `npc-im-seoun` / `npc-h29` / `H29` | `npc-im-seoun` | descriptive Romanized, npc- prefix 일관 |
 | 임서운 affiliation | empty + pending_groups / group-mulim-mang proxy | empty + pending_groups | npc-04 정착 패턴 |
 | 임서운 status | alive / dead / missing | **missing** | history-characters H29 명시 "행방불명·생사 불명" |
-| HEXACO 등급 | 정밀 / heritage-pending | **정밀** | character-roster + history-characters + player.md 다중 출처. extras.source_status: heritage-pending는 "열전 미작성" 표기로만 |
+| HEXACO 신뢰도 표기 | 단일 `source_status` (legacy) / 직교 플래그 두 개 | **`heritage_doc_pending: true` + `hexaco_confidence: precise`** | §3.3 정책 갱신. 열전 부재(true)이나 다중 출처 일관(precise) — 두 의미 분리 |
+| 비밀 보존 | `## 비밀` H2 only / + `extras.secret` 미러 | **양쪽 보존 (§3.8 컨벤션)** | 산문이 SoT, frontmatter는 SQL/FTS5 머신 리더블 미러 |
 | Event 외래키 추가 | 3건(명시) / 4건(boundary 포함) | **3건 + 1 boundary 보고** | bloody-cult-rebellion-2nd는 산문 미등장. 출처 보수성 유지 |
 | 산문 정정 | "player 부친" → "player 보호자" | **정정 적용** | player.md 기준 사실 일치 |
 
@@ -338,3 +377,4 @@ Phase 5c.1 종결 후:
 | 버전 | 날짜 | 변경 내용 |
 |------|------|-----------|
 | v1.0 | 2026-05-02 | 초안 작성 — Phase 5b D2 follow-up 정형. 체크포인트 1·2 분리. 권장 7건 / 선택 11건. |
+| v1.1 | 2026-05-02 | 체크포인트 1 디렉터 리뷰 반영 — §3.3 단일 `source_status` → 직교 플래그(`heritage_doc_pending` + `hexaco_confidence`) 분리. §3.8 신규 — `extras.secret` 컨벤션 정형화 (산문 SoT + frontmatter 미러). §5.1.1 템플릿·§6 결정 표·§4 Done Criteria 동기화. |
