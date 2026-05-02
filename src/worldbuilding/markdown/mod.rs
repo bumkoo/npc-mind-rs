@@ -12,10 +12,12 @@ pub mod frontmatter;
 pub mod group;
 pub mod person;
 pub mod place;
+pub mod timeline;
 
 pub use atlas::{AtlasMarkdownError, atlas_from_markdown};
 pub use era::{EraMarkdownError, era_from_markdown};
 pub use event::{EventMarkdownError, event_from_markdown};
+pub use timeline::{TimelineMarkdownError, timeline_from_markdown};
 pub use frontmatter::{
     Frontmatter, FrontmatterError, parse_frontmatter, parse_h2_sections,
 };

@@ -5,7 +5,8 @@
 
 use crate::domain::world::{
     Atlas, AtlasFilter, AtlasId, Era, EraFilter, EraId, Event, EventFilter, EventId, Group,
-    GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId, WorldError,
+    GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId, Timeline,
+    TimelineFilter, TimelineId, WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -154,4 +155,55 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_eras(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    /// 여러 era id 일괄 조회. 결과는 입력 `ids` 순서대로, 결손은 사일런트 누락.
+    /// **기본 구현**은 `get_era` 반복 — Atlas의 `get_places_batch` 패턴 그대로.
+    /// SqliteWorldStore는 `IN(...)` 단일 쿼리로 override 가능 (Phase 5b는 기본 구현 사용).
+    fn get_eras_batch(&self, ids: &[EraId]) -> Result<Vec<Era>, WorldError> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(e) = self.get_era(id)? {
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
+    /// 여러 event id 일괄 조회. Timeline.events_in이 era.key_events 평면화 시 사용.
+    fn get_events_batch(&self, ids: &[EventId]) -> Result<Vec<Event>, WorldError> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(e) = self.get_event(id)? {
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
+    // ---------------------------------------------------------------------
+    // Phase 5b 체크포인트 2 — Timeline (두 번째 관계 도메인)
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 timeline 목록 조회. 결과는 id 오름차순.
+    fn list_timelines(&self, filter: TimelineFilter) -> Result<Vec<Timeline>, WorldError>;
+
+    /// id로 단일 timeline 조회. 없으면 Ok(None). references·body_sections 전체 포함.
+    fn get_timeline(&self, id: &TimelineId) -> Result<Option<Timeline>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_timelines(&self, query: &str, top_k: u32) -> Result<Vec<Timeline>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다.
+    ///
+    /// **Source-of-truth**: `timelines.references_json`이 단일 권위. `timeline_era_refs`는
+    /// 역방향 인덱스 전용이며 같은 트랜잭션 안에서 delete-then-insert로 동기화된다.
+    /// Phase 4 atlas의 place_atlas_refs 패턴 그대로.
+    fn upsert_timeline(
+        &self,
+        project_id: &str,
+        timeline: &Timeline,
+    ) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_timelines(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

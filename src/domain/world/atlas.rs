@@ -365,6 +365,35 @@ mod tests {
         fn count_eras(&self, _: Option<&str>) -> Result<u64, WorldError> {
             unimplemented!()
         }
+        fn list_timelines(
+            &self,
+            _: crate::domain::world::TimelineFilter,
+        ) -> Result<Vec<crate::domain::world::Timeline>, WorldError> {
+            unimplemented!()
+        }
+        fn get_timeline(
+            &self,
+            _: &crate::domain::world::TimelineId,
+        ) -> Result<Option<crate::domain::world::Timeline>, WorldError> {
+            unimplemented!()
+        }
+        fn search_timelines(
+            &self,
+            _: &str,
+            _: u32,
+        ) -> Result<Vec<crate::domain::world::Timeline>, WorldError> {
+            unimplemented!()
+        }
+        fn upsert_timeline(
+            &self,
+            _: &str,
+            _: &crate::domain::world::Timeline,
+        ) -> Result<(), WorldError> {
+            unimplemented!()
+        }
+        fn count_timelines(&self, _: Option<&str>) -> Result<u64, WorldError> {
+            unimplemented!()
+        }
     }
 
     fn settlement(id: &str, bordering: &[&str]) -> Place {

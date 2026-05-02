@@ -47,9 +47,9 @@ era_id 외래키 활성. Phase 5a에서 모든 사건이 `era_id=~`로 비워진
 | 위치 | 책임 |
 |---|---|
 | `src/domain/world/era.rs` | **장르 영원히 모름** — id·kind(String)·name·aliases·summary·tags·extras·temporal·key_events(Vec<EventId>)·body_sections |
-| `src/domain/world/timeline.rs` | **장르 영원히 모름** — id·kind·name·aliases·summary·tags·extras·references(Vec<EventId>)·body_sections + view 메서드 |
+| `src/domain/world/timeline.rs` | **장르 영원히 모름** — id·kind·name·aliases·summary·tags·extras·references(Vec<EraId>)·body_sections + view 메서드 (eras_in/events_in/events_during/causal_chain). **체크포인트 2 디렉터 변경**: 원래 `Vec<EventId>`였으나 timeline=era 묶음 + era=event 묶음 두 단계 합성으로 정형화. `events_in` view가 era.key_events 평면화. |
 | `src/worldbuilding/markdown/{era,timeline}.rs` | 장르 중립 frontmatter+섹션 파서 |
-| `src/adapter/sqlite_world.rs` (확장) | `eras` 테이블 + FTS5 (체크포인트 1, `migrate_v6`) + `timelines` 테이블 + `timeline_event_refs` 양방향 인덱스 (체크포인트 2, `migrate_v7`) |
+| `src/adapter/sqlite_world.rs` (확장) | `eras` 테이블 + FTS5 (체크포인트 1, `migrate_v6`) + `timelines` 테이블 + `timeline_era_refs` 양방향 인덱스 (체크포인트 2, `migrate_v7`) |
 | `genres/wuxia/forms/{era,timeline}.toml` | Phase N 빈 슬롯 + kind 옵션 (founding/prosperity/turning/decline/fall) |
 | `genres/wuxia/markdown_template/{era,timeline}.md` | 무협 era/timeline 양식 |
 | `projects/chilguk-chunchu/world/{era,timeline}/*.md` | 칠국춘추 era·timeline 인스턴스 |
@@ -135,7 +135,7 @@ FTS5 trigram + LIKE fallback (Phase 1·2·3·4·5a 패턴 그대로).
 - [ ] `src/worldbuilding/markdown/timeline.rs` — Timeline 마크다운 파서 + 단위 테스트
 - [ ] `genres/wuxia/markdown_template/timeline.md` 템플릿
 - [ ] `genres/wuxia/forms/timeline.toml` 자리
-- [ ] `SqliteWorldStore::migrate_v7` — `timelines` + `timelines_fts` + `timeline_event_refs` 양방향 인덱스 (composite PK)
+- [ ] `SqliteWorldStore::migrate_v7` — `timelines` + `timelines_fts` + `timeline_era_refs` 양방향 인덱스 (composite PK)
 - [ ] `WorldRepository`: `list_timelines`/`get_timeline`/`search_timelines`/`upsert_timeline`/`count_timelines`
 - [ ] `bin/world-load` 확장 — `world/timeline/*.md` 스캔 + Timeline.references 외래키 + 중복 금지
 - [ ] `bin/mind-studio` REST + MCP 도구 3개: `list_timelines` / `get_timeline` / `search_timelines`
@@ -394,14 +394,14 @@ CREATE INDEX idx_timelines_project ON timelines(project_id);
 CREATE VIRTUAL TABLE timelines_fts USING fts5(
     id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
 );
-CREATE TABLE timeline_event_refs (
+CREATE TABLE timeline_era_refs (
     timeline_id TEXT NOT NULL,
     event_id TEXT NOT NULL,
     ref_order INTEGER NOT NULL,
     PRIMARY KEY (timeline_id, event_id)         -- composite PK 보호
 );
-CREATE INDEX idx_ter_event ON timeline_event_refs(event_id);
-CREATE INDEX idx_ter_timeline ON timeline_event_refs(timeline_id);
+CREATE INDEX idx_ter_event ON timeline_era_refs(event_id);
+CREATE INDEX idx_ter_timeline ON timeline_era_refs(timeline_id);
 ```
 
 `schema_meta.version = 7` 마이그레이션.

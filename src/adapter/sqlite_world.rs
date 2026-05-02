@@ -5,7 +5,8 @@
 //! places_fts 추가 (`migrate_v3`). Phase 4에서 atlases + atlases_fts + place_atlas_refs
 //! 양방향 인덱스 추가 (`migrate_v4`). Phase 5a에서 events + events_fts +
 //! event_participants_refs 양방향 인덱스 추가 (`migrate_v5`). Phase 5b 체크포인트 1에서
-//! eras + eras_fts 추가 (`migrate_v6`). 같은 SQLite 파일이 6 도메인 모두 보관.
+//! eras + eras_fts 추가 (`migrate_v6`). Phase 5b 체크포인트 2에서 timelines + timelines_fts +
+//! timeline_era_refs 양방향 인덱스 추가 (`migrate_v7`). 같은 SQLite 파일이 7 도메인 모두 보관.
 //! 임베딩은 Phase N+에서 도입 (vec0 미사용).
 
 use std::sync::Mutex;
@@ -17,13 +18,13 @@ use crate::domain::world::{
     Atlas, AtlasExtent, AtlasFilter, AtlasId, Era, EraFilter, EraId, EraTemporal, Event,
     EventCategory, EventFilter, EventId, EventTemporal, Group, GroupFilter, GroupId, HexacoSix,
     ParticipantsRefs, Person, PersonFilter, PersonId, PersonStatus, PersonTemporal, Place,
-    PlaceFilter, PlaceId, PlaceLayer, Spatial, WorldError,
+    PlaceFilter, PlaceId, PlaceLayer, Spatial, Timeline, TimelineFilter, TimelineId, WorldError,
 };
 #[cfg(test)]
 use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 
 pub struct SqliteWorldStore {
     conn: Mutex<Connection>,
@@ -79,6 +80,9 @@ impl SqliteWorldStore {
         }
         if current < 6 {
             Self::migrate_v6(&conn)?;
+        }
+        if current < 7 {
+            Self::migrate_v7(&conn)?;
         }
         // schema_meta를 단일 row로 강제 (Code review #7).
         // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
@@ -282,6 +286,44 @@ impl SqliteWorldStore {
         Ok(())
     }
 
+    /// v6 → v7 마이그레이션: timelines + timelines_fts + timeline_era_refs (Phase 5b 체크포인트 2).
+    ///
+    /// Atlas의 place_atlas_refs 패턴 그대로 — `references_json`이 단일 권위, `timeline_era_refs`는
+    /// 역방향 인덱스 전용 (composite PK + idx_ter_era로 "이 era를 참조하는 timeline 찾기").
+    fn migrate_v7(conn: &Connection) -> Result<(), WorldError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS timelines (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]',
+                summary TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                extras_json TEXT NOT NULL DEFAULT '{}',
+                references_json TEXT NOT NULL DEFAULT '[]',
+                body_sections_json TEXT NOT NULL DEFAULT '{}',
+                source_path TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_timelines_kind ON timelines(kind);
+            CREATE INDEX IF NOT EXISTS idx_timelines_project ON timelines(project_id);
+            CREATE VIRTUAL TABLE IF NOT EXISTS timelines_fts USING fts5(
+                id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+            );
+            CREATE TABLE IF NOT EXISTS timeline_era_refs (
+                timeline_id TEXT NOT NULL,
+                era_id TEXT NOT NULL,
+                ref_order INTEGER NOT NULL,
+                PRIMARY KEY (timeline_id, era_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ter_era ON timeline_era_refs(era_id);
+            CREATE INDEX IF NOT EXISTS idx_ter_timeline ON timeline_era_refs(timeline_id);",
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
     /// v2 → v3 마이그레이션: places 테이블 + places_fts.
     /// `CREATE TABLE IF NOT EXISTS`이라 v3에서 신규 생성한 DB에도 안전.
     /// `place_atlas_refs`는 Phase 4 `migrate_v4`에서 정식 추가.
@@ -452,6 +494,18 @@ fn era_body_concat(era: &Era) -> String {
     // Era body는 산문 위주 — Event와 동일 정책. 코드블록 strip 미적용.
     let mut s = String::new();
     for (k, v) in &era.body_sections {
+        s.push_str(k);
+        s.push('\n');
+        s.push_str(v);
+        s.push('\n');
+    }
+    s
+}
+
+fn timeline_body_concat(timeline: &Timeline) -> String {
+    // Timeline body는 산문 위주 — Era·Event와 동일 정책.
+    let mut s = String::new();
+    for (k, v) in &timeline.body_sections {
         s.push_str(k);
         s.push('\n');
         s.push_str(v);
@@ -1810,6 +1864,226 @@ impl WorldRepository for SqliteWorldStore {
         };
         Ok(n.max(0) as u64)
     }
+
+    // ---------------------------------------------------------------------
+    // Phase 5b 체크포인트 2 — Timeline (두 번째 관계 도메인)
+    // Atlas의 place_atlas_refs 패턴 그대로 — references_json 단일 권위 +
+    // timeline_era_refs 역방향 인덱스 (composite PK delete-then-insert 동기화).
+    // ---------------------------------------------------------------------
+
+    fn upsert_timeline(
+        &self,
+        project_id: &str,
+        timeline: &Timeline,
+    ) -> Result<(), WorldError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        let aliases_json = json_array_of_strings(&timeline.aliases);
+        let tags_json = json_array_of_strings(&timeline.tags);
+        let extras_json = serde_json::to_string(&timeline.extras)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let references_json: String = serde_json::to_string(
+            &timeline
+                .references
+                .iter()
+                .map(|e| e.as_str())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let body_json = serde_json::to_string(&timeline.body_sections)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let updated_at = now_ms();
+
+        tx.execute(
+            "INSERT OR REPLACE INTO timelines (
+                id, project_id, kind, name, aliases_json,
+                summary, tags_json, extras_json, references_json,
+                body_sections_json, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            params![
+                timeline.id.as_str(),
+                project_id,
+                timeline.kind,
+                timeline.name,
+                aliases_json,
+                timeline.summary,
+                tags_json,
+                extras_json,
+                references_json,
+                body_json,
+                timeline.source_path,
+                updated_at,
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // FTS5 — id 기반 delete-then-insert
+        tx.execute(
+            "DELETE FROM timelines_fts WHERE id = ?1",
+            params![timeline.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO timelines_fts (id, name, aliases, summary, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                timeline.id.as_str(),
+                timeline.name,
+                aliases_concat(&timeline.aliases),
+                timeline.summary,
+                timeline_body_concat(timeline),
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // timeline_era_refs — 양방향 인덱스 동기화 (timeline_id 기준 delete-then-insert).
+        // composite PK (timeline_id, era_id) — 동일 era 중복 시 PK 위반, 호출자가 references
+        // 중복을 제거해야 한다 (world-load CLI가 검증).
+        tx.execute(
+            "DELETE FROM timeline_era_refs WHERE timeline_id = ?1",
+            params![timeline.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        for (idx, eid) in timeline.references.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO timeline_era_refs (timeline_id, era_id, ref_order) VALUES (?1, ?2, ?3)",
+                params![timeline.id.as_str(), eid.as_str(), idx as i64],
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        }
+
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    fn list_timelines(
+        &self,
+        filter: TimelineFilter,
+    ) -> Result<Vec<Timeline>, WorldError> {
+        // Phase 5a R2 패턴 — 진입 시 destructure.
+        let TimelineFilter {
+            kind,
+            references_era,
+            genre_tag,
+        } = filter;
+
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT id, project_id, kind, name, aliases_json,
+                    summary, tags_json, extras_json, references_json,
+                    body_sections_json, source_path
+             FROM timelines",
+        );
+        let mut binds: Vec<rusqlite::types::Value> = Vec::new();
+        let mut where_clauses: Vec<String> = vec!["1=1".into()];
+        if let Some(k) = kind {
+            where_clauses.push("kind = ?".into());
+            binds.push(rusqlite::types::Value::Text(k));
+        }
+        if let Some(eid) = references_era {
+            // timeline_era_refs 인덱스 활용 — 특정 era를 references에 포함하는 timeline.
+            where_clauses.push(
+                "id IN (SELECT timeline_id FROM timeline_era_refs WHERE era_id = ?)"
+                    .into(),
+            );
+            binds.push(rusqlite::types::Value::Text(eid.0));
+        }
+        if let Some(t) = genre_tag {
+            where_clauses.push("tags_json LIKE ? ESCAPE '\\'".into());
+            binds.push(rusqlite::types::Value::Text(json_token_like_pattern(&t)));
+        }
+        sql.push_str(" WHERE ");
+        sql.push_str(&where_clauses.join(" AND "));
+        sql.push_str(" ORDER BY id ASC");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(binds.iter()), row_to_timeline)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_timeline_rows_warn_on_err(rows))
+    }
+
+    fn get_timeline(&self, id: &TimelineId) -> Result<Option<Timeline>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let res = conn.query_row(
+            "SELECT id, project_id, kind, name, aliases_json,
+                    summary, tags_json, extras_json, references_json,
+                    body_sections_json, source_path
+             FROM timelines WHERE id = ?1",
+            params![id.as_str()],
+            row_to_timeline,
+        );
+        match res {
+            Ok(t) => Ok(Some(t)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WorldError::Storage(e.to_string())),
+        }
+    }
+
+    fn search_timelines(
+        &self,
+        query: &str,
+        top_k: u32,
+    ) -> Result<Vec<Timeline>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let char_count = q.chars().count();
+        if char_count < 3 {
+            return self.search_timelines_like(&conn, q, top_k);
+        }
+
+        let escaped = q.replace('"', "\"\"");
+        let phrase = format!("\"{}\"", escaped);
+        let fts_hits: Result<Vec<Timeline>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT t.id, t.project_id, t.kind, t.name, t.aliases_json,
+                        t.summary, t.tags_json, t.extras_json, t.references_json,
+                        t.body_sections_json, t.source_path
+                 FROM timelines_fts f
+                 JOIN timelines t ON t.id = f.id
+                 WHERE timelines_fts MATCH ?1
+                 ORDER BY rank
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_timeline)?;
+            Ok(collect_timeline_rows_warn_on_err(rows))
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => self.search_timelines_like(&conn, q, top_k),
+            Err(e) => {
+                tracing::debug!(
+                    "FTS5 MATCH 실패(timelines), LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_timelines_like(&conn, q, top_k)
+            }
+        }
+    }
+
+    fn count_timelines(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = match project_id {
+            Some(p) => conn
+                .query_row(
+                    "SELECT COUNT(*) FROM timelines WHERE project_id = ?1",
+                    params![p],
+                    |r| r.get(0),
+                )
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+            None => conn
+                .query_row("SELECT COUNT(*) FROM timelines", [], |r| r.get(0))
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+        };
+        Ok(n.max(0) as u64)
+    }
 }
 
 impl SqliteWorldStore {
@@ -1935,6 +2209,36 @@ impl SqliteWorldStore {
             .query_map(params![pat, top_k as i64], row_to_era)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(collect_era_rows_warn_on_err(rows))
+    }
+
+    /// Timeline 검색용 LIKE fallback — Phase 5b 체크포인트 2. atlases와 동일 패턴.
+    fn search_timelines_like(
+        &self,
+        conn: &Connection,
+        q: &str,
+        top_k: u32,
+    ) -> Result<Vec<Timeline>, WorldError> {
+        let pat = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = conn
+            .prepare(
+                "SELECT t.id, t.project_id, t.kind, t.name, t.aliases_json,
+                        t.summary, t.tags_json, t.extras_json, t.references_json,
+                        t.body_sections_json, t.source_path
+                 FROM timelines t
+                 LEFT JOIN timelines_fts f ON f.id = t.id
+                 WHERE t.name LIKE ?1 ESCAPE '\\'
+                    OR f.aliases LIKE ?1 ESCAPE '\\'
+                    OR t.summary LIKE ?1 ESCAPE '\\'
+                    OR f.body LIKE ?1 ESCAPE '\\'
+                 GROUP BY t.id
+                 ORDER BY t.id ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![pat, top_k as i64], row_to_timeline)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_timeline_rows_warn_on_err(rows))
     }
 
     /// Event 검색용 LIKE fallback — Phase 5a. atlases와 동일 패턴.
@@ -2386,6 +2690,60 @@ where
             Ok(e) => out.push(e),
             Err(e) => {
                 tracing::warn!("SqliteWorldStore era row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
+}
+
+fn row_to_timeline(row: &rusqlite::Row) -> rusqlite::Result<Timeline> {
+    let id: String = row.get(0)?;
+    // project_id (1)은 도메인 모델 미보존.
+    let kind: String = row.get(2)?;
+    let name: String = row.get(3)?;
+    let aliases_json: String = row.get(4)?;
+    let summary: String = row.get(5)?;
+    let tags_json: String = row.get(6)?;
+    let extras_json: String = row.get(7)?;
+    let references_json: String = row.get(8)?;
+    let body_json: String = row.get(9)?;
+    let source_path: Option<String> = row.get(10)?;
+
+    let extras: Map<String, Value> =
+        serde_json::from_str(&extras_json).unwrap_or_default();
+    let references: Vec<EraId> = serde_json::from_str::<Vec<String>>(&references_json)
+        .map(|v| v.into_iter().map(EraId::new).collect())
+        .unwrap_or_default();
+    let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
+    let aliases = from_json_strings(&aliases_json);
+    let tags = from_json_strings(&tags_json);
+
+    Ok(Timeline {
+        id: TimelineId::new(id),
+        kind,
+        name,
+        aliases,
+        summary,
+        tags,
+        extras,
+        references,
+        body_sections,
+        source_path,
+    })
+}
+
+fn collect_timeline_rows_warn_on_err<I>(rows: I) -> Vec<Timeline>
+where
+    I: Iterator<Item = rusqlite::Result<Timeline>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(t) => out.push(t),
+            Err(e) => {
+                tracing::warn!(
+                    "SqliteWorldStore timeline row decode 실패 — 결과에서 제외: {e}"
+                );
             }
         }
     }
@@ -4378,5 +4736,234 @@ mod tests {
             back.key_events[4].as_str(),
             "event-six-states-independence"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 5b 체크포인트 2 — Timeline 라운드트립 + 양방향 인덱스 + migrate_v7
+    // -----------------------------------------------------------------------
+
+    fn sample_timeline(id: &str, refs: &[&str]) -> Timeline {
+        let mut t = Timeline::new(id, "history", id);
+        t.aliases = vec!["별호".into()];
+        t.summary = "테스트 timeline".into();
+        t.tags = vec!["test".into(), "timeline".into()];
+        t.extras
+            .insert("game_role".into(), Value::String("trigger".into()));
+        t.references = refs.iter().map(|s| EraId::new(*s)).collect();
+        t.body_sections.insert("개요".into(), "산문".into());
+        t
+    }
+
+    #[test]
+    fn timelines_count_zero_on_fresh_db() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        assert_eq!(store.count_timelines(None).unwrap(), 0);
+    }
+
+    #[test]
+    fn timeline_full_roundtrip_through_sqlite() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let t = sample_timeline("timeline-x", &["era-a", "era-b", "era-c"]);
+        store.upsert_timeline("test", &t).unwrap();
+        let back = store
+            .get_timeline(&TimelineId::new("timeline-x"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back, t);
+    }
+
+    #[test]
+    fn timeline_era_refs_bidirectional_index_populated() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let t = sample_timeline("timeline-x", &["era-a", "era-b", "era-c"]);
+        store.upsert_timeline("test", &t).unwrap();
+
+        // 정방향 (timeline → eras, ref_order 보존)
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT era_id, ref_order FROM timeline_era_refs WHERE timeline_id = ?1
+                 ORDER BY ref_order ASC",
+            )
+            .unwrap();
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params!["timeline-x"], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("era-a".to_string(), 0),
+                ("era-b".to_string(), 1),
+                ("era-c".to_string(), 2),
+            ]
+        );
+
+        // 역방향 (era → timelines) — idx_ter_era 인덱스 활용 가능.
+        let mut stmt2 = conn
+            .prepare(
+                "SELECT timeline_id FROM timeline_era_refs WHERE era_id = ?1
+                 ORDER BY timeline_id",
+            )
+            .unwrap();
+        let timelines_for_b: Vec<String> = stmt2
+            .query_map(params!["era-b"], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(timelines_for_b, vec!["timeline-x".to_string()]);
+    }
+
+    #[test]
+    fn timeline_era_refs_resyncs_on_re_upsert() {
+        // references 변경 → 기존 매핑 모두 사라지고 신규로 채워짐.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let t1 = sample_timeline("timeline-x", &["era-a", "era-b"]);
+        store.upsert_timeline("test", &t1).unwrap();
+        let t2 = sample_timeline("timeline-x", &["era-c"]);
+        store.upsert_timeline("test", &t2).unwrap();
+
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT era_id FROM timeline_era_refs WHERE timeline_id = ?1 ORDER BY era_id",
+            )
+            .unwrap();
+        let ids: Vec<String> = stmt
+            .query_map(params!["timeline-x"], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(ids, vec!["era-c".to_string()]);
+    }
+
+    #[test]
+    fn list_timelines_filter_by_kind_and_references_era() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut t1 = sample_timeline("timeline-a", &["era-fall"]);
+        t1.kind = "history".into();
+        let mut t2 = sample_timeline("timeline-b", &["era-founding"]);
+        t2.kind = "biographical".into();
+        store.upsert_timeline("test", &t1).unwrap();
+        store.upsert_timeline("test", &t2).unwrap();
+
+        let history = store
+            .list_timelines(TimelineFilter {
+                kind: Some("history".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].id.as_str(), "timeline-a");
+
+        // references_era 필터 — timeline_era_refs 인덱스 활용.
+        let by_era = store
+            .list_timelines(TimelineFilter {
+                references_era: Some(EraId::new("era-fall")),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(by_era.len(), 1);
+        assert_eq!(by_era[0].id.as_str(), "timeline-a");
+    }
+
+    #[test]
+    fn search_timelines_fts_matches_alias() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut t = Timeline::new("timeline-jungwon-history", "history", "270년사");
+        t.aliases = vec!["중원사".into(), "main-history".into()];
+        t.summary = "원년부터 현재까지".into();
+        store.upsert_timeline("test", &t).unwrap();
+
+        let hits = store.search_timelines("270년사", 5).unwrap();
+        assert!(!hits.is_empty());
+        assert_eq!(hits[0].id.as_str(), "timeline-jungwon-history");
+
+        // 알파벳 alias도 매칭.
+        let hits2 = store.search_timelines("main-history", 5).unwrap();
+        assert!(!hits2.is_empty());
+    }
+
+    #[test]
+    fn schema_v6_to_v7_migration_upgrades_existing_file_db() {
+        // v6→v7 경로 — timelines 테이블이 추가되며 기존 v6 eras 보존.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // v6 schema 작성 — eras까지만 (Phase 5b 체크포인트 1 상태).
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (6);
+                 CREATE TABLE eras (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, kind TEXT NOT NULL,
+                    name TEXT NOT NULL, aliases_json TEXT NOT NULL DEFAULT '[]',
+                    summary TEXT NOT NULL DEFAULT '', tags_json TEXT NOT NULL DEFAULT '[]',
+                    extras_json TEXT NOT NULL DEFAULT '{}', temporal_json TEXT NOT NULL DEFAULT '{}',
+                    start_year_relative INTEGER, end_year_relative INTEGER,
+                    key_events_json TEXT NOT NULL DEFAULT '[]',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    source_path TEXT, updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE eras_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO eras (id, project_id, kind, name, updated_at)
+                    VALUES ('era-legacy', 'p', 'fall', '레거시', 0);",
+            )
+            .unwrap();
+        }
+
+        // 재오픈 → migrate_v7 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // timelines 테이블 추가 — count_timelines 동작.
+        assert_eq!(store.count_timelines(None).unwrap(), 0);
+
+        // 기존 v6 eras 보존.
+        let era = store
+            .get_era(&EraId::new("era-legacy"))
+            .unwrap()
+            .expect("v6 eras row 보존 필요");
+        assert_eq!(era.name, "레거시");
+
+        // v7 신규 — timelines upsert·get + timeline_era_refs 채워짐.
+        let t = sample_timeline("timeline-after", &["era-legacy"]);
+        store.upsert_timeline("p", &t).unwrap();
+        let back = store
+            .get_timeline(&TimelineId::new("timeline-after"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back.references, vec![EraId::new("era-legacy")]);
+
+        let conn = store.conn.lock().unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM timeline_era_refs WHERE timeline_id = ?1",
+                params!["timeline-after"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+
+        drop(conn);
+        drop(store);
+        drop(tmp);
+    }
+
+    #[test]
+    fn timelines_count_with_project_filter() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_timeline("p1", &sample_timeline("timeline-a", &["era-x"]))
+            .unwrap();
+        store
+            .upsert_timeline("p2", &sample_timeline("timeline-b", &["era-y"]))
+            .unwrap();
+        assert_eq!(store.count_timelines(None).unwrap(), 2);
+        assert_eq!(store.count_timelines(Some("p1")).unwrap(), 1);
+        assert_eq!(store.count_timelines(Some("p2")).unwrap(), 1);
     }
 }

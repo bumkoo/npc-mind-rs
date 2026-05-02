@@ -43,6 +43,12 @@
 //!     - `Event.era_id` ↔ `eras.id` (Phase 5a 텍스트 → Phase 5b 활성)
 //!     - `Atlas.era_id` (extras 안) ↔ `eras.id` (Phase 4 텍스트 → Phase 5b 활성)
 //!   - boundary 정책 §3.3 — start inclusive · end exclusive (Era.contains_year)
+//!
+//! Phase 5b 체크포인트 2 동작 (Timeline — 두 번째 관계 도메인):
+//!   - `world/timeline/*.md` 스캔 → timelines 테이블 upsert + FTS5 + timeline_era_refs 양방향 인덱스
+//!   - 외래키 검증 활성 (에러):
+//!     - `Timeline.references` ↔ `eras.id` (모두 존재해야)
+//!     - `Timeline.references` 중복 금지 (timeline_era_refs composite PK 보호)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -50,13 +56,13 @@ use std::process::ExitCode;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
 use npc_mind::domain::world::{
-    Atlas, Era, Event, Group, GroupId, Person, Place, PlaceLayer, WorldError,
+    Atlas, Era, Event, Group, GroupId, Person, Place, PlaceLayer, Timeline, WorldError,
     detect_parent_group_cycle, detect_parent_place_cycle,
 };
 use npc_mind::worldbuilding::WorldRepository;
 use npc_mind::worldbuilding::markdown::{
     atlas_from_markdown, era_from_markdown, event_from_markdown, group_from_markdown,
-    person_from_markdown, place_from_markdown,
+    person_from_markdown, place_from_markdown, timeline_from_markdown,
 };
 use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
@@ -190,15 +196,17 @@ fn run() -> Result<(), String> {
     let atlas_dir = project_dir.join("world").join("atlas");
     let event_dir = project_dir.join("world").join("event");
     let era_dir = project_dir.join("world").join("era");
+    let timeline_dir = project_dir.join("world").join("timeline");
     if !group_dir.is_dir()
         && !person_dir.is_dir()
         && !place_dir.is_dir()
         && !atlas_dir.is_dir()
         && !event_dir.is_dir()
         && !era_dir.is_dir()
+        && !timeline_dir.is_dir()
     {
         eprintln!(
-            "[world-load] warning: world/group/ · world/person/ · world/place/ · world/atlas/ · world/event/ · world/era/ 모두 없음. 빈 인덱스로 마침."
+            "[world-load] warning: world/group/ · world/person/ · world/place/ · world/atlas/ · world/event/ · world/era/ · world/timeline/ 모두 없음. 빈 인덱스로 마침."
         );
         return Ok(());
     }
@@ -374,6 +382,35 @@ fn run() -> Result<(), String> {
         eprintln!(
             "[world-load] ℹ world/era/ 없음 ({}). Era 인덱싱 스킵.",
             era_dir.display()
+        );
+    }
+
+    // Phase 5b 체크포인트 2 — Timeline 스캔
+    let mut timelines: Vec<Timeline> = Vec::new();
+    if timeline_dir.is_dir() {
+        for entry in walk_md(&timeline_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match timeline_from_markdown(&raw) {
+                Ok(mut t) => {
+                    t.source_path = Some(path_relative_str(&projects_root, &path));
+                    timelines.push(t);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/timeline/ 없음 ({}). Timeline 인덱싱 스킵.",
+            timeline_dir.display()
         );
     }
 
@@ -636,6 +673,21 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // Phase 5b 체크포인트 2 — Timeline 외래키 활성: references ↔ eras.id (모두 존재) + 중복 금지.
+    let mut missing_timeline_refs: Vec<(String, String)> = Vec::new();
+    let mut duplicate_timeline_refs: Vec<(String, String)> = Vec::new();
+    for tl in &timelines {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for eid in &tl.references {
+            if !era_id_set.contains(eid.as_str()) {
+                missing_timeline_refs.push((tl.id.0.clone(), eid.0.clone()));
+            }
+            if !seen.insert(eid.as_str()) {
+                duplicate_timeline_refs.push((tl.id.0.clone(), eid.0.clone()));
+            }
+        }
+    }
+
     print_warnings("parent_group", &missing_parents);
     print_warnings("allied_groups", &missing_allied);
     print_warnings("rival_groups", &missing_rival);
@@ -827,6 +879,26 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // Phase 5b 체크포인트 2 — Timeline 외래키 결손 보고.
+    if !missing_timeline_refs.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5b 체크포인트 2 외래키 활성: timelines.references 결손 {} 건:",
+            missing_timeline_refs.len()
+        );
+        for (tl, missing) in &missing_timeline_refs {
+            eprintln!("  - {tl}: references '{missing}' (eras.id에 없음)");
+        }
+    }
+    if !duplicate_timeline_refs.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 5b 데이터 결함: timelines.references 중복 {} 건 (timeline_era_refs PK 위반):",
+            duplicate_timeline_refs.len()
+        );
+        for (tl, dup) in &duplicate_timeline_refs {
+            eprintln!("  - {tl}: references '{dup}' (배열 내 중복)");
+        }
+    }
+
     let fk_errors_total = missing_member_persons.len()
         + missing_affiliations.len()
         + missing_hq.len()
@@ -846,7 +918,9 @@ fn run() -> Result<(), String> {
         + duplicate_event_participants.len()
         + missing_era_key_events.len()
         + missing_event_era_id.len()
-        + missing_atlas_era_id.len();
+        + missing_atlas_era_id.len()
+        + missing_timeline_refs.len()
+        + duplicate_timeline_refs.len();
     let cycle_errors_total = place_cycles.len();
     if !allied_rival_overlap.is_empty() {
         eprintln!(
@@ -926,6 +1000,7 @@ fn run() -> Result<(), String> {
         println!("atlases parsed    = {}", atlases.len());
         println!("events parsed     = {}", events.len());
         println!("eras parsed       = {}", eras.len());
+        println!("timelines parsed  = {}", timelines.len());
         println!("errors            = {}", errors.len());
         println!("group cycles      = {}", cycles.len());
         println!("place cycles      = {}", place_cycles.len());
@@ -998,6 +1073,11 @@ fn run() -> Result<(), String> {
             .upsert_era(&args.project, era)
             .map_err(|e: WorldError| format!("upsert era {}: {e}", era.id))?;
     }
+    for tl in &timelines {
+        store
+            .upsert_timeline(&args.project, tl)
+            .map_err(|e: WorldError| format!("upsert timeline {}: {e}", tl.id))?;
+    }
 
     // 최종 카운트 + 결과 출력 — upsert 완료 후의 인덱스 상태.
     let group_total = store
@@ -1018,6 +1098,9 @@ fn run() -> Result<(), String> {
     let era_total = store
         .count_eras(Some(&args.project))
         .map_err(|e| format!("count eras: {e:?}"))?;
+    let timeline_total = store
+        .count_timelines(Some(&args.project))
+        .map_err(|e| format!("count timelines: {e:?}"))?;
 
     println!("\n=== 결과 ===");
     println!("project           = {}", args.project);
@@ -1027,12 +1110,14 @@ fn run() -> Result<(), String> {
     println!("atlases indexed   = {atlas_total}");
     println!("events indexed    = {event_total}");
     println!("eras indexed      = {era_total}");
+    println!("timelines indexed = {timeline_total}");
     println!("groups parsed     = {}", groups.len());
     println!("persons parsed    = {}", persons.len());
     println!("places parsed     = {}", places.len());
     println!("atlases parsed    = {}", atlases.len());
     println!("events parsed     = {}", events.len());
     println!("eras parsed       = {}", eras.len());
+    println!("timelines parsed  = {}", timelines.len());
     println!("errors            = {}", errors.len());
     println!("group cycles      = {}", cycles.len());
     println!("place cycles      = {}", place_cycles.len());
