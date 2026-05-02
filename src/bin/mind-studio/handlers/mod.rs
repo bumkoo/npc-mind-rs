@@ -120,6 +120,9 @@ pub mod world_persons;
 // Phase 3 Worldbuilding — Place 조회.
 #[cfg(feature = "embed")]
 pub mod world_places;
+// Phase 4 Worldbuilding — Atlas 조회 (첫 관계 도메인).
+#[cfg(feature = "embed")]
+pub mod world_atlases;
 
 #[derive(Serialize, Deserialize)]
 pub struct SaveRequest {

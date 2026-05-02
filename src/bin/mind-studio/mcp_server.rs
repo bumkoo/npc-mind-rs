@@ -473,6 +473,42 @@ impl MindMcpService {
                 }
             }),
 
+            // Phase 4 Worldbuilding — Atlas 조회 (첫 관계 도메인).
+            serde_json::json!({
+                "name": "list_atlases",
+                "description": "월드 인덱스에서 Atlas 목록 조회. 필터로 kind(continent|region|city-map)/genre_tag 지정 가능. Atlas는 첫 관계 도메인이며 references(Vec<PlaceId>)로 다른 Place들을 합성한다. world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "description": "continent | region | city-map" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, atlas)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_atlas",
+                "description": "Atlas ID로 단일 atlas의 전체 detail 조회. 없으면 에러. extent(projection·units) + references(Vec<PlaceId>) + body_sections(## 배치 다이어그램 ASCII 등) 포함. 합성 view (places_in/settlements_in/geographies_in/adjacent_to)는 클라이언트가 references와 list_places/get_place로 별도 호출.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "atlas_id": { "type": "string" }
+                    },
+                    "required": ["atlas_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_atlases",
+                "description": "FTS5 trigram 매치로 Atlas 검색 (name + aliases + summary + body 결합). 별호/한자/한국어/영어 모두 매칭. ## 배치 다이어그램 ASCII 본문도 검색 대상.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -1340,6 +1376,66 @@ impl MindMcpService {
                 #[cfg(not(feature = "embed"))]
                 {
                     Err("search_places는 --features embed 필요".into())
+                }
+            }
+            "list_atlases" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::AtlasFilter;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let filter = AtlasFilter {
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        genre_tag: arguments.get("genre_tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    };
+                    let atlases = store
+                        .list_atlases(filter)
+                        .map_err(|e| format!("list_atlases 실패: {e}"))?;
+                    Ok(serde_json::to_value(atlases).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_atlases는 --features embed 필요".into())
+                }
+            }
+            "get_atlas" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::AtlasId;
+                    let id = arguments["atlas_id"].as_str().ok_or("atlas_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let a = store
+                        .get_atlas(&AtlasId::new(id.to_string()))
+                        .map_err(|e| format!("get_atlas 실패: {e}"))?;
+                    match a {
+                        Some(a) => Ok(serde_json::to_value(a).map_err(|e| e.to_string())?),
+                        None => Err(format!("atlas '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_atlas는 --features embed 필요".into())
+                }
+            }
+            "search_atlases" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_atlases(q, top_k)
+                        .map_err(|e| format!("search_atlases 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_atlases는 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {

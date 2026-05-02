@@ -1,4 +1,4 @@
-//! `world-load` — Phase 1·2·3 Worldbuilding ingest CLI.
+//! `world-load` — Phase 1·2·3·4 Worldbuilding ingest CLI.
 //!
 //! 사용법:
 //!   cargo run --features embed --bin world-load -- --project chilguk-chunchu
@@ -19,6 +19,13 @@
 //!     - `Place.spatial.geography_refs` layer 일치 (target이 `Geography`이어야)
 //!     - `Place.extras.controlling_group` (sect kind만) ↔ `groups.id`
 //!   - 결손 시 partial commit 방지 — DB 미수정 유지 (Phase 1·2 정책 그대로)
+//!
+//! Phase 4 동작 (Atlas — 첫 관계 도메인):
+//!   - `world/atlas/*.md` 스캔 → atlases 테이블 upsert + FTS5 + place_atlas_refs 양방향 인덱스
+//!   - 외래키 검증 활성 (에러):
+//!     - `Atlas.references` ↔ `places.id` (모두 존재해야 — references = atlas의 핵심)
+//!     - `Atlas.references` 중복 금지 (place_atlas_refs composite PK 위반 방지)
+//!   - `Atlas.extras.era_id`는 텍스트만 보존 (Phase 5 Era 도메인 진입 시 외래키 활성)
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -26,12 +33,12 @@ use std::process::ExitCode;
 
 use npc_mind::adapter::sqlite_world::SqliteWorldStore;
 use npc_mind::domain::world::{
-    Group, GroupId, Person, Place, PlaceLayer, WorldError, detect_parent_group_cycle,
+    Atlas, Group, GroupId, Person, Place, PlaceLayer, WorldError, detect_parent_group_cycle,
     detect_parent_place_cycle,
 };
 use npc_mind::worldbuilding::WorldRepository;
 use npc_mind::worldbuilding::markdown::{
-    group_from_markdown, person_from_markdown, place_from_markdown,
+    atlas_from_markdown, group_from_markdown, person_from_markdown, place_from_markdown,
 };
 use npc_mind::worldbuilding::mind_sync::person_to_npc;
 
@@ -162,12 +169,10 @@ fn run() -> Result<(), String> {
     let group_dir = project_dir.join("world").join("group");
     let person_dir = project_dir.join("world").join("person");
     let place_dir = project_dir.join("world").join("place");
-    if !group_dir.is_dir() && !person_dir.is_dir() && !place_dir.is_dir() {
+    let atlas_dir = project_dir.join("world").join("atlas");
+    if !group_dir.is_dir() && !person_dir.is_dir() && !place_dir.is_dir() && !atlas_dir.is_dir() {
         eprintln!(
-            "[world-load] warning: world/group/ · world/person/ · world/place/ 모두 없음 ({}, {}, {}). 빈 인덱스로 마침.",
-            group_dir.display(),
-            person_dir.display(),
-            place_dir.display()
+            "[world-load] warning: world/group/ · world/person/ · world/place/ · world/atlas/ 모두 없음. 빈 인덱스로 마침."
         );
         return Ok(());
     }
@@ -256,6 +261,35 @@ fn run() -> Result<(), String> {
         eprintln!(
             "[world-load] ℹ world/place/ 없음 ({}). Place 인덱싱 스킵.",
             place_dir.display()
+        );
+    }
+
+    // Phase 4 — Atlas 스캔
+    let mut atlases: Vec<Atlas> = Vec::new();
+    if atlas_dir.is_dir() {
+        for entry in walk_md(&atlas_dir).map_err(|e| e.to_string())? {
+            let path = entry;
+            let raw = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => {
+                    errors.push(format!("{}: read failed — {e}", path.display()));
+                    continue;
+                }
+            };
+            match atlas_from_markdown(&raw) {
+                Ok(mut a) => {
+                    a.source_path = Some(path_relative_str(&projects_root, &path));
+                    atlases.push(a);
+                }
+                Err(e) => {
+                    errors.push(format!("{}: {e}", path.display()));
+                }
+            }
+        }
+    } else {
+        eprintln!(
+            "[world-load] ℹ world/atlas/ 없음 ({}). Atlas 인덱싱 스킵.",
+            atlas_dir.display()
         );
     }
 
@@ -416,6 +450,21 @@ fn run() -> Result<(), String> {
         }
     }
 
+    // Phase 4 — Atlas 외래키 활성: references ↔ places.id (모두 존재) + 중복 금지.
+    let mut missing_atlas_refs: Vec<(String, String)> = Vec::new();
+    let mut duplicate_atlas_refs: Vec<(String, String)> = Vec::new();
+    for at in &atlases {
+        let mut seen: HashSet<&str> = HashSet::new();
+        for pid in &at.references {
+            if !place_id_set.contains(pid.as_str()) {
+                missing_atlas_refs.push((at.id.0.clone(), pid.0.clone()));
+            }
+            if !seen.insert(pid.as_str()) {
+                duplicate_atlas_refs.push((at.id.0.clone(), pid.0.clone()));
+            }
+        }
+    }
+
     print_warnings("parent_group", &missing_parents);
     print_warnings("allied_groups", &missing_allied);
     print_warnings("rival_groups", &missing_rival);
@@ -512,6 +561,24 @@ fn run() -> Result<(), String> {
             eprintln!("  - {p}: controlling_group '{missing}' (groups.id에 없음)");
         }
     }
+    if !missing_atlas_refs.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 4 외래키 활성: atlases.references 결손 {} 건:",
+            missing_atlas_refs.len()
+        );
+        for (a, missing) in &missing_atlas_refs {
+            eprintln!("  - {a}: references '{missing}' (places.id에 없음)");
+        }
+    }
+    if !duplicate_atlas_refs.is_empty() {
+        eprintln!(
+            "[world-load] ✗ Phase 4 데이터 결함: atlases.references 중복 {} 건 (place_atlas_refs PK 위반):",
+            duplicate_atlas_refs.len()
+        );
+        for (a, dup) in &duplicate_atlas_refs {
+            eprintln!("  - {a}: references '{dup}' (배열 내 중복)");
+        }
+    }
 
     let fk_errors_total = missing_member_persons.len()
         + missing_affiliations.len()
@@ -522,7 +589,9 @@ fn run() -> Result<(), String> {
         + missing_bordering.len()
         + missing_geography.len()
         + geography_layer_mismatch.len()
-        + missing_controlling_group.len();
+        + missing_controlling_group.len()
+        + missing_atlas_refs.len()
+        + duplicate_atlas_refs.len();
     let cycle_errors_total = place_cycles.len();
     if !allied_rival_overlap.is_empty() {
         eprintln!(
@@ -599,6 +668,7 @@ fn run() -> Result<(), String> {
         println!("groups parsed     = {}", groups.len());
         println!("persons parsed    = {}", persons.len());
         println!("places parsed     = {}", places.len());
+        println!("atlases parsed    = {}", atlases.len());
         println!("errors            = {}", errors.len());
         println!("group cycles      = {}", cycles.len());
         println!("place cycles      = {}", place_cycles.len());
@@ -656,6 +726,11 @@ fn run() -> Result<(), String> {
             .upsert_place(&args.project, pl)
             .map_err(|e: WorldError| format!("upsert place {}: {e}", pl.id))?;
     }
+    for at in &atlases {
+        store
+            .upsert_atlas(&args.project, at)
+            .map_err(|e: WorldError| format!("upsert atlas {}: {e}", at.id))?;
+    }
 
     // 최종 카운트 + 결과 출력 — upsert 완료 후의 인덱스 상태.
     let group_total = store
@@ -667,15 +742,20 @@ fn run() -> Result<(), String> {
     let place_total = store
         .count_places(Some(&args.project))
         .map_err(|e| format!("count places: {e:?}"))?;
+    let atlas_total = store
+        .count_atlases(Some(&args.project))
+        .map_err(|e| format!("count atlases: {e:?}"))?;
 
     println!("\n=== 결과 ===");
     println!("project           = {}", args.project);
     println!("groups indexed    = {group_total}");
     println!("persons indexed   = {person_total}");
     println!("places indexed    = {place_total}");
+    println!("atlases indexed   = {atlas_total}");
     println!("groups parsed     = {}", groups.len());
     println!("persons parsed    = {}", persons.len());
     println!("places parsed     = {}", places.len());
+    println!("atlases parsed    = {}", atlases.len());
     println!("errors            = {}", errors.len());
     println!("group cycles      = {}", cycles.len());
     println!("place cycles      = {}", place_cycles.len());

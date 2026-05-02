@@ -1,8 +1,9 @@
-//! `SqliteWorldStore` — Phase 1·2·3 Vertical Slice (groups + persons + places + FTS5 trigram).
+//! `SqliteWorldStore` — Phase 1·2·3·4 Vertical Slice (groups + persons + places + atlases + FTS5 trigram).
 //!
-//! 스키마는 task-phase{1,2,3}-vertical-slice §6.3을 그대로 따름.
+//! 스키마는 task-phase{1,2,3,4}-vertical-slice §6.3을 그대로 따름.
 //! Phase 2에서 persons 테이블 + persons_fts 추가 (`migrate_v2`). Phase 3에서 places +
-//! places_fts 추가 (`migrate_v3`). 같은 SQLite 파일이 Group + Person + Place 모두 보관.
+//! places_fts 추가 (`migrate_v3`). Phase 4에서 atlases + atlases_fts + place_atlas_refs
+//! 양방향 인덱스 추가 (`migrate_v4`). 같은 SQLite 파일이 4 도메인 모두 보관.
 //! 임베딩은 Phase 5+에서 도입 (vec0 미사용).
 
 use std::sync::Mutex;
@@ -11,14 +12,15 @@ use rusqlite::{Connection, params};
 use serde_json::{Map, Value};
 
 use crate::domain::world::{
-    Group, GroupFilter, GroupId, HexacoSix, Person, PersonFilter, PersonId, PersonStatus,
-    PersonTemporal, Place, PlaceFilter, PlaceId, PlaceLayer, Spatial, WorldError,
+    Atlas, AtlasExtent, AtlasFilter, AtlasId, Group, GroupFilter, GroupId, HexacoSix, Person,
+    PersonFilter, PersonId, PersonStatus, PersonTemporal, Place, PlaceFilter, PlaceId, PlaceLayer,
+    Spatial, WorldError,
 };
 #[cfg(test)]
 use crate::domain::world::GroupStatus;
 use crate::worldbuilding::WorldRepository;
 
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 
 pub struct SqliteWorldStore {
     conn: Mutex<Connection>,
@@ -65,6 +67,9 @@ impl SqliteWorldStore {
         }
         if current < 3 {
             Self::migrate_v3(&conn)?;
+        }
+        if current < 4 {
+            Self::migrate_v4(&conn)?;
         }
         // schema_meta를 단일 row로 강제 (Code review #7).
         // 이전 구현은 `INSERT OR REPLACE INTO world_schema_meta(version)` 만 호출했는데,
@@ -118,9 +123,60 @@ impl SqliteWorldStore {
         Ok(())
     }
 
+    /// v3 → v4 마이그레이션: atlases 테이블 + atlases_fts + place_atlas_refs 양방향 인덱스.
+    /// `CREATE TABLE IF NOT EXISTS`이라 v4에서 신규 생성한 DB에도 안전.
+    ///
+    /// `place_atlas_refs`는 Phase 3에서 자리만 잡았던 것을 Phase 4에서 정식 활성:
+    /// composite PK (atlas_id, place_id) + ref_order로 references 배열 내 위치 보존.
+    /// `idx_par_place`는 place→atlas 역참조를 빠르게(어느 atlas에 등장하는가).
+    ///
+    /// **Source-of-truth 계약 (중요)**:
+    /// - `atlases.references_json`이 **단일 권위** — `row_to_atlas`가 본 컬럼만 읽어
+    ///   `Atlas.references`를 복원한다. 도메인·HTTP 응답에서 보이는 references는 모두
+    ///   여기에서 나온다.
+    /// - `place_atlas_refs`는 **역방향 인덱스 전용** — "이 place_id를 참조하는 atlas 찾기"
+    ///   같은 reverse lookup용. `get_atlas`/`list_atlases`는 본 테이블을 조회하지 않는다.
+    /// - 두 곳의 일관성은 `upsert_atlas` 단일 트랜잭션 내에서만 보장된다 — 외부 도구가
+    ///   둘 중 하나만 변경하면 silent drift 발생 가능. 마이그레이션·외부 SQL 작성 시
+    ///   반드시 둘 다 갱신할 것.
+    fn migrate_v4(conn: &Connection) -> Result<(), WorldError> {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS atlases (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                name TEXT NOT NULL,
+                aliases_json TEXT NOT NULL DEFAULT '[]',
+                summary TEXT NOT NULL DEFAULT '',
+                tags_json TEXT NOT NULL DEFAULT '[]',
+                extras_json TEXT NOT NULL DEFAULT '{}',
+                extent_json TEXT NOT NULL DEFAULT '{}',
+                references_json TEXT NOT NULL DEFAULT '[]',
+                body_sections_json TEXT NOT NULL DEFAULT '{}',
+                source_path TEXT,
+                updated_at INTEGER NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_atlases_kind ON atlases(kind);
+            CREATE INDEX IF NOT EXISTS idx_atlases_project ON atlases(project_id);
+            CREATE VIRTUAL TABLE IF NOT EXISTS atlases_fts USING fts5(
+                id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+            );
+            CREATE TABLE IF NOT EXISTS place_atlas_refs (
+                atlas_id TEXT NOT NULL,
+                place_id TEXT NOT NULL,
+                ref_order INTEGER NOT NULL,
+                PRIMARY KEY (atlas_id, place_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_par_place ON place_atlas_refs(place_id);
+            CREATE INDEX IF NOT EXISTS idx_par_atlas ON place_atlas_refs(atlas_id);",
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
     /// v2 → v3 마이그레이션: places 테이블 + places_fts.
     /// `CREATE TABLE IF NOT EXISTS`이라 v3에서 신규 생성한 DB에도 안전.
-    /// `place_atlas_refs` 자리는 Phase 4(Atlas)에서 추가 — Phase 3엔 미생성.
+    /// `place_atlas_refs`는 Phase 4 `migrate_v4`에서 정식 추가.
     fn migrate_v3(conn: &Connection) -> Result<(), WorldError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS places (
@@ -268,6 +324,61 @@ fn place_body_concat(place: &Place) -> String {
         s.push('\n');
     }
     s
+}
+
+/// Atlas body는 `## 배치 다이어그램` 같은 ASCII art 코드블록(```...```)을 byte-exact
+/// 보존한다. 그 코드블록은 트리그램 토크나이저에 무의미한 토큰(box-drawing
+/// 부분 문자열·들여쓰기 공백)을 다량 생성해 FTS5 인덱스를 부풀리고, 임의의 3-byte
+/// 시퀀스가 atlas-jungwon에 매치되는 false positive를 만든다.
+///
+/// **정책**: FTS body 합성 시 fenced code block (``` 또는 ~~~로 시작·끝) 안의 라인은
+/// 제외. 도메인 데이터(`body_sections`)에는 그대로 보존됨 — view·HTTP 응답에선 손실 없음.
+/// 이 정책은 atlas에만 적용. group/person/place는 산문 위주라 코드블록이 거의 없고,
+/// 있더라도 적은 양이라 별도 처리하지 않는다 (Phase 4 결정).
+fn atlas_body_concat(atlas: &Atlas) -> String {
+    let mut s = String::new();
+    for (k, v) in &atlas.body_sections {
+        s.push_str(k);
+        s.push('\n');
+        s.push_str(&strip_fenced_code_blocks(v));
+        s.push('\n');
+    }
+    s
+}
+
+/// fenced code block(``` 또는 ~~~ 3+ 연속) 안의 라인을 제거한 사본 반환.
+/// 같은 종류의 펜스끼리만 토글되며(``` ↔ ~~~), 펜스 라인 자체도 제거.
+/// 펜스가 닫히지 않은 입력은 그 시점부터 EOF까지 모두 제거 (안전 측).
+fn strip_fenced_code_blocks(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut fence: Option<char> = None;
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        let n_back = trimmed.chars().take_while(|&c| c == '`').count();
+        let n_tilde = trimmed.chars().take_while(|&c| c == '~').count();
+        let fence_kind = if n_back >= 3 {
+            Some('`')
+        } else if n_tilde >= 3 {
+            Some('~')
+        } else {
+            None
+        };
+        if let Some(c) = fence_kind {
+            match fence {
+                None => fence = Some(c),
+                Some(prev) if prev == c => fence = None,
+                _ => {} // 다른 종류 펜스는 무시
+            }
+            // 펜스 라인 자체도 인덱스에서 제외.
+            continue;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -795,6 +906,50 @@ impl WorldRepository for SqliteWorldStore {
         }
     }
 
+    /// `get_place` N round-trip을 피하는 단일 `IN(...)` 쿼리. 결과는 `ids` 입력
+    /// 순서대로 반환되며 (HashMap 재정렬) 결손 id는 사일런트로 누락된다.
+    /// trait의 default 구현과 의미가 동일하되 SQLite 한 번의 prepare/execute로 처리.
+    fn get_places_batch(&self, ids: &[PlaceId]) -> Result<Vec<Place>, WorldError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, project_id, layer, kind, name, aliases_json,
+                    summary, tags_json, extras_json, body_sections_json, spatial_json,
+                    parent_place, source_path
+             FROM places WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let id_strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            id_strs.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_place)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let fetched = collect_place_rows_warn_on_err(rows);
+
+        // 입력 순서 보존 — IN(...)은 결과 순서를 보장하지 않으므로 HashMap lookup.
+        let mut by_id: std::collections::HashMap<String, Place> = fetched
+            .into_iter()
+            .map(|p| (p.id.as_str().to_string(), p))
+            .collect();
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(p) = by_id.remove(id.as_str()) {
+                out.push(p);
+            }
+        }
+        Ok(out)
+    }
+
     fn search_places(&self, query: &str, top_k: u32) -> Result<Vec<Place>, WorldError> {
         let conn = self.conn.lock().unwrap();
         let q = query.trim();
@@ -847,6 +1002,201 @@ impl WorldRepository for SqliteWorldStore {
                 .map_err(|e| WorldError::Storage(e.to_string()))?,
             None => conn
                 .query_row("SELECT COUNT(*) FROM places", [], |r| r.get(0))
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+        };
+        Ok(n.max(0) as u64)
+    }
+
+    // ---------------------------------------------------------------------
+    // Phase 4 — Atlas (관계 도메인)
+    // ---------------------------------------------------------------------
+
+    fn upsert_atlas(&self, project_id: &str, atlas: &Atlas) -> Result<(), WorldError> {
+        let mut conn = self.conn.lock().unwrap();
+        let tx = conn
+            .transaction()
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        let aliases_json = json_array_of_strings(&atlas.aliases);
+        let tags_json = json_array_of_strings(&atlas.tags);
+        let extras_json = serde_json::to_string(&atlas.extras)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let extent_json = serde_json::to_string(&atlas.extent)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let references_json: String = serde_json::to_string(
+            &atlas
+                .references
+                .iter()
+                .map(|p| p.as_str())
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let body_json = serde_json::to_string(&atlas.body_sections)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let updated_at = now_ms();
+
+        tx.execute(
+            "INSERT OR REPLACE INTO atlases (
+                id, project_id, kind, name, aliases_json,
+                summary, tags_json, extras_json, extent_json, references_json,
+                body_sections_json, source_path, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                atlas.id.as_str(),
+                project_id,
+                atlas.kind,
+                atlas.name,
+                aliases_json,
+                atlas.summary,
+                tags_json,
+                extras_json,
+                extent_json,
+                references_json,
+                body_json,
+                atlas.source_path,
+                updated_at,
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // FTS5 — id 기반 delete-then-insert
+        tx.execute(
+            "DELETE FROM atlases_fts WHERE id = ?1",
+            params![atlas.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        tx.execute(
+            "INSERT INTO atlases_fts (id, name, aliases, summary, body) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                atlas.id.as_str(),
+                atlas.name,
+                aliases_concat(&atlas.aliases),
+                atlas.summary,
+                atlas_body_concat(atlas),
+            ],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+
+        // place_atlas_refs — 양방향 인덱스 동기화 (atlas_id 기준 delete-then-insert).
+        // 같은 atlas의 기존 매핑을 모두 지우고 references 순서대로 ref_order 채워 재삽입.
+        // composite PK (atlas_id, place_id)이라 동일 place 중복 시 PK 위반 — 호출자가
+        // references에서 중복을 제거해야 한다.
+        tx.execute(
+            "DELETE FROM place_atlas_refs WHERE atlas_id = ?1",
+            params![atlas.id.as_str()],
+        )
+        .map_err(|e| WorldError::Storage(e.to_string()))?;
+        for (idx, pid) in atlas.references.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO place_atlas_refs (atlas_id, place_id, ref_order) VALUES (?1, ?2, ?3)",
+                params![atlas.id.as_str(), pid.as_str(), idx as i64],
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        }
+
+        tx.commit().map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(())
+    }
+
+    fn list_atlases(&self, filter: AtlasFilter) -> Result<Vec<Atlas>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let mut sql = String::from(
+            "SELECT id, project_id, kind, name, aliases_json,
+                    summary, tags_json, extras_json, extent_json, references_json,
+                    body_sections_json, source_path
+             FROM atlases WHERE 1=1",
+        );
+        let mut binds: Vec<String> = Vec::new();
+        if let Some(k) = filter.kind {
+            sql.push_str(" AND kind = ?");
+            binds.push(k);
+        }
+        if let Some(t) = filter.genre_tag {
+            sql.push_str(" AND tags_json LIKE ? ESCAPE '\\'");
+            binds.push(json_token_like_pattern(&t));
+        }
+        sql.push_str(" ORDER BY id ASC");
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            binds.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_atlas)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_atlas_rows_warn_on_err(rows))
+    }
+
+    fn get_atlas(&self, id: &AtlasId) -> Result<Option<Atlas>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let res = conn.query_row(
+            "SELECT id, project_id, kind, name, aliases_json,
+                    summary, tags_json, extras_json, extent_json, references_json,
+                    body_sections_json, source_path
+             FROM atlases WHERE id = ?1",
+            params![id.as_str()],
+            row_to_atlas,
+        );
+        match res {
+            Ok(a) => Ok(Some(a)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(WorldError::Storage(e.to_string())),
+        }
+    }
+
+    fn search_atlases(&self, query: &str, top_k: u32) -> Result<Vec<Atlas>, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let q = query.trim();
+        if q.is_empty() {
+            return Ok(Vec::new());
+        }
+        let char_count = q.chars().count();
+        if char_count < 3 {
+            return self.search_atlases_like(&conn, q, top_k);
+        }
+
+        let escaped = q.replace('"', "\"\"");
+        let phrase = format!("\"{}\"", escaped);
+        let fts_hits: Result<Vec<Atlas>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(
+                "SELECT a.id, a.project_id, a.kind, a.name, a.aliases_json,
+                        a.summary, a.tags_json, a.extras_json, a.extent_json, a.references_json,
+                        a.body_sections_json, a.source_path
+                 FROM atlases_fts f
+                 JOIN atlases a ON a.id = f.id
+                 WHERE atlases_fts MATCH ?1
+                 ORDER BY rank
+                 LIMIT ?2",
+            )?;
+            let rows = stmt.query_map(params![phrase, top_k as i64], row_to_atlas)?;
+            Ok(collect_atlas_rows_warn_on_err(rows))
+        })();
+
+        match fts_hits {
+            Ok(hits) if !hits.is_empty() => Ok(hits),
+            Ok(_) => self.search_atlases_like(&conn, q, top_k),
+            Err(e) => {
+                tracing::debug!(
+                    "FTS5 MATCH 실패(atlases), LIKE fallback로 진행: query={q:?} err={e}"
+                );
+                self.search_atlases_like(&conn, q, top_k)
+            }
+        }
+    }
+
+    fn count_atlases(&self, project_id: Option<&str>) -> Result<u64, WorldError> {
+        let conn = self.conn.lock().unwrap();
+        let n: i64 = match project_id {
+            Some(p) => conn
+                .query_row(
+                    "SELECT COUNT(*) FROM atlases WHERE project_id = ?1",
+                    params![p],
+                    |r| r.get(0),
+                )
+                .map_err(|e| WorldError::Storage(e.to_string()))?,
+            None => conn
+                .query_row("SELECT COUNT(*) FROM atlases", [], |r| r.get(0))
                 .map_err(|e| WorldError::Storage(e.to_string()))?,
         };
         Ok(n.max(0) as u64)
@@ -914,6 +1264,37 @@ impl SqliteWorldStore {
             .query_map(params![pat, top_k as i64], row_to_place)
             .map_err(|e| WorldError::Storage(e.to_string()))?;
         Ok(collect_place_rows_warn_on_err(rows))
+    }
+
+    /// Atlas 검색용 LIKE fallback — FTS5 trigram이 처리하지 못하는 짧은 query 또는
+    /// 결과 0건 시 호출.
+    fn search_atlases_like(
+        &self,
+        conn: &Connection,
+        q: &str,
+        top_k: u32,
+    ) -> Result<Vec<Atlas>, WorldError> {
+        let pat = format!("%{}%", q.replace('%', "\\%").replace('_', "\\_"));
+        let mut stmt = conn
+            .prepare(
+                "SELECT a.id, a.project_id, a.kind, a.name, a.aliases_json,
+                        a.summary, a.tags_json, a.extras_json, a.extent_json, a.references_json,
+                        a.body_sections_json, a.source_path
+                 FROM atlases a
+                 LEFT JOIN atlases_fts f ON f.id = a.id
+                 WHERE a.name LIKE ?1 ESCAPE '\\'
+                    OR f.aliases LIKE ?1 ESCAPE '\\'
+                    OR a.summary LIKE ?1 ESCAPE '\\'
+                    OR f.body LIKE ?1 ESCAPE '\\'
+                 GROUP BY a.id
+                 ORDER BY a.id ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![pat, top_k as i64], row_to_atlas)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        Ok(collect_atlas_rows_warn_on_err(rows))
     }
 
     /// FTS5 fallback — `groups_fts.body`/`name`/`aliases`/`summary`를 LIKE %q% 매칭.
@@ -1147,6 +1528,62 @@ where
             Ok(p) => out.push(p),
             Err(e) => {
                 tracing::warn!("SqliteWorldStore place row decode 실패 — 결과에서 제외: {e}");
+            }
+        }
+    }
+    out
+}
+
+fn row_to_atlas(row: &rusqlite::Row) -> rusqlite::Result<Atlas> {
+    let id: String = row.get(0)?;
+    // project_id (1)은 도메인 모델 미보존.
+    let kind: String = row.get(2)?;
+    let name: String = row.get(3)?;
+    let aliases_json: String = row.get(4)?;
+    let summary: String = row.get(5)?;
+    let tags_json: String = row.get(6)?;
+    let extras_json: String = row.get(7)?;
+    let extent_json: String = row.get(8)?;
+    let references_json: String = row.get(9)?;
+    let body_json: String = row.get(10)?;
+    let source_path: Option<String> = row.get(11)?;
+
+    let extras: Map<String, Value> =
+        serde_json::from_str(&extras_json).unwrap_or_default();
+    let extent: AtlasExtent =
+        serde_json::from_str(&extent_json).unwrap_or_default();
+    let references: Vec<PlaceId> = serde_json::from_str::<Vec<String>>(&references_json)
+        .map(|v| v.into_iter().map(PlaceId::new).collect())
+        .unwrap_or_default();
+    let body_sections = serde_json::from_str(&body_json).unwrap_or_default();
+    let aliases = from_json_strings(&aliases_json);
+    let tags = from_json_strings(&tags_json);
+
+    Ok(Atlas {
+        id: AtlasId::new(id),
+        kind,
+        name,
+        aliases,
+        summary,
+        tags,
+        extras,
+        extent,
+        references,
+        body_sections,
+        source_path,
+    })
+}
+
+fn collect_atlas_rows_warn_on_err<I>(rows: I) -> Vec<Atlas>
+where
+    I: Iterator<Item = rusqlite::Result<Atlas>>,
+{
+    let mut out = Vec::new();
+    for r in rows {
+        match r {
+            Ok(a) => out.push(a),
+            Err(e) => {
+                tracing::warn!("SqliteWorldStore atlas row decode 실패 — 결과에서 제외: {e}");
             }
         }
     }
@@ -1716,8 +2153,8 @@ mod tests {
                 .unwrap();
             (count, max)
         };
-        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2·v3 누적 X)");
-        assert_eq!(max_version, 3);
+        assert_eq!(count, 1, "schema_meta는 단일 row여야 함 (v1·v2·v3·v4 누적 X)");
+        assert_eq!(max_version, SCHEMA_VERSION);
 
         drop(store);
         drop(tmp);
@@ -2152,5 +2589,357 @@ mod tests {
 
         drop(store);
         drop(tmp);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4 — Atlas 라운드트립 + place_atlas_refs 양방향 인덱스
+    // -----------------------------------------------------------------------
+
+    fn sample_atlas_with_refs(id: &str, refs: &[&str]) -> Atlas {
+        let mut a = Atlas::new(id, "continent", id);
+        a.aliases = vec!["대륙".into()];
+        a.summary = "테스트 atlas".into();
+        a.tags = vec!["test".into(), "atlas".into()];
+        a.extras
+            .insert("era".into(), Value::String("현재".into()));
+        a.extent = AtlasExtent {
+            projection: "schematic".into(),
+            width_units: Some(7),
+            height_units: Some(7),
+            unit: "schematic".into(),
+        };
+        a.references = refs.iter().map(|s| PlaceId::new(*s)).collect();
+        // ASCII art는 byte-exact 보존이 핵심 — box-drawing + 빈 줄 포함.
+        a.body_sections.insert(
+            "배치 다이어그램".into(),
+            "```\n┌──────┐\n│ 중원 │\n└──────┘\n```".into(),
+        );
+        a
+    }
+
+    #[test]
+    fn atlas_full_roundtrip_through_sqlite() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let a = sample_atlas_with_refs("atlas-test", &["place-a", "place-b", "place-c"]);
+        store.upsert_atlas("test", &a).unwrap();
+        let back = store.get_atlas(&AtlasId::new("atlas-test")).unwrap().unwrap();
+        assert_eq!(back, a);
+    }
+
+    #[test]
+    fn atlas_body_sections_preserve_ascii_byte_exact() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut a = Atlas::new("atlas-d", "continent", "Diagram");
+        // box-drawing + 빈 줄 + 들여쓰기 — 마크다운 파서가 코드블록 내부에서 이를 깨면 안 됨.
+        let diagram = "```\n                    ┌──────────────────┐\n                    │     북 원        │\n                    │   (초원/유목)     │\n                    │   왕정(오르두)    │\n                    └────────┬─────────┘\n                             │\n```";
+        a.body_sections
+            .insert("배치 다이어그램".into(), diagram.to_string());
+        store.upsert_atlas("test", &a).unwrap();
+        let back = store.get_atlas(&AtlasId::new("atlas-d")).unwrap().unwrap();
+        assert_eq!(
+            back.body_sections.get("배치 다이어그램").map(String::as_str),
+            Some(diagram),
+            "ASCII 다이어그램이 SQLite 라운드트립 후 byte-exact 보존되어야 함"
+        );
+    }
+
+    #[test]
+    fn place_atlas_refs_bidirectional_index_populated_on_upsert() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let a = sample_atlas_with_refs("atlas-x", &["place-a", "place-b", "place-c"]);
+        store.upsert_atlas("test", &a).unwrap();
+
+        // 정방향 (atlas → places, ref_order 보존)
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT place_id, ref_order FROM place_atlas_refs WHERE atlas_id = ?1
+                 ORDER BY ref_order ASC",
+            )
+            .unwrap();
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params!["atlas-x"], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("place-a".to_string(), 0),
+                ("place-b".to_string(), 1),
+                ("place-c".to_string(), 2),
+            ]
+        );
+
+        // 역방향 (place → atlases) — idx_par_place 인덱스 활용 가능.
+        let mut stmt2 = conn
+            .prepare("SELECT atlas_id FROM place_atlas_refs WHERE place_id = ?1 ORDER BY atlas_id")
+            .unwrap();
+        let atlases_for_b: Vec<String> = stmt2
+            .query_map(params!["place-b"], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(atlases_for_b, vec!["atlas-x".to_string()]);
+    }
+
+    #[test]
+    fn place_atlas_refs_resyncs_on_re_upsert() {
+        // references 변경 → 기존 매핑은 모두 사라지고 신규로 채워짐.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let a1 = sample_atlas_with_refs("atlas-x", &["place-a", "place-b"]);
+        store.upsert_atlas("test", &a1).unwrap();
+        let a2 = sample_atlas_with_refs("atlas-x", &["place-c"]);
+        store.upsert_atlas("test", &a2).unwrap();
+
+        let conn = store.conn.lock().unwrap();
+        let mut stmt = conn
+            .prepare("SELECT place_id FROM place_atlas_refs WHERE atlas_id = ?1 ORDER BY place_id")
+            .unwrap();
+        let ids: Vec<String> = stmt
+            .query_map(params!["atlas-x"], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(Result::ok)
+            .collect();
+        assert_eq!(ids, vec!["place-c".to_string()]);
+    }
+
+    #[test]
+    fn list_atlases_filters_by_kind_and_genre_tag() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut a1 = Atlas::new("atlas-c1", "continent", "C1");
+        a1.tags = vec!["wuxia".into(), "atlas".into()];
+        let mut a2 = Atlas::new("atlas-r1", "region", "R1");
+        a2.tags = vec!["wuxia".into(), "atlas".into()];
+        store.upsert_atlas("test", &a1).unwrap();
+        store.upsert_atlas("test", &a2).unwrap();
+
+        let conts = store
+            .list_atlases(AtlasFilter {
+                kind: Some("continent".into()),
+                genre_tag: None,
+            })
+            .unwrap();
+        assert_eq!(conts.len(), 1);
+        assert_eq!(conts[0].id.as_str(), "atlas-c1");
+
+        let wuxia = store
+            .list_atlases(AtlasFilter {
+                kind: None,
+                genre_tag: Some("wuxia".into()),
+            })
+            .unwrap();
+        assert_eq!(wuxia.len(), 2);
+    }
+
+    #[test]
+    fn search_atlases_fts_and_like_fallback() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut a = Atlas::new("atlas-jungwon", "continent", "칠국춘추 대륙");
+        a.aliases = vec!["중원 대륙".into(), "칠국 대륙".into()];
+        a.summary = "대진 중심 7개 정치체".into();
+        store.upsert_atlas("test", &a).unwrap();
+
+        // 3자 이상 한국어 → FTS5 trigram.
+        let hits1 = store.search_atlases("칠국", 5).unwrap();
+        assert!(!hits1.is_empty());
+        // 별호 매칭 — alias 기반.
+        let hits2 = store.search_atlases("중원", 5).unwrap();
+        assert!(!hits2.is_empty());
+        assert_eq!(hits2[0].id.as_str(), "atlas-jungwon");
+    }
+
+    #[test]
+    fn schema_v3_to_v4_migration_upgrades_existing_file_db() {
+        // 실제 v3→v4 경로 검증. tempfile에 v3 schema를 작성한 뒤,
+        // SqliteWorldStore::new(path)로 재오픈 → init_tables의 `current < 4` 분기가 활성되어
+        // atlases / atlases_fts / place_atlas_refs가 추가되며 기존 v3 데이터는 보존된다.
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        let path_buf = tmp.path().to_path_buf();
+
+        // 1) v3 schema 작성 — places까지만.
+        {
+            let conn = rusqlite::Connection::open(&path_buf).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE world_schema_meta (version INTEGER PRIMARY KEY);
+                 INSERT INTO world_schema_meta(version) VALUES (3);
+                 CREATE TABLE places (
+                    id TEXT PRIMARY KEY, project_id TEXT NOT NULL, layer TEXT NOT NULL,
+                    kind TEXT NOT NULL, name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]', summary TEXT NOT NULL DEFAULT '',
+                    tags_json TEXT NOT NULL DEFAULT '[]', extras_json TEXT NOT NULL DEFAULT '{}',
+                    body_sections_json TEXT NOT NULL DEFAULT '{}',
+                    spatial_json TEXT NOT NULL DEFAULT '{}', parent_place TEXT,
+                    source_path TEXT, updated_at INTEGER NOT NULL
+                 );
+                 CREATE VIRTUAL TABLE places_fts USING fts5(
+                    id UNINDEXED, name, aliases, summary, body, tokenize='trigram'
+                 );
+                 INSERT INTO places (id, project_id, layer, kind, name, updated_at)
+                    VALUES ('place-legacy', 'p', 'settlement', 'nation', '레거시', 0);",
+            )
+            .unwrap();
+        }
+
+        // 2) 재오픈 → migrate_v4 실행.
+        let store = SqliteWorldStore::new(path_buf.to_str().unwrap()).unwrap();
+
+        // 3) atlases 테이블이 추가되어 count_atlases가 동작.
+        assert_eq!(store.count_atlases(None).unwrap(), 0);
+
+        // 4) 기존 v3 places 보존.
+        let p = store
+            .get_place(&PlaceId::new("place-legacy"))
+            .unwrap()
+            .expect("v3 places row 보존 필요");
+        assert_eq!(p.name, "레거시");
+
+        // 5) v4 신규 — atlases upsert·get + place_atlas_refs 채워짐.
+        let a = sample_atlas_with_refs("atlas-after", &["place-legacy"]);
+        store.upsert_atlas("p", &a).unwrap();
+        let back = store
+            .get_atlas(&AtlasId::new("atlas-after"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(back.references, vec![PlaceId::new("place-legacy")]);
+
+        let conn = store.conn.lock().unwrap();
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM place_atlas_refs WHERE atlas_id = ?1",
+                params!["atlas-after"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(n, 1);
+
+        drop(conn);
+        drop(store);
+        drop(tmp);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4 follow-up — FTS body 코드블록 strip + get_places_batch
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn strip_fenced_code_blocks_removes_box_drawing_lines() {
+        let body = "before\n```\n┌──┐\n│ N │\n└──┘\n```\nafter";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(stripped.contains("after"));
+        assert!(!stripped.contains("┌──┐"));
+        assert!(!stripped.contains("│ N │"));
+        assert!(!stripped.contains("```"));
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_preserves_inline_backticks() {
+        // 단일 백틱 inline은 펜스가 아니므로 그대로 보존.
+        let body = "use `code` like this\nand more `inline`";
+        let stripped = strip_fenced_code_blocks(body);
+        assert_eq!(stripped.trim_end(), body);
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_handles_tilde_fence() {
+        let body = "before\n~~~\nfenced art\n~~~\nafter";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(stripped.contains("after"));
+        assert!(!stripped.contains("fenced art"));
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_unclosed_fence_drops_to_eof() {
+        // 안전 측 — 펜스가 닫히지 않으면 그 시점부터 EOF까지 모두 제거.
+        let body = "before\n```\nstuck open\nmore stuck";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(!stripped.contains("stuck"));
+    }
+
+    #[test]
+    fn atlas_fts_body_excludes_diagram_so_box_drawing_does_not_match() {
+        // 본 회귀 가드 — atlases_fts.body가 ASCII art를 제외하므로, 다이어그램에만
+        // 등장하는 box-drawing 부분 문자열로는 atlas-jungwon이 매칭되지 않는다.
+        // 단, name/aliases/summary에 "중원"/"칠국" 같은 평문이 있으므로 그건 매칭.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut a = Atlas::new("atlas-jungwon", "continent", "Real Atlas Name");
+        a.aliases = vec!["alias one".into()];
+        a.summary = "summary text".into();
+        // 본문은 코드블록 안 ASCII art만.
+        a.body_sections.insert(
+            "배치 다이어그램".into(),
+            "```\n┌──기괴한 토큰──┐\n│ 박스내부텍스트 │\n└──────────────┘\n```".into(),
+        );
+        store.upsert_atlas("p", &a).unwrap();
+
+        // 코드블록 *밖*에 있는 텍스트(name·aliases·summary)는 매칭.
+        let hits_name = store.search_atlases("Real Atlas", 5).unwrap();
+        assert!(!hits_name.is_empty(), "name 텍스트는 검색되어야 함");
+
+        // 코드블록 *안*에 있는 한국어 평문은 매칭되지 않아야 — strip 후 FTS 본문 비어 있음.
+        let hits_inside = store.search_atlases("박스내부텍스트", 5).unwrap();
+        assert!(
+            hits_inside.is_empty(),
+            "코드블록 안 텍스트는 FTS 인덱스에서 제외되어야 함"
+        );
+
+        // 도메인 객체에는 다이어그램이 그대로 보존됨 (FTS strip은 인덱스 합성에만 적용).
+        let back = store
+            .get_atlas(&AtlasId::new("atlas-jungwon"))
+            .unwrap()
+            .unwrap();
+        assert!(
+            back.body_sections
+                .get("배치 다이어그램")
+                .unwrap()
+                .contains("박스내부텍스트"),
+            "도메인 데이터에는 다이어그램 보존되어야 함 (HTTP·view에서 손실 X)"
+        );
+    }
+
+    #[test]
+    fn get_places_batch_preserves_input_order() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        for id in ["place-a", "place-b", "place-c"] {
+            store
+                .upsert_place("p", &sample_settlement(id, id))
+                .unwrap();
+        }
+        // 입력 순서가 알파벳 역순이어도 결과는 입력 순서.
+        let ids = vec![
+            PlaceId::new("place-c"),
+            PlaceId::new("place-a"),
+            PlaceId::new("place-b"),
+        ];
+        let got = store.get_places_batch(&ids).unwrap();
+        let got_ids: Vec<&str> = got.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(got_ids, vec!["place-c", "place-a", "place-b"]);
+    }
+
+    #[test]
+    fn get_places_batch_skips_missing_silently() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_place("p", &sample_settlement("place-a", "A"))
+            .unwrap();
+        let ids = vec![
+            PlaceId::new("place-a"),
+            PlaceId::new("place-missing"),
+            PlaceId::new("place-also-missing"),
+        ];
+        let got = store.get_places_batch(&ids).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id.as_str(), "place-a");
+    }
+
+    #[test]
+    fn get_places_batch_empty_input_returns_empty_no_sql() {
+        // 빈 ids는 SQL 없이 즉시 반환 — `IN ()`는 SQLite 문법 에러.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let got = store.get_places_batch(&[]).unwrap();
+        assert!(got.is_empty());
     }
 }

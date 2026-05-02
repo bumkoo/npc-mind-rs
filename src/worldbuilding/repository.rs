@@ -4,8 +4,8 @@
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
 use crate::domain::world::{
-    Group, GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId,
-    WorldError,
+    Atlas, AtlasFilter, AtlasId, Group, GroupFilter, GroupId, Person, PersonFilter, PersonId,
+    Place, PlaceFilter, PlaceId, WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -57,6 +57,22 @@ pub trait WorldRepository: Send + Sync {
     /// id로 단일 장소 조회. 없으면 Ok(None).
     fn get_place(&self, id: &PlaceId) -> Result<Option<Place>, WorldError>;
 
+    /// 여러 id 일괄 조회. 결과는 입력 `ids` 순서대로 반환되며 결손 id는 누락
+    /// (사일런트). Atlas의 view 메서드(`places_in` 등)가 N+1 round-trip을 피하도록
+    /// 추가됨.
+    ///
+    /// **기본 구현**은 `get_place`를 ids만큼 반복한다 — 후방 호환. SqliteWorldStore
+    /// 등 N round-trip을 피할 수 있는 backend는 단일 `IN(...)` 쿼리로 override.
+    fn get_places_batch(&self, ids: &[PlaceId]) -> Result<Vec<Place>, WorldError> {
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(p) = self.get_place(id)? {
+                out.push(p);
+            }
+        }
+        Ok(out)
+    }
+
     /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
     fn search_places(&self, query: &str, top_k: u32) -> Result<Vec<Place>, WorldError>;
 
@@ -65,4 +81,28 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_places(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 4 — Atlas (첫 관계 도메인)
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 atlas 목록 조회. 결과는 id 오름차순.
+    fn list_atlases(&self, filter: AtlasFilter) -> Result<Vec<Atlas>, WorldError>;
+
+    /// id로 단일 atlas 조회. 없으면 Ok(None). references·body_sections 전체 포함.
+    fn get_atlas(&self, id: &AtlasId) -> Result<Option<Atlas>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_atlases(&self, query: &str, top_k: u32) -> Result<Vec<Atlas>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다.
+    ///
+    /// **Source-of-truth**: `atlases.references_json`이 단일 권위. `place_atlas_refs`는
+    /// 역방향 인덱스 전용으로, 같은 트랜잭션 안에서 delete-then-insert 패턴으로 동기화된다.
+    /// 외부 도구가 둘 중 하나만 변경하면 silent drift 발생 가능 — 반드시 둘 다 갱신할 것.
+    /// 자세한 SoT 계약은 `SqliteWorldStore::migrate_v4` 문서 참조.
+    fn upsert_atlas(&self, project_id: &str, atlas: &Atlas) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_atlases(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

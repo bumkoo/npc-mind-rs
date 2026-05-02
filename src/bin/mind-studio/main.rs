@@ -319,7 +319,15 @@ fn build_api_router(state: AppState) -> Router {
             "/api/world/places/search",
             get(handlers::world_places::search_places),
         )
-        .route("/api/world/places/{id}", get(handlers::world_places::get_place));
+        .route("/api/world/places/{id}", get(handlers::world_places::get_place))
+        // Phase 4 Worldbuilding — Atlas 조회 (첫 관계 도메인).
+        // search는 path param {id}보다 먼저 등록 — axum 매칭 우선순위.
+        .route("/api/world/atlases", get(handlers::world_atlases::list_atlases))
+        .route(
+            "/api/world/atlases/search",
+            get(handlers::world_atlases::search_atlases),
+        )
+        .route("/api/world/atlases/{id}", get(handlers::world_atlases::get_atlas));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());
