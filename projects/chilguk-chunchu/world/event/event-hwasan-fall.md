@@ -25,6 +25,7 @@ participants:
     - npc-02                        # 조고 — 기획자로 강하게 의심 (§11.1)
     - npc-03                        # 남궁혁 — 30대 초반, 멸문 관여 의혹 (§11.1)
     - player                        # 7세, 임서운에 의해 혈매화검과 함께 구출
+    - npc-im-seoun                  # 임서운 — 화산파 추양진인 수제자, 마지막 밤 player 도주시킴 (Phase 5c.1 외래키 활성)
   groups:
     - group-daejin-court            # 대진 황실 — 조고의 배후
     - group-shipsangsi              # 십상시 — 실행 결사
@@ -52,6 +53,12 @@ extras:
     - era_id=~ (Phase 5b "era-fall-of-empire").
     - related_events 3건: bloody-night ↔ hwasan-fall 양방향 시연(디렉터 핵심 검증) +
       blood-disappearance(2년 전 사전) + bloody-cult-2nd(30년 전 표적 원인).
+    Phase 5c.1 외래키 활성:
+    - npc-im-seoun(임서운) participants.people 추가 — 추양진인 수제자, 마지막 밤 player(7세)
+      도주 직접 행위자. character-roster H29 + history-characters §11.1.
+    - 산문 "player 부친" → "player 보호자" 정정 (player.md §배경 기준 위탁 양육자).
+    - 추양진인은 본 Phase 미등록 (체크포인트 2 후보). 등록 시 participants.people 추가 + 산문
+      "(npc 미등록) 추양진인" 마커 정정.
 ---
 
 ## 개요
@@ -90,8 +97,8 @@ player(7세)를 혈매화검과 함께 도주시킨 시점이 사건의 마지�
 
 ## 핵심 인물
 - (npc 미등록) 추양진인: 화산 장문인. "가을 햇살". 멸문 시 최후까지 저항하며 전사.
-- (npc 미등록) 임서운: player 부친, 추양진인 수제자. 사건의 마지막 밤에 player를 혈매화검과
-  함께 산 아래로 도주시킴. 행방불명.
+- npc-im-seoun 임서운: 화산파 추양진인 수제자, player 보호자(친부 아님). 사건의 마지막 밤에 player(7세)를
+  혈매화검과 함께 산 아래로 도주시킴. 행방불명. 화산파 270년 기록 일부 보존 추정 — character-roster H29.
 - npc-02 조고: 기획자로 강하게 의심. 십상시 실행. 표면에 드러나지 않음.
 - npc-03 남궁혁: 30대 초반. 부분 관여 의혹. 정치적 이득 수혜.
 - player: 7세. 임서운에 의해 산 밑으로 구출. 혈매화검 보유. 화산파 직접 후계.
