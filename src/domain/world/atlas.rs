@@ -170,17 +170,14 @@ impl Atlas {
     ///
     /// references 작성 순서대로 반환. 결손된 ID는 stderr 경고 없이 그냥 누락됨
     /// (world-load 시 hard-fail로 결손 0건이 보장되므로 정상 데이터에선 누락 X).
+    ///
+    /// **성능**: `WorldRepository::get_places_batch`로 단일 쿼리 합성. SqliteWorldStore는
+    /// `IN(?,?,...)` 한 번으로 처리 — references N개에 대해 SQL N round-trip을 피한다.
     pub fn places_in<R: WorldRepository + ?Sized>(
         &self,
         repo: &R,
     ) -> Result<Vec<Place>, WorldError> {
-        let mut out = Vec::with_capacity(self.references.len());
-        for id in &self.references {
-            if let Some(p) = repo.get_place(id)? {
-                out.push(p);
-            }
-        }
-        Ok(out)
+        repo.get_places_batch(&self.references)
     }
 
     /// settlement layer만.

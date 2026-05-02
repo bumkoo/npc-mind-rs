@@ -129,6 +129,16 @@ impl SqliteWorldStore {
     /// `place_atlas_refs`는 Phase 3에서 자리만 잡았던 것을 Phase 4에서 정식 활성:
     /// composite PK (atlas_id, place_id) + ref_order로 references 배열 내 위치 보존.
     /// `idx_par_place`는 place→atlas 역참조를 빠르게(어느 atlas에 등장하는가).
+    ///
+    /// **Source-of-truth 계약 (중요)**:
+    /// - `atlases.references_json`이 **단일 권위** — `row_to_atlas`가 본 컬럼만 읽어
+    ///   `Atlas.references`를 복원한다. 도메인·HTTP 응답에서 보이는 references는 모두
+    ///   여기에서 나온다.
+    /// - `place_atlas_refs`는 **역방향 인덱스 전용** — "이 place_id를 참조하는 atlas 찾기"
+    ///   같은 reverse lookup용. `get_atlas`/`list_atlases`는 본 테이블을 조회하지 않는다.
+    /// - 두 곳의 일관성은 `upsert_atlas` 단일 트랜잭션 내에서만 보장된다 — 외부 도구가
+    ///   둘 중 하나만 변경하면 silent drift 발생 가능. 마이그레이션·외부 SQL 작성 시
+    ///   반드시 둘 다 갱신할 것.
     fn migrate_v4(conn: &Connection) -> Result<(), WorldError> {
         conn.execute_batch(
             "CREATE TABLE IF NOT EXISTS atlases (
@@ -316,15 +326,59 @@ fn place_body_concat(place: &Place) -> String {
     s
 }
 
+/// Atlas body는 `## 배치 다이어그램` 같은 ASCII art 코드블록(```...```)을 byte-exact
+/// 보존한다. 그 코드블록은 트리그램 토크나이저에 무의미한 토큰(box-drawing
+/// 부분 문자열·들여쓰기 공백)을 다량 생성해 FTS5 인덱스를 부풀리고, 임의의 3-byte
+/// 시퀀스가 atlas-jungwon에 매치되는 false positive를 만든다.
+///
+/// **정책**: FTS body 합성 시 fenced code block (``` 또는 ~~~로 시작·끝) 안의 라인은
+/// 제외. 도메인 데이터(`body_sections`)에는 그대로 보존됨 — view·HTTP 응답에선 손실 없음.
+/// 이 정책은 atlas에만 적용. group/person/place는 산문 위주라 코드블록이 거의 없고,
+/// 있더라도 적은 양이라 별도 처리하지 않는다 (Phase 4 결정).
 fn atlas_body_concat(atlas: &Atlas) -> String {
     let mut s = String::new();
     for (k, v) in &atlas.body_sections {
         s.push_str(k);
         s.push('\n');
-        s.push_str(v);
+        s.push_str(&strip_fenced_code_blocks(v));
         s.push('\n');
     }
     s
+}
+
+/// fenced code block(``` 또는 ~~~ 3+ 연속) 안의 라인을 제거한 사본 반환.
+/// 같은 종류의 펜스끼리만 토글되며(``` ↔ ~~~), 펜스 라인 자체도 제거.
+/// 펜스가 닫히지 않은 입력은 그 시점부터 EOF까지 모두 제거 (안전 측).
+fn strip_fenced_code_blocks(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut fence: Option<char> = None;
+    for line in body.lines() {
+        let trimmed = line.trim_start();
+        let n_back = trimmed.chars().take_while(|&c| c == '`').count();
+        let n_tilde = trimmed.chars().take_while(|&c| c == '~').count();
+        let fence_kind = if n_back >= 3 {
+            Some('`')
+        } else if n_tilde >= 3 {
+            Some('~')
+        } else {
+            None
+        };
+        if let Some(c) = fence_kind {
+            match fence {
+                None => fence = Some(c),
+                Some(prev) if prev == c => fence = None,
+                _ => {} // 다른 종류 펜스는 무시
+            }
+            // 펜스 라인 자체도 인덱스에서 제외.
+            continue;
+        }
+        if fence.is_some() {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -850,6 +904,50 @@ impl WorldRepository for SqliteWorldStore {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(WorldError::Storage(e.to_string())),
         }
+    }
+
+    /// `get_place` N round-trip을 피하는 단일 `IN(...)` 쿼리. 결과는 `ids` 입력
+    /// 순서대로 반환되며 (HashMap 재정렬) 결손 id는 사일런트로 누락된다.
+    /// trait의 default 구현과 의미가 동일하되 SQLite 한 번의 prepare/execute로 처리.
+    fn get_places_batch(&self, ids: &[PlaceId]) -> Result<Vec<Place>, WorldError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, project_id, layer, kind, name, aliases_json,
+                    summary, tags_json, extras_json, body_sections_json, spatial_json,
+                    parent_place, source_path
+             FROM places WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let id_strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            id_strs.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_place)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let fetched = collect_place_rows_warn_on_err(rows);
+
+        // 입력 순서 보존 — IN(...)은 결과 순서를 보장하지 않으므로 HashMap lookup.
+        let mut by_id: std::collections::HashMap<String, Place> = fetched
+            .into_iter()
+            .map(|p| (p.id.as_str().to_string(), p))
+            .collect();
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(p) = by_id.remove(id.as_str()) {
+                out.push(p);
+            }
+        }
+        Ok(out)
     }
 
     fn search_places(&self, query: &str, top_k: u32) -> Result<Vec<Place>, WorldError> {
@@ -2718,5 +2816,130 @@ mod tests {
         drop(conn);
         drop(store);
         drop(tmp);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4 follow-up — FTS body 코드블록 strip + get_places_batch
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn strip_fenced_code_blocks_removes_box_drawing_lines() {
+        let body = "before\n```\n┌──┐\n│ N │\n└──┘\n```\nafter";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(stripped.contains("after"));
+        assert!(!stripped.contains("┌──┐"));
+        assert!(!stripped.contains("│ N │"));
+        assert!(!stripped.contains("```"));
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_preserves_inline_backticks() {
+        // 단일 백틱 inline은 펜스가 아니므로 그대로 보존.
+        let body = "use `code` like this\nand more `inline`";
+        let stripped = strip_fenced_code_blocks(body);
+        assert_eq!(stripped.trim_end(), body);
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_handles_tilde_fence() {
+        let body = "before\n~~~\nfenced art\n~~~\nafter";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(stripped.contains("after"));
+        assert!(!stripped.contains("fenced art"));
+    }
+
+    #[test]
+    fn strip_fenced_code_blocks_unclosed_fence_drops_to_eof() {
+        // 안전 측 — 펜스가 닫히지 않으면 그 시점부터 EOF까지 모두 제거.
+        let body = "before\n```\nstuck open\nmore stuck";
+        let stripped = strip_fenced_code_blocks(body);
+        assert!(stripped.contains("before"));
+        assert!(!stripped.contains("stuck"));
+    }
+
+    #[test]
+    fn atlas_fts_body_excludes_diagram_so_box_drawing_does_not_match() {
+        // 본 회귀 가드 — atlases_fts.body가 ASCII art를 제외하므로, 다이어그램에만
+        // 등장하는 box-drawing 부분 문자열로는 atlas-jungwon이 매칭되지 않는다.
+        // 단, name/aliases/summary에 "중원"/"칠국" 같은 평문이 있으므로 그건 매칭.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let mut a = Atlas::new("atlas-jungwon", "continent", "Real Atlas Name");
+        a.aliases = vec!["alias one".into()];
+        a.summary = "summary text".into();
+        // 본문은 코드블록 안 ASCII art만.
+        a.body_sections.insert(
+            "배치 다이어그램".into(),
+            "```\n┌──기괴한 토큰──┐\n│ 박스내부텍스트 │\n└──────────────┘\n```".into(),
+        );
+        store.upsert_atlas("p", &a).unwrap();
+
+        // 코드블록 *밖*에 있는 텍스트(name·aliases·summary)는 매칭.
+        let hits_name = store.search_atlases("Real Atlas", 5).unwrap();
+        assert!(!hits_name.is_empty(), "name 텍스트는 검색되어야 함");
+
+        // 코드블록 *안*에 있는 한국어 평문은 매칭되지 않아야 — strip 후 FTS 본문 비어 있음.
+        let hits_inside = store.search_atlases("박스내부텍스트", 5).unwrap();
+        assert!(
+            hits_inside.is_empty(),
+            "코드블록 안 텍스트는 FTS 인덱스에서 제외되어야 함"
+        );
+
+        // 도메인 객체에는 다이어그램이 그대로 보존됨 (FTS strip은 인덱스 합성에만 적용).
+        let back = store
+            .get_atlas(&AtlasId::new("atlas-jungwon"))
+            .unwrap()
+            .unwrap();
+        assert!(
+            back.body_sections
+                .get("배치 다이어그램")
+                .unwrap()
+                .contains("박스내부텍스트"),
+            "도메인 데이터에는 다이어그램 보존되어야 함 (HTTP·view에서 손실 X)"
+        );
+    }
+
+    #[test]
+    fn get_places_batch_preserves_input_order() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        for id in ["place-a", "place-b", "place-c"] {
+            store
+                .upsert_place("p", &sample_settlement(id, id))
+                .unwrap();
+        }
+        // 입력 순서가 알파벳 역순이어도 결과는 입력 순서.
+        let ids = vec![
+            PlaceId::new("place-c"),
+            PlaceId::new("place-a"),
+            PlaceId::new("place-b"),
+        ];
+        let got = store.get_places_batch(&ids).unwrap();
+        let got_ids: Vec<&str> = got.iter().map(|p| p.id.as_str()).collect();
+        assert_eq!(got_ids, vec!["place-c", "place-a", "place-b"]);
+    }
+
+    #[test]
+    fn get_places_batch_skips_missing_silently() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_place("p", &sample_settlement("place-a", "A"))
+            .unwrap();
+        let ids = vec![
+            PlaceId::new("place-a"),
+            PlaceId::new("place-missing"),
+            PlaceId::new("place-also-missing"),
+        ];
+        let got = store.get_places_batch(&ids).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id.as_str(), "place-a");
+    }
+
+    #[test]
+    fn get_places_batch_empty_input_returns_empty_no_sql() {
+        // 빈 ids는 SQL 없이 즉시 반환 — `IN ()`는 SQLite 문법 에러.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let got = store.get_places_batch(&[]).unwrap();
+        assert!(got.is_empty());
     }
 }
