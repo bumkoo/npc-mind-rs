@@ -9,7 +9,7 @@ v0.3.0에서 v1 경로(`MindService`/`EventAwareMindService`/`Pipeline`/`Command
 ## 기술 스택
 - **Language:** Rust (Edition 2024)
 - **Architecture:** Hexagonal + DDD + **EventBus(tokio broadcast)/CQRS/Event Sourcing** + **Multi-Handler** (Policy + Projector + Orchestrator)
-- **Libraries:** `serde`/`serde_json`, `thiserror`, `tokio/sync`+`tokio-stream`+`futures` (EventBus 내부 구현), `axum`(WebUI), `tracing`, `ort`(ONNX 임베딩), `rig-core`(LLM 대화 클라이언트), `rusqlite`+`sqlite-vec`(RAG 저장소 [embed] — FTS5 + vec0 벡터 인덱스), `regex` (`listener_perspective` feature, default-on — 한국어 정규식 프리필터)
+- **Libraries:** `serde`/`serde_json`, `serde_yaml`(Worldbuilding 마크다운 frontmatter, default-on), `thiserror`, `tokio/sync`+`tokio-stream`+`futures` (EventBus 내부 구현), `axum`(WebUI), `tracing`, `ort`(ONNX 임베딩), `rig-core`(LLM 대화 클라이언트), `rusqlite`+`sqlite-vec`(RAG·Worldbuilding·Rumor 저장소 [embed] — FTS5 + vec0 벡터 인덱스), `epub`(Lore RAG EPUB 파서 [embed]), `regex` (`listener_perspective` feature, default-on — 한국어 정규식 프리필터)
 - **런타임 정책:** 코어는 `tokio::sync`의 `broadcast`만 내부 구현으로 사용. 공개 API는 `futures::Stream` 타입만 노출하므로 **호출자는 tokio를 deps에 추가할 필요 없음**(Bevy 등 임의 async 런타임에서 Stream 소비 가능). `chat`/`mind-studio` feature가 tokio `rt-multi-thread` 런타임을 추가 활성화. `embed` feature는 sqlite-vec이 순수 C 확장이라 tokio 런타임을 전이시키지 않는다.
 
 ## 빌드 & 테스트
@@ -238,6 +238,8 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 - `.with_memory_full(store)` — **Step D 전체 번들**: Telling + WorldOverlay + RelationshipMemory + SceneConsolidation 4종 Inline 핸들러 일괄 부착.
 - `.with_rumor(memory_store, rumor_store)` — RumorPolicy (Transactional) + RumorDistributionHandler (Inline)
 - `async fn dispatch_v2(&self, cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 10 Command 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene/TellInformation/SeedRumor/SpreadRumor/ApplyWorldEvent). Command → 초기 *Requested 이벤트 → Transactional BFS → HandlerShared write-back → Commit → Inline projection → Fanout 순서.
+  - `DispatchV2Output { events: Vec<DomainEvent>, shared: HandlerShared }` — `events`는 commit된 이벤트 시퀀스, `shared`는 핸들러 간 최종 scratchpad 스냅샷. 호출자(`DialogueOrchestrator`/`domain_sync`)가 Response DTO 재구성에 사용.
+  - `DispatchV2Error` variants: `InvalidSituation` (400) · `CascadeTooDeep` / `EventBudgetExceeded` (500 invariant) · `HandlerFailed { handler, source: HandlerError }` (handler.error 매핑 그대로).
 - **안전 한계**: `MAX_CASCADE_DEPTH = 4`, `MAX_EVENTS_PER_COMMAND = 20`
 - `event_store()` / `event_bus()` — 내부 의존성 노출
 - `repository_guard() -> MutexGuard<R>` — NPC/관계 등록 같은 `&mut self` 메서드 호출용. `repository_arc() -> Arc<Mutex<R>>` — 공유 소유가 필요한 드문 경우.
@@ -256,7 +258,11 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 **`DialogueOrchestrator<R, C>`** — LLM 대사 생성 오케스트레이터 (`application/dialogue_orchestrator.rs`, chat feature)
 - `CommandDispatcher<R>` + `ConversationPort` 조합으로 Event Sourcing 경로에 맞춘 LLM 다턴 대화
 - **전제**: dispatcher는 `.with_default_handlers()`가 호출된 상태여야 함 (v2 path 사용).
-- `::new(dispatcher, chat, formatter)` / `.with_analyzer(analyzer)`
+- `::new(dispatcher, chat, formatter)` 빌더:
+  - `.with_analyzer(analyzer)` — 발화 → PAD 변환기 (embed feature, `PadAnalyzer`)
+  - `.with_memory(store, framer)` — Memory Step B push (BeatTransitioned 시 기억 블록 prepend)
+  - `.with_memory_locale(lang)` — `LocaleMemoryFramer` 라벨 언어
+  - `.with_converter(converter)` — listener_perspective PAD 변환기 (`Converter` trait, Phase 7 default-on. 미주입 시 자동 폴백)
 - `start_session(sid, npc, partner, situation?)` — `Command::Appraise` **dispatch_v2.await** + LLM 세션 시작
 - `turn(sid, utterance, pad?, sit_desc?)` — user 턴 이벤트 → `Command::ApplyStimulus` **dispatch_v2.await** → (events에 `BeatTransitioned` 존재 시 `update_system_prompt`) → `send_message` → assistant 턴 이벤트
 - `end_session(sid, significance?)` — LLM 세션 종료 + (significance 있으면) `Command::EndDialogue` **dispatch_v2.await**
