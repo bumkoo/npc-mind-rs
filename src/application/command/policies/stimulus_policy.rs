@@ -46,6 +46,110 @@ impl StimulusPolicy {
             stimulus_processor: StimulusEngine,
         }
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn process_beat_transition(
+        &self,
+        ctx: &mut EventHandlerContext<'_>,
+        npc_id: &str,
+        partner_id: &str,
+        npc: crate::domain::personality::Npc,
+        relationship: crate::domain::relationship::Relationship,
+        pad: &Pad,
+        mood_before: f32,
+        stimulated: &EmotionState,
+        scene: &crate::domain::emotion::Scene,
+        focus: &crate::domain::emotion::SceneFocus,
+    ) -> Result<HandlerResult, HandlerError> {
+        let from_focus_id = scene.active_focus_id().map(|s| s.to_string());
+        let situation = focus.to_situation().map_err(|e| {
+            HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
+        })?;
+
+        // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipPolicy)
+        let tuning = profile();
+        let beat_rel = relationship.after_dialogue(stimulated, tuning.beat_default_significance);
+        let new_state = self.appraiser.appraise(
+            npc.personality(),
+            &situation,
+            &beat_rel.modifiers(),
+        );
+        let merged =
+            EmotionState::merge_from_beat(stimulated, &new_state, tuning.beat_merge_threshold);
+
+        // Scene을 active_focus = 새 focus로 갱신해 공유 상태에 전파.
+        let mut new_scene = scene.clone();
+        new_scene.set_active_focus(focus.id.clone());
+
+        // HandlerShared에 전파 (GuidePolicy/Projection이 참조)
+        ctx.shared.emotion_state = Some(merged.clone());
+        ctx.shared.relationship = Some(relationship.clone());
+        ctx.shared.scene = Some(new_scene);
+
+        let stimulus_event = DomainEvent::new(
+            0,
+            npc_id.to_string(),
+            0,
+            EventPayload::StimulusApplied {
+                npc_id: npc_id.to_string(),
+                partner_id: partner_id.to_string(),
+                pad: (pad.pleasure, pad.arousal, pad.dominance),
+                mood_before,
+                mood_after: merged.overall_valence(),
+                beat_changed: true,
+                emotion_snapshot: merged.snapshot(),
+            },
+        );
+        let beat_event = DomainEvent::new(
+            0,
+            npc_id.to_string(),
+            0,
+            EventPayload::BeatTransitioned {
+                npc_id: npc_id.to_string(),
+                partner_id: partner_id.to_string(),
+                from_focus_id,
+                to_focus_id: focus.id.clone(),
+            },
+        );
+
+        Ok(HandlerResult {
+            follow_up_events: vec![stimulus_event, beat_event],
+        })
+    }
+
+    fn process_simple_stimulus(
+        &self,
+        ctx: &mut EventHandlerContext<'_>,
+        npc_id: &str,
+        partner_id: &str,
+        relationship: crate::domain::relationship::Relationship,
+        stimulated: &EmotionState,
+        mood_before: f32,
+        pad: &Pad,
+    ) -> Result<HandlerResult, HandlerError> {
+        ctx.shared.emotion_state = Some(stimulated.clone());
+        ctx.shared.relationship = Some(relationship);
+
+        let mood_after = stimulated.overall_valence();
+        let stimulus_event = DomainEvent::new(
+            0,
+            npc_id.to_string(),
+            0,
+            EventPayload::StimulusApplied {
+                npc_id: npc_id.to_string(),
+                partner_id: partner_id.to_string(),
+                pad: (pad.pleasure, pad.arousal, pad.dominance),
+                mood_before,
+                mood_after,
+                beat_changed: false,
+                emotion_snapshot: stimulated.snapshot(),
+            },
+        );
+
+        Ok(HandlerResult {
+            follow_up_events: vec![stimulus_event],
+        })
+    }
 }
 
 impl Default for StimulusPolicy {
@@ -118,89 +222,30 @@ impl EventHandler for StimulusPolicy {
         let scene_id = SceneId::new(npc_id, partner_id);
         if let Some(scene) = ctx.repo.get_scene_by_id(&scene_id)
             && let Some(focus) = scene.check_trigger(&stimulated).cloned() {
-                let from_focus_id = scene.active_focus_id().map(|s| s.to_string());
-                let situation = focus.to_situation().map_err(|e| {
-                    HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
-                })?;
-
-                // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipPolicy)
-                let tuning = profile();
-                let beat_rel = relationship.after_dialogue(&stimulated, tuning.beat_default_significance);
-                let new_state = self.appraiser.appraise(
-                    npc.personality(),
-                    &situation,
-                    &beat_rel.modifiers(),
+                return self.process_beat_transition(
+                    ctx,
+                    npc_id,
+                    partner_id,
+                    npc,
+                    relationship,
+                    &pad_struct,
+                    mood_before,
+                    &stimulated,
+                    &scene,
+                    &focus,
                 );
-                let merged =
-                    EmotionState::merge_from_beat(&stimulated, &new_state, tuning.beat_merge_threshold);
-
-                // Scene을 active_focus = 새 focus로 갱신해 공유 상태에 전파.
-                // v1은 `save_scene: Some(new_scene)`로 Dispatcher write-back 지시했고,
-                // v2는 `ctx.shared.scene`을 Dispatcher가 읽어 `apply_shared_to_repository`로
-                // repo 갱신. 누락 시 다음 stimulus가 여전히 이전 active_focus를 읽어
-                // Beat가 무한 재진입하는 버그(B3 리뷰 C1) 발생.
-                let mut new_scene = scene.clone();
-                new_scene.set_active_focus(focus.id.clone());
-
-                // HandlerShared에 전파 (GuidePolicy/Projection이 참조)
-                ctx.shared.emotion_state = Some(merged.clone());
-                ctx.shared.relationship = Some(relationship.clone());
-                ctx.shared.scene = Some(new_scene);
-
-                let stimulus_event = DomainEvent::new(
-                    0,
-                    npc_id.clone(),
-                    0,
-                    EventPayload::StimulusApplied {
-                        npc_id: npc_id.clone(),
-                        partner_id: partner_id.clone(),
-                        pad: *pad,
-                        mood_before,
-                        mood_after: merged.overall_valence(),
-                        beat_changed: true,
-                        emotion_snapshot: merged.snapshot(),
-                    },
-                );
-                let beat_event = DomainEvent::new(
-                    0,
-                    npc_id.clone(),
-                    0,
-                    EventPayload::BeatTransitioned {
-                        npc_id: npc_id.clone(),
-                        partner_id: partner_id.clone(),
-                        from_focus_id,
-                        to_focus_id: focus.id.clone(),
-                    },
-                );
-
-                return Ok(HandlerResult {
-                    follow_up_events: vec![stimulus_event, beat_event],
-                });
             }
 
         // Beat 전환 없음
-        ctx.shared.emotion_state = Some(stimulated.clone());
-        ctx.shared.relationship = Some(relationship);
-
-        let mood_after = stimulated.overall_valence();
-        let stimulus_event = DomainEvent::new(
-            0,
-            npc_id.clone(),
-            0,
-            EventPayload::StimulusApplied {
-                npc_id: npc_id.clone(),
-                partner_id: partner_id.clone(),
-                pad: *pad,
-                mood_before,
-                mood_after,
-                beat_changed: false,
-                emotion_snapshot: stimulated.snapshot(),
-            },
-        );
-
-        Ok(HandlerResult {
-            follow_up_events: vec![stimulus_event],
-        })
+        self.process_simple_stimulus(
+            ctx,
+            npc_id,
+            partner_id,
+            relationship,
+            &stimulated,
+            mood_before,
+            &pad_struct,
+        )
     }
 }
 
@@ -366,5 +411,154 @@ mod handler_v2_tests {
             err,
             HandlerError::EmotionStateNotFound(ref id) if id == "alice"
         ));
+    }
+
+    #[test]
+    fn npc_not_found_returns_error() {
+        let policy = StimulusPolicy::new();
+        let mut harness = HandlerTestHarness::new();
+        let event = make_stim_request("non_existent", "bob");
+
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
+        assert!(matches!(err, HandlerError::NpcNotFound(ref id) if id == "non_existent"));
+    }
+
+    #[test]
+    fn relationship_not_found_returns_error() {
+        let policy = StimulusPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let mut harness = HandlerTestHarness::new().with_npc(npc);
+        let event = make_stim_request("alice", "bob"); // No relationship seeded
+
+        let err = harness.dispatch(&policy, event).expect_err("must fail");
+        assert!(matches!(err, HandlerError::RelationshipNotFound { ref owner_id, .. } if owner_id == "alice"));
+    }
+
+    #[test]
+    fn multi_scene_isolation_test() {
+        let policy = StimulusPolicy::new();
+        let alice = NpcBuilder::new("alice", "Alice").build();
+        let rel_bob = Relationship::neutral("alice", "bob");
+        let rel_charlie = Relationship::neutral("alice", "charlie");
+
+        // Alice <-> Bob Scene (Active)
+        let scene_bob = Scene::new("alice".into(), "bob".into(), vec![]);
+
+        // Alice <-> Charlie Scene (Active, focused on "char-init")
+        let char_focus = SceneFocus {
+            id: "char-init".into(),
+            description: "Charlie 초기".into(),
+            trigger: FocusTrigger::Initial,
+            event: None,
+            action: None,
+            object: None,
+            test_script: vec![],
+        };
+        let mut scene_charlie = Scene::new("alice".into(), "charlie".into(), vec![char_focus]);
+        scene_charlie.set_active_focus("char-init".into());
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(alice)
+            .with_relationship(rel_bob)
+            .with_relationship(rel_charlie)
+            .with_emotion_state("alice", seed_emotion_state())
+            .with_scene(scene_bob)
+            .with_scene(scene_charlie);
+
+        // Interaction with Bob
+        let event = make_stim_request("alice", "bob");
+        harness.dispatch(&policy, event).expect("success");
+
+        // Verify Charlie's scene is untouched
+        let charlie_scene = harness.repo
+            .get_scene_by_id(&SceneId::new("alice", "charlie"))
+            .expect("Charlie scene must exist");
+        assert_eq!(
+            charlie_scene.active_focus_id().unwrap(),
+            "char-init",
+            "Charlie's scene focus must not change when interacting with Bob"
+        );
+    }
+
+    #[test]
+    fn beat_transition_appraisal_respects_relationship_modifiers() {
+        use crate::domain::personality::Score;
+        use crate::domain::emotion::ActionFocus;
+        let policy = StimulusPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice")
+            .honesty_humility(|h| {
+                h.sincerity = Score::new(0.8, "").unwrap();
+                h.fairness = Score::new(0.8, "").unwrap();
+                h.greed_avoidance = Score::new(0.8, "").unwrap();
+                h.modesty = Score::new(0.8, "").unwrap();
+            })
+            .build();
+
+        // closeness -0.8 -> should increase Anger during appraisal
+        let rel = Relationship::new(
+            "alice",
+            "bob",
+            Score::new(-0.8, "").unwrap(),
+            Score::neutral(),
+            Score::neutral(),
+        );
+
+        let scene = Scene::new(
+            "alice".into(),
+            "bob".into(),
+            vec![
+                SceneFocus {
+                    id: "init".into(),
+                    description: "초기".into(),
+                    trigger: FocusTrigger::Initial,
+                    event: None,
+                    action: None,
+                    object: None,
+                    test_script: vec![],
+                },
+                SceneFocus {
+                    id: "next".into(),
+                    description: "다음".into(),
+                    trigger: FocusTrigger::Conditions(vec![vec![]]), // Always triggers
+                    event: Some(EventFocus {
+                        description: "상대방의 무례한 행동".into(),
+                        desirability_for_self: -0.5,
+                        desirability_for_other: None,
+                        prospect: None,
+                    }),
+                    action: Some(ActionFocus {
+                        description: "무례한 발언".into(),
+                        agent_id: Some("bob".into()),
+                        praiseworthiness: -0.5,
+                        modifiers: None,
+                    }),
+                    object: None,
+                    test_script: vec![],
+                },
+            ],
+        );
+        let mut scene = scene;
+        scene.set_active_focus("init".into());
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state("alice", seed_emotion_state())
+            .with_scene(scene);
+
+        let event = make_stim_request("alice", "bob");
+        harness.dispatch(&policy, event).expect("success");
+
+        // Verify merged emotion state in shared context
+        let merged = harness.shared.emotion_state.as_ref().expect("must have emotion");
+        let anger = merged
+            .emotions()
+            .iter()
+            .find(|e| e.emotion_type() == EmotionType::Anger)
+            .map(|e| e.intensity())
+            .unwrap_or(0.0);
+
+        // Anger should be significant due to -0.8 relationship modifier
+        assert!(anger > 0.1, "Anger ({}) should be triggered and amplified", anger);
     }
 }

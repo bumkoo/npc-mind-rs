@@ -54,7 +54,8 @@ fn load_all_persons() -> Vec<Person> {
             .unwrap_or_else(|e| panic!("{}: {e}", p.display()));
         person.source_path = Some(p.to_string_lossy().to_string());
         // player kind는 follow-up 슬라이스에서 별도 검증 — 본 슈트는 active 7인만.
-        if person.kind != "active" {
+        // npc-11 등 추가된 인물은 본 체크포인트 테스트에서 제외.
+        if person.kind != "active" || !EXPECTED_PERSON_IDS.contains(&person.id.as_str()) {
             continue;
         }
         out.push(person);

@@ -46,8 +46,8 @@ Phase 1:   Group                          ✅ 완료 (2026-04-30)
 Phase 2:   Person + NPC mind 통합         ✅ 완료 (2026-05-01)
 Phase 2.1: Player follow-up               ✅ 완료 (2026-05-01)
 Phase 2.2: Runtime sync follow-up         ✅ 완료 (2026-05-01)
-Phase 3:   Place + Phase 1·2 FK 활성      🔄 작전 완성 (2026-05-01)
-Phase 4:   Atlas (도메인+뷰 이중성)       ⏳ Phase 3 종결 후 작성
+Phase 3:   Place + Phase 1·2 FK 활성      ✅ 완료 (2026-05-01)
+Phase 4:   Atlas (도메인+뷰 이중성)       🔄 작전 완성 (2026-05-01)
 Phase 5:   Event + Era + Timeline view    ⏳ 예정
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
@@ -73,8 +73,8 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 2 | Person | Phase 1 | 7 Person + Group 외래키 활성 + **NPC mind 자동 등록** | ✅ 완료 (2026-05-01) | `task-phase2-person-vertical-slice.md` + `phase2-checkpoint{1,2}-report.md` |
 | 2.1 | Player follow-up | Phase 2 | id="player" + HEXACO 시작값 + mind eligible = 8 | ✅ 완료 | `task-phase2-followup-player-character.md` + `phase2-followup-player-report.md` |
 | 2.2 | Runtime sync follow-up | Phase 2 | POST /api/world/persons/sync + emotion 보존 검증 | ✅ 완료 | `task-phase2-followup-runtime-sync.md` + `phase2-followup-runtime-sync-report.md` |
-| 3 | Place | Phase 2 | 7국 + 자연 1-2 + sect 1-2 + Phase 1·2 외래키 활성 | 🔄 작전 완성 (2026-05-01) | `task-phase3-place-vertical-slice.md` (+ `.archive.md` 참고용 보존) |
-| 4 | Atlas | Phase 3 | atlas-jungwon + 좌표·로직 + Place 합성 view (도메인+뷰 이중성) | ⏳ | (Phase 3 종결 후 작성) |
+| 3 | Place | Phase 2 | 11 Place(8 settlement+3 geography) + 외래키 0건 + sect/geography_refs 양방향 | ✅ 완료 (2026-05-01) | `task-phase3-place-vertical-slice.md` + `phase3-checkpoint{1,2}-report.md` |
+| 4 | Atlas | Phase 3 | atlas-jungwon + references 11 Place + ASCII 다이어그램 + view 메서드 (도메인+뷰 이중성) | 🔄 작전 완성 (2026-05-01) | `task-phase4-atlas-vertical-slice.md` |
 | 5 | Event + Era | Phase 4 | 270년 28사건 + Era 결합 | ⏳ | — |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
@@ -191,40 +191,58 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 - dialogue_start REST 경로는 `/api/chat/start` (dialogue_start는 MCP 도구 이름) — Phase 2 종결 시점에 명료화
 - Mind Studio가 NPC mind 통합 시 Scene·관계·Beat 없이는 의미 있는 dialogue 시연 어려움 → Phase 5+ "두 결의 다리"에서 해결 예정
 
-### Phase 3 — Place Vertical Slice 🔄
+### Phase 3 — Place Vertical Slice ✅
 
-**작전 완성 (2026-05-01)** — TASK `task-phase3-place-vertical-slice.md` (보존본은 `.archive.md`로 참고용)
+**완료 (2026-05-01)** — 보고서 `phase3-checkpoint{1,2}-report.md`
 
-목표: 공간 도메인 + Phase 1·2 외래키 활성 + sect 이중 등록 시연.
+세 결 통합 검증:
+1. **Place 도메인** — Settlement·Geography 두 layer + spatial(parent_place·bordering·geography_refs) + aliases
+2. **Phase 1·2 외래키 활성** — `Group.headquarters`·`Person.birthplace`·`Person.current_location` 텍스트 → 에러 승급. 24 결손 → **0** 도달.
+3. **sect kind 이중 등록 양방향** — `place-namgung-sega.controlling_group` ↔ `group-namgung.headquarters`
+
+산출:
+- 11 Place 변환 (8 settlement + 3 geography). 6 distinct kind: nation·autonomous-zone·sect·mountain-range·grassland·jungle
+- `src/domain/world/place.rs` + `src/worldbuilding/markdown/place.rs` + `SqliteWorldStore` migrate_v3 + `bin/world_load` 외래키 활성
+- MCP 도구 3개: `list_places` · `get_place` · `search_places`
+- 9 신규 e2e + 7 체크포인트 1 e2e + 회귀 통과 (Phase 1·2 + dispatch + dialogue + director 모두)
+
+핵심 결정 (디렉터 명시 5 + 묵시 14):
+- 자유도시·정암·동해 연안·낙양·독관성 모두 city-level 단순화 (Phase 5+ Atlas/Scene 정밀도 복원 가능)
+- 자연 지형 시연 = bukwon-grasslands + namman-jungle 둘 다 (distinct kind)
+- sect 이중 등록 = place-namgung-sega 1개 (양방향 외래키 시연)
+- group-namgung.headquarters → place-namgung-sega 갱신 (sect 양방향)
+
+양방향 외래키 자동 e2e 가드:
+- `sect_double_registration_bidirectional`
+- `geography_refs_bidirectional_with_bukwon`
+- `geography_refs_layer_constraint_holds` (settlement.geography_refs target은 모두 Geography invariant)
+- `fk_zero_phase1_phase2_seeds_all_resolve` (회귀 가드)
+
+알려진 한계:
+- city-level sub-place(낙양·독관성·검성·뒷골목) 정밀도는 Phase 5+ Atlas/Scene 통합 시 복원 검토
+- Atlas는 Phase 4로 분리 (도메인+뷰 이중성, 다음 Phase)
+
+### Phase 4 — Atlas Vertical Slice 🔄
+
+**작전 완성 (2026-05-01)** — TASK `task-phase4-atlas-vertical-slice.md`
+
+목표: 첫 관계 도메인. 도메인+뷰 이중성 검증. 미래 관계 도메인 패밀리(Timeline·OrgChart·FamilyTree·SkillTree)의 첫 사례.
 
 세 결:
-1. **Place 도메인** — Settlement·Geography 두 layer + spatial(parent_place·bordering·geography_refs) + aliases
-2. **Phase 1·2 외래키 활성** — `Group.headquarters`·`Person.birthplace`·`Person.current_location` 검증 텍스트 → 에러 승급. 첫 외래키 정합성 검증.
-3. **sect kind 이중 등록** — Place(공간 인스턴스, kind=sect) + Group(조직, Phase 1 등록) 양방향 외래키. `extras.controlling_group` ↔ `Group.headquarters`
+1. **Atlas 도메인** — id·name·aliases·kind(continent/region/city-map)·extent(projection·units)·**references(Vec<PlaceId>)**·body_sections(다이어그램 ASCII 보존)
+2. **도메인+뷰 이중성** — 자기 데이터 소유(좌표·projection) + view 메서드(`places_in`·`settlements_in`·`geographies_in`·`adjacent_to`) + ASCII 다이어그램 노출
+3. **관계 도메인 패밀리 패턴 정착** — Phase 5+ Timeline·OrgChart 등 일반화의 시드. View trait 일반화는 두 번째 view 등장 시(Phase 5 Timeline)
 
-검증 게이트: 7국 settlement + 자연 1-2 + sect 1-2 = 8-10 Place. 외래키 결손 0건. `list_places(layer="settlement")` → 7-8건 / `list_places(layer="geography")` → 1-2건.
+검증 게이트: `atlas-jungwon` 1개 변환 (seven-nations.md §0.3 ASCII 다이어그램 시드) + references 11 Place 외래키 0건 + ASCII 다이어그램 byte-exact 보존 + view 메서드 e2e (places_in 11·settlements_in 8·geographies_in 3·adjacent_to 정합) + MCP 도구 2개.
 
-체크포인트 분리 게이트 **강제 적용**:
-- 체크포인트 1: 대진(settlement) + 서부 산악(geography) → 외래키 결손 분석 → commit pause
-- 체크포인트 2: 6 settlement 추가 + 자연 1-2 + sect 1-2 + MCP 정성 → Phase 3 종결
+핵심 결정 (사양 §6 권장값):
+- extent.projection = schematic만 (좌표·SVG는 Phase N+)
+- references = 11 Place 모두 (Phase 3 산출과 1:1)
+- Era overlay = Phase 5 분리 (extras.era_id 텍스트만 보존)
+- View trait 일반화 = Phase 5 Timeline 등장 시
+- ASCII 다이어그램 byte-exact 보존 (코드블록 안에)
 
-**Atlas는 Phase 4로 명시 분리** — 도메인+뷰 이중성을 가진 관계 도메인이라 Phase 3와 결이 다름.
-
-자유도시 sub-place(`back-alleys` 등) 정밀도는 체크포인트 1 보고서 디렉터 결정 사항.
-
-### Phase 4 — Atlas (Place의 view 도메인) ⏳
-
-**Phase 3 종결 후 작전 작성**.
-
-목표: 첫 관계 도메인. 도메인+뷰 이중성 검증. 좌표계·projection·distance·세력권 로직.
-
-예정: `atlas-jungwon` (칠국 대륙) — seven-nations.md §0.3 ASCII 다이어그램 시드.
-
-핵심 결정 예상:
-- schematic projection만 Phase 4, 좌표·SVG는 Phase N
-- Era overlay (시기별 정치 지도) 분리 시점 — Phase 5 Era 결합 시
-- View trait 일반화 (두 번째 view 등장 시 = Phase 5 Timeline)
-- Phase 3 sect 이중 등록 패턴이 Atlas references에 자연스럽게 흡수되는지
+체크포인트 분리 게이트 강제 적용 (Phase 1 미준수 후속).
 
 ### Phase 5 — Event + Era 결합 ⏳
 
@@ -273,6 +291,9 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 | 2026-05-01 | Phase 3 작전 완성 — Place 도메인 + Phase 1·2 외래키 활성(headquarters·birthplace·current_location 검증 승급) + sect 이중 등록 + Atlas 분리 (Phase 4) | Cowork |
 | 2026-05-01 | npc-11 heritage-pending stub 사용자 직접 작성 — FK 결손 2건 해소, persons indexed = 9 도달 | 사용자 |
 | 2026-05-01 | dialogue REST 경로 = `/api/chat/start` 명료화 (`dialogue_start`는 MCP 도구 이름) | Cowork |
+| 2026-05-01 | Phase 3 종결 — 11 Place + 외래키 0건 + sect/geography_refs 양방향 자동 e2e | Claude Code |
+| 2026-05-01 | city-level 단순화 일관 적용 — 낙양·독관성·검성·정암·동해 연안·자유도시 뒷골목 모두 nation/sect 단위로 통합. Phase 5+ Atlas/Scene 정밀도 복원 가능 | Cowork ↔ Claude Code |
+| 2026-05-01 | Phase 4 작전 완성 — Atlas 도메인+뷰 이중성, references 11 Place, schematic projection, ASCII byte-exact 보존, View trait 일반화는 Phase 5+ | Cowork |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 
@@ -310,9 +331,12 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
   - npc-07 천순제 (heritage-pending 잠정)
   - npc-11 소풍자 (heritage-pending 잠정 — 사용자 직접 작성)
   - player (Q2·B sub-kind)
-- **Phase 3 산출 (예정)** — `place/*.md` × 8-10 (settlement 7-8 + geography 1-2)
+- **Phase 3 산출** — `place/*.md` × 11:
+  - 8 settlement: place-daejin·namgung·seoryang·bukwon·namman·donghae·jiyu-doshi·namgung-sega(sect)
+  - 3 geography: place-western-mountains·bukwon-grasslands·namman-jungle
+  - 6 distinct kind: nation·autonomous-zone·sect·mountain-range·grassland·jungle
 - **Phase 4 산출 (예정)** — `atlas/atlas-jungwon.md` × 1
-- **빌드 산출물 (gitignore)** — `build/world.sqlite` (~370 KB Phase 2 시점, Phase 3 후 +α)
+- **빌드 산출물 (gitignore)** — `build/world.sqlite` (Phase 3 후 +α)
 
 ### 미작성 인물 (Phase 5+ 풍부화 후보)
 

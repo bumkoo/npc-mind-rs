@@ -99,6 +99,16 @@ pub struct CommandDispatcher<R: MindRepository> {
     inline_handlers: Vec<Arc<dyn EventHandler>>,
 }
 
+/// `dispatch_v2` 과정에서 누적되는 가변 상태 (Parameter Object)
+#[derive(Debug, Default)]
+struct DispatchState {
+    shared: HandlerShared,
+    staging_buffer: Vec<DomainEvent>,
+    parent_indices: Vec<Option<usize>>,
+    depths: Vec<u32>,
+    prior_events: Vec<DomainEvent>,
+}
+
 impl<R: MindRepository> CommandDispatcher<R> {
     pub fn new(
         repository: R,
@@ -271,119 +281,42 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
         let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
 
-        let mut shared = HandlerShared::default();
-        let mut prior_events: Vec<DomainEvent> = Vec::new();
+        let mut state = DispatchState::default();
 
-        // BFS 큐 element는 `(depth, event, parent_staging_idx)`. parent_staging_idx는
-        // `staging_buffer`의 부모 위치(`None`이면 root). 부모의 EventStore id는 commit
-        // 전이라 미정이므로 인덱스로 가리키고, commit 시 id 매핑을 수행한다.
-        //
-        // 안전성: 단일 스레드 BFS 가정. 핸들러 병렬화를 도입하면 인덱스 안정성이
-        // 깨지므로 토큰 기반으로 전환해야 한다.
-        let mut event_queue: VecDeque<(u32, DomainEvent, Option<usize>)> = VecDeque::new();
-        let mut staging_buffer: Vec<DomainEvent> = Vec::new();
-        let mut parent_indices: Vec<Option<usize>> = Vec::new();
-        let mut depths: Vec<u32> = Vec::new();
+        // 1. Transactional Phase (BFS)
+        self.execute_transactional_bfs(&initial_event, &aggregate_key, &mut repo_guard, &mut state)?;
 
-        event_queue.push_back((0, initial_event, None));
+        // 2. Write-back to Repository
+        Self::apply_shared_to_repository(&mut *repo_guard, &aggregate_key, &state.shared);
 
-        while let Some((depth, event, parent_idx)) = event_queue.pop_front() {
-            if depth > MAX_CASCADE_DEPTH {
-                return Err(DispatchV2Error::CascadeTooDeep { depth });
-            }
-            if staging_buffer.len() >= MAX_EVENTS_PER_COMMAND {
-                return Err(DispatchV2Error::EventBudgetExceeded);
-            }
-
-            // follow-up 자식들이 부모로 가리킬 staging 인덱스.
-            let my_idx = staging_buffer.len();
-
-            for handler in self.transactional_handlers.iter() {
-                if !handler.interest().matches(&event) {
-                    continue;
-                }
-                let DeliveryMode::Transactional {
-                    can_emit_follow_up, ..
-                } = handler.mode()
-                else {
-                    continue;
-                };
-
-                let mut ctx = EventHandlerContext {
-                    repo: &*repo_guard as &(dyn MindRepository + Send + Sync),
-                    event_store: &*self.event_store,
-                    shared: &mut shared,
-                    prior_events: &prior_events,
-                    aggregate_key: aggregate_key.clone(),
-                };
-
-                let result =
-                    handler
-                        .handle(&event, &mut ctx)
-                        .map_err(|source| DispatchV2Error::HandlerFailed {
-                            handler: handler.name(),
-                            source,
-                        })?;
-
-                if can_emit_follow_up {
-                    for follow_up in result.follow_up_events {
-                        event_queue.push_back((depth + 1, follow_up, Some(my_idx)));
-                    }
-                } else {
-                    debug_assert!(
-                        result.follow_up_events.is_empty(),
-                        "handler {} declared can_emit_follow_up=false but returned events",
-                        handler.name()
-                    );
-                }
-            }
-
-            staging_buffer.push(event.clone());
-            parent_indices.push(parent_idx);
-            depths.push(depth);
-            prior_events.push(event);
-        }
-
-        Self::apply_shared_to_repository(&mut *repo_guard, &aggregate_key, &shared);
-
+        // 3. Commit Phase
         let committed = self.commit_staging_buffer(
             &aggregate_key,
-            staging_buffer,
+            state.staging_buffer,
             cid,
-            parent_indices,
-            depths,
+            state.parent_indices,
+            state.depths,
         );
 
-        for event in &committed {
-            for handler in self.inline_handlers.iter() {
-                if !handler.interest().matches(event) {
-                    continue;
-                }
-                if !matches!(handler.mode(), DeliveryMode::Inline { .. }) {
-                    continue;
-                }
-                let mut ctx = EventHandlerContext {
-                    repo: &*repo_guard as &(dyn MindRepository + Send + Sync),
-                    event_store: &*self.event_store,
-                    shared: &mut shared,
-                    prior_events: &prior_events,
-                    aggregate_key: aggregate_key.clone(),
-                };
-                if let Err(e) = handler.handle(event, &mut ctx) {
-                    tracing::warn!(handler = handler.name(), error = %e, "inline handler failed");
-                }
-            }
-        }
+        // 4. Inline Phase (Projections)
+        self.execute_inline_projections(
+            &committed,
+            &aggregate_key,
+            &mut repo_guard,
+            &mut state.shared,
+            &state.prior_events,
+        );
 
         drop(repo_guard);
 
+        // 5. Fanout Phase (EventBus)
         for event in &committed {
             self.event_bus.publish(event);
         }
 
         Ok(DispatchV2Output {
             events: committed,
-            shared,
+            shared: state.shared,
         })
     }
 
@@ -684,6 +617,103 @@ impl<R: MindRepository> CommandDispatcher<R> {
         self.event_store.append(&committed);
 
         committed
+    }
+
+    fn execute_transactional_bfs(
+        &self,
+        initial_event: &DomainEvent,
+        aggregate_key: &AggregateKey,
+        repo_guard: &mut MutexGuard<'_, R>,
+        state: &mut DispatchState,
+    ) -> Result<(), DispatchV2Error>
+    where
+        R: Send + Sync,
+    {
+        let mut event_queue: VecDeque<(u32, DomainEvent, Option<usize>)> = VecDeque::new();
+        event_queue.push_back((0, initial_event.clone(), None));
+
+        while let Some((depth, event, parent_idx)) = event_queue.pop_front() {
+            if depth > MAX_CASCADE_DEPTH {
+                return Err(DispatchV2Error::CascadeTooDeep { depth });
+            }
+            if state.staging_buffer.len() >= MAX_EVENTS_PER_COMMAND {
+                return Err(DispatchV2Error::EventBudgetExceeded);
+            }
+
+            let my_idx = state.staging_buffer.len();
+
+            for handler in self.transactional_handlers.iter() {
+                if !handler.interest().matches(&event) {
+                    continue;
+                }
+                let DeliveryMode::Transactional {
+                    can_emit_follow_up, ..
+                } = handler.mode()
+                else {
+                    continue;
+                };
+
+                let mut ctx = EventHandlerContext {
+                    repo: &**repo_guard as &(dyn MindRepository + Send + Sync),
+                    event_store: &*self.event_store,
+                    shared: &mut state.shared,
+                    prior_events: &state.prior_events,
+                    aggregate_key: aggregate_key.clone(),
+                };
+
+                let result =
+                    handler
+                        .handle(&event, &mut ctx)
+                        .map_err(|source| DispatchV2Error::HandlerFailed {
+                            handler: handler.name(),
+                            source,
+                        })?;
+
+                if can_emit_follow_up {
+                    for follow_up in result.follow_up_events {
+                        event_queue.push_back((depth + 1, follow_up, Some(my_idx)));
+                    }
+                }
+            }
+
+            state.staging_buffer.push(event.clone());
+            state.parent_indices.push(parent_idx);
+            state.depths.push(depth);
+            state.prior_events.push(event.clone());
+        }
+        Ok(())
+    }
+
+    fn execute_inline_projections(
+        &self,
+        committed: &[DomainEvent],
+        aggregate_key: &AggregateKey,
+        repo_guard: &mut MutexGuard<'_, R>,
+        shared: &mut HandlerShared,
+        prior_events: &[DomainEvent],
+    ) where
+        R: Send + Sync,
+    {
+        for event in committed {
+            for handler in self.inline_handlers.iter() {
+                if !handler.interest().matches(event) {
+                    continue;
+                }
+                if !matches!(handler.mode(), DeliveryMode::Inline { .. }) {
+                    continue;
+                }
+                let mut ctx = EventHandlerContext {
+                    repo: &**repo_guard as &(dyn MindRepository + Send + Sync),
+                    event_store: &*self.event_store,
+                    shared,
+                    prior_events,
+                    aggregate_key: aggregate_key.clone(),
+                };
+                if let Err(e) = handler.handle(event, &mut ctx) {
+                    tracing::warn!(handler = handler.name(), error = %e, "inline handler failed");
+                }
+            }
+        }
     }
 }
 
