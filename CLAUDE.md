@@ -9,7 +9,7 @@ v0.3.0에서 v1 경로(`MindService`/`EventAwareMindService`/`Pipeline`/`Command
 ## 기술 스택
 - **Language:** Rust (Edition 2024)
 - **Architecture:** Hexagonal + DDD + **EventBus(tokio broadcast)/CQRS/Event Sourcing** + **Multi-Handler** (Policy + Projector + Orchestrator)
-- **Libraries:** `serde`/`serde_json`, `thiserror`, `tokio/sync`+`tokio-stream`+`futures` (EventBus 내부 구현), `axum`(WebUI), `tracing`, `ort`(ONNX 임베딩), `rig-core`(LLM 대화 클라이언트), `rusqlite`+`sqlite-vec`(RAG 저장소 [embed] — FTS5 + vec0 벡터 인덱스), `regex` (`listener_perspective` feature, default-on — 한국어 정규식 프리필터)
+- **Libraries:** `serde`/`serde_json`, `serde_yaml`(Worldbuilding 마크다운 frontmatter, default-on), `thiserror`, `tokio/sync`+`tokio-stream`+`futures` (EventBus 내부 구현), `axum`(WebUI), `tracing`, `ort`(ONNX 임베딩), `rig-core`(LLM 대화 클라이언트), `rusqlite`+`sqlite-vec`(RAG·Worldbuilding·Rumor 저장소 [embed] — FTS5 + vec0 벡터 인덱스), `epub`(Lore RAG EPUB 파서 [embed]), `regex` (`listener_perspective` feature, default-on — 한국어 정규식 프리필터)
 - **런타임 정책:** 코어는 `tokio::sync`의 `broadcast`만 내부 구현으로 사용. 공개 API는 `futures::Stream` 타입만 노출하므로 **호출자는 tokio를 deps에 추가할 필요 없음**(Bevy 등 임의 async 런타임에서 Stream 소비 가능). `chat`/`mind-studio` feature가 tokio `rt-multi-thread` 런타임을 추가 활성화. `embed` feature는 sqlite-vec이 순수 C 확장이라 tokio 런타임을 전이시키지 않는다.
 
 ## 빌드 & 테스트
@@ -27,6 +27,10 @@ cargo test --no-default-features --features chat --test dialogue_no_lp_passthrou
 # 개별 테스트는 tests/ 디렉토리 참조
 # PAD 벤치마크(pad_benchmark_test 등)는 --features embed 필요
 
+# Worldbuilding ingest CLI (Phase 1·2·3·4 — Group / Person / Place / Atlas)
+cargo run --features embed --bin world-load -- --project chilguk-chunchu          # 마크다운 → projects/<id>/build/world.sqlite
+cargo run --features embed --bin world-load -- --project chilguk-chunchu --reload # 기존 SQLite 삭제 후 재생성
+
 # 프론트엔드 빌드/테스트 (mind-studio-ui/)
 cd mind-studio-ui && npm install        # 최초 의존성 설치
 cd mind-studio-ui && npm run build      # 프로덕션 빌드 → src/bin/mind-studio/static/
@@ -43,9 +47,14 @@ cargo run --features mind-studio,chat,embed --bin npc-mind-studio  # http://127.
 NPC_MIND_CHAT_URL=http://127.0.0.1:8081/v1   # 로컬 LLM 서버 [chat feature]
 NPC_MIND_MODEL_DIR=../models/bge-m3          # ONNX 모델 [embed feature]
 NPC_MIND_ANCHOR_LANG=ko                       # PAD 앵커 언어 [embed feature]
+MIND_STUDIO_HOST=127.0.0.1                    # 서버 바인딩 [mind-studio feature]
 MIND_STUDIO_PORT=3000                         # 서버 포트 [mind-studio feature]
 NPC_MIND_LORE_DB=data/corpus/lore.sqlite      # Lore RAG SQLite 경로 [embed feature]
 NPC_MIND_LORE_MANIFEST=data/corpus/manifest.toml   # Lore 매니페스트 경로 [embed feature]
+NPC_MIND_MEMORY_DB=data/runtime/memory.sqlite # Memory/Rumor SQLite (미설정 시 in-memory) [embed]
+NPC_MIND_WORLD_DB=projects/<id>/build/world.sqlite # Worldbuilding SQLite [embed, mind-studio]
+NPC_MIND_WORLD_PROJECTS=./projects            # world-load CLI 프로젝트 루트 [embed]
+NPC_MIND_LP_DATA_DIR=data/listener_perspective # listener_perspective 학습/벤치 데이터
 ```
 
 ### Lore RAG (Phase 0)
@@ -69,6 +78,62 @@ cargo run --features embed --bin lore-ingest -- --all --reembed
 `data/corpus/lore.sqlite`가 존재하면 Mind Studio가 자동으로 부착하고
 `search_lore` / `list_corpora` / `get_chunk` MCP 도구를 노출한다.
 
+### Worldbuilding (Phase 1-4 완료, 진행 중)
+
+NPC Mind Studio = **장르 중립 worldbuilding 도구**. 무협(칠국춘추)은 첫 사용자
+프로젝트일 뿐, 도구 자체는 wuxia·SF·판타지 어휘를 모른다. 9 인스턴스 도메인
+(Place·Person·Group·Item·Skill·Knowledge·Lore·Event·Era) + 1 관계 도메인 (Atlas)
+구조이며 Phase별로 추가된다.
+
+**3 계층 분리** (절대 섞지 말 것):
+
+```
+src/                = 도구 (장르 영원히 모름)
+  domain/world/     — 9+1 도메인 (Phase 1·2·3·4: Group/Person/Place/Atlas; 나머지 stub)
+  worldbuilding/    — 마크다운(SoT) → 도메인 변환 + WorldRepository 포트
+  adapter/sqlite_world.rs — SqliteWorldStore (FTS5 + 외래키 인덱스)
+genres/<name>/      = 장르 패키지 (도구 위에 입히는 옷)
+  ex: genres/wuxia/{forms, genre.toml, markdown_template}
+projects/<name>/    = 사용자 산출물 (마크다운 SoT + 빌드 SQLite)
+  ex: projects/chilguk-chunchu/{project.toml, world/{group,person,place,atlas}/*.md}
+                  build/world.sqlite (gitignore — 빌드 산출물)
+```
+
+**`world-load` 빌드 CLI** (마크다운 → SQLite ingest, embed feature):
+
+```bash
+# 프로젝트 ingest (Phase 1·2·3·4 모두 한 번에)
+cargo run --features embed --bin world-load -- --project chilguk-chunchu
+
+# 옵션
+#   --reload       기존 SQLite 삭제 후 재생성
+#   --no-mind      Person → Npc 변환 dry-run 끔 (--features 미사용 시)
+#   --project <id> 필수 — projects/<id>/world/ 스캔
+```
+
+Phase별 외래키 검증 (위반 시 partial commit 방지):
+- Phase 1 Group: `parent_group` cycle, `members` (Phase 2에서 활성), `headquarters` (Phase 3에서 활성), `allied_groups`/`rival_groups` 존재 여부
+- Phase 2 Person: `birthplace`/`current_location` (Phase 3에서 활성), 그룹 멤버십 양방향
+- Phase 3 Place: `parent_place` cycle, `bordering_places`/`geography_refs` 존재, `Place.spatial.geography_refs` layer 일치, `controlling_group` (sect kind만)
+- Phase 4 Atlas: `references` ↔ `places.id` 모두 존재 + 중복 금지
+
+**Mind Studio 통합** (`NPC_MIND_WORLD_DB` 환경변수로 빌드된 SQLite 부착):
+- 부팅 시 `kind in {active, player}`인 Person을 자동으로 인메모리 `MindRepository`에
+  `add_npc`로 등록 → dialogue/scene 경로가 즉시 NPC를 인식
+- REST 엔드포인트 (embed feature):
+  - `GET /api/world/{groups,persons,places,atlases}` 목록
+  - `GET /api/world/{...}/search?q=` FTS5 trigram 검색
+  - `GET /api/world/{...}/{id}` 단건
+  - `POST /api/world/persons/sync` 런타임 재동기화 (emotion/scene 보존)
+- 부착 안 됨 시 위 핸들러는 501 NotImplemented 반환
+
+**도메인 → mind 동기화** (`worldbuilding/mind_sync.rs`):
+- `person_to_npc(&Person) -> Option<Npc>` — `kind in {active, player}`만 변환,
+  HEXACO 6-dim → 4-facet spread (24 facet 정형 보존은 후속 phase)
+
+설계 문서: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) (10 Phase 흐름) +
+phase별 task/report (`docs/tasks/task-phaseN-*.md` + `phaseN-checkpointM-report.md`).
+
 ### 빌드 주의사항 (Windows)
 
 - `--features embed`: ort(ONNX Runtime) 정적 링크를 위해 `.cargo/config.toml`에서 CRT를 동적으로 통일해야 함. 변경 후 `cargo clean` 필수. CRT 통일을 위한 `CFLAGS=/MD` / `CXXFLAGS=/MD`는 셸/CI 환경변수로 직접 설정해야 한다 (Cargo `[env]`는 모든 타겟에 적용되어 Linux/macOS 빌드를 깨므로 config.toml에 두지 않는다).
@@ -81,10 +146,11 @@ cargo run --features embed --bin lore-ingest -- --all --reembed
 src/
   application/    어플리케이션 계층, 라이브러리 진입점 (v2 단일 경로)
                   - error.rs (MindServiceError — 공용 서비스 에러)
-                  - dto.rs (Appraise/Stimulus/Guide/AfterDialogue Request·Response)
+                  - dto.rs (Appraise/Stimulus/Guide/AfterDialogue Request·Response + WorldOverlay/Tell/Rumor)
                   - event_store.rs, event_bus.rs (Event Sourcing 인프라)
                   - projection.rs (EmotionProjection/RelationshipProjection/SceneProjection 구조체 — v2 wrapper가 재사용)
                   - memory_projector.rs (EventBus 구독 기억 인덱싱 [embed])
+                  - scenario_seeds.rs (시나리오 JSON initial_rumors/world/faction/family seed → Rumor + MemoryEntry, Step E3.2)
                   - scene_service.rs, situation_service.rs (도메인 조립 helper)
                   - dialogue_orchestrator.rs [chat] (LLM 다턴 오케스트레이터)
                   - dialogue_test_service.rs [chat] (DTO 전용 — Chat*Request/Response)
@@ -115,23 +181,39 @@ src/
   domain/         순수 도메인 로직
                   - personality (HEXACO), emotion (OCC appraisal), relationship, pad, guide
                   - listener_perspective [feature, default-on — Phase 7 Step 5] (화자 PAD → 청자 PAD 변환: prefilter + sign/magnitude k-NN + Converter trait, 88% baseline. DialogueOrchestrator · Mind Studio 양 경로에서 옵셔널 자동 적용)
-                  - event.rs (DomainEvent, EventPayload — 28 variants 포함 *Requested 10종 + Memory/Rumor/Information/World 13종, Event Sourcing)
+                  - event.rs (DomainEvent + EventMetadata { correlation_id, parent_event_id, cascade_depth } 활성, EventPayload — 28 variants 포함 *Requested 10종 + Memory/Rumor/Information/World 13종, Event Sourcing)
                   - rumor.rs (Rumor 애그리거트 — RumorOrigin/ReachPolicy/RumorHop/RumorDistortion/RumorStatus + 불변식 I-RU-1~6, Step C1)
                   - aggregate.rs (AggregateKey: Scene/Npc/Relationship/Memory/Rumor/World)
                   - scene_id.rs (B안 B4 S2 — SceneId composite key)
-                  - memory.rs (MemoryEntry, MemoryType, MemoryResult — RAG)
+                  - memory.rs / memory/ (MemoryEntry, MemoryType, MemoryResult — RAG; MemoryScope/Source/Layer/Provenance Step A 확장)
                   - tuning.rs (조정 가능 파라미터 중앙 관리)
+                  - world/ (Worldbuilding 9+1 도메인 — atlas/era/event/group/item/knowledge/lore/person/place/skill, **장르 어휘 절대 미사용**)
+  worldbuilding/  마크다운(SoT) → 도메인 변환 + WorldRepository 포트 (sync trait)
+                  - markdown/ (frontmatter YAML + H2 섹션 파서, atlas/group/person/place 변환기)
+                  - repository.rs (WorldRepository trait — list/get/search/upsert/count, get_*_batch override 가능)
+                  - mind_sync.rs (Person → Npc 변환, kind in {active, player}만)
+                  - builder.rs (Phase 2 폼 시스템 진입점 — Phase 1엔 빈 자리)
+  lore/           Lore RAG (EPUB → SQLite 임베딩 인덱스) — corpus/ingest/query/store
   ports.rs        헥사고날 포트 트레이트 전체 + MemoryStore 포트 + SceneStore::get_scene_by_id (B4 S3 multi-scene)
-  adapter/        포트 구현 (InMemoryRepository — multi-scene HashMap + last_scene_id, OrtEmbedder, RigChatAdapter, SqliteMemoryStore [embed])
-  presentation/   다국어 포맷터 (ko, en TOML 기반, deep merge 지원)
+  adapter/        포트 구현 (InMemoryRepository — multi-scene HashMap + last_scene_id, OrtEmbedder, RigChatAdapter,
+                  SqliteMemoryStore/SqliteRumorStore/SqliteWorldStore [embed])
+  presentation/   다국어 포맷터 (ko, en TOML 기반, deep merge 지원) + memory_formatter
   bin/mind-studio/  Axum REST API + SSE MCP 서버 + SSE 실시간 동기화 + static 파일 서빙
                   - /api/*       메인 UI 경로 — AppState(StateInner) 기반, B5.2 (2/3)부터 내부적으로 v2 dispatch_v2 호출
                   - /api/v2/*    Director shadow 경로 (B4 S3 B-Mini, 분리 Repository + SceneTask 실험용)
-                  - domain_sync.rs  5 dispatch helper + sync_from_repo (shared_dispatcher 재사용, per-request snapshot 제거됨)
-tests/            통합 테스트 (TestContext 공유) — dispatch_v2_test, director_test, dialogue_* 등 v2 기준
+                  - /api/world/* Worldbuilding 조회 (groups/persons/places/atlases, embed feature)
+                  - /api/projection/{emotion,relationship,scene}/* Read Side projection 조회
+                  - /api/projection/trace/{correlation_id}  dispatch_v2 한 호출의 인과 사슬 조회
+                  - domain_sync.rs  9 dispatch helper + sync_from_repo (shared_dispatcher 재사용, per-request snapshot 제거됨)
+                  - trace_collector.rs  AppraisalCollector — Mind Studio 전용 추적 수집기
+  bin/lore_ingest.rs   EPUB → SQLite 인덱싱 CLI (embed feature)
+  bin/world_load.rs    마크다운 → SQLite 빌드 CLI (embed feature, Phase 1·2·3·4)
+tests/            통합 테스트 (TestContext 공유) — dispatch_v2_test, director_test, dialogue_*, world_chilguk_chunchu_* 등 v2 기준
 locales/          ko.toml, en.toml + PAD 앵커 (locales/anchors/)
-docs/             아키텍처/감정/성격/가이드 상세 문서
-data/             소설 기반 테스트 시나리오 + 캐릭터 프리셋(presets/)
+docs/             아키텍처/감정/성격/가이드 상세 문서 + tasks/(phase 명세) + changes/(API 변경 로그)
+data/             소설 기반 테스트 시나리오 + 캐릭터 프리셋(presets/) + listener_perspective 학습 데이터 + corpus(Lore RAG)
+genres/           장르 패키지 (e.g., wuxia/{forms, genre.toml, markdown_template})
+projects/         사용자 worldbuilding 프로젝트 (e.g., chilguk-chunchu/{project.toml, world/, build/world.sqlite})
 mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 → bin/mind-studio/static/)
 ```
 
@@ -156,6 +238,8 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 - `.with_memory_full(store)` — **Step D 전체 번들**: Telling + WorldOverlay + RelationshipMemory + SceneConsolidation 4종 Inline 핸들러 일괄 부착.
 - `.with_rumor(memory_store, rumor_store)` — RumorPolicy (Transactional) + RumorDistributionHandler (Inline)
 - `async fn dispatch_v2(&self, cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 10 Command 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene/TellInformation/SeedRumor/SpreadRumor/ApplyWorldEvent). Command → 초기 *Requested 이벤트 → Transactional BFS → HandlerShared write-back → Commit → Inline projection → Fanout 순서.
+  - `DispatchV2Output { events: Vec<DomainEvent>, shared: HandlerShared }` — `events`는 commit된 이벤트 시퀀스, `shared`는 핸들러 간 최종 scratchpad 스냅샷. 호출자(`DialogueOrchestrator`/`domain_sync`)가 Response DTO 재구성에 사용.
+  - `DispatchV2Error` variants: `InvalidSituation` (400) · `CascadeTooDeep` / `EventBudgetExceeded` (500 invariant) · `HandlerFailed { handler, source: HandlerError }` (handler.error 매핑 그대로).
 - **안전 한계**: `MAX_CASCADE_DEPTH = 4`, `MAX_EVENTS_PER_COMMAND = 20`
 - `event_store()` / `event_bus()` — 내부 의존성 노출
 - `repository_guard() -> MutexGuard<R>` — NPC/관계 등록 같은 `&mut self` 메서드 호출용. `repository_arc() -> Arc<Mutex<R>>` — 공유 소유가 필요한 드문 경우.
@@ -174,7 +258,11 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 **`DialogueOrchestrator<R, C>`** — LLM 대사 생성 오케스트레이터 (`application/dialogue_orchestrator.rs`, chat feature)
 - `CommandDispatcher<R>` + `ConversationPort` 조합으로 Event Sourcing 경로에 맞춘 LLM 다턴 대화
 - **전제**: dispatcher는 `.with_default_handlers()`가 호출된 상태여야 함 (v2 path 사용).
-- `::new(dispatcher, chat, formatter)` / `.with_analyzer(analyzer)`
+- `::new(dispatcher, chat, formatter)` 빌더:
+  - `.with_analyzer(analyzer)` — 발화 → PAD 변환기 (embed feature, `PadAnalyzer`)
+  - `.with_memory(store, framer)` — Memory Step B push (BeatTransitioned 시 기억 블록 prepend)
+  - `.with_memory_locale(lang)` — `LocaleMemoryFramer` 라벨 언어
+  - `.with_converter(converter)` — listener_perspective PAD 변환기 (`Converter` trait, Phase 7 default-on. 미주입 시 자동 폴백)
 - `start_session(sid, npc, partner, situation?)` — `Command::Appraise` **dispatch_v2.await** + LLM 세션 시작
 - `turn(sid, utterance, pad?, sit_desc?)` — user 턴 이벤트 → `Command::ApplyStimulus` **dispatch_v2.await** → (events에 `BeatTransitioned` 존재 시 `update_system_prompt`) → `send_message` → assistant 턴 이벤트
 - `end_session(sid, significance?)` — LLM 세션 종료 + (significance 있으면) `Command::EndDialogue` **dispatch_v2.await**
@@ -346,6 +434,19 @@ pub trait EventHandler: Send + Sync {
 - `emotion_state: Option<EmotionState>` · `relationship: Option<Relationship>` · `scene: Option<Scene>` · `guide: Option<ActingGuide>`
 - destructive 시그널: `clear_emotion_for: Option<String>` · `clear_scene: bool` (B4.1 DialogueEnd)
 
+`EventHandlerContext` 헬퍼 (2026-05-02 commit `9ff5645`로 중앙화 — 핸들러는
+직접 `ctx.repo.get_npc()` 대신 다음 메서드를 호출하면 자동으로 `HandlerError`를 매핑):
+- `ctx.get_npc(id) -> Result<Npc, HandlerError>` — `HandlerError::NpcNotFound`
+- `ctx.get_relationship(owner, target) -> Result<Relationship, _>` — shared 우선, repo fallback
+- `ctx.get_emotion_state(npc_id) -> Result<EmotionState, _>` — shared 우선, repo fallback
+
+**EventMetadata 활성** (2026-04-25): 모든 이벤트는 `correlation_id`(dispatch_v2 호출
+단위 cid, 1부터) + `parent_event_id`(BFS 큐잉 시 자동) + `cascade_depth` 필드를
+가진다. `EventStore::get_events_by_correlation(cid)` + Mind Studio
+`/api/projection/trace/{cid}`로 한 dispatch의 전체 인과 트리 조회 가능. 변경 이력:
+[`docs/changes/2026-04-25-correlation-id-activation.md`](docs/changes/2026-04-25-correlation-id-activation.md) +
+[`docs/changes/2026-04-25-parent-event-id-activation.md`](docs/changes/2026-04-25-parent-event-id-activation.md).
+
 ### EventBus (tokio::broadcast 기반)
 
 | 계층 | 실행 | 용도 | 구현 |
@@ -456,12 +557,19 @@ relevance_score = `1.0 - cosine_distance`.
 | **Memory Step D** | ✅ 완료 (+리뷰 반영) | `Command::ApplyWorldEvent` + `ApplyWorldEventRequest` DTO + `WorldOverlayPolicy` (Transactional, priority `WORLD_OVERLAY=25`) + `WorldOverlayHandler` (Inline, priority `WORLD_OVERLAY_INGESTION=45`) — Canonical `MemoryEntry(scope=World, provenance=Seeded)` 생성 + 같은 topic **Canonical 1건만** supersede (다른 NPC의 Personal Heard/Rumor는 보존, 리뷰 B1). `SceneConsolidationHandler` (Inline, priority `SCENE_CONSOLIDATION=60`) — `SceneEnded` 구독 → **참여 NPC별**로 자기 Layer A(`DialogueTurn/BeatTransition`)만 수집해 Personal Scope `SceneSummary` Layer B 엔트리 생성 + `mark_consolidated`, `topic="scene:{a}:{b}"` (리뷰 B3, M7). 휴리스틱 첫·끝 content 요약 (120자 cap). `RelationshipMemoryHandler` (Inline, priority `RELATIONSHIP_MEMORY=50`) — `RelationshipUpdated.cause` 5 variant별 source/topic/content 분기 (`MEMORY_RELATIONSHIP_DELTA_THRESHOLD=0.05` 미만 skip, 주도 축 라벨 content에 포함 — 리뷰 H4). `RelationshipPolicy.BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id }` 설정. Builder: `with_memory(store)` = lean Telling만, `with_memory_full(store)` = Step D 4종 전체 (리뷰 H5). 16개 통합 테스트 (consolidation 3 + world overlay 7 + relationship cause 7 E2E 포함) + 17개 단위 테스트. 범위 외 (Step F): LLM 기반 Consolidator / witness 개별 MemoryEntry / target 관점 Relationship 엔트리 / DialogueEnd cause=SceneInteraction 승격. |
 | **Memory Step E1** | ✅ 완료 (+리뷰 반영) | Mind Studio 백엔드 REST + SSE 배선. `AppState`에 embed-gated `memory_store`/`rumor_store` 필드 + `shared_dispatcher`에 `with_memory_full` + `with_rumor` 자동 부착 (`NPC_MIND_MEMORY_DB` 환경변수, 미설정 시 `:memory:`). `RumorStore::list_all()` 포트 메서드 신설 (+ Sqlite·InMemory·Spy 3종 impl). REST 10 엔드포인트 (`/api/memory/{search,by-npc/{id},by-topic/{topic},canonical/{topic},entries,tell}` + `/api/world/apply-event` + `/api/rumors{,/seed,/{id}/spread}`, 전부 embed feature gated). `domain_sync`에 4 dispatch 헬퍼 (`tell_information`/`apply_world_event`/`seed_rumor`/`spread_rumor`). SSE `StateEvent` 5 variant (`MemoryCreated/Superseded/Consolidated`, `RumorSeeded/Spread`). 통합 테스트 5종 (manual seed / tell+SSE / world apply → canonical / by-topic history / seed+spread). 커밋 `3356675` + 사후 리뷰 `e63d638` (M1 Superseded SSE 오탐 제거, M2 by-topic limit 쿼리, M4 search 스모크, L5 `&mut *inner` 스타일 통일). 범위 외: 프런트엔드 UI → Step E2, 시나리오 JSON `initial_rumors`/`world_knowledge` → Step E3, director_v2 배선/Memory 이벤트 팬아웃 → Step F. |
 | **Memory Step E3.3** | ✅ 완료 (+follow-up) | 시드 조회 UI + 로드 warnings 가시화. `GET /api/scenario-seeds` 엔드포인트 — `StateInner.scenario_seeds`(E3.2에서 추가됨) 그대로 반환. 프런트에 `useSceneStore.scenarioSeeds` + `ScenarioSeedsView` 조회 전용 패널 (ResultPanel "시드" 탭, 4 섹션 · RumorSeedRow 4-tier 변종 라벨 · 메모리 메타 뱃지 · 빈 상태 안내). `loadHandlers.loadScenario`가 `LoadResponse.applied_*` count를 success 토스트에, `warnings`를 error 토스트(3건 초과 시 묶음 + `console.warn` 폴백, `String()` 방어)로 노출. `useStateSync`가 초기 마운트 + `scenario_loaded/result_loaded` 시 `/api/scenario-seeds` fetch(useRefresh는 제외 — CRUD refresh 오염 방지). 커밋 `fcf50ec` + follow-up(M1 이중 fetch · M2 토스트 스팸 · L1/L3/L4 방어·라벨링). 범위 외: 시드 편집 GUI · §17.3 결정 3 정식 문서화. |
-| Phase 5 | 미구현 | StoryAgent (서사 진행 판단) |
-| Phase 6 | 미구현 | Tool 시스템 (ToolRegistry) |
-| Phase 7 | 미구현 | WorldKnowledgeStore (세계관 정적 지식) |
-| Phase 8 | 미구현 | SummaryAgent (컨텍스트 윈도우 관리) |
+| **EventMetadata 활성** | ✅ 완료 (2026-04-25) | `correlation_id` (dispatch_v2 호출 단위 cid 자동 발급, 함수 로컬) + `parent_event_id` (BFS 큐잉 시 자동) + `cascade_depth` 활성화. `EventStore::get_events_by_correlation(cid)` 신설. Mind Studio `GET /api/projection/trace/{cid}` 엔드포인트로 한 dispatch의 인과 트리 조회. 변경 로그: [`docs/changes/2026-04-25-correlation-id-activation.md`](docs/changes/2026-04-25-correlation-id-activation.md). |
+| **Worldbuilding Phase 0** | ✅ 완료 | Lore RAG MCP — wuxia-core/docs EPUB 22권 인덱싱 + `search_lore`/`list_corpora`/`get_chunk` MCP 도구. `data/corpus/lore.sqlite` 자동 부착. |
+| **Worldbuilding Phase 1** | ✅ 완료 (2026-04-30) | Group 도메인 (`domain/world/group.rs`) — temporal·parent·allied/rival 관계, 마크다운 frontmatter+H2 파서. SqliteWorldStore + `world-load` CLI. 6 Group 통과. |
+| **Worldbuilding Phase 2** | ✅ 완료 (2026-05-01) | Person 도메인 + HEXACO 6-dim — Group 외래키 활성. `mind_sync.rs::person_to_npc`로 active/player Person 자동 NPC 등록. **2.1 Player follow-up** (id="player" 시작값) + **2.2 Runtime sync** (`POST /api/world/persons/sync`, emotion 보존). |
+| **Worldbuilding Phase 3** | ✅ 완료 (2026-05-01) | Place 도메인 (settlement+geography 2 layer) — sect/geography_refs 양방향 + `parent_place` cycle. Phase 1·2 외래키 일제히 에러 승격 (`headquarters`/`birthplace`/`current_location` 등 0건 보장). 11 Place. |
+| **Worldbuilding Phase 4** | ✅ 완료 (2026-05-01) | Atlas 첫 관계 도메인 (도메인+뷰 이중성) — `references` ↔ Place FK + `place_atlas_refs` 양방향 인덱스 + view 메서드 (places_in 등 N+1 회피용 `get_places_batch`). atlas-jungwon ASCII 다이어그램. `EventHandlerContext::get_npc/relationship/emotion_state` 헬퍼 중앙화 (commit `9ff5645`). |
+| Worldbuilding Phase 5+ | ⏳ 예정 | Event + Era + Timeline view → Skill → Item → Knowledge → Lore. Roadmap: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md). |
+| Phase 5 (npc-mind) | 미구현 | StoryAgent (서사 진행 판단) |
+| Phase 6 (npc-mind) | 미구현 | Tool 시스템 (ToolRegistry) |
+| Phase 7 (npc-mind) | 미구현 | WorldKnowledgeStore (세계관 정적 지식) — Worldbuilding Phase 6+가 이를 흡수 검토 |
+| Phase 8 (npc-mind) | 미구현 | SummaryAgent (컨텍스트 윈도우 관리) |
 
-전체 B안 설계 참조: [`docs/architecture/b-plan-implementation.md`](docs/architecture/b-plan-implementation.md)
+전체 B안 설계 참조: [`docs/architecture/b-plan-implementation.md`](docs/architecture/b-plan-implementation.md). API 변경 로그: [`docs/changes/`](docs/changes/).
 
 ## 개발 컨벤션
 
@@ -623,6 +731,7 @@ Claude(API)와 Bekay(브라우저)가 동시에 사용하는 심리 엔진 시�
 
 **공개 helper** (`crate::domain_sync::*`):
 - `dispatch_appraise`, `dispatch_stimulus`, `dispatch_end_dialogue`, `dispatch_generate_guide`, `dispatch_start_scene`
+- `dispatch_tell_information`, `dispatch_apply_world_event`, `dispatch_seed_rumor`, `dispatch_spread_rumor` (Step E1)
   — 시그니처: `(state: &AppState, inner: &mut StateInner, req) -> Result<...>`
 - `sync_from_repo(&InMemoryRepository, &mut StateInner)` — dispatch 후 역반영
 
@@ -682,6 +791,8 @@ src/
 - **Memory/Rumor 조회·주입**(`embed` feature, Memory Step E1): `AppState`가 `shared_dispatcher`에 `with_memory_full` + `with_rumor` 자동 부착 (`NPC_MIND_MEMORY_DB` 환경변수로 DB 경로, 미설정 시 in-memory SQLite). 엔드포인트 10종 — `GET /api/memory/{search,by-npc/{id},by-topic/{topic},canonical/{topic}}` · `POST /api/memory/{entries,tell}` · `POST /api/world/apply-event` · `GET /api/rumors` · `POST /api/rumors/{seed,{id}/spread}`. 프런트엔드 UI는 Step E2에서 별도 진행.
 - **시나리오 시드 조회 + 로드 경고**(Memory Step E3.3): `GET /api/scenario-seeds`로 `StateInner.scenario_seeds` 반환. "시드" 탭에서 `initial_rumors`/`world_knowledge`/`faction_knowledge`/`family_facts` 4 섹션 read-only 표시(변종 라벨·메모리 메타 뱃지). 시나리오 로드 시 `applied_*` count를 토스트에, `warnings`를 error 토스트(3건 초과 시 묶음+console.warn)로 노출. 편집은 JSON 직접 편집 또는 소문 탭의 런타임 시드 폼.
 - **실시간 상태 동기화**: `tokio::sync::broadcast` → SSE `/api/events` → `EventSource` (useStateSync 훅). MCP/REST 상태 변경이 UI에 자동 반영. `StateEvent`는 NPC/Relationship/Scene/Chat 외에 `MemoryCreated/Superseded/Consolidated`·`RumorSeeded/Spread`(Step E1) 포함.
+- **Worldbuilding 조회**(`embed` feature): `NPC_MIND_WORLD_DB` 환경변수로 `world-load`가 빌드한 SQLite를 부착하면 4 도메인 조회 + 자동 Person sync 활성화. 엔드포인트: `GET /api/world/{groups,persons,places,atlases}` 목록·`/search?q=`·`/{id}` 단건 + `POST /api/world/persons/sync` 런타임 재동기화. 부팅 시 `kind in {active, player}` Person을 인메모리 `MindRepository`에 자동 등록 (emotion/scene 보존).
+- **인과 사슬 추적**: `GET /api/projection/trace/{correlation_id}` — 한 `dispatch_v2` 호출의 모든 이벤트(parent_event_id 트리)를 묶어 반환. DeepEval Phase 1 trace 단위 입력으로 사용 가능.
 - REST API 엔드포인트 전체는 `src/bin/mind-studio/handlers/` 참조
 
 ## LLM 대화 테스트 (`chat` feature)
@@ -765,12 +876,17 @@ end_session(sid, significance?)
 - **통합 가이드**: [`docs/api/integration-guide.md`](docs/api/integration-guide.md) — 외부 프로젝트 통합 단계별 가이드
 - **아키텍처 v2**: [`docs/architecture/architecture-v2.md`](docs/architecture/architecture-v2.md)
 - **아키텍처 v3 (EventBus/CQRS)**: [`docs/architecture/system-design-eventbus-cqrs.md`](docs/architecture/system-design-eventbus-cqrs.md) — EventBus, CQRS, Event Sourcing, Multi-Handler, RAG 시스템 디자인
+- **dispatch_v2 internals**: [`docs/architecture/dispatch-v2-internals.md`](docs/architecture/dispatch-v2-internals.md) — BFS cascade · correlation_id · parent_event_id · safety bounds
+- **EventHandler 카탈로그**: [`docs/architecture/event-handler-catalog.md`](docs/architecture/event-handler-catalog.md)
 - **프론트엔드 아키텍처**: [`docs/architecture/frontend-architecture.md`](docs/architecture/frontend-architecture.md) — Vite+React+Zustand 구조, 스토어 설계, 데이터 흐름, 컴포넌트 트리
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
+- **변경 로그**: [`docs/changes/`](docs/changes/) — 공개 API/이벤트 스키마/HTTP 엔드포인트 변경 시간순 기록 (correlation-id-activation 등)
+- **Worldbuilding 로드맵**: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **Listener-perspective 변환** (Phase 7): [`docs/emotion/sign-classifier-design.md`](docs/emotion/sign-classifier-design.md) (부호/강도 분류기 설계 + §3.7 Register 전략) + [`docs/emotion/phase7-converter-integration.md`](docs/emotion/phase7-converter-integration.md) (프로덕션 통합, **Step 1-5+ 완료** — 88% baseline, default-on, DialogueOrchestrator · Mind Studio 통합, §6.1 테스트 카탈로그 71개)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
 - **가이드 매핑**: [`docs/guide/guide-mapping-table.md`](docs/guide/guide-mapping-table.md)
+- **메모리 시스템**: [`docs/memory/`](docs/memory/) — Step A-E 구현 설계 + Memory Scope/Source/Layer/Provenance VO + framing
 - **테스트 스크립트**: `mcp/skills/npc-scenario-creator/SKILL.md` (4-1단계) + `mcp/skills/npc-mind-testing/SKILL.md` (원칙 4, 커서 관리)
 - **언어 설정**: [`docs/locale-guide.md`](docs/locale-guide.md)
 - **MCP 서버 설정**: `.mcp.json` (프로젝트 루트)
