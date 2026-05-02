@@ -4,8 +4,8 @@
 //! 모두 sync 동작이며 호출자가 필요 시 `tokio::task::spawn_blocking`으로 감싼다.
 
 use crate::domain::world::{
-    Group, GroupFilter, GroupId, Person, PersonFilter, PersonId, Place, PlaceFilter, PlaceId,
-    WorldError,
+    Atlas, AtlasFilter, AtlasId, Group, GroupFilter, GroupId, Person, PersonFilter, PersonId,
+    Place, PlaceFilter, PlaceId, WorldError,
 };
 
 pub trait WorldRepository: Send + Sync {
@@ -65,4 +65,24 @@ pub trait WorldRepository: Send + Sync {
 
     /// 카운트 — 진행률·상태 확인용.
     fn count_places(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
+
+    // ---------------------------------------------------------------------
+    // Phase 4 — Atlas (첫 관계 도메인)
+    // ---------------------------------------------------------------------
+
+    /// 필터 조건으로 atlas 목록 조회. 결과는 id 오름차순.
+    fn list_atlases(&self, filter: AtlasFilter) -> Result<Vec<Atlas>, WorldError>;
+
+    /// id로 단일 atlas 조회. 없으면 Ok(None). references·body_sections 전체 포함.
+    fn get_atlas(&self, id: &AtlasId) -> Result<Option<Atlas>, WorldError>;
+
+    /// FTS5 trigram 매치 — name + aliases + summary + body 결합 검색.
+    fn search_atlases(&self, query: &str, top_k: u32) -> Result<Vec<Atlas>, WorldError>;
+
+    /// upsert 단건 — id 중복은 덮어쓴다. references는 `place_atlas_refs` 양방향
+    /// 인덱스에도 동시 갱신된다 (delete-then-insert 패턴).
+    fn upsert_atlas(&self, project_id: &str, atlas: &Atlas) -> Result<(), WorldError>;
+
+    /// 카운트 — 진행률·상태 확인용.
+    fn count_atlases(&self, project_id: Option<&str>) -> Result<u64, WorldError>;
 }

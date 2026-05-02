@@ -1,0 +1,33 @@
+# 무협(wuxia) Atlas 폼 — Phase N 폼 시스템 자리.
+#
+# Phase 4에서는 폼 시스템이 미가동 (마크다운 SoT 직접 작성).
+# Phase N부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "atlas"
+
+# kind 옵션 — Atlas의 세 결.
+[[fields.kind.options]]
+value = "continent"
+label = "대륙"
+
+[[fields.kind.options]]
+value = "region"
+label = "광역"
+
+[[fields.kind.options]]
+value = "city-map"
+label = "도시 지도"
+
+# 시대 텍스트 — Phase 5 Era 진입 시 era_id 외래키로 승급.
+[[fields]]
+key = "era"
+label = "시대"
+description = "잠정 시대 텍스트. Phase 5 Era 도메인 등장 시 era_id로 정형화."
+type = "string"
+
+[[fields]]
+key = "era_id"
+label = "Era 외래키 (Phase 5)"
+description = "Phase 4엔 텍스트 보존만, Phase 5 Era 진입 시 외래키 활성."
+type = "id"
+target = "era"
