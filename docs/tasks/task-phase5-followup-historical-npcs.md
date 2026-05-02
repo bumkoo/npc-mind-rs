@@ -67,18 +67,67 @@ character-roster의 `npc-XX` 명명 따름. 추가 historical npc는:
 
 선택 추가 인물(풍만리·설무한 등)도 같은 패턴.
 
-### 3.4 HEXACO 잠정 매핑 — heritage-pending 또는 정밀
+### 3.4 HEXACO 매핑 정밀도 — 직교 플래그 두 개 (Phase 5c.1 정책 갱신)
 
-historical npc는 열전 미작성이라 HEXACO 잠정 매핑. 두 옵션:
-- (a) **heritage-pending 마커** (npc-07 천순제·npc-11 소풍자 패턴) — `extras.source_status: heritage-pending` + 잠정 6 dim
-- (b) **정밀 매핑** — character-roster + history-characters에서 정성 추론 후 신뢰도 표기 (Phase 2 npc-06 패턴)
+**Phase 5c.1 체크포인트 1 디렉터 리뷰 후속 갱신**: Phase 2의 단일 `source_status: heritage-pending` 플래그가 두 의미를 혼합 표기하던 문제를 직교 플래그 두 개로 분리한다.
 
-**권장**: 임서운(체크포인트 1)·npc-08·09·10은 (b) 정밀 매핑, 나머지 historical은 (a) heritage-pending. 이유:
-- 임서운은 player 메인 비밀 → 정밀 가치 큼
-- npc-08·09·10은 character-roster ★★★★+ → 게임 캐논
-- 나머지 historical은 NPC 대사·서적·비문에만 등장 → 잠정 충분
+| 필드 | 타입 | 의미 |
+|---|---|---|
+| `extras.heritage_doc_pending` | `bool` | **열전 단독 .md 부재** — `wuxia-core/docs/characters/npc-{XX}-{name}.md` 같은 단독 캐릭터 시트 부재 |
+| `extras.hexaco_confidence` | `enum` (`precise` / `pending` / `unknown`) | **HEXACO 6 dim 매핑 신뢰도** — 출처의 양·일관성에 따른 매핑 자체의 확신도 |
 
-체크포인트 1 보고서에서 디렉터 검토.
+두 플래그는 독립이며 4 조합 모두 의미 있음:
+
+| heritage_doc_pending | hexaco_confidence | 사례 |
+|---|---|---|
+| false | precise | 열전 + 다중 출처 일관 — 이상적 (Phase 2 npc-01·02·03·04·05·06) |
+| **true** | **precise** | 열전 부재이나 character-roster + history-characters + 타 NPC 묘사 다중 출처 일관 (**임서운**·**npc-08·09·10·11**) |
+| true | pending | 열전 부재 + 단편 출처만, 추정 필요 (추양진인·진천명) |
+| true | unknown | 열전 부재 + 자료 거의 없음. Phase 6+ 보강 |
+
+**`extras.source_status: heritage-pending` (legacy)** — Phase 2에 도입된 단일 플래그. 의미상 `heritage_doc_pending=true ∧ hexaco_confidence=pending`에 해당. 기존 npc-07·11에 잔존하나 마이그레이션은 **비강제** (체크포인트 2 npc-11 stub 승급 시 자연 정리, npc-07은 Phase 6+ 정밀 패스 시점).
+
+**Phase 5c.1 매핑 권장** (체크포인트 보고서에 명시):
+
+| Person ID | heritage_doc_pending | hexaco_confidence | 사유 |
+|---|---|---|---|
+| 임서운 (npc-im-seoun) | true | precise | character-roster H29 + history-characters §11.1 + player.md + 캐릭터 시트 v1.2 다중 출처 |
+| npc-08 바투 | true | precise | character-roster N8 + npc-06 부친 묘사 다중 |
+| npc-09 진대인 | true | precise | character-roster N9 + npc-05 §사부 소풍자·§8년 전 파견 다중 |
+| npc-10 3대 천마 | true | precise | character-roster N10 + npc-06 §3대 천마와의 관계 다중 |
+| npc-11 소풍자 | true | precise (stub 승급) | character-roster N11 + npc-05 §사부 소풍자 다중 |
+| 추양진인 | true | pending | history-characters §9.1·§11.1 단편만 |
+| 진천명 | true | pending | history-characters §1·§13 단편만 |
+| 단운 (태무제) | **false** | **precise** | **wuxia-core npc-11-taemuje.md 본기(本紀) 존재 — Big Five + 가치관 + 7시각 회상 명시** |
+
+**주의 — 단운**: wuxia-core에 단독 본기가 존재하므로 직교 플래그 정의상 `heritage_doc_pending: false`. 디렉터 사양 권장 "all historical = pending"과 다른 처리 — 출처 정합성 우선. 체크포인트 2 보고서 §결정 1 참조.
+
+체크포인트 보고서에서 디렉터 최종 검토.
+
+### 3.4b `extras.secret` 컨벤션 — `## 비밀` H2의 머신 리더블 미러 (Phase 5c.1 신규)
+
+Phase 2까지 person의 비밀은 `## 비밀` H2 산문 섹션에만 보존됐다. Phase 5c.1부터 신규 person은 frontmatter에 `extras.secret`을 함께 둔다:
+
+```yaml
+extras:
+  secret: |
+    1. 비밀 1 — 짧은 라벨. 출처 또는 게임 내 공개 시점.
+    2. 비밀 2 — ...
+```
+
+| 위치 | 책임 |
+|---|---|
+| `## 비밀` H2 (산문) | **권위 출처(SoT)** — 전체 맥락·근거·게임 내 단계별 공개 흐름 |
+| `extras.secret` (frontmatter) | **머신 리더블 미러** — SQL 필터, FTS5 인덱스, MCP `get_person` 응답 빠른 요약 |
+
+**일관성 정책**:
+- 두 위치는 같은 비밀 목록을 다뤄야 한다. 산문이 권위 — 산문에 없는 비밀을 frontmatter에만 두지 말 것.
+- frontmatter는 라벨 + 한 줄 요약 (3-5 라인). 산문은 자유 길이.
+- player 메인 비밀과 1:1 매핑되는 person은 본 컨벤션 강제 (`extras.player_relevance ≥ 4`).
+
+**적용 범위**:
+- Phase 5c.1+ 신규 person 강제 (npc-im-seoun이 첫 사례, 체크포인트 2의 7 NPC도 모두 적용).
+- 기존 npc-01..07·11(stub) + player는 마이그레이션 비강제 (npc-11 stub은 승급 시 자연 추가).
 
 ### 3.5 외래키 활성
 
@@ -189,11 +238,16 @@ Phase 5a/5b body의 텍스트 ID들이 실제 person 시드 등록 후 활성:
 - character-roster `npc-XX`: npc-08·09·10·11 그대로
 - 추가 historical: `npc-{한국어슬러그}` (예: `npc-imseowoon`·`npc-chuyangjinin`·`npc-jincheonmyeong`·`npc-danwoon`)
 
-### 6.2 HEXACO 매핑 정밀도
+### 6.2 HEXACO 매핑 정밀도 (§3.4 직교 플래그 정책 정합)
 
-- 임서운·npc-08·09·10·11: 정밀 매핑 (Phase 2 npc-06 패턴, 신뢰도 "보통" 이상)
-- Phase 5a 핵심 historical (추양진인·진천명·단운): heritage-pending 마커 (npc-07 패턴)
-- 선택 추가 historical: heritage-pending
+| Person | heritage_doc_pending | hexaco_confidence |
+|---|---|---|
+| 임서운·npc-08·09·10·11 | true | precise |
+| 추양진인·진천명 | true | pending |
+| **단운(태무제)** | **false** | **precise** ★ wuxia-core npc-11-taemuje.md 본기 존재 |
+| 선택 추가 historical (풍만리·설무한·자양진인·천리안) | true | pending |
+
+**legacy `source_status: heritage-pending`**: npc-07·11(stub) 잔존. 마이그레이션 비강제 — 자연 정리.
 
 ### 6.3 status × kind 매트릭스
 
