@@ -1605,6 +1605,50 @@ impl WorldRepository for SqliteWorldStore {
         }
     }
 
+    /// **F3 (review 후 정리)**: 기본 구현(N+1 query)을 IN(...) 단일 쿼리로 override.
+    /// Timeline.events_in이 era.key_events 평면화 후 모든 사건을 한 번에 fetch하도록.
+    /// 결과는 입력 `ids` 순서대로, 결손은 사일런트 누락 (Atlas get_places_batch 패턴).
+    fn get_events_batch(&self, ids: &[EventId]) -> Result<Vec<Event>, WorldError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, project_id, kind, category, name, aliases_json,
+                    summary, tags_json, extras_json, temporal_json,
+                    year_relative, era_id, participants_json, body_sections_json,
+                    related_events_json, source_path
+             FROM events WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let id_strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            id_strs.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_event)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let fetched = collect_event_rows_warn_on_err(rows);
+
+        let mut by_id: std::collections::HashMap<String, Event> = fetched
+            .into_iter()
+            .map(|e| (e.id.as_str().to_string(), e))
+            .collect();
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(e) = by_id.remove(id.as_str()) {
+                out.push(e);
+            }
+        }
+        Ok(out)
+    }
+
     fn search_events(&self, query: &str, top_k: u32) -> Result<Vec<Event>, WorldError> {
         let conn = self.conn.lock().unwrap();
         let q = query.trim();
@@ -1805,6 +1849,55 @@ impl WorldRepository for SqliteWorldStore {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(WorldError::Storage(e.to_string())),
         }
+    }
+
+    /// **F3 (review 후 정리)**: 기본 구현(N+1 query)을 IN(...) 단일 쿼리로 override.
+    /// Atlas의 `get_places_batch` 패턴 미러. Timeline.eras_in이 N era references에 대해
+    /// N round-trip을 피한다.
+    ///
+    /// 결과는 입력 `ids` 순서대로 (IN(...)은 결과 순서를 보장하지 않으므로 HashMap lookup).
+    /// 결손 ID는 사일런트 누락 — world-load FK 활성으로 결손 0건이 보장되므로 정상 데이터에선
+    /// 누락 발생 X.
+    fn get_eras_batch(&self, ids: &[EraId]) -> Result<Vec<Era>, WorldError> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn.lock().unwrap();
+        let placeholders = std::iter::repeat("?")
+            .take(ids.len())
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT id, project_id, kind, name, aliases_json,
+                    summary, tags_json, extras_json, temporal_json,
+                    start_year_relative, end_year_relative,
+                    key_events_json, body_sections_json, source_path
+             FROM eras WHERE id IN ({})",
+            placeholders
+        );
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let id_strs: Vec<&str> = ids.iter().map(|id| id.as_str()).collect();
+        let bind_refs: Vec<&dyn rusqlite::ToSql> =
+            id_strs.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let rows = stmt
+            .query_map(rusqlite::params_from_iter(bind_refs), row_to_era)
+            .map_err(|e| WorldError::Storage(e.to_string()))?;
+        let fetched = collect_era_rows_warn_on_err(rows);
+
+        // 입력 순서 보존 (Atlas get_places_batch 패턴 그대로).
+        let mut by_id: std::collections::HashMap<String, Era> = fetched
+            .into_iter()
+            .map(|e| (e.id.as_str().to_string(), e))
+            .collect();
+        let mut out = Vec::with_capacity(ids.len());
+        for id in ids {
+            if let Some(e) = by_id.remove(id.as_str()) {
+                out.push(e);
+            }
+        }
+        Ok(out)
     }
 
     fn search_eras(&self, query: &str, top_k: u32) -> Result<Vec<Era>, WorldError> {
@@ -4965,5 +5058,96 @@ mod tests {
         assert_eq!(store.count_timelines(None).unwrap(), 2);
         assert_eq!(store.count_timelines(Some("p1")).unwrap(), 1);
         assert_eq!(store.count_timelines(Some("p2")).unwrap(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // F3 회귀 가드 — get_eras_batch + get_events_batch IN(...) override
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn get_eras_batch_preserves_input_order() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        for (id, kind, s, e) in [
+            ("era-a", "founding", -270, -220),
+            ("era-b", "fall", -30, 0),
+            ("era-c", "decline", -70, -30),
+        ] {
+            store.upsert_era("p", &sample_era(id, kind, s, e)).unwrap();
+        }
+        // 입력 순서가 알파벳 역순이어도 결과는 입력 순서 (IN(...) 결과 순서 미보장 가드).
+        let ids = vec![EraId::new("era-c"), EraId::new("era-a"), EraId::new("era-b")];
+        let got = store.get_eras_batch(&ids).unwrap();
+        let got_ids: Vec<&str> = got.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(got_ids, vec!["era-c", "era-a", "era-b"]);
+    }
+
+    #[test]
+    fn get_eras_batch_skips_missing_silently() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_era("p", &sample_era("era-a", "founding", -270, -220))
+            .unwrap();
+        let ids = vec![
+            EraId::new("era-a"),
+            EraId::new("era-missing"),
+            EraId::new("era-also-missing"),
+        ];
+        let got = store.get_eras_batch(&ids).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id.as_str(), "era-a");
+    }
+
+    #[test]
+    fn get_eras_batch_empty_input_returns_empty_no_sql() {
+        // 빈 ids → SQL 없이 즉시 반환. `IN ()`는 SQLite 문법 에러.
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let got = store.get_eras_batch(&[]).unwrap();
+        assert!(got.is_empty());
+    }
+
+    #[test]
+    fn get_events_batch_preserves_input_order() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        for id in ["event-a", "event-b", "event-c"] {
+            store
+                .upsert_event(
+                    "p",
+                    &sample_event_with_participants(id, &[], &[], &[]),
+                )
+                .unwrap();
+        }
+        let ids = vec![
+            EventId::new("event-c"),
+            EventId::new("event-a"),
+            EventId::new("event-b"),
+        ];
+        let got = store.get_events_batch(&ids).unwrap();
+        let got_ids: Vec<&str> = got.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(got_ids, vec!["event-c", "event-a", "event-b"]);
+    }
+
+    #[test]
+    fn get_events_batch_skips_missing_silently() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        store
+            .upsert_event(
+                "p",
+                &sample_event_with_participants("event-a", &[], &[], &[]),
+            )
+            .unwrap();
+        let ids = vec![
+            EventId::new("event-a"),
+            EventId::new("event-missing"),
+        ];
+        let got = store.get_events_batch(&ids).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].id.as_str(), "event-a");
+    }
+
+    #[test]
+    fn get_events_batch_empty_input_returns_empty_no_sql() {
+        let store = SqliteWorldStore::in_memory().unwrap();
+        let got = store.get_events_batch(&[]).unwrap();
+        assert!(got.is_empty());
     }
 }
