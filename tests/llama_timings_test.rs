@@ -7,7 +7,7 @@
 
 #![cfg(feature = "chat")]
 
-use npc_mind::ports::{ChatResponse, LlamaTimings};
+use npc_mind::ports::{ChatResponse, InferenceTimings};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -77,13 +77,13 @@ fn openai_completion_response() -> serde_json::Value {
 }
 
 // ---------------------------------------------------------------------------
-// LlamaTimings serde 테스트
+// InferenceTimings serde 테스트
 // ---------------------------------------------------------------------------
 
 #[test]
 fn llama_timings_역직렬화() {
     let json = sample_timings_json();
-    let timings: LlamaTimings = serde_json::from_value(json).unwrap();
+    let timings: InferenceTimings = serde_json::from_value(json).unwrap();
 
     assert_eq!(timings.prompt_n, 13);
     assert!((timings.prompt_ms - 338.304).abs() < 0.001);
@@ -93,7 +93,7 @@ fn llama_timings_역직렬화() {
 
 #[test]
 fn llama_timings_직렬화_왕복() {
-    let original = LlamaTimings {
+    let original = InferenceTimings {
         prompt_n: 10,
         prompt_ms: 100.0,
         prompt_per_token_ms: 10.0,
@@ -105,7 +105,7 @@ fn llama_timings_직렬화_왕복() {
     };
 
     let json = serde_json::to_string(&original).unwrap();
-    let restored: LlamaTimings = serde_json::from_str(&json).unwrap();
+    let restored: InferenceTimings = serde_json::from_str(&json).unwrap();
 
     assert_eq!(restored.prompt_n, original.prompt_n);
     assert_eq!(restored.predicted_n, original.predicted_n);
@@ -116,7 +116,7 @@ fn llama_timings_직렬화_왕복() {
 fn chat_response_timings_있을_때() {
     let resp = ChatResponse {
         text: "응답".into(),
-        timings: Some(LlamaTimings {
+        timings: Some(InferenceTimings {
             prompt_n: 5,
             prompt_ms: 50.0,
             prompt_per_token_ms: 10.0,

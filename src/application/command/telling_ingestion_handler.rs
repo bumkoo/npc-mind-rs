@@ -91,7 +91,7 @@ impl EventHandler for TellingIngestionHandler {
         // confidence = stated × normalized_trust
         // normalized_trust = (trust.value() + 1) / 2, 관계 없으면 0.5
         let normalized_trust = ctx
-            .repo
+            .world
             .get_relationship(listener, speaker)
             .map(|r| (r.trust().value() + 1.0) / 2.0)
             .unwrap_or(0.5);

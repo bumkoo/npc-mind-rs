@@ -76,7 +76,7 @@ impl EventHandler for GuidePolicy {
         let relationship = ctx.get_relationship(npc_id, partner_id).ok();
 
         let partner_name = ctx
-            .repo
+            .world
             .get_npc(partner_id)
             .map(|n| n.name().to_string())
             .unwrap_or_default();

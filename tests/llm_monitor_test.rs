@@ -1,11 +1,11 @@
 //! llama-server 모니터링 엔드포인트 테스트
 //!
-//! `LlamaServerMonitor` 구현의 /health, /slots, /metrics 조회를 검증한다.
+//! `InferenceServerMonitor` 구현의 /health, /slots, /metrics 조회를 검증한다.
 //! axum mock 서버를 사용하여 실제 llama-server 없이 테스트한다.
 
 #![cfg(all(feature = "chat", feature = "mind-studio"))]
 
-use npc_mind::ports::{LlamaHealth, LlamaMetrics, LlamaServerMonitor, LlamaSlotInfo};
+use npc_mind::ports::{ServerHealth, ServerMetrics, InferenceServerMonitor, InferenceSlotInfo};
 use npc_mind::adapter::rig_chat::RigChatAdapter;
 
 // ---------------------------------------------------------------------------
@@ -145,12 +145,12 @@ async fn start_partial_mock_server() -> (String, tokio::task::JoinHandle<()>) {
 }
 
 // ---------------------------------------------------------------------------
-// LlamaMetrics::parse 단위 테스트
+// ServerMetrics::parse 단위 테스트
 // ---------------------------------------------------------------------------
 
 #[test]
 fn metrics_parse_전체_필드() {
-    let metrics = LlamaMetrics::parse(metrics_text());
+    let metrics = ServerMetrics::parse(metrics_text());
 
     assert_eq!(metrics.prompt_tokens_total, Some(1234.0));
     assert_eq!(metrics.tokens_predicted_total, Some(5678.0));
@@ -168,7 +168,7 @@ fn metrics_parse_전체_필드() {
 
 #[test]
 fn metrics_parse_빈_텍스트() {
-    let metrics = LlamaMetrics::parse("");
+    let metrics = ServerMetrics::parse("");
 
     assert!(metrics.prompt_tokens_total.is_none());
     assert!(metrics.tokens_predicted_total.is_none());
@@ -182,7 +182,7 @@ fn metrics_parse_부분_메트릭() {
 # TYPE llamacpp:kv_cache_usage_ratio gauge
 llamacpp:kv_cache_usage_ratio 0.87
 "#;
-    let metrics = LlamaMetrics::parse(partial);
+    let metrics = ServerMetrics::parse(partial);
 
     assert_eq!(metrics.kv_cache_usage_ratio, Some(0.87));
     assert!(metrics.prompt_tokens_total.is_none());
@@ -193,48 +193,48 @@ llamacpp:kv_cache_usage_ratio 0.87
 fn metrics_parse_주석_라인_무시() {
     // # 으로 시작하는 주석은 메트릭으로 파싱되지 않아야 함
     let text = "# llamacpp:kv_cache_usage_ratio 0.99\nllamacpp:kv_cache_usage_ratio 0.45\n";
-    let metrics = LlamaMetrics::parse(text);
+    let metrics = ServerMetrics::parse(text);
     assert_eq!(metrics.kv_cache_usage_ratio, Some(0.45));
 }
 
 #[test]
 fn metrics_parse_raw_보존() {
     let text = "llamacpp:kv_cache_usage_ratio 0.5\n";
-    let metrics = LlamaMetrics::parse(text);
+    let metrics = ServerMetrics::parse(text);
     assert_eq!(metrics.raw, text);
 }
 
 // ---------------------------------------------------------------------------
-// LlamaHealth serde 테스트
+// ServerHealth serde 테스트
 // ---------------------------------------------------------------------------
 
 #[test]
 fn health_역직렬화_ok() {
-    let health: LlamaHealth = serde_json::from_value(health_ok_json()).unwrap();
+    let health: ServerHealth = serde_json::from_value(health_ok_json()).unwrap();
     assert_eq!(health.status, "ok");
 }
 
 #[test]
 fn health_역직렬화_loading() {
-    let health: LlamaHealth = serde_json::from_value(health_loading_json()).unwrap();
+    let health: ServerHealth = serde_json::from_value(health_loading_json()).unwrap();
     assert_eq!(health.status, "loading model");
 }
 
 #[test]
 fn health_직렬화_왕복() {
-    let original = LlamaHealth { status: "ok".into() };
+    let original = ServerHealth { status: "ok".into() };
     let json = serde_json::to_string(&original).unwrap();
-    let restored: LlamaHealth = serde_json::from_str(&json).unwrap();
+    let restored: ServerHealth = serde_json::from_str(&json).unwrap();
     assert_eq!(restored.status, "ok");
 }
 
 // ---------------------------------------------------------------------------
-// LlamaSlotInfo serde 테스트
+// InferenceSlotInfo serde 테스트
 // ---------------------------------------------------------------------------
 
 #[test]
 fn slot_역직렬화_idle() {
-    let slots: Vec<LlamaSlotInfo> = serde_json::from_value(slots_json()).unwrap();
+    let slots: Vec<InferenceSlotInfo> = serde_json::from_value(slots_json()).unwrap();
     assert_eq!(slots.len(), 2);
 
     let idle = &slots[0];
@@ -247,7 +247,7 @@ fn slot_역직렬화_idle() {
 
 #[test]
 fn slot_역직렬화_processing() {
-    let slots: Vec<LlamaSlotInfo> = serde_json::from_value(slots_json()).unwrap();
+    let slots: Vec<InferenceSlotInfo> = serde_json::from_value(slots_json()).unwrap();
 
     let busy = &slots[1];
     assert_eq!(busy.id, 1);
@@ -259,7 +259,7 @@ fn slot_역직렬화_processing() {
 
 #[test]
 fn slot_extra_필드_보존() {
-    let slots: Vec<LlamaSlotInfo> = serde_json::from_value(slots_json()).unwrap();
+    let slots: Vec<InferenceSlotInfo> = serde_json::from_value(slots_json()).unwrap();
     // "model", "n_ctx" 등 정의되지 않은 필드가 extra에 보존되어야 함
     let idle = &slots[0];
     assert_eq!(idle.extra["model"], "test-model");
@@ -271,7 +271,7 @@ fn slot_extra_필드_보존() {
 fn slot_최소_필드만_있어도_역직렬화() {
     // id만 필수, 나머지는 default
     let minimal = serde_json::json!([{ "id": 0 }]);
-    let slots: Vec<LlamaSlotInfo> = serde_json::from_value(minimal).unwrap();
+    let slots: Vec<InferenceSlotInfo> = serde_json::from_value(minimal).unwrap();
     assert_eq!(slots.len(), 1);
     assert_eq!(slots[0].id, 0);
     assert_eq!(slots[0].state, 0);
@@ -279,7 +279,7 @@ fn slot_최소_필드만_있어도_역직렬화() {
 }
 
 // ---------------------------------------------------------------------------
-// LlamaServerMonitor — mock 서버 통합 테스트
+// InferenceServerMonitor — mock 서버 통합 테스트
 // ---------------------------------------------------------------------------
 
 #[tokio::test]

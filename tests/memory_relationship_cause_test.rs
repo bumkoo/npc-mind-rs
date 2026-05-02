@@ -153,7 +153,9 @@ fn run_cause(
         target_id: "bob".into(),
     };
     let mut ctx = EventHandlerContext {
-        repo: &repo,
+        world: &repo,
+        emotions: &repo,
+        scenes: &repo,
         event_store: &es,
         shared: &mut shared,
         prior_events: &prior,

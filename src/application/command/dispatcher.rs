@@ -10,10 +10,11 @@
 
 use crate::domain::aggregate::AggregateKey;
 use crate::domain::event::{DomainEvent, EventPayload};
-use crate::ports::MindRepository;
+use crate::ports::{EmotionStore, MindRepository, NpcWorld, SceneStore};
 
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
+
 use super::super::situation_service::SituationService;
 use super::policies::{
     EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, RumorPolicy, ScenePolicy,
@@ -654,7 +655,9 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 };
 
                 let mut ctx = EventHandlerContext {
-                    repo: &**repo_guard as &(dyn MindRepository + Send + Sync),
+                    world: &**repo_guard as &(dyn NpcWorld + Send + Sync),
+                    emotions: &**repo_guard as &(dyn EmotionStore + Send + Sync),
+                    scenes: &**repo_guard as &(dyn SceneStore + Send + Sync),
                     event_store: &*self.event_store,
                     shared: &mut state.shared,
                     prior_events: &state.prior_events,
@@ -703,7 +706,9 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     continue;
                 }
                 let mut ctx = EventHandlerContext {
-                    repo: &**repo_guard as &(dyn MindRepository + Send + Sync),
+                    world: &**repo_guard as &(dyn NpcWorld + Send + Sync),
+                    emotions: &**repo_guard as &(dyn EmotionStore + Send + Sync),
+                    scenes: &**repo_guard as &(dyn SceneStore + Send + Sync),
                     event_store: &*self.event_store,
                     shared,
                     prior_events,

@@ -73,17 +73,8 @@ impl EventHandler for ScenePolicy {
         let focus_count = prebuilt_scene.focuses().len();
         let mut scene = prebuilt_scene.clone();
 
-        let npc = ctx
-            .repo
-            .get_npc(npc_id)
-            .ok_or_else(|| HandlerError::NpcNotFound(npc_id.clone()))?;
-        let relationship = ctx
-            .repo
-            .get_relationship(npc_id, partner_id)
-            .ok_or_else(|| HandlerError::RelationshipNotFound {
-                owner_id: npc_id.clone(),
-                target_id: partner_id.clone(),
-            })?;
+        let npc = ctx.get_npc(npc_id)?;
+        let relationship = ctx.get_relationship(npc_id, partner_id)?;
 
         // 초기 Focus가 있으면 appraise
         let (active_focus_id, emotion_state) = if let Some(initial) =

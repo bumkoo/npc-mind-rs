@@ -205,10 +205,8 @@ impl EventHandler for StimulusPolicy {
                 .apply_stimulus(npc.personality(), &current, &pad_struct);
 
         // B4 Session 3: Scene 조회를 (npc_id, partner_id)로 정확히 지정.
-        // 이전에는 `ctx.repo.get_scene()` (단일 Scene legacy 경로)를 썼으나 `last_scene_id`
-        // 가 다른 Scene을 가리킬 때 **잘못된 Scene의 trigger**를 검사하는 multi-scene 버그.
         let scene_id = SceneId::new(npc_id, partner_id);
-        if let Some(scene) = ctx.repo.get_scene_by_id(&scene_id)
+        if let Some(scene) = ctx.get_scene_by_id(&scene_id)
             && let Some(focus) = scene.check_trigger(&stimulated).cloned() {
                 return self.process_beat_transition(
                     ctx,

@@ -6,7 +6,7 @@
 //!
 //! rig 소스를 수정하지 않고 `ClientBuilder.http_client()`를 통해 주입한다.
 
-use crate::ports::LlamaTimings;
+use crate::ports::InferenceTimings;
 use bytes::Bytes;
 use futures::StreamExt;
 use rig::http_client::{
@@ -22,7 +22,7 @@ type BoxedStream =
 /// llama-server 응답에서 `timings` 필드를 파싱하기 위한 envelope
 #[derive(serde::Deserialize)]
 struct TimingsEnvelope {
-    timings: Option<LlamaTimings>,
+    timings: Option<InferenceTimings>,
 }
 
 /// `reqwest::Client`를 감싸며, HTTP 응답에서 `timings`를 캡처하는 클라이언트
@@ -32,14 +32,14 @@ struct TimingsEnvelope {
 #[derive(Clone, Debug)]
 pub struct TimingsCapturingClient {
     inner: reqwest::Client,
-    last_timings: Arc<RwLock<Option<LlamaTimings>>>,
+    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
 }
 
 impl TimingsCapturingClient {
     /// 새 캡처 클라이언트를 생성한다.
     ///
     /// `timings_store`는 `RigChatAdapter`와 공유하여 마지막 timings를 조회할 수 있다.
-    pub fn new(timings_store: Arc<RwLock<Option<LlamaTimings>>>) -> Self {
+    pub fn new(timings_store: Arc<RwLock<Option<InferenceTimings>>>) -> Self {
         Self {
             inner: reqwest::Client::new(),
             last_timings: timings_store,
@@ -52,7 +52,7 @@ impl TimingsCapturingClient {
     /// rig 통신과 직접 API 호출(`/models`, `/slots` 등)이 같은 커넥션 풀을 사용하도록 한다.
     pub fn with_client(
         client: reqwest::Client,
-        timings_store: Arc<RwLock<Option<LlamaTimings>>>,
+        timings_store: Arc<RwLock<Option<InferenceTimings>>>,
     ) -> Self {
         Self {
             inner: client,
@@ -240,7 +240,7 @@ impl HttpClientExt for TimingsCapturingClient {
 /// 백그라운드에서 timings를 파싱한다.
 struct TimingsCapturingStream {
     inner: Pin<Box<dyn futures::Stream<Item = http_client::Result<Bytes>> + Send>>,
-    timings_store: Arc<RwLock<Option<LlamaTimings>>>,
+    timings_store: Arc<RwLock<Option<InferenceTimings>>>,
     /// 청크 경계를 넘는 SSE data를 축적하는 버퍼
     buffer: String,
 }
@@ -248,7 +248,7 @@ struct TimingsCapturingStream {
 /// SSE `data:` 라인에서 timings를 추출하는 헬퍼
 #[derive(serde::Deserialize)]
 struct StreamingTimingsEnvelope {
-    timings: Option<LlamaTimings>,
+    timings: Option<InferenceTimings>,
 }
 
 impl futures::Stream for TimingsCapturingStream {

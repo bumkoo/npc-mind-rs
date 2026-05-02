@@ -1,5 +1,5 @@
 use crate::domain::emotion::{RelationshipModifiers, SceneFocus, Situation};
-use crate::ports::MindRepository;
+use crate::ports::NpcWorld;
 use super::dto::{HasFocusFields, SceneFocusInput, SituationInput};
 use super::error::MindServiceError;
 
@@ -23,7 +23,7 @@ impl SituationService {
     }
 
     /// event/action/object에 필요한 context를 repository에서 일괄 조회
-    pub fn resolve_focus_context<R: MindRepository>(
+    pub fn resolve_focus_context<R: NpcWorld>(
         repo: &R,
         input: &impl HasFocusFields,
         npc_id: &str,
@@ -54,7 +54,7 @@ impl SituationService {
     }
 
     /// SituationInput DTO를 Situation 도메인 모델로 변환합니다.
-    pub fn to_situation<R: MindRepository>(
+    pub fn to_situation<R: NpcWorld>(
         &self,
         repo: &R,
         input: &SituationInput,
@@ -66,7 +66,7 @@ impl SituationService {
     }
 
     /// SceneFocusInput DTO를 SceneFocus 도메인 모델로 변환합니다.
-    pub fn to_scene_focus<R: MindRepository>(
+    pub fn to_scene_focus<R: NpcWorld>(
         &self,
         repo: &R,
         input: &SceneFocusInput,

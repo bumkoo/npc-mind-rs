@@ -86,6 +86,6 @@ pub use application::dialogue_test_service::{
 };
 #[cfg(feature = "chat")]
 pub use ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaHealth,
-    LlamaMetrics, LlamaServerMonitor, LlamaSlotInfo, LlamaTimings, StreamItem,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, InferenceSlotInfo,
+    InferenceTimings, ServerHealth, ServerMetrics, InferenceServerMonitor, StreamItem,
 };

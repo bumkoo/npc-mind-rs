@@ -19,7 +19,8 @@ use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 
 use crate::application::event_store::EventStore;
-use crate::ports::MindRepository;
+use crate::domain::scene_id::SceneId;
+use crate::ports::{EmotionStore, NpcWorld, SceneStore};
 
 // ---------------------------------------------------------------------------
 // EventHandler 트레이트
@@ -124,7 +125,9 @@ pub enum DeliveryMode {
 /// 워커 스레드로 넘길 때(`EventHandler: Send + Sync` 계약과 맞물려) 컴파일 에러를 예방한다.
 /// `EventStore`는 트레이트 정의에 `Send + Sync`가 이미 포함되어 있어 별도 표기 불필요.
 pub struct EventHandlerContext<'a> {
-    pub repo: &'a (dyn MindRepository + Send + Sync),
+    pub world: &'a (dyn NpcWorld + Send + Sync),
+    pub emotions: &'a (dyn EmotionStore + Send + Sync),
+    pub scenes: &'a (dyn SceneStore + Send + Sync),
     pub event_store: &'a dyn EventStore,
     pub shared: &'a mut HandlerShared,
     pub prior_events: &'a [DomainEvent],
@@ -134,7 +137,7 @@ pub struct EventHandlerContext<'a> {
 impl<'a> EventHandlerContext<'a> {
     /// NPC를 저장소에서 조회하거나 에러를 반환합니다.
     pub fn get_npc(&self, id: &str) -> Result<Npc, HandlerError> {
-        self.repo
+        self.world
             .get_npc(id)
             .ok_or_else(|| HandlerError::NpcNotFound(id.to_string()))
     }
@@ -149,7 +152,7 @@ impl<'a> EventHandlerContext<'a> {
             .relationship
             .as_ref()
             .cloned()
-            .or_else(|| self.repo.get_relationship(owner_id, target_id))
+            .or_else(|| self.world.get_relationship(owner_id, target_id))
             .ok_or_else(|| HandlerError::RelationshipNotFound {
                 owner_id: owner_id.to_string(),
                 target_id: target_id.to_string(),
@@ -162,8 +165,18 @@ impl<'a> EventHandlerContext<'a> {
             .emotion_state
             .as_ref()
             .cloned()
-            .or_else(|| self.repo.get_emotion_state(npc_id))
+            .or_else(|| self.emotions.get_emotion_state(npc_id))
             .ok_or_else(|| HandlerError::EmotionStateNotFound(npc_id.to_string()))
+    }
+
+    /// Scene을 공유 상태 또는 저장소에서 조회합니다.
+    pub fn get_scene_by_id(&self, scene_id: &SceneId) -> Option<Scene> {
+        self.shared
+            .scene
+            .as_ref()
+            .filter(|s| s.npc_id() == scene_id.npc_id && s.partner_id() == scene_id.partner_id)
+            .cloned()
+            .or_else(|| self.scenes.get_scene_by_id(scene_id))
     }
 }
 
@@ -317,7 +330,9 @@ pub(crate) mod test_support {
             let aggregate_key = event.aggregate_key();
             let prior_events: Vec<DomainEvent> = Vec::new();
             let mut ctx = EventHandlerContext {
-                repo: &self.repo,
+                world: &self.repo,
+                emotions: &self.repo,
+                scenes: &self.repo,
                 event_store: &self.event_store,
                 shared: &mut self.shared,
                 prior_events: &prior_events,
@@ -450,7 +465,7 @@ mod tests {
             ctx: &mut EventHandlerContext<'_>,
         ) -> Result<HandlerResult, HandlerError> {
             self.ran.store(true, Ordering::SeqCst);
-            if ctx.repo.get_npc(self.npc_id).is_some() {
+            if ctx.world.get_npc(self.npc_id).is_some() {
                 self.saw_npc.store(true, Ordering::SeqCst);
             }
             Ok(HandlerResult::default())

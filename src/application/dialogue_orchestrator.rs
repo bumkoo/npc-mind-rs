@@ -57,12 +57,13 @@ use crate::application::dto::{
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 #[cfg(feature = "listener_perspective")]
 use crate::domain::listener_perspective::ListenerPerspectiveConverter;
+use crate::domain::memory::service::MemoryAugmentationService;
 use crate::domain::pad::{Pad, UtteranceEmbedding};
 use crate::domain::personality::Npc;
 use crate::domain::relationship::Relationship;
 use crate::ports::{
-    ChatResponse, ConversationError, ConversationPort, GuideFormatter, LlamaTimings,
-    MemoryFramer, MemoryQuery, MemoryScopeFilter, MemoryStore, MindRepository, UtteranceAnalyzer,
+    ChatResponse, ConversationError, ConversationPort, GuideFormatter, InferenceTimings,
+    MemoryFramer, MemoryStore, MindRepository, UtteranceAnalyzer,
 };
 
 // ---------------------------------------------------------------------------
@@ -82,7 +83,7 @@ pub struct DialogueTurnOutcome {
     /// NPC의 LLM 응답 텍스트
     pub npc_response: String,
     /// llama-server 성능 메트릭 (없으면 None)
-    pub timings: Option<LlamaTimings>,
+    pub timings: Option<InferenceTimings>,
     /// 자극 적용 결과 (PAD가 있을 때만)
     pub stimulus: Option<StimulusResponse>,
     /// Beat 전환 여부
@@ -479,101 +480,21 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         query: &str,
         pad: Option<(f32, f32, f32)>,
     ) -> String {
-        use crate::domain::memory::ranker::{Candidate, DecayTauTable, MemoryRanker, RankQuery};
-        use crate::domain::tuning::profile;
-
         let (Some(store), Some(framer)) = (self.memory_store.clone(), self.memory_framer.clone())
         else {
             return String::new();
         };
 
-        // 1) 임베딩 — analyzer가 있으면 쿼리 텍스트로 임베딩 생성.
-        //    analyzer는 &mut self가 필요하므로 speaker_pad도 덤으로 얻게 되지만 여기서는 emb만 사용.
-        let query_embedding: Option<Vec<f32>> = match self.analyzer.as_mut() {
-            Some(a) => match a.analyze_with_embedding(query) {
-                Ok((_pad, emb)) => emb.map(|e| e.to_vec()),
-                Err(e) => {
-                    tracing::debug!("DialogueOrchestrator.inject_memory_push: embedding 실패 {:?}", e);
-                    None
-                }
-            },
-            None => None,
-        };
-
-        // 2) MemoryStore 검색 — NpcAllowed scope, Top-K * 3 oversample (Ranker가 다시 K로 줄임)
-        let tuning = profile();
-        let top_k = tuning.memory_push_top_k;
-        let oversample = (top_k * 3).max(top_k);
-        let mem_query = MemoryQuery {
-            text: Some(query.to_string()),
-            embedding: query_embedding.clone(),
-            scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc_id.to_string())),
-            source_filter: None,
-            layer_filter: None,
-            topic: None,
-            exclude_superseded: true,
-            exclude_consolidated_source: true,
-            min_retention: Some(tuning.memory_retention_cutoff),
-            current_pad: pad,
-            limit: oversample,
-        };
-        let results = match store.search(mem_query) {
-            Ok(r) => r,
-            Err(e) => {
-                tracing::warn!("DialogueOrchestrator.inject_memory_push: store.search 실패 {:?}", e);
-                return String::new();
-            }
-        };
-        if results.is_empty() {
-            return String::new();
-        }
-
-        // 3) Ranker 적용 — 1단계 Source 우선 필터 + 2단계 5요소 점수
-        //
-        // 각 Candidate의 `embedding`은 **해당 엔트리 본인의 임베딩**이어야 1단계
-        // `cluster_by_embedding`이 의미있게 동작한다. 현재 `MemoryResult`는 엔트리
-        // 임베딩을 실어주지 않으므로, Topic 없는 후보는 각자 단독 클러스터가 되도록
-        // `None`을 전달한다. (쿼리 임베딩을 전부에 복사하면 모든 후보가 동일 클러스터로
-        // 묶여 source-priority 필터가 상위 source만 남기고 나머지를 부당하게 드롭한다.)
-        // Topic이 있는 후보는 어차피 Topic key로 그룹핑되므로 embedding은 사용되지 않는다.
-        let candidates: Vec<Candidate> = results
-            .into_iter()
-            .map(|r| Candidate {
-                entry: r.entry,
-                vec_similarity: r.relevance_score,
-                embedding: None,
-            })
-            .collect();
-        let tau = DecayTauTable::default_table();
-        let ranker = MemoryRanker::new(&tau);
-        let rq = RankQuery {
-            current_pad: pad,
-            limit: top_k,
-            min_score_cutoff: 0.0,
-        };
-        let now_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        let ranked = ranker.rank(candidates, &rq, now_ms);
-        if ranked.is_empty() {
-            return String::new();
-        }
-
-        // 4) record_recall (best-effort)
-        for r in &ranked {
-            if let Err(e) = store.record_recall(&r.entry.id, now_ms) {
-                tracing::debug!(
-                    "DialogueOrchestrator.inject_memory_push: record_recall({}) 실패 {:?}",
-                    r.entry.id,
-                    e
-                );
-            }
-        }
-
-        // 5) Framer로 블록 포맷
-        let entries: Vec<_> = ranked.into_iter().map(|r| r.entry).collect();
-        framer.frame_block(&entries, &self.memory_locale)
+        let service = MemoryAugmentationService::new();
+        service.augment(
+            npc_id,
+            query,
+            pad,
+            self.analyzer.as_mut().map(|a| a.as_mut()),
+            &*store,
+            &*framer,
+            &self.memory_locale,
+        )
     }
 
     /// 화자 PAD를 청자 관점 PAD로 변환한다 (Phase 7).

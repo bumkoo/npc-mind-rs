@@ -16,8 +16,8 @@
 
 use crate::adapter::llama_timings::TimingsCapturingClient;
 use crate::ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaHealth,
-    LlamaMetrics, LlamaServerMonitor, LlamaSlotInfo, LlamaTimings, LlmInfoProvider, LlmModelInfo,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, ServerHealth,
+    ServerMetrics, InferenceServerMonitor, InferenceSlotInfo, InferenceTimings, LlmInfoProvider, LlmModelInfo,
     StreamItem,
 };
 use futures::{Stream, StreamExt};
@@ -48,7 +48,7 @@ pub struct RigChatAdapter {
     /// 세션 맵 — Arc로 감싸 streaming task로 안전하게 이동
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     /// TimingsCapturingClient와 공유하는 timings 저장소
-    last_timings: Arc<RwLock<Option<LlamaTimings>>>,
+    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
 }
 
 /// 개별 대화 세션 상태
@@ -171,7 +171,7 @@ struct StreamingCtx {
     client: openai::CompletionsClient<TimingsCapturingClient>,
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     model_name: Arc<RwLock<String>>,
-    last_timings: Arc<RwLock<Option<LlamaTimings>>>,
+    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
 }
 
 /// 내부 streaming 실행 — mpsc 패턴은 어댑터 사적 구현 디테일.
@@ -515,8 +515,8 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
 }
 
 #[async_trait::async_trait]
-impl LlamaServerMonitor for RigChatAdapter {
-    async fn health(&self) -> Result<LlamaHealth, String> {
+impl InferenceServerMonitor for RigChatAdapter {
+    async fn health(&self) -> Result<ServerHealth, String> {
         let url = format!("{}/health", self.server_url);
         let resp = self
             .http_client
@@ -531,7 +531,7 @@ impl LlamaServerMonitor for RigChatAdapter {
             .map_err(|e| format!("헬스 응답 파싱 실패: {e}"))
     }
 
-    async fn slots(&self) -> Result<Vec<LlamaSlotInfo>, String> {
+    async fn slots(&self) -> Result<Vec<InferenceSlotInfo>, String> {
         let url = format!("{}/slots", self.server_url);
         let resp = self
             .http_client
@@ -546,7 +546,7 @@ impl LlamaServerMonitor for RigChatAdapter {
             .map_err(|e| format!("슬롯 응답 파싱 실패: {e}"))
     }
 
-    async fn metrics(&self) -> Result<LlamaMetrics, String> {
+    async fn metrics(&self) -> Result<ServerMetrics, String> {
         let url = format!("{}/metrics", self.server_url);
         let resp = self
             .http_client
@@ -560,7 +560,7 @@ impl LlamaServerMonitor for RigChatAdapter {
             .text()
             .await
             .map_err(|e| format!("메트릭 응답 읽기 실패: {e}"))?;
-        Ok(LlamaMetrics::parse(&raw))
+        Ok(ServerMetrics::parse(&raw))
     }
 }
 

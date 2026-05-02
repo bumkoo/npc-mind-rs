@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod ranker;
+pub mod service;
 
 // ---------------------------------------------------------------------------
 // MemoryScope — 기억의 소유/접근 범위

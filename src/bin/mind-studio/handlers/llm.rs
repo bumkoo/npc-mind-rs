@@ -5,7 +5,7 @@
 
 use axum::Json;
 use axum::extract::State;
-use npc_mind::ports::{LlamaHealth, LlamaMetrics, LlamaSlotInfo, LlmModelInfo};
+use npc_mind::ports::{InferenceSlotInfo, ServerHealth, ServerMetrics, LlmModelInfo};
 use serde::Serialize;
 
 use crate::state::AppState;
@@ -16,10 +16,10 @@ use super::AppError;
 /// 개별 항목 조회가 실패해도 나머지는 정상 반환한다 (부분 실패 허용).
 #[derive(Serialize)]
 pub struct LlmStatusResponse {
-    pub health: Option<LlamaHealth>,
+    pub health: Option<ServerHealth>,
     pub model: Option<LlmModelInfo>,
-    pub slots: Option<Vec<LlamaSlotInfo>>,
-    pub metrics: Option<LlamaMetrics>,
+    pub slots: Option<Vec<InferenceSlotInfo>>,
+    pub metrics: Option<ServerMetrics>,
 }
 
 /// GET /api/llm/status — 통합 서버 상태
@@ -48,7 +48,7 @@ pub async fn llm_status(
 /// GET /api/llm/health — 서버 헬스 체크
 pub async fn llm_health(
     State(state): State<AppState>,
-) -> Result<Json<LlamaHealth>, AppError> {
+) -> Result<Json<ServerHealth>, AppError> {
     let monitor = state.llm_monitor.as_ref().ok_or_else(|| {
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
@@ -63,7 +63,7 @@ pub async fn llm_health(
 /// GET /api/llm/slots — 슬롯 상태 조회
 pub async fn llm_slots(
     State(state): State<AppState>,
-) -> Result<Json<Vec<LlamaSlotInfo>>, AppError> {
+) -> Result<Json<Vec<InferenceSlotInfo>>, AppError> {
     let monitor = state.llm_monitor.as_ref().ok_or_else(|| {
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
@@ -78,7 +78,7 @@ pub async fn llm_slots(
 /// GET /api/llm/metrics — Prometheus 메트릭 조회
 pub async fn llm_metrics(
     State(state): State<AppState>,
-) -> Result<Json<LlamaMetrics>, AppError> {
+) -> Result<Json<ServerMetrics>, AppError> {
     let monitor = state.llm_monitor.as_ref().ok_or_else(|| {
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
