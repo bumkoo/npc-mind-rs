@@ -8,7 +8,7 @@
 use async_trait::async_trait;
 use futures::Stream;
 use npc_mind::ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlamaTimings,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, InferenceTimings,
     LlmModelInfo, StreamItem,
 };
 use std::collections::VecDeque;
@@ -57,7 +57,7 @@ impl MockConversationPort {
     }
 
     /// 응답 큐에 뒤(push_back)로 추가 — `send_message`가 FIFO로 소비한다.
-    pub fn with_response(self, text: &str, timings: Option<LlamaTimings>) -> Self {
+    pub fn with_response(self, text: &str, timings: Option<InferenceTimings>) -> Self {
         self.responses.lock().unwrap().push_back(ChatResponse {
             text: text.to_string(),
             timings,
