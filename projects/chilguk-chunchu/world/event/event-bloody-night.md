@@ -33,7 +33,10 @@ participants:
     - place-daejin                # 대진 — 사건 무대 (황실 와해)
     - place-namgung               # 남궁 — 6 지역 중 첫 독립 (264년차)
     - place-jiyu-doshi            # 자유도시 — 5년 후 옛 영주 위에 자연 형성
-related_events: []
+related_events:
+  - event-blood-disappearance       # 12년 전 피의 실종 — 사전 정지 작업 (인과 출발점)
+  - event-hwasan-fall               # 같은 시기 화산파 멸문 — 양방향 인과
+  - event-six-states-independence   # 직후 6국 독립 흐름 (결과)
 extras:
   trigger: 천순제 즉위 직후 권력 공백 + 혈교 잔당 침투 + 지방 영주 자립 운동 동시 폭발
   outcome: 6 지역 독립 운동 점화 → 261년차 사실상 분열 → 칠국춘추 시대 시작

@@ -327,7 +327,15 @@ fn build_api_router(state: AppState) -> Router {
             "/api/world/atlases/search",
             get(handlers::world_atlases::search_atlases),
         )
-        .route("/api/world/atlases/{id}", get(handlers::world_atlases::get_atlas));
+        .route("/api/world/atlases/{id}", get(handlers::world_atlases::get_atlas))
+        // Phase 5a Worldbuilding — Event 조회 (두 번째 인스턴스 도메인).
+        // search는 path param {id}보다 먼저 등록 — axum 매칭 우선순위.
+        .route("/api/world/events", get(handlers::world_events::list_events))
+        .route(
+            "/api/world/events/search",
+            get(handlers::world_events::search_events),
+        )
+        .route("/api/world/events/{id}", get(handlers::world_events::get_event));
 
     // MCP 라우터 병합
     let router = router.merge(mcp_server::mcp_router());

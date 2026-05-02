@@ -509,6 +509,48 @@ impl MindMcpService {
                 }
             }),
 
+            // Phase 5a Worldbuilding — Event 조회 (두 번째 인스턴스 도메인).
+            serde_json::json!({
+                "name": "list_events",
+                "description": "월드 인덱스에서 Event 목록 조회. 필터 7종: kind(betrayal|war|founding|disaster|ritual|discovery)/category(historical|scheduled|legendary)/participants_person/participants_group/participants_place/year_relative_min/year_relative_max/genre_tag. participants_* 필터는 event_participants_refs 인덱스 활용 — 특정 인물·그룹·장소 관여 사건만 추리기. year_relative는 270년차 기준 절대 연도 (음수=과거, 0=현재). world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "description": "betrayal | war | founding | disaster | ritual | discovery" },
+                        "category": { "type": "string", "description": "historical | scheduled | legendary" },
+                        "participants_person": { "type": "string", "description": "특정 인물 관여 사건만 (예: npc-02)" },
+                        "participants_group": { "type": "string", "description": "특정 그룹 관여 사건만 (예: group-daejin-court)" },
+                        "participants_place": { "type": "string", "description": "특정 장소 관여 사건만 (예: place-daejin)" },
+                        "year_relative_min": { "type": "integer", "description": "270년차 기준 절대 연도 inclusive 하한 (예: -30 = 30년 전부터)" },
+                        "year_relative_max": { "type": "integer", "description": "270년차 기준 절대 연도 inclusive 상한 (예: 0 = 현재까지)" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, historical)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_event",
+                "description": "Event ID로 단일 사건의 전체 detail 조회. 없으면 에러. participants(people·groups·places 3 카테고리 외래키 셋) + temporal(year/year_relative/duration/notes) + era_id(Phase 5b 활성) + body_sections(## 개요/## 발단/## 전개/## 결과/## 핵심 인물/## 게임에서의 역할 등) + related_events(자체 도메인 외래키) 포함. 합성 view (관여 인물·그룹·장소 detail)는 클라이언트가 participants와 list_persons/get_person 등으로 별도 호출.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "event_id": { "type": "string" }
+                    },
+                    "required": ["event_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_events",
+                "description": "FTS5 trigram 매치로 Event 검색 (name + aliases + summary + body 결합). 별호/한자/한국어/영어 모두 매칭. 본문 ## 개요·## 발단·## 결과 등 산문도 검색 대상.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -1436,6 +1478,99 @@ impl MindMcpService {
                 #[cfg(not(feature = "embed"))]
                 {
                     Err("search_atlases는 --features embed 필요".into())
+                }
+            }
+            // Phase 5a Worldbuilding — Event 조회 (두 번째 인스턴스 도메인).
+            "list_events" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::{EventCategory, EventFilter};
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let category = match arguments.get("category").and_then(|v| v.as_str()) {
+                        None => None,
+                        Some(s) => Some(EventCategory::from_str_loose(s).ok_or_else(|| {
+                            format!(
+                                "category '{s}' 알 수 없음 (허용: historical | scheduled | legendary)"
+                            )
+                        })?),
+                    };
+                    let filter = EventFilter {
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        category,
+                        participants_person: arguments
+                            .get("participants_person")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        participants_group: arguments
+                            .get("participants_group")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        participants_place: arguments
+                            .get("participants_place")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        year_relative_min: arguments
+                            .get("year_relative_min")
+                            .and_then(|v| v.as_i64())
+                            .map(|n| n as i32),
+                        year_relative_max: arguments
+                            .get("year_relative_max")
+                            .and_then(|v| v.as_i64())
+                            .map(|n| n as i32),
+                        genre_tag: arguments
+                            .get("genre_tag")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                    };
+                    let events = store
+                        .list_events(filter)
+                        .map_err(|e| format!("list_events 실패: {e}"))?;
+                    Ok(serde_json::to_value(events).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_events는 --features embed 필요".into())
+                }
+            }
+            "get_event" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::EventId;
+                    let id = arguments["event_id"].as_str().ok_or("event_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let e = store
+                        .get_event(&EventId::new(id.to_string()))
+                        .map_err(|e| format!("get_event 실패: {e}"))?;
+                    match e {
+                        Some(e) => Ok(serde_json::to_value(e).map_err(|e| e.to_string())?),
+                        None => Err(format!("event '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_event는 --features embed 필요".into())
+                }
+            }
+            "search_events" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_events(q, top_k)
+                        .map_err(|e| format!("search_events 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_events는 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {
