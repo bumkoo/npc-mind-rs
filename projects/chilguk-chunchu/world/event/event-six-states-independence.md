@@ -20,7 +20,7 @@ temporal:
     history.md §5.2-5.5에 걸친 5년 흐름을 단일 사건으로 정형. 정확한 시작점은 263년차
     동해 독립이며 종착점은 265년차 자유도시 선포·칠국 안정화. year_relative=-7은 시작점
     기준. Phase 5b Era 결합 시 era_id="era-fall-of-empire"로 정형 시간 승급 예정.
-era_id: ~
+era_id: era-fall-of-empire        # -7 ∈ [-30, 0) → era-fall-of-empire
 participants:
   people:
     - npc-03                        # 남궁혁 — 남궁 왕국 검왕, 독립 전쟁 영웅

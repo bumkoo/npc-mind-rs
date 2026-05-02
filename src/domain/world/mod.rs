@@ -17,8 +17,10 @@ pub mod lore;
 pub mod person;
 pub mod place;
 pub mod skill;
+pub mod timeline;
 
 pub use atlas::{Atlas, AtlasExtent, AtlasFilter, AtlasId};
+pub use era::{Era, EraFilter, EraId, EraTemporal};
 pub use event::{
     Event, EventCategory, EventFilter, EventId, EventTemporal, ParticipantsRefs,
 };
@@ -30,3 +32,4 @@ pub use person::{HexacoSix, Person, PersonFilter, PersonId, PersonStatus, Person
 pub use place::{
     Place, PlaceFilter, PlaceId, PlaceLayer, Spatial, detect_parent_place_cycle,
 };
+pub use timeline::{Timeline, TimelineFilter, TimelineId};

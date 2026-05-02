@@ -551,6 +551,80 @@ impl MindMcpService {
                 }
             }),
 
+            // Phase 5b Worldbuilding — Era 조회 (세 번째 인스턴스 도메인).
+            serde_json::json!({
+                "name": "list_eras",
+                "description": "월드 인덱스에서 Era 목록 조회. 필터 3종: kind(founding|prosperity|turning|decline|fall)/contains_year(특정 year_relative를 포함하는 era 검색, boundary 정책 §3.3 — start inclusive · end exclusive)/genre_tag. world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "description": "founding | prosperity | turning | decline | fall" },
+                        "contains_year": { "type": "integer", "description": "본 era가 포함하는 year_relative (270년차 기준 — 음수=과거, 0=현재). boundary 정책 §3.3 — start inclusive · end exclusive. 예: -10 → era-fall-of-empire 매칭" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, historical)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_era",
+                "description": "Era ID로 단일 시대의 전체 detail 조회. 없으면 에러. temporal(start/end_year_relative inclusive-exclusive) + key_events(events.id 시간순 권장) + body_sections(## 개요/## 핵심 트리거/## 결과 등) 포함. key_events 합성은 클라이언트가 list_events/get_event로 별도 호출.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "era_id": { "type": "string" }
+                    },
+                    "required": ["era_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_eras",
+                "description": "FTS5 trigram 매치로 Era 검색 (name + aliases + summary + body 결합). 별호/한국어/영어 모두 매칭.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
+            // Phase 5b 체크포인트 2 Worldbuilding — Timeline 조회 (두 번째 관계 도메인).
+            serde_json::json!({
+                "name": "list_timelines",
+                "description": "월드 인덱스에서 Timeline 목록 조회. 필터 3종: kind(history|biographical)/references_era(특정 era를 references에 포함하는 timeline 검색)/genre_tag. Timeline.references는 Vec<EraId>이며 events 합성은 두 단계(timeline → era → events) — `events_in` view가 era.key_events 평면화. world_store 미부착 시 에러.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": { "type": "string", "description": "history | biographical" },
+                        "references_era": { "type": "string", "description": "특정 era를 references에 포함하는 timeline 검색 (예: era-fall-of-empire)" },
+                        "genre_tag": { "type": "string", "description": "tags 배열 매칭 (예: wuxia, history)" }
+                    }
+                }
+            }),
+            serde_json::json!({
+                "name": "get_timeline",
+                "description": "Timeline ID로 단일 timeline의 전체 detail 조회. references(Vec<EraId>) + body_sections(## 개요/## Era 변천/## 핵심 인과 사슬/## 게임 시점에서의 활용 등) 포함. view 메서드(eras_in/events_in/events_during/causal_chain) 합성은 클라이언트가 references와 list_eras/get_era + list_events/get_event로 별도 호출.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "timeline_id": { "type": "string" }
+                    },
+                    "required": ["timeline_id"]
+                }
+            }),
+            serde_json::json!({
+                "name": "search_timelines",
+                "description": "FTS5 trigram 매치로 Timeline 검색 (name + aliases + summary + body 결합). 별호/한국어/영어 모두 매칭.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "top_k": { "type": "integer", "description": "결과 개수 (기본 5)" }
+                    },
+                    "required": ["query"]
+                }
+            }),
+
             // 프롬프트 오버라이드 (A/B 테스트)
             serde_json::json!({
                 "name": "set_prompt_override",
@@ -1571,6 +1645,136 @@ impl MindMcpService {
                 #[cfg(not(feature = "embed"))]
                 {
                     Err("search_events는 --features embed 필요".into())
+                }
+            }
+            // Phase 5b Worldbuilding — Era 조회 (세 번째 인스턴스 도메인).
+            "list_eras" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::EraFilter;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let filter = EraFilter {
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        contains_year: arguments
+                            .get("contains_year")
+                            .and_then(|v| v.as_i64())
+                            .map(|n| n as i32),
+                        genre_tag: arguments.get("genre_tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    };
+                    let eras = store
+                        .list_eras(filter)
+                        .map_err(|e| format!("list_eras 실패: {e}"))?;
+                    Ok(serde_json::to_value(eras).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_eras는 --features embed 필요".into())
+                }
+            }
+            "get_era" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::EraId;
+                    let id = arguments["era_id"].as_str().ok_or("era_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let e = store
+                        .get_era(&EraId::new(id.to_string()))
+                        .map_err(|e| format!("get_era 실패: {e}"))?;
+                    match e {
+                        Some(e) => Ok(serde_json::to_value(e).map_err(|e| e.to_string())?),
+                        None => Err(format!("era '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_era는 --features embed 필요".into())
+                }
+            }
+            "search_eras" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_eras(q, top_k)
+                        .map_err(|e| format!("search_eras 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_eras는 --features embed 필요".into())
+                }
+            }
+            // Phase 5b 체크포인트 2 — Timeline 조회 (두 번째 관계 도메인).
+            "list_timelines" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::{EraId, TimelineFilter};
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성 — NPC_MIND_WORLD_DB 환경변수 + world-load 실행 필요".to_string()
+                    })?;
+                    let filter = TimelineFilter {
+                        kind: arguments.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        references_era: arguments
+                            .get("references_era")
+                            .and_then(|v| v.as_str())
+                            .map(|s| EraId::new(s.to_string())),
+                        genre_tag: arguments.get("genre_tag").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    };
+                    let timelines = store
+                        .list_timelines(filter)
+                        .map_err(|e| format!("list_timelines 실패: {e}"))?;
+                    Ok(serde_json::to_value(timelines).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("list_timelines는 --features embed 필요".into())
+                }
+            }
+            "get_timeline" => {
+                #[cfg(feature = "embed")]
+                {
+                    use npc_mind::domain::world::TimelineId;
+                    let id = arguments["timeline_id"].as_str().ok_or("timeline_id is required")?;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let t = store
+                        .get_timeline(&TimelineId::new(id.to_string()))
+                        .map_err(|e| format!("get_timeline 실패: {e}"))?;
+                    match t {
+                        Some(t) => Ok(serde_json::to_value(t).map_err(|e| e.to_string())?),
+                        None => Err(format!("timeline '{}' 없음", id)),
+                    }
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("get_timeline는 --features embed 필요".into())
+                }
+            }
+            "search_timelines" => {
+                #[cfg(feature = "embed")]
+                {
+                    let q = arguments["query"].as_str().ok_or("query is required")?;
+                    let top_k = arguments.get("top_k").and_then(|v| v.as_u64()).unwrap_or(5) as u32;
+                    let store = self.state.world_store.as_ref().ok_or_else(|| {
+                        "world index 미구성".to_string()
+                    })?;
+                    let hits = store
+                        .search_timelines(q, top_k)
+                        .map_err(|e| format!("search_timelines 실패: {e}"))?;
+                    Ok(serde_json::to_value(hits).map_err(|e| e.to_string())?)
+                }
+                #[cfg(not(feature = "embed"))]
+                {
+                    Err("search_timelines는 --features embed 필요".into())
                 }
             }
             "set_prompt_override" => {

@@ -20,7 +20,7 @@ temporal:
     history.md §4.4 "[기존 초안 유지]" — 실종이 동시인지 점진인지 명시 없음. notes에서
     "수개월 또는 1년" 정도로 추정 가능하나 캐논 결정값 비움. Phase 5b Era 결합 시
     era_id="era-decline" 또는 "era-fall-of-empire"로 정형 시간 승급 — 분기점에 위치.
-era_id: ~
+era_id: era-fall-of-empire        # -12 ∈ [-30, 0) → era-fall-of-empire
 participants:
   people:
     - npc-02                        # 조고 — 배후로 의심 (history-characters §10.1)

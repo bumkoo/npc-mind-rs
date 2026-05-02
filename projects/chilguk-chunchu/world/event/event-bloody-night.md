@@ -18,7 +18,7 @@ temporal:
   notes: |
     Phase 5b Era 결합 시 era_id="era-fall-of-empire"로 정형 시간 승급 예정.
     history.md §5.1 기준 — "[기존 초안 유지]" 표기로 사흘 밤은 게임 캐논 결정값.
-era_id: ~
+era_id: era-fall-of-empire        # -10 ∈ [-30, 0) → era-fall-of-empire
 participants:
   people:
     - npc-02                      # 조고 — 사건 기획자/실행자 (history-characters §11.1)

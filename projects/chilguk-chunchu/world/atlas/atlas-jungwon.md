@@ -12,7 +12,7 @@ summary: |
 tags: [wuxia, atlas, continent, current-era]
 extras:
   era: 현재 (칠국춘추 270년차)
-  era_id: ~
+  era_id: era-fall-of-empire        # Phase 5b 외래키 활성 (Phase 4 텍스트 → 활성). 270년차는 era-fall-of-empire(240~270년차) 안에서 가장 늦은 시점의 정치 지도
   source_section: seven-nations.md §0.1·§0.2·§0.3
 extent:
   projection: schematic

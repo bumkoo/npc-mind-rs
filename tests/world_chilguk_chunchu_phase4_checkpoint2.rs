@@ -244,6 +244,10 @@ fn get_atlas_detail_contains_references_and_body_sections_and_extras() {
     }
     // extras — era 텍스트 보존.
     assert_eq!(a.era(), Some("현재 (칠국춘추 270년차)"));
-    // extras.era_id — Phase 4엔 비움 (Phase 5 외래키).
-    assert!(a.era_id().is_none());
+    // extras.era_id — Phase 5b 진입으로 era-fall-of-empire 외래키 활성됨.
+    assert_eq!(
+        a.era_id(),
+        Some("era-fall-of-empire"),
+        "Phase 5b로 atlas-jungwon.era_id가 era-fall-of-empire 외래키로 활성됨"
+    );
 }

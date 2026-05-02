@@ -74,9 +74,13 @@ fn atlas_jungwon_parses_with_expected_identity() {
     assert!(a.aliases.contains(&"중원 대륙".to_string()));
     assert!(a.aliases.contains(&"칠국 대륙".to_string()));
 
-    // extras — Phase 4 era 텍스트만, era_id는 비움 (Phase 5 진입 시 활성).
+    // extras — Phase 4 era 텍스트는 그대로, era_id는 Phase 5b 진입으로 활성됨.
     assert_eq!(a.era(), Some("현재 (칠국춘추 270년차)"));
-    assert!(a.era_id().is_none());
+    assert_eq!(
+        a.era_id(),
+        Some("era-fall-of-empire"),
+        "Phase 5b 진입으로 atlas-jungwon.era_id가 era-fall-of-empire 외래키로 활성됨"
+    );
 
     // extent — schematic 7×7
     assert_eq!(a.extent.projection, "schematic");

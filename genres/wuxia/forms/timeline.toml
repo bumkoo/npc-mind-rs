@@ -1,0 +1,25 @@
+# 무협(wuxia) Timeline 폼 — Phase N 폼 시스템 자리.
+#
+# Phase 5b 체크포인트 2에서는 폼 시스템 미가동 (마크다운 SoT 직접 작성).
+# Phase N부터 본 파일이 UI 폼 + 자동 검증 + AI 빈칸 채움의 기준이 된다.
+
+extends = "timeline"
+
+# kind 옵션 — 무협 timeline의 두 결.
+[[fields.kind.options]]
+value = "history"
+label = "역사 시간선"
+
+[[fields.kind.options]]
+value = "biographical"
+label = "전기 시간선"
+
+# Timeline → Era 외래키 — Phase 5b 체크포인트 2 활성.
+# **디렉터 변경 (체크포인트 2)**: 원래 Vec<EventId>였으나 두 단계 합성으로 정형화 —
+# timeline=era 묶음 + era=event 묶음. 사건 합성은 events_in view가 era.key_events 평면화.
+[[fields]]
+key = "references"
+label = "본 timeline에 등장하는 시대 (외래키)"
+description = "eras.id 배열. 작성 순서 = 시간순(과거 → 현재) 권장."
+type = "id_array"
+target = "era"

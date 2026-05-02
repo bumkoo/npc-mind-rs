@@ -18,7 +18,7 @@ temporal:
   notes: |
     history.md §4.2 "[기존 초안 유지]" 표기로 전쟁의 정확한 지속 기간 명시 없음.
     Phase 5b Era 결합 시 era_id="era-decline"으로 정형 시간 승급 예정.
-era_id: ~
+era_id: era-fall-of-empire        # boundary 케이스 — 240년차(=−30)는 붕괴기 시작 트리거 (§3.3)
 participants:
   people:
     - npc-01                        # 명경 — 19세 아미파 수제자, 단운(태무제) 부상 치료
