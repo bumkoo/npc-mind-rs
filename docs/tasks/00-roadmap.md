@@ -47,8 +47,9 @@ Phase 2:   Person + NPC mind 통합         ✅ 완료 (2026-05-01)
 Phase 2.1: Player follow-up               ✅ 완료 (2026-05-01)
 Phase 2.2: Runtime sync follow-up         ✅ 완료 (2026-05-01)
 Phase 3:   Place + Phase 1·2 FK 활성      ✅ 완료 (2026-05-01)
-Phase 4:   Atlas (도메인+뷰 이중성)       🔄 작전 완성 (2026-05-01)
-Phase 5:   Event + Era + Timeline view    ⏳ 예정
+Phase 4:   Atlas (도메인+뷰 이중성)       ✅ 완료 (2026-05-01)
+Phase 5a:  Event (인스턴스)               🔄 작전 완성 (2026-05-01)
+Phase 5b:  Era + Timeline view + View trait 일반화 + Atlas overlay   ⏳ 5a 종결 후
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
@@ -74,8 +75,9 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 2.1 | Player follow-up | Phase 2 | id="player" + HEXACO 시작값 + mind eligible = 8 | ✅ 완료 | `task-phase2-followup-player-character.md` + `phase2-followup-player-report.md` |
 | 2.2 | Runtime sync follow-up | Phase 2 | POST /api/world/persons/sync + emotion 보존 검증 | ✅ 완료 | `task-phase2-followup-runtime-sync.md` + `phase2-followup-runtime-sync-report.md` |
 | 3 | Place | Phase 2 | 11 Place(8 settlement+3 geography) + 외래키 0건 + sect/geography_refs 양방향 | ✅ 완료 (2026-05-01) | `task-phase3-place-vertical-slice.md` + `phase3-checkpoint{1,2}-report.md` |
-| 4 | Atlas | Phase 3 | atlas-jungwon + references 11 Place + ASCII 다이어그램 + view 메서드 (도메인+뷰 이중성) | 🔄 작전 완성 (2026-05-01) | `task-phase4-atlas-vertical-slice.md` |
-| 5 | Event + Era | Phase 4 | 270년 28사건 + Era 결합 | ⏳ | — |
+| 4 | Atlas | Phase 3 | atlas-jungwon + references 11 Place + ASCII 4단계 byte-exact + view 메서드 (도메인+뷰 이중성) | ✅ 완료 (2026-05-01) | `task-phase4-atlas-vertical-slice.md` + `phase4-checkpoint{1,2}-report.md` |
+| 5a | Event | Phase 4 | 5-10 Event + participants 외래키 활성 (people/groups/places) | 🔄 작전 완성 (2026-05-01) | `task-phase5a-event-vertical-slice.md` |
+| 5b | Era + Timeline + View trait | Phase 5a | Era + Timeline view + View trait 일반화 (Atlas+Timeline) + Atlas overlay 활성 | ⏳ | (5a 종결 후 작성) |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
 | 8 | Knowledge·Lore | — | 학문·예술 / 짐승·영물 | ⏳ | — |
@@ -222,9 +224,9 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 - city-level sub-place(낙양·독관성·검성·뒷골목) 정밀도는 Phase 5+ Atlas/Scene 통합 시 복원 검토
 - Atlas는 Phase 4로 분리 (도메인+뷰 이중성, 다음 Phase)
 
-### Phase 4 — Atlas Vertical Slice 🔄
+### Phase 4 — Atlas Vertical Slice ✅
 
-**작전 완성 (2026-05-01)** — TASK `task-phase4-atlas-vertical-slice.md`
+**완료 (2026-05-01)** — 보고서 `phase4-checkpoint{1,2}-report.md`
 
 목표: 첫 관계 도메인. 도메인+뷰 이중성 검증. 미래 관계 도메인 패밀리(Timeline·OrgChart·FamilyTree·SkillTree)의 첫 사례.
 
@@ -244,11 +246,36 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 
 체크포인트 분리 게이트 강제 적용 (Phase 1 미준수 후속).
 
-### Phase 5 — Event + Era 결합 ⏳
+### Phase 5 — 5a Event + 5b (Era + Timeline view) 분리 ⏳
 
-목표: 시간 축 + 사건. 270년 역사 28사건 + 5 시대 (history.md).
+**Phase 5는 두 결로 분리** (2026-05-01 결정):
 
-핵심: Era는 인스턴스 도메인이지만 Timeline view(Event × Era)도 함께 등장 — 두 번째 관계 도메인.
+#### Phase 5a — Event Vertical Slice 🔄
+
+**작전 완성 (2026-05-01)** — TASK `task-phase5a-event-vertical-slice.md`
+
+목표: 두 번째 인스턴스 도메인. 270년 28사건 중 핵심 5-10건 변환 + Phase 1·2·3 외래키 매트릭스 확장 (Event.participants.{people,groups,places}).
+
+핵심 결정:
+- 첫 변환 = `event-bloody-night` (붉은 밤의 변, 10년 전, player·조고 직결)
+- `EventCategory` 일급 enum (Historical·Scheduled·Legendary)
+- `EventTemporal.year_relative` 캐시 컬럼 (Era 결합 전 임시 정렬)
+- `era_id` 텍스트만 (5b에서 외래키 활성)
+- `ParticipantsRefs` (people·groups·places) 모두 외래키 hard-fail
+
+검증 게이트: 5-10 Event + 외래키 0건 + MCP 도구 3 (`list_events`·`get_event`·`search_events`).
+
+#### Phase 5b — Era + Timeline view + View trait 일반화 ⏳
+
+**5a 종결 후 작성**.
+
+세 결:
+1. **Era 도메인** — 5 시대(history.md). Event.era_id 외래키 활성.
+2. **Timeline view (Event × Era)** — 두 번째 관계 도메인. Atlas와 같은 결.
+3. **View trait 일반화** — Atlas의 places_in/settlements_in/... + Timeline의 events_in/eras_in/... 두 사례로 공통 패턴 추출. View trait 도입.
+4. **Atlas overlay 활성** — atlas-jungwon 단일 시점 → 시기별 atlas 분기 (atlas-daejin-empire 등). era_id 외래키 정형화.
+
+진입 조건: Phase 5a 종결.
 
 ### Phase 6+ — Skill · Item · Knowledge · Lore ⏳
 
@@ -294,6 +321,12 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 | 2026-05-01 | Phase 3 종결 — 11 Place + 외래키 0건 + sect/geography_refs 양방향 자동 e2e | Claude Code |
 | 2026-05-01 | city-level 단순화 일관 적용 — 낙양·독관성·검성·정암·동해 연안·자유도시 뒷골목 모두 nation/sect 단위로 통합. Phase 5+ Atlas/Scene 정밀도 복원 가능 | Cowork ↔ Claude Code |
 | 2026-05-01 | Phase 4 작전 완성 — Atlas 도메인+뷰 이중성, references 11 Place, schematic projection, ASCII byte-exact 보존, View trait 일반화는 Phase 5+ | Cowork |
+| 2026-05-01 | Phase 4 종결 — atlas-jungwon + references 11 + ASCII 4단계 byte-exact + view 메서드 e2e + REST/MCP 라이브 정성 통과 | Claude Code |
+| 2026-05-01 | SQLite FK DDL 절 정책 = application-layer 검증 (옵션 A 채택, Phase 5+ 동일 정책) | 사용자 ↔ Claude Code |
+| 2026-05-01 | **Phase 5 분리 결정** — 5a Event 인스턴스 + 5b Era + Timeline view + View trait 일반화 + Atlas overlay (Q1) | 사용자 |
+| 2026-05-01 | View trait 일반화 시점 = Phase 5b (Atlas + Timeline 두 사례로 추출, Q2) | 사용자 |
+| 2026-05-01 | 첫 Event = "붉은 밤의 변" (10년 전, player·조고 직결, Q4) | 사용자 |
+| 2026-05-01 | gameplay 다리 (Scenario·Scene·Beat·Memory 통합) = Phase 6+ (Q5) | 사용자 |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 
@@ -335,7 +368,7 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
   - 8 settlement: place-daejin·namgung·seoryang·bukwon·namman·donghae·jiyu-doshi·namgung-sega(sect)
   - 3 geography: place-western-mountains·bukwon-grasslands·namman-jungle
   - 6 distinct kind: nation·autonomous-zone·sect·mountain-range·grassland·jungle
-- **Phase 4 산출 (예정)** — `atlas/atlas-jungwon.md` × 1
+- **Phase 4 산출** — `atlas/atlas-jungwon.md` × 1 (kind=continent, references 좌상→우하 11, extent 7×7 schematic)
 - **빌드 산출물 (gitignore)** — `build/world.sqlite` (Phase 3 후 +α)
 
 ### 미작성 인물 (Phase 5+ 풍부화 후보)
