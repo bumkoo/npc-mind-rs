@@ -5,7 +5,7 @@
 //!
 //! axum을 mock 서버로 사용하여 실제 llama-server 없이 테스트한다.
 
-#![cfg(feature = "chat")]
+#![cfg(all(feature = "chat", feature = "mind-studio"))]
 
 use npc_mind::ports::{ChatResponse, InferenceTimings};
 use std::sync::{Arc, Mutex};

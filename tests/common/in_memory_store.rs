@@ -145,6 +145,14 @@ impl MemoryStore for InMemoryMemoryStore {
                     .unwrap_or(true)
             })
             .filter(|(e, _)| {
+                // text (keyword)
+                query
+                    .text
+                    .as_ref()
+                    .map(|kw| e.content.to_lowercase().contains(&kw.to_lowercase()))
+                    .unwrap_or(true)
+            })
+            .filter(|(e, _)| {
                 // exclude_superseded
                 !query.exclude_superseded || e.superseded_by.is_none()
             })
