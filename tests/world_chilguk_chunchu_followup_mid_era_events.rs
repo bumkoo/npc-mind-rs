@@ -83,6 +83,24 @@ fn era_dir() -> PathBuf {
     project_root().join("projects/chilguk-chunchu/world/era")
 }
 
+/// 디렉토리에서 .md 파일 stem을 동적으로 수집해 등록된 도메인 id 셋을 반환한다.
+/// 하드코딩 상수와의 drift 위험을 막기 위한 헬퍼 — `world-load`가 인덱싱하는
+/// 전체 id 목록과 동일한 결과를 반환한다.
+fn load_registered_ids(domain_subdir: &str) -> HashSet<String> {
+    let dir = project_root().join("projects/chilguk-chunchu/world").join(domain_subdir);
+    std::fs::read_dir(&dir)
+        .unwrap_or_else(|_| panic!("missing dir: {}", dir.display()))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("md"))
+        .filter_map(|p| {
+            p.file_stem()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })
+        .collect()
+}
+
 fn load_event(id: &str) -> Event {
     let path = event_dir().join(format!("{id}.md"));
     let raw = std::fs::read_to_string(&path)
@@ -401,24 +419,18 @@ fn event_id_namespace_consistency() {
 
 #[test]
 fn participants_groups_use_only_registered_groups() {
-    // 6 mid-era event의 participants.groups가 등록된 6 group 중에서만 참조.
-    let registered_groups: HashSet<&str> = [
-        "group-cheonma-shingyo",
-        "group-daejin-court",
-        "group-gaebang",
-        "group-mulim-mang",
-        "group-namgung",
-        "group-shipsangsi",
-    ]
-    .into_iter()
-    .collect();
+    // 6 mid-era event의 participants.groups가 실제 등록된 group 중에서만 참조.
+    // 디렉토리 스캔으로 동적 수집해 하드코딩 drift를 방지.
+    let registered_groups = load_registered_ids("group");
 
     for &(id, _, _, _) in MID_ERA_EVENTS {
         let event = load_event(id);
         for group in &event.participants.groups {
             assert!(
                 registered_groups.contains(group.as_str()),
-                "{id}: participants.groups의 {group}이 등록된 group이 아님"
+                "{id}: participants.groups의 {group}이 등록된 group이 아님 \
+                 (등록된 groups: {:?})",
+                registered_groups
             );
         }
     }
@@ -426,29 +438,18 @@ fn participants_groups_use_only_registered_groups() {
 
 #[test]
 fn participants_places_use_only_registered_places() {
-    // 6 mid-era event의 participants.places가 등록된 11 place 중에서만 참조.
-    let registered_places: HashSet<&str> = [
-        "place-daejin",
-        "place-donghae",
-        "place-namman",
-        "place-namgung",
-        "place-seoryang",
-        "place-jiyu-doshi",
-        "place-bukwon",
-        "place-jungwon",
-        "place-hwasan",
-        "place-sorim",
-        "place-mudang",
-    ]
-    .into_iter()
-    .collect();
+    // 6 mid-era event의 participants.places가 실제 등록된 place 중에서만 참조.
+    // 디렉토리 스캔으로 동적 수집해 하드코딩 drift를 방지.
+    let registered_places = load_registered_ids("place");
 
     for &(id, _, _, _) in MID_ERA_EVENTS {
         let event = load_event(id);
         for place in &event.participants.places {
             assert!(
                 registered_places.contains(place.as_str()),
-                "{id}: participants.places의 {place}이 등록된 place가 아님"
+                "{id}: participants.places의 {place}이 등록된 place가 아님 \
+                 (등록된 places: {:?})",
+                registered_places
             );
         }
     }
