@@ -36,6 +36,7 @@ participants:
     - place-namgung               # 남궁 — 6 지역 중 첫 독립 (264년차)
     - place-jiyu-doshi            # 자유도시 — 5년 후 옛 영주 위에 자연 형성
 related_events:
+  - event-taemuje-enthronement      # 23년 전 즉위 — 태무제 시대 황실 권위 손상의 붕괴 트리거 (Phase 5c.2 역방향 활성)
   - event-blood-disappearance       # 12년 전 피의 실종 — 사전 정지 작업 (인과 출발점)
   - event-hwasan-fall               # 같은 시기 화산파 멸문 — 양방향 인과
   - event-six-states-independence   # 직후 6국 독립 흐름 (결과)
