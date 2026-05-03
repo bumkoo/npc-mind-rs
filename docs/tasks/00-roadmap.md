@@ -51,7 +51,7 @@ Phase 4:   Atlas (도메인+뷰 이중성)       ✅ 완료 (2026-05-01)
 Phase 5a:  Event (인스턴스)               ✅ 완료 (2026-05-02)
 Phase 5b:  Era + Timeline + Atlas overlay (View trait 보류)   ✅ 완료 (2026-05-02)
 Phase 5c.1: Historical NPCs follow-up (D2 처리)   ✅ 완료 (2026-05-02)
-Phase 5c.2: Mid-era Events follow-up               🔄 작전 작성 완료 (Claude Code 대기, 2026-05-03)
+Phase 5c.2: Mid-era Events follow-up               ✅ 완료 (2026-05-03) ★ Phase 5 시리즈 종결
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
@@ -81,7 +81,7 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 5a | Event | Phase 4 | 6 Event + participants 외래키 0건 + related_events 양방향 + alias 패턴 일관 | ✅ 완료 (2026-05-02) | `task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` |
 | 5b | Era + Timeline + Atlas overlay | Phase 5a | 5 Era + 1 Timeline + view 메서드 4종 + Atlas overlay 양방향 + 외래키 0건 | ✅ 완료 (2026-05-02) | `task-phase5b-era-timeline-vertical-slice.md` + `phase5b-checkpoint{1,2}-report.md` |
 | 5c.1 | Historical NPCs follow-up | Phase 5b | 임서운 + 7 historical/active npc + Phase 5a Event 외래키 갱신 (핵심 분기 0건) | ✅ 완료 (2026-05-02) | `task-phase5-followup-historical-npcs.md` + `phase5-followup-historical-npcs-checkpoint{1,2}-report.md` |
-| 5c.2 | Mid-era Events follow-up | 5c.1 | 6 mid-era event (founding 1·prosperity 1·turning 3·decline 1) + era key_events 4종 갱신 + Phase 5a 6 event related_events 역방향 정합 + 5c.1 npc 외래키 활성 | 🔄 작전 작성 완료 (2026-05-03) | `task-phase5-followup-mid-era-events.md` |
+| 5c.2 | Mid-era Events follow-up | 5c.1 | 6 mid-era event (founding 1·prosperity 1·turning 3·decline 1) + era key_events 4종 갱신 + Phase 5a 6 event related_events 역방향 정합 + 5c.1 npc 외래키 활성 + 신규 kind 5종 도입 | ✅ 완료 (2026-05-03) ★ Phase 5 시리즈 종결 | `task-phase5-followup-mid-era-events.md` + `phase5-followup-mid-era-events-checkpoint{1,2}-report.md` |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
 | 8 | Knowledge·Lore | — | 학문·예술 / 짐승·영물 | ⏳ | — |
@@ -250,9 +250,11 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 
 체크포인트 분리 게이트 강제 적용 (Phase 1 미준수 후속).
 
-### Phase 5 — 5a Event + 5b (Era + Timeline view) 분리 ⏳
+### Phase 5 — Event + Era/Timeline + Historical NPCs + Mid-era Events ✅
 
-**Phase 5는 두 결로 분리** (2026-05-01 결정):
+**Phase 5 시리즈 종결 (2026-05-03)** — 5a + 5b + 5c.1 + 5c.2 모두 완료. 전체 산출: **12 event · 5 era · 1 timeline · 16 person · 6 group · 11 place · 1 atlas + atlas-era overlay**. 270년 통사가 era boundary·event 인과·historical npc 외래키로 정형 완료, Phase 6+ (Skill·Item·Knowledge·Lore) 진입 가능 상태.
+
+**Phase 5는 네 결로 분리** (2026-05-01 5a/5b 분리, 2026-05-02 5c.1 follow-up, 2026-05-03 5c.2 follow-up):
 
 #### Phase 5a — Event Vertical Slice ✅
 
@@ -303,6 +305,54 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 알려진 boundary 케이스: bloody-cult-rebellion-2nd(-30)이 era-decline 끝 vs era-fall-of-empire 시작. 디렉터 결정 (체크포인트 1 보고서).
 
 진입 조건: Phase 5a 종결 (✅ 완료).
+
+#### Phase 5c.1 — Historical NPCs follow-up ✅
+
+**완료 (2026-05-02)** — 보고서 `phase5-followup-historical-npcs-checkpoint{1,2}-report.md`
+
+D2 결정 후속. Phase 5a/5b body의 `(npc 미등록)` 텍스트 인물을 정식 시드로 등록 + 외래키 활성.
+
+산출:
+- 4 historical (npc-im-seoun 임서운 / npc-chuyangjinin 추양진인 / npc-jincheonmyeong 진천명 / npc-danun 단운=태무제) + npc-08·09·10 풍부화 + npc-11 stub→정식 = persons 9 → 16
+- mind eligible 9 → 12 (player + 11 active)
+- Phase 5a 6 Event participants 외래키 활성 (bloody-night·hwasan-fall·blood-disappearance에 임서운·추양진인 합류)
+- `extras.heritage_doc_pending` + `extras.hexaco_confidence` **직교 플래그** 정착 (Phase 2 단일 `source_status` 분리). 단운(npc-danun)이 `false` + `precise` 첫 사례 — 본기 .md 존재
+- `extras.secret` 컨벤션 (산문 SoT + 머신 리더블 미러)
+
+후속 chore 2건 (2026-05-02 commits `dec3e61`·`f35f002`):
+- event-blood-disappearance에 npc-11 소풍자 추가 (개방 15명 구출조 인솔자)
+- task §3.4 historical 인물 분류 정책 정형화 (4 조건 규칙)
+
+#### Phase 5c.2 — Mid-era Events follow-up ✅ ★ Phase 5 시리즈 종결
+
+**완료 (2026-05-03)** — 보고서 `phase5-followup-mid-era-events-checkpoint{1,2}-report.md` (PR #76 merged)
+
+D2 두 번째 후속. Phase 5b body의 mid-era 빈 `key_events` 슬롯을 채워 270년 통사 timeline 한가운데 공백 해소.
+
+산출:
+- 6 신규 event (events 6 → 12):
+  - event-taemuje-enthronement (-33, era-decline, kind=founding)
+  - event-byeongkwon-recall (-240, era-founding, kind=reform-fail ★신규)
+  - event-mulim-conference-1st (-170, era-prosperity, kind=convention ★신규)
+  - event-sapa-formation (-140, era-turning, kind=schism ★신규)
+  - event-jachi-movement (-110, era-turning, kind=political-movement ★신규)
+  - event-cult-remnant-discovery (-80, era-turning, kind=discovery ★신규)
+- era 4종 key_events 슬롯 채움 (founding 2 / prosperity 1 / turning 3 / decline 1 / fall-of-empire 5 = 12 total)
+- Phase 5a 3 event related_events 역방향 갱신 (empire-founding·six-states-independence·bloody-cult-rebellion-2nd)
+- Event.kind 카탈로그 9종 정형 (founding·war·betrayal·disaster·convention·schism·political-movement·reform-fail·discovery)
+- 신규 e2e 14 testcase (라운드트립 + boundary + bidirectional + kind + FK + 회귀 가드) — 14 binaries 합쳐 135 cases passed
+- 사료 정합 우선 정책 일관 적용:
+  - Q4 (체크포인트 1): npc-02 §상세 연표 직접 검토 → 즉위 시점(237년차) 22세 하급 관리, 십상시 245년차 결성 → participants 미포함
+  - 추양진인 결정 (체크포인트 2): cult-remnant-discovery는 1세대(진여) 발견, 추양진인은 80년 후 5세대 계승자 → participants 미포함
+
+진입 조건: Phase 5c.1 종결 (✅ 완료).
+
+---
+
+**Phase 5 종결 시점 외부 시스템 가시성**:
+- world-load CLI: events indexed 0 → 12, eras 0 → 5, persons 9 → 16, mind eligible 8 → 12, fk errors=0
+- Mind Studio REST: `/api/world/{groups,persons,places,atlases}` 4 도메인 + Person 자동 NPC 등록
+- e2e 회귀: 14 world test binary, 135 testcase, 0 failed
 
 ### Phase 6+ — Skill · Item · Knowledge · Lore ⏳
 

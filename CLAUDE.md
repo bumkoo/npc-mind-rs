@@ -443,9 +443,7 @@ pub trait EventHandler: Send + Sync {
 **EventMetadata 활성** (2026-04-25): 모든 이벤트는 `correlation_id`(dispatch_v2 호출
 단위 cid, 1부터) + `parent_event_id`(BFS 큐잉 시 자동) + `cascade_depth` 필드를
 가진다. `EventStore::get_events_by_correlation(cid)` + Mind Studio
-`/api/projection/trace/{cid}`로 한 dispatch의 전체 인과 트리 조회 가능. 변경 이력:
-[`docs/changes/2026-04-25-correlation-id-activation.md`](docs/changes/2026-04-25-correlation-id-activation.md) +
-[`docs/changes/2026-04-25-parent-event-id-activation.md`](docs/changes/2026-04-25-parent-event-id-activation.md).
+`/api/projection/trace/{cid}`로 한 dispatch의 전체 인과 트리 조회 가능.
 
 ### EventBus (tokio::broadcast 기반)
 
@@ -557,7 +555,7 @@ relevance_score = `1.0 - cosine_distance`.
 | **Memory Step D** | ✅ 완료 (+리뷰 반영) | `Command::ApplyWorldEvent` + `ApplyWorldEventRequest` DTO + `WorldOverlayPolicy` (Transactional, priority `WORLD_OVERLAY=25`) + `WorldOverlayHandler` (Inline, priority `WORLD_OVERLAY_INGESTION=45`) — Canonical `MemoryEntry(scope=World, provenance=Seeded)` 생성 + 같은 topic **Canonical 1건만** supersede (다른 NPC의 Personal Heard/Rumor는 보존, 리뷰 B1). `SceneConsolidationHandler` (Inline, priority `SCENE_CONSOLIDATION=60`) — `SceneEnded` 구독 → **참여 NPC별**로 자기 Layer A(`DialogueTurn/BeatTransition`)만 수집해 Personal Scope `SceneSummary` Layer B 엔트리 생성 + `mark_consolidated`, `topic="scene:{a}:{b}"` (리뷰 B3, M7). 휴리스틱 첫·끝 content 요약 (120자 cap). `RelationshipMemoryHandler` (Inline, priority `RELATIONSHIP_MEMORY=50`) — `RelationshipUpdated.cause` 5 variant별 source/topic/content 분기 (`MEMORY_RELATIONSHIP_DELTA_THRESHOLD=0.05` 미만 skip, 주도 축 라벨 content에 포함 — 리뷰 H4). `RelationshipPolicy.BeatTransitioned` 경로에서 cause=`SceneInteraction { scene_id }` 설정. Builder: `with_memory(store)` = lean Telling만, `with_memory_full(store)` = Step D 4종 전체 (리뷰 H5). 16개 통합 테스트 (consolidation 3 + world overlay 7 + relationship cause 7 E2E 포함) + 17개 단위 테스트. 범위 외 (Step F): LLM 기반 Consolidator / witness 개별 MemoryEntry / target 관점 Relationship 엔트리 / DialogueEnd cause=SceneInteraction 승격. |
 | **Memory Step E1** | ✅ 완료 (+리뷰 반영) | Mind Studio 백엔드 REST + SSE 배선. `AppState`에 embed-gated `memory_store`/`rumor_store` 필드 + `shared_dispatcher`에 `with_memory_full` + `with_rumor` 자동 부착 (`NPC_MIND_MEMORY_DB` 환경변수, 미설정 시 `:memory:`). `RumorStore::list_all()` 포트 메서드 신설 (+ Sqlite·InMemory·Spy 3종 impl). REST 10 엔드포인트 (`/api/memory/{search,by-npc/{id},by-topic/{topic},canonical/{topic},entries,tell}` + `/api/world/apply-event` + `/api/rumors{,/seed,/{id}/spread}`, 전부 embed feature gated). `domain_sync`에 4 dispatch 헬퍼 (`tell_information`/`apply_world_event`/`seed_rumor`/`spread_rumor`). SSE `StateEvent` 5 variant (`MemoryCreated/Superseded/Consolidated`, `RumorSeeded/Spread`). 통합 테스트 5종 (manual seed / tell+SSE / world apply → canonical / by-topic history / seed+spread). 커밋 `3356675` + 사후 리뷰 `e63d638` (M1 Superseded SSE 오탐 제거, M2 by-topic limit 쿼리, M4 search 스모크, L5 `&mut *inner` 스타일 통일). 범위 외: 프런트엔드 UI → Step E2, 시나리오 JSON `initial_rumors`/`world_knowledge` → Step E3, director_v2 배선/Memory 이벤트 팬아웃 → Step F. |
 | **Memory Step E3.3** | ✅ 완료 (+follow-up) | 시드 조회 UI + 로드 warnings 가시화. `GET /api/scenario-seeds` 엔드포인트 — `StateInner.scenario_seeds`(E3.2에서 추가됨) 그대로 반환. 프런트에 `useSceneStore.scenarioSeeds` + `ScenarioSeedsView` 조회 전용 패널 (ResultPanel "시드" 탭, 4 섹션 · RumorSeedRow 4-tier 변종 라벨 · 메모리 메타 뱃지 · 빈 상태 안내). `loadHandlers.loadScenario`가 `LoadResponse.applied_*` count를 success 토스트에, `warnings`를 error 토스트(3건 초과 시 묶음 + `console.warn` 폴백, `String()` 방어)로 노출. `useStateSync`가 초기 마운트 + `scenario_loaded/result_loaded` 시 `/api/scenario-seeds` fetch(useRefresh는 제외 — CRUD refresh 오염 방지). 커밋 `fcf50ec` + follow-up(M1 이중 fetch · M2 토스트 스팸 · L1/L3/L4 방어·라벨링). 범위 외: 시드 편집 GUI · §17.3 결정 3 정식 문서화. |
-| **EventMetadata 활성** | ✅ 완료 (2026-04-25) | `correlation_id` (dispatch_v2 호출 단위 cid 자동 발급, 함수 로컬) + `parent_event_id` (BFS 큐잉 시 자동) + `cascade_depth` 활성화. `EventStore::get_events_by_correlation(cid)` 신설. Mind Studio `GET /api/projection/trace/{cid}` 엔드포인트로 한 dispatch의 인과 트리 조회. 변경 로그: [`docs/changes/2026-04-25-correlation-id-activation.md`](docs/changes/2026-04-25-correlation-id-activation.md). |
+| **EventMetadata 활성** | ✅ 완료 (2026-04-25) | `correlation_id` (dispatch_v2 호출 단위 cid 자동 발급, 함수 로컬) + `parent_event_id` (BFS 큐잉 시 자동) + `cascade_depth` 활성화. `EventStore::get_events_by_correlation(cid)` 신설. Mind Studio `GET /api/projection/trace/{cid}` 엔드포인트로 한 dispatch의 인과 트리 조회. |
 | **Worldbuilding Phase 0** | ✅ 완료 | Lore RAG MCP — wuxia-core/docs EPUB 22권 인덱싱 + `search_lore`/`list_corpora`/`get_chunk` MCP 도구. `data/corpus/lore.sqlite` 자동 부착. |
 | **Worldbuilding Phase 1** | ✅ 완료 (2026-04-30) | Group 도메인 (`domain/world/group.rs`) — temporal·parent·allied/rival 관계, 마크다운 frontmatter+H2 파서. SqliteWorldStore + `world-load` CLI. 6 Group 통과. |
 | **Worldbuilding Phase 2** | ✅ 완료 (2026-05-01) | Person 도메인 + HEXACO 6-dim — Group 외래키 활성. `mind_sync.rs::person_to_npc`로 active/player Person 자동 NPC 등록. **2.1 Player follow-up** (id="player" 시작값) + **2.2 Runtime sync** (`POST /api/world/persons/sync`, emotion 보존). |
@@ -569,7 +567,7 @@ relevance_score = `1.0 - cosine_distance`.
 | Phase 7 (npc-mind) | 미구현 | WorldKnowledgeStore (세계관 정적 지식) — Worldbuilding Phase 6+가 이를 흡수 검토 |
 | Phase 8 (npc-mind) | 미구현 | SummaryAgent (컨텍스트 윈도우 관리) |
 
-전체 B안 설계 참조: [`docs/architecture/b-plan-implementation.md`](docs/architecture/b-plan-implementation.md). API 변경 로그: [`docs/changes/`](docs/changes/).
+전체 B안 설계 참조: [`docs/architecture/b-plan-implementation.md`](docs/architecture/b-plan-implementation.md).
 
 ## 개발 컨벤션
 
@@ -880,8 +878,7 @@ end_session(sid, significance?)
 - **EventHandler 카탈로그**: [`docs/architecture/event-handler-catalog.md`](docs/architecture/event-handler-catalog.md)
 - **프론트엔드 아키텍처**: [`docs/architecture/frontend-architecture.md`](docs/architecture/frontend-architecture.md) — Vite+React+Zustand 구조, 스토어 설계, 데이터 흐름, 컴포넌트 트리
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
-- **변경 로그**: [`docs/changes/`](docs/changes/) — 공개 API/이벤트 스키마/HTTP 엔드포인트 변경 시간순 기록 (correlation-id-activation 등)
-- **Worldbuilding 로드맵**: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report
+- **Worldbuilding 로드맵**: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report (`docs/tasks/archive/` 종결분 보존)
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **Listener-perspective 변환** (Phase 7): [`docs/emotion/sign-classifier-design.md`](docs/emotion/sign-classifier-design.md) (부호/강도 분류기 설계 + §3.7 Register 전략) + [`docs/emotion/phase7-converter-integration.md`](docs/emotion/phase7-converter-integration.md) (프로덕션 통합, **Step 1-5+ 완료** — 88% baseline, default-on, DialogueOrchestrator · Mind Studio 통합, §6.1 테스트 카탈로그 71개)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
