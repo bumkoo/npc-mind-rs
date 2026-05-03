@@ -37,6 +37,7 @@ participants:
     - place-jiyu-doshi              # 자유도시 — 265년차 선포 (옛 영주 위에 자연 형성)
     - place-daejin                  # 대진 — 수도 낙양 + 중원 일부만 보유한 축소 제국
 related_events:
+  - event-jachi-movement            # 103년 전 (-110) — 본 사건의 110년 누적 출발점 (Phase 5c.2 역방향 활성)
   - event-bloody-night              # 260년차 직접 트리거 — 황실 와해
 extras:
   trigger: 붉은 밤의 변(260년차) 후 110년 누적된 지방 자치 운동의 폭발 + 황실의 토벌 능력 부족

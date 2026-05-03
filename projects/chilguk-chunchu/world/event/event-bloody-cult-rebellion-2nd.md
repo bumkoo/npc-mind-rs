@@ -33,6 +33,7 @@ participants:
     - place-daejin                  # 대진 영토 — 전쟁 무대
 related_events:
   - event-empire-founding           # 270년 전 격퇴된 혈교의 부활 — "멸망 판정" 빗나감
+  - event-cult-remnant-discovery    # 50년 전 (-80) — 화산파의 혈교 잔당 발견이 80년 인과 사슬의 시작 (Phase 5c.2 역방향 활성)
   - event-taemuje-enthronement      # 3년 전 즉위 — ③ 수명 연장 거래의 직접 원인 (Phase 5c.2 역방향 활성)
   - event-blood-disappearance       # 18년 후 피의 실종 — 혈교 정보 인물 선택적 제거의 시작
 extras:

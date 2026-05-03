@@ -16,7 +16,10 @@ temporal:
   notes: |
     history.md §0.2의 5 시대 중 가장 긴 80년 (120~200년차 = 150~70년 전).
     boundary 정책 §3.3.
-key_events: []
+key_events:
+  - event-sapa-formation           # 130년차 (year_relative=-140) — 사파 3파벌 형성 (Phase 5c.2)
+  - event-jachi-movement           # 160년차 (year_relative=-110) — 변경 자치 운동 시작 (Phase 5c.2)
+  - event-cult-remnant-discovery   # 190년차 (year_relative=-80)  — 화산파 혈교 잔당 발견 (Phase 5c.2)
 extras:
   game_role: 게임 내 갈등 대부분의 뿌리 시대 — 사파·자치·혈교 세 흐름 모두 본 시대에서
   player_relevance: 2
