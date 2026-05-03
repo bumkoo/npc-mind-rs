@@ -34,6 +34,7 @@ participants:
   places:
     - place-daejin                  # 대진 영토 — 사건 무대
 related_events:
+  - event-taemuje-enthronement      # 21년 전 즉위 — 태무제 시대 권력 균열 누적의 인과 출발점 (Phase 5c.2 역방향 활성)
   - event-bloody-cult-rebellion-2nd # 18년 전 혈교 전쟁 — 정보 인물 표적의 원인
   - event-bloody-night              # 2년 후 붉은 밤의 변 — 사전 정지 작업의 본 사건
   - event-hwasan-fall               # 2년 후 화산파 멸문 — 사전 정지 작업의 결과
