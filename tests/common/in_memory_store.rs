@@ -119,7 +119,6 @@ impl MemoryStore for InMemoryMemoryStore {
                         MemoryScope::Personal { npc_id } => npc_id == npc,
                         MemoryScope::World { .. } => true,
                         MemoryScope::Relationship { a, b } => a == npc || b == npc,
-                        // Faction/Family 소속 Join은 Step A 범위 밖
                         _ => false,
                     },
                 }
@@ -149,7 +148,10 @@ impl MemoryStore for InMemoryMemoryStore {
                 query
                     .text
                     .as_ref()
-                    .map(|kw| e.content.to_lowercase().contains(&kw.to_lowercase()))
+                    .map(|kw| {
+                        let kw_lower = kw.to_lowercase();
+                        e.content.to_lowercase().contains(&kw_lower)
+                    })
                     .unwrap_or(true)
             })
             .filter(|(e, _)| {
@@ -172,7 +174,11 @@ impl MemoryStore for InMemoryMemoryStore {
             })
             .collect();
 
-        results.sort_by(|a, b| b.relevance_score.partial_cmp(&a.relevance_score).unwrap());
+        results.sort_by(|a, b| {
+            b.relevance_score
+                .partial_cmp(&a.relevance_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         if query.limit > 0 {
             results.truncate(query.limit);
         }
