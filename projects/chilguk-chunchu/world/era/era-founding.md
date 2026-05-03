@@ -18,6 +18,7 @@ temporal:
     boundary 정책 §3.3 — start inclusive · end exclusive.
 key_events:
   - event-empire-founding         # 원년 (year_relative=-270) — 시대 시작점
+  - event-byeongkwon-recall       # 30년차 (year_relative=-240) — 무림 독자 무력 관행 확립 (Phase 5c.2)
 extras:
   game_role: NPC 대사 "선조의 영광"·"270년 전 약속"·"원년의 맹약" 모두 본 시대 참조
   player_relevance: 2
@@ -39,11 +40,15 @@ extras:
 - 30년차 병권 회수 시도 등 50년차까지의 후속 흐름이 시작됨
 
 ## 핵심 인물
-- (npc 미등록) 태조 진천명: 대진 건국 황제
+- npc-jincheonmyeong 태조 진천명: 대진 건국 황제 (Phase 5c.1·5c.2 외래키 활성)
 - (npc 미등록) 현무진인: 무당파, 초대 무림맹주
 - (npc 미등록) 자양진인: 화산파 개조 (혈교 토벌 선봉)
 - (npc 미등록) 원혜대사: 소림 방장
 - (npc 미등록) 천리안: 개방 초대 방주
+- (npc 미등록) 3대 태광제(진태광): 30년차 병권 회수 시도 발의자 (event-byeongkwon-recall)
+- (npc 미등록) 진무양: 화산 장문인, 등록제 단호 거부 선봉
+- (npc 미등록) 혜안 대사: 소림 방장, 등록제 수용 의향
+- (npc 미등록) 태허진인: 무당 장문인, 중재 시도
 
 ## 게임에서의 역할
 - 시대 시작점 — NPC 대사가 본 시대를 참조할 때 "선조의 영광"·"270년 전 약속" 등으로 등장

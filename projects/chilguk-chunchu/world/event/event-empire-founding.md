@@ -31,6 +31,7 @@ participants:
     - place-daejin                  # 대진 영토 — 신생 제국 무대
 related_events:
   - event-bloody-cult-rebellion-2nd # 270년 후 혈교 부활 — "멸망 판정"이 빗나간 결과
+  - event-byeongkwon-recall         # 30년 후 (-240) — 무림-조정 맹약(구두) 해석 분쟁의 첫 표면화 (Phase 5c.2 역방향 활성)
 extras:
   trigger: 혈교가 대륙을 장악한 상황에서 각지의 무인이 연합 결성
   outcome: 대진 건국 + 구파일방 결성 + 무림-조정 상호존중 맹약(구두) — 270년간의 약속 출발점
