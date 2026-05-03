@@ -47,7 +47,7 @@ impl MemoryAugmentationService {
         let oversample = (top_k * 3).max(top_k);
         
         let mem_query = MemoryQuery {
-            text: Some(query.to_string()),
+            text: None,
             embedding: query_embedding,
             scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc_id.to_string())),
             source_filter: None,

@@ -51,7 +51,7 @@ Phase 4:   Atlas (도메인+뷰 이중성)       ✅ 완료 (2026-05-01)
 Phase 5a:  Event (인스턴스)               ✅ 완료 (2026-05-02)
 Phase 5b:  Era + Timeline + Atlas overlay (View trait 보류)   ✅ 완료 (2026-05-02)
 Phase 5c.1: Historical NPCs follow-up (D2 처리)   ✅ 완료 (2026-05-02)
-Phase 5c.2: Mid-era Events follow-up               🔄 작전 작성 예정
+Phase 5c.2: Mid-era Events follow-up               🔄 작전 작성 완료 (Claude Code 대기, 2026-05-03)
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
@@ -81,7 +81,7 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 5a | Event | Phase 4 | 6 Event + participants 외래키 0건 + related_events 양방향 + alias 패턴 일관 | ✅ 완료 (2026-05-02) | `task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` |
 | 5b | Era + Timeline + Atlas overlay | Phase 5a | 5 Era + 1 Timeline + view 메서드 4종 + Atlas overlay 양방향 + 외래키 0건 | ✅ 완료 (2026-05-02) | `task-phase5b-era-timeline-vertical-slice.md` + `phase5b-checkpoint{1,2}-report.md` |
 | 5c.1 | Historical NPCs follow-up | Phase 5b | 임서운 + 7 historical/active npc + Phase 5a Event 외래키 갱신 (핵심 분기 0건) | ✅ 완료 (2026-05-02) | `task-phase5-followup-historical-npcs.md` + `phase5-followup-historical-npcs-checkpoint{1,2}-report.md` |
-| 5c.2 | Mid-era Events follow-up | 5c.1 | era-prosperity·turning·decline 5-10 사건 추가 + 5c.1 historical npc 활용 | 🔄 작전 작성 예정 | (다음 단계) |
+| 5c.2 | Mid-era Events follow-up | 5c.1 | 6 mid-era event (founding 1·prosperity 1·turning 3·decline 1) + era key_events 4종 갱신 + Phase 5a 6 event related_events 역방향 정합 + 5c.1 npc 외래키 활성 | 🔄 작전 작성 완료 (2026-05-03) | `task-phase5-followup-mid-era-events.md` |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
 | 8 | Knowledge·Lore | — | 학문·예술 / 짐승·영물 | ⏳ | — |

@@ -648,6 +648,11 @@ impl MemoryStore for SqliteMemoryStore {
                 }
             }
 
+        if let Some(ref text) = query.text {
+            where_parts.push(format!("content LIKE ?{}", binds.len() + 1));
+            binds.push(Box::new(format!("%{}%", text)));
+        }
+
         if let Some(layer) = query.layer_filter {
             where_parts.push(format!("layer = ?{}", binds.len() + 1));
             binds.push(Box::new(layer_as_persisted(layer).to_string()));

@@ -47,6 +47,11 @@ fn seed_store_with_memories(
     store: &common::in_memory_store::InMemoryMemoryStore,
     npc_id: &str,
 ) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64;
+
     // 서로 다른 Source 두 건을 시드 — Experienced + Heard. Ranker 1단계에서
     // topic이 없으므로 둘 다 살아남고, 2단계 점수에서 vec_similarity=1.0(키워드 경로)로
     // 동률 근방이다.
@@ -55,7 +60,7 @@ fn seed_store_with_memories(
         npc_id,
         "예전에 사부님께 검법의 진수를 전수받았다",
         None,
-        100,
+        now - 1000,
         1,
         MemoryType::DialogueTurn,
     );
@@ -67,7 +72,7 @@ fn seed_store_with_memories(
         npc_id,
         "교룡이 무림맹에 가담했다는 말을 들었다",
         None,
-        200,
+        now - 500,
         2,
         MemoryType::DialogueTurn,
     );
