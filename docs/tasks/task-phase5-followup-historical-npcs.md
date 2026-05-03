@@ -98,11 +98,25 @@ character-roster의 `npc-XX` 명명 따름. 추가 historical npc는:
 | npc-11 소풍자 | true | precise (stub 승급) | character-roster N11 + npc-05 §사부 소풍자 다중 |
 | 추양진인 | true | pending | history-characters §9.1·§11.1 단편만 |
 | 진천명 | true | pending | history-characters §1·§13 단편만 |
-| 단운 (태무제) | **false** | **precise** | **wuxia-core npc-11-taemuje.md 본기(本紀) 존재 — Big Five + 가치관 + 7시각 회상 명시** |
+| 단운 (태무제) | **false** | **precise** | **wuxia-core npc-11-taemuje.md 본기(本紀) 존재 — Big Five + 가치관 + 7시각 회상 명시** (첫 사례 — 본기 .md 존재) |
 
-**주의 — 단운**: wuxia-core에 단독 본기가 존재하므로 직교 플래그 정의상 `heritage_doc_pending: false`. 디렉터 사양 권장 "all historical = pending"과 다른 처리 — 출처 정합성 우선. 체크포인트 2 보고서 §결정 1 참조.
+**historical 인물 분류 정책** (Phase 5c.1 종결 시 정착):
 
-체크포인트 보고서에서 디렉터 최종 검토.
+`heritage_doc_pending`·`hexaco_confidence`는 인물별 출처 정합성에 따라 **독립 결정**.
+`wuxia-core/docs/characters/npc-{XX}-{name}.md` 같은 단독 본기 .md가 존재하면
+`heritage_doc_pending: false`. 매핑 신뢰도(`hexaco_confidence`)는 본기 + 다중 출처
+일관성에 따라 `precise` 가능. 단운(npc-danun)이 첫 사례 — 본기 `npc-11-taemuje.md`
+존재로 `false` + `precise` 분류.
+
+규칙으로 정형화하면:
+- `heritage_doc_pending: false` 조건 = wuxia-core 단독 본기 .md 존재 (열전 또는 본기 형식)
+- `hexaco_confidence: precise` 조건 = 본기 또는 다중 출처(character-roster + history-characters
+  + 타 NPC 회상 등 3+) 일관 묘사
+- `hexaco_confidence: pending` 조건 = 단편 출처(character-roster 행 + 1-2 history 단편)만
+- `hexaco_confidence: unknown` 조건 = 자료 거의 없음, 6 dim 모두 0.0 중립 (Phase 6+ 보강)
+
+두 플래그는 **직교**라 `heritage_doc_pending=true ∧ hexaco_confidence=precise`(임서운·
+npc-08~11 사례) 같은 4 조합 모두 의미 있음. 체크포인트 보고서에서 인물별 분류 디렉터 검토.
 
 ### 3.4b `extras.secret` 컨벤션 — `## 비밀` H2의 머신 리더블 미러 (Phase 5c.1 신규)
 
@@ -325,3 +339,11 @@ Phase 2 Person 패턴 그대로. 코드 변경 X.
 보고서 파일명:
 - 체크포인트 1: `docs/tasks/phase5-followup-historical-npcs-checkpoint1-report.md`
 - 체크포인트 2: `docs/tasks/phase5-followup-historical-npcs-checkpoint2-report.md`
+
+## 11. 변경 이력
+
+| 버전 | 날짜 | 변경 내용 |
+|------|------|-----------|
+| v1.0 | 2026-05-02 | 초안 — Phase 5b D2 follow-up 정형. 체크포인트 1·2 분리. |
+| v1.1 | 2026-05-02 | 체크포인트 1 디렉터 리뷰 반영 — §3.4 단일 `source_status` → 직교 플래그(`heritage_doc_pending` + `hexaco_confidence`) 분리. §3.4b `extras.secret` 컨벤션 정형화. |
+| v1.2 | 2026-05-02 | **Phase 5c.1 종결 — 직교 플래그 인물별 결정 정책 정착**. §3.4 "주의 — 단운" 단락을 정식 정책으로 승격: 두 플래그는 인물별 출처 정합성에 따라 독립 결정 (단독 본기 .md 존재 시 `heritage_doc_pending=false`, 다중 출처 일관 시 `hexaco_confidence=precise`). 단운(npc-danun)이 첫 사례. §6.4 historical 황제 affiliation 정합 — Phase 1 등록 group은 affiliation 유지(npc-jincheonmyeong·npc-danun = `[group-daejin-court]`). |
