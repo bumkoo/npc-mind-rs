@@ -90,15 +90,17 @@ impl StimulusPolicy {
             0,
             npc_id.to_string(),
             0,
-            EventPayload::StimulusApplied {
-                npc_id: npc_id.to_string(),
-                partner_id: partner_id.to_string(),
-                pad: (pad.pleasure, pad.arousal, pad.dominance),
-                mood_before,
-                mood_after: merged.overall_valence(),
-                beat_changed: true,
-                emotion_snapshot: merged.snapshot(),
-            },
+            EventPayload::StimulusApplied(Box::new(
+                crate::domain::event::StimulusAppliedPayload {
+                    npc_id: npc_id.to_string(),
+                    partner_id: partner_id.to_string(),
+                    pad: (pad.pleasure, pad.arousal, pad.dominance),
+                    mood_before,
+                    mood_after: merged.overall_valence(),
+                    beat_triggered: true,
+                    emotion_snapshot: merged.snapshot(),
+                },
+            )),
         );
         let beat_event = DomainEvent::new(
             0,
@@ -135,15 +137,17 @@ impl StimulusPolicy {
             0,
             npc_id.to_string(),
             0,
-            EventPayload::StimulusApplied {
-                npc_id: npc_id.to_string(),
-                partner_id: partner_id.to_string(),
-                pad: (pad.pleasure, pad.arousal, pad.dominance),
-                mood_before,
-                mood_after,
-                beat_changed: false,
-                emotion_snapshot: stimulated.snapshot(),
-            },
+            EventPayload::StimulusApplied(Box::new(
+                crate::domain::event::StimulusAppliedPayload {
+                    npc_id: npc_id.to_string(),
+                    partner_id: partner_id.to_string(),
+                    pad: (pad.pleasure, pad.arousal, pad.dominance),
+                    mood_before,
+                    mood_after,
+                    beat_triggered: false,
+                    emotion_snapshot: stimulated.snapshot(),
+                },
+            )),
         );
 
         Ok(HandlerResult {
@@ -298,13 +302,11 @@ mod handler_v2_tests {
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::StimulusApplied);
 
-        // beat_changed가 false인지 검증
-        let EventPayload::StimulusApplied { beat_changed, .. } =
-            &result.follow_up_events[0].payload
-        else {
+        // beat_triggered가 false인지 검증
+        let EventPayload::StimulusApplied(p) = &result.follow_up_events[0].payload else {
             panic!("expected StimulusApplied")
         };
-        assert!(!beat_changed);
+        assert!(!p.beat_triggered);
         assert!(harness.shared.emotion_state.is_some());
     }
 
@@ -363,12 +365,10 @@ mod handler_v2_tests {
         let kinds: Vec<_> = result.follow_up_events.iter().map(|e| e.kind()).collect();
         assert_eq!(kinds, vec![EventKind::StimulusApplied, EventKind::BeatTransitioned]);
 
-        let EventPayload::StimulusApplied { beat_changed, .. } =
-            &result.follow_up_events[0].payload
-        else {
+        let EventPayload::StimulusApplied(p) = &result.follow_up_events[0].payload else {
             panic!("expected StimulusApplied")
         };
-        assert!(beat_changed, "beat_changed must be true when trigger fires");
+        assert!(p.beat_triggered, "beat_triggered must be true when trigger fires");
 
         let EventPayload::BeatTransitioned { to_focus_id, .. } =
             &result.follow_up_events[1].payload

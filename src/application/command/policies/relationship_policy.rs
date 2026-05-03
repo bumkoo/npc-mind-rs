@@ -149,17 +149,19 @@ impl RelationshipPolicy {
             0,
             npc_id.to_string(),
             0,
-            EventPayload::RelationshipUpdated {
-                owner_id: npc_id.to_string(),
-                target_id: partner_id.to_string(),
-                before_closeness: bc,
-                before_trust: bt,
-                before_power: bp,
-                after_closeness: ac,
-                after_trust: at,
-                after_power: ap,
-                cause,
-            },
+            EventPayload::RelationshipUpdated(Box::new(
+                crate::domain::event::RelationshipUpdatedPayload {
+                    owner_id: npc_id.to_string(),
+                    target_id: partner_id.to_string(),
+                    before_closeness: bc,
+                    before_trust: bt,
+                    before_power: bp,
+                    after_closeness: ac,
+                    after_trust: at,
+                    after_power: ap,
+                    cause,
+                },
+            )),
         );
         Ok(HandlerResult {
             follow_up_events: vec![follow_up],
@@ -211,17 +213,19 @@ impl RelationshipPolicy {
             0,
             npc_id.to_string(),
             0,
-            EventPayload::RelationshipUpdated {
-                owner_id: npc_id.to_string(),
-                target_id: partner_id.to_string(),
-                before_closeness: bc,
-                before_trust: bt,
-                before_power: bp,
-                after_closeness: ac,
-                after_trust: at,
-                after_power: ap,
-                cause: crate::domain::event::RelationshipChangeCause::Unspecified,
-            },
+            EventPayload::RelationshipUpdated(Box::new(
+                crate::domain::event::RelationshipUpdatedPayload {
+                    owner_id: npc_id.to_string(),
+                    target_id: partner_id.to_string(),
+                    before_closeness: bc,
+                    before_trust: bt,
+                    before_power: bp,
+                    after_closeness: ac,
+                    after_trust: at,
+                    after_power: ap,
+                    cause: crate::domain::event::RelationshipChangeCause::Unspecified,
+                },
+            )),
         );
         let clear_event = DomainEvent::new(
             0,
@@ -386,12 +390,10 @@ mod handler_v2_tests {
             .expect("should derive partner from scene");
 
         assert_eq!(result.follow_up_events.len(), 1);
-        let EventPayload::RelationshipUpdated { target_id, .. } =
-            &result.follow_up_events[0].payload
-        else {
+        let EventPayload::RelationshipUpdated(p) = &result.follow_up_events[0].payload else {
             panic!("expected RelationshipUpdated")
         };
-        assert_eq!(target_id, "charlie");
+        assert_eq!(p.target_id, "charlie");
     }
 
     #[test]

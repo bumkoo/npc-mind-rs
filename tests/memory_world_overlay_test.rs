@@ -74,13 +74,13 @@ async fn apply_world_event_emits_requested_and_occurred() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
             fact: "새 맹주 등장".into(),
             significance: 0.8,
             witnesses: vec!["sage".into()],
-        }))
+        })))
         .await
         .expect("dispatch");
 
@@ -109,13 +109,13 @@ async fn creates_canonical_entry_with_world_scope_seeded_provenance() {
     let (dispatcher, _) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
             fact: "새 맹주 등장".into(),
-            significance: 0.5,
-            witnesses: vec![],
-        }))
+            significance: 0.8,
+            witnesses: vec!["sage".into()],
+        })))
         .await
         .unwrap();
 
@@ -145,13 +145,13 @@ async fn new_world_event_supersedes_existing_same_topic_canonical() {
     assert_eq!(pre.content, "옛 맹주");
 
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
             fact: "새 맹주 등장".into(),
-            significance: 0.7,
-            witnesses: vec![],
-        }))
+            significance: 0.8,
+            witnesses: vec!["sage".into()],
+        })))
         .await
         .unwrap();
 
@@ -194,13 +194,13 @@ async fn non_canonical_personal_entries_on_same_topic_preserved() {
     store.index(heard, None).unwrap();
 
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
             fact: "새 맹주 등장".into(),
-            significance: 0.7,
-            witnesses: vec![],
-        }))
+            significance: 0.8,
+            witnesses: vec!["sage".into()],
+        })))
         .await
         .unwrap();
 
@@ -225,13 +225,13 @@ async fn topic_none_creates_entry_but_does_not_supersede() {
     seed_canonical(&*store, "old", "leader", "옛 사실", 1);
 
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: None,
-            fact: "독립 사건".into(),
+            fact: "단발성 사건".into(),
             significance: 0.5,
             witnesses: vec![],
-        }))
+        })))
         .await
         .unwrap();
 
@@ -249,26 +249,26 @@ async fn invalid_world_event_rejected_early() {
 
     // 빈 world_id → InvalidSituation
     let err = dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "".into(),
             topic: None,
             fact: "something".into(),
             significance: 0.5,
             witnesses: vec![],
-        }))
+        })))
         .await
         .expect_err("should fail");
     assert!(format!("{err:?}").contains("world_id"));
 
     // 빈 fact → InvalidSituation
     let err = dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: None,
             fact: "   ".into(),
             significance: 0.5,
             witnesses: vec![],
-        }))
+        })))
         .await
         .expect_err("should fail");
     assert!(format!("{err:?}").contains("fact"));
@@ -281,13 +281,13 @@ async fn significance_clamped_to_unit_range() {
 
     // 범위 밖 significance → dispatcher가 [0, 1] clamp
     dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: None,
-            fact: "극단 중요도".into(),
+            fact: "극비 정보".into(),
             significance: 999.0,
             witnesses: vec![],
-        }))
+        })))
         .await
         .unwrap();
 

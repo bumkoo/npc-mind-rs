@@ -20,7 +20,7 @@ use npc_mind::application::dto::{EventInput, SituationInput};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::aggregate::AggregateKey;
-use npc_mind::domain::event::{DomainEvent, EventPayload, RelationshipChangeCause};
+use npc_mind::domain::event::{DomainEvent, EventPayload, RelationshipChangeCause, RelationshipUpdatedPayload};
 use npc_mind::domain::memory::{MemoryScope, MemorySource, MemoryType};
 use npc_mind::domain::personality::NpcBuilder;
 use npc_mind::domain::relationship::Relationship;
@@ -67,7 +67,7 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
         .dispatch_v2(Command::Appraise {
             npc_id: "alice".into(),
             partner_id: "bob".into(),
-            situation: Some(SituationInput {
+            situation: Some(Box::new(SituationInput {
                 description: "장면 준비".into(),
                 event: Some(EventInput {
                     description: "평범한 만남".into(),
@@ -77,8 +77,9 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
                 }),
                 action: None,
                 object: None,
-            }),
-        })
+            })),
+            })
+
         .await
         .expect("appraise seed");
 
@@ -131,7 +132,7 @@ fn run_cause(
         event_id,
         "alice".into(),
         1,
-        EventPayload::RelationshipUpdated {
+        EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "alice".into(),
             target_id: "bob".into(),
             before_closeness: 0.0,
@@ -141,7 +142,7 @@ fn run_cause(
             after_trust: 0.0,
             after_power: 0.0,
             cause,
-        },
+        })),
     );
 
     let repo = InMemoryRepository::new();
@@ -321,18 +322,19 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
         .dispatch_v2(Command::Appraise {
             npc_id: "alice".into(),
             partner_id: "bob".into(),
-            situation: Some(SituationInput {
-                description: "장면".into(),
+            situation: Some(Box::new(SituationInput {
+                description: "장면 준비".into(),
                 event: Some(EventInput {
-                    description: "초기 상황".into(),
-                    desirability_for_self: 0.3,
+                    description: "평범한 만남".into(),
+                    desirability_for_self: 0.2,
                     other: None,
                     prospect: None,
                 }),
                 action: None,
                 object: None,
-            }),
-        })
+            })),
+            })
+
         .await
         .expect("appraise");
 
@@ -353,12 +355,12 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
     let rel_updated = out
         .events
         .iter()
-        .find(|e| matches!(&e.payload, EventPayload::RelationshipUpdated { .. }))
+        .find(|e| matches!(&e.payload, EventPayload::RelationshipUpdated(_)))
         .expect("RelationshipUpdated 발행");
-    let EventPayload::RelationshipUpdated { cause, .. } = &rel_updated.payload else {
+    let EventPayload::RelationshipUpdated(p) = &rel_updated.payload else {
         unreachable!()
     };
-    match cause {
+    match &p.cause {
         RelationshipChangeCause::SceneInteraction { scene_id } => {
             assert_eq!(scene_id.npc_id, "alice");
             assert_eq!(scene_id.partner_id, "bob");

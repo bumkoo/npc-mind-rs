@@ -8,8 +8,7 @@
 #![cfg(feature = "chat")]
 
 use npc_mind::ports::{ChatResponse, InferenceTimings};
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
 // 테스트 데이터
@@ -188,7 +187,7 @@ async fn start_mock_server(
 async fn llama_서버_응답에서_timings_캡처() {
     let (base_url, _server) = start_mock_server(llama_completion_response()).await;
 
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
     let client = TimingsCapturingClient::new(store.clone());
 
     // POST 요청 구성
@@ -216,7 +215,7 @@ async fn llama_서버_응답에서_timings_캡처() {
     );
 
     // 2. timings가 캡처되었는지 확인
-    let timings = store.read().await;
+    let timings = store.lock().unwrap();
     assert!(timings.is_some(), "timings가 캡처되어야 합니다");
     let t = timings.as_ref().unwrap();
     assert_eq!(t.prompt_n, 13);
@@ -228,7 +227,7 @@ async fn llama_서버_응답에서_timings_캡처() {
 async fn openai_응답에서_timings_none() {
     let (base_url, _server) = start_mock_server(openai_completion_response()).await;
 
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
     let client = TimingsCapturingClient::new(store.clone());
 
     let body = serde_json::to_vec(&serde_json::json!({
@@ -247,7 +246,7 @@ async fn openai_응답에서_timings_none() {
     let _response = client.send::<_, Vec<u8>>(req).await.unwrap();
 
     // OpenAI 표준 응답에는 timings 없음
-    let timings = store.read().await;
+    let timings = store.lock().unwrap();
     assert!(timings.is_none(), "OpenAI 응답에는 timings가 없어야 합니다");
 }
 
@@ -258,7 +257,7 @@ async fn 연속_요청시_timings_갱신() {
     // 두 번째: timings 없음
     let (url2, _s2) = start_mock_server(openai_completion_response()).await;
 
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
     let client = TimingsCapturingClient::new(store.clone());
 
     // 1차 요청: llama → timings 있음
@@ -270,7 +269,7 @@ async fn 연속_요청시_timings_갱신() {
         .body(body)
         .unwrap();
     let _resp = client.send::<_, Vec<u8>>(req).await.unwrap();
-    assert!(store.read().await.is_some());
+    assert!(store.lock().unwrap().is_some());
 
     // 2차 요청: openai → timings 없음으로 갱신
     let body = serde_json::to_vec(&serde_json::json!({"model":"b","messages":[]})).unwrap();
@@ -282,7 +281,7 @@ async fn 연속_요청시_timings_갱신() {
         .unwrap();
     let _resp = client.send::<_, Vec<u8>>(req).await.unwrap();
     assert!(
-        store.read().await.is_none(),
+        store.lock().unwrap().is_none(),
         "OpenAI 응답 후 timings가 None으로 갱신되어야 합니다"
     );
 }
@@ -320,7 +319,7 @@ async fn sse_스트림에서_timings_캡처() {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
     let client = TimingsCapturingClient::new(store.clone());
 
     let body = serde_json::to_vec(&serde_json::json!({
@@ -349,7 +348,7 @@ async fn sse_스트림에서_timings_캡처() {
     // tokio::spawn으로 timings를 저장하므로 잠시 대기
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-    let timings = store.read().await;
+    let timings = store.lock().unwrap();
     assert!(timings.is_some(), "SSE 스트림에서 timings가 캡처되어야 합니다");
     let t = timings.as_ref().unwrap();
     assert_eq!(t.prompt_n, 13);
@@ -380,7 +379,7 @@ async fn sse_스트림_timings_없으면_none_유지() {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
     let client = TimingsCapturingClient::new(store.clone());
 
     let body = serde_json::to_vec(&serde_json::json!({
@@ -406,7 +405,7 @@ async fn sse_스트림_timings_없으면_none_유지() {
     tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
     assert!(
-        store.read().await.is_none(),
+        store.lock().unwrap().is_none(),
         "timings가 없는 스트림에서는 None이어야 합니다"
     );
 }

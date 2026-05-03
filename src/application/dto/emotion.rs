@@ -37,17 +37,17 @@ pub struct SituationInput {
 }
 
 impl SituationInput {
-    pub fn to_domain(
-        &self,
+    pub fn into_domain(
+        self,
         event_other_modifiers: Option<RelationshipModifiers>,
         action_agent_modifiers: Option<RelationshipModifiers>,
         object_description: Option<String>,
         npc_id: &str,
     ) -> Result<Situation, MindServiceError> {
         let (event, action, object) =
-            convert_focuses(self, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
+            convert_focuses_owned(self.event, self.action, self.object, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
 
-        Situation::new(self.description.clone(), event, action, object)
+        Situation::new(self.description, event, action, object)
             .map_err(|e| MindServiceError::InvalidSituation(e.to_string()))
     }
 }
@@ -75,17 +75,19 @@ impl HasFocusFields for super::scene::SceneFocusInput {
 pub(crate) type ConvertedFocuses =
     (Option<EventFocus>, Option<ActionFocus>, Option<ObjectFocus>);
 
-/// event/action/object DTO를 도메인 Focus로 일괄 변환
-pub(crate) fn convert_focuses(
-    input: &impl HasFocusFields,
+/// event/action/object DTO를 도메인 Focus로 일괄 변환 (소유권 기반)
+pub(crate) fn convert_focuses_owned(
+    event: Option<EventInput>,
+    action: Option<ActionInput>,
+    object: Option<ObjectInput>,
     event_other_modifiers: Option<RelationshipModifiers>,
     action_agent_modifiers: Option<RelationshipModifiers>,
     object_description: Option<String>,
     npc_id: &str,
 ) -> Result<ConvertedFocuses, MindServiceError> {
-    let event = input.event().map(|e| e.to_domain(event_other_modifiers)).transpose()?;
-    let action = input.action().map(|a| a.to_domain(action_agent_modifiers, npc_id)).transpose()?;
-    let object = input.object().map(|o| o.to_domain(object_description)).transpose()?;
+    let event = event.map(|e| e.into_domain(event_other_modifiers)).transpose()?;
+    let action = action.map(|a| a.into_domain(action_agent_modifiers, npc_id)).transpose()?;
+    let object = object.map(|o| o.into_domain(object_description)).transpose()?;
     Ok((event, action, object))
 }
 
@@ -99,11 +101,11 @@ pub struct EventInput {
 }
 
 impl EventInput {
-    pub(crate) fn to_domain(
-        &self,
+    pub(crate) fn into_domain(
+        self,
         other_modifiers: Option<RelationshipModifiers>,
     ) -> Result<EventFocus, MindServiceError> {
-        let other = if let Some(ref o) = self.other {
+        let other = if let Some(o) = self.other {
             let modifiers = other_modifiers.ok_or_else(|| {
                 MindServiceError::InvalidSituation(format!(
                     "타인 영향 평가에 관계 정보가 필요합니다: {}",
@@ -111,7 +113,7 @@ impl EventInput {
                 ))
             })?;
             Some(DesirabilityForOther {
-                target_id: o.target_id.clone(),
+                target_id: o.target_id,
                 desirability: o.desirability,
                 modifiers,
             })
@@ -129,7 +131,7 @@ impl EventInput {
         });
 
         Ok(EventFocus {
-            description: self.description.clone(),
+            description: self.description,
             desirability_for_self: self.desirability_for_self,
             desirability_for_other: other,
             prospect,
@@ -152,17 +154,17 @@ pub struct ActionInput {
 }
 
 impl ActionInput {
-    pub(crate) fn to_domain(
-        &self,
+    pub(crate) fn into_domain(
+        self,
         agent_modifiers: Option<RelationshipModifiers>,
         npc_id: &str,
     ) -> Result<ActionFocus, MindServiceError> {
-        let normalized_agent_id = match &self.agent_id {
+        let normalized_agent_id = match self.agent_id {
             Some(id) if id == npc_id => None,
-            other => other.clone(),
+            other => other,
         };
         Ok(ActionFocus {
-            description: self.description.clone(),
+            description: self.description,
             agent_id: normalized_agent_id,
             praiseworthiness: self.praiseworthiness,
             modifiers: agent_modifiers,
@@ -178,10 +180,10 @@ pub struct ObjectInput {
 }
 
 impl ObjectInput {
-    pub(crate) fn to_domain(&self, description: Option<String>) -> Result<ObjectFocus, MindServiceError> {
-        let description = description.unwrap_or_else(|| self.target_id.clone());
+    pub(crate) fn into_domain(self, description: Option<String>) -> Result<ObjectFocus, MindServiceError> {
+        let description = description.unwrap_or(self.target_id.clone());
         Ok(ObjectFocus {
-            target_id: self.target_id.clone(),
+            target_id: self.target_id,
             target_description: description,
             appealingness: self.appealingness,
         })
@@ -265,9 +267,17 @@ pub struct EmotionOutput {
 impl EmotionOutput {
     pub fn from_emotion(e: &crate::domain::emotion::Emotion) -> Self {
         Self {
-            emotion_type: format!("{:?}", e.emotion_type()),
+            emotion_type: e.emotion_type().as_str().to_string(),
             intensity: e.intensity(),
             context: e.context().map(|s| s.to_string()),
+        }
+    }
+
+    pub fn new(emotion_type: EmotionType, intensity: f32, context: Option<&str>) -> Self {
+        Self {
+            emotion_type: emotion_type.as_str().to_string(),
+            intensity,
+            context: context.map(|s| s.to_string()),
         }
     }
 }
@@ -298,9 +308,8 @@ pub fn build_emotion_fields(
     state: &EmotionState,
 ) -> (Vec<EmotionOutput>, Option<EmotionOutput>, f32) {
     let emotions: Vec<EmotionOutput> = state
-        .emotions()
-        .iter()
-        .map(EmotionOutput::from_emotion)
+        .iter_active()
+        .map(|(t, i, ctx)| EmotionOutput::new(t, i, ctx))
         .collect();
     let dominant = state.dominant().map(|e| EmotionOutput::from_emotion(&e));
     let mood = state.overall_valence();

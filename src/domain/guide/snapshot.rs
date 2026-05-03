@@ -186,15 +186,22 @@ impl EmotionSnapshot {
             context: e.context().map(|s| s.to_string()),
         });
 
-        let active_emotions = state
-            .significant(profile().emotion_threshold)
-            .iter()
-            .map(|e| EmotionEntry {
-                emotion_type: e.emotion_type(),
-                intensity: e.intensity(),
-                context: e.context().map(|s| s.to_string()),
+        let threshold = profile().emotion_threshold;
+        let mut active_emotions: Vec<EmotionEntry> = state
+            .iter_active()
+            .filter(|&(_, i, _)| i >= threshold)
+            .map(|(t, i, ctx)| EmotionEntry {
+                emotion_type: t,
+                intensity: i,
+                context: ctx.map(|s| s.to_string()),
             })
             .collect();
+
+        active_emotions.sort_by(|a, b| {
+            b.intensity
+                .partial_cmp(&a.intensity)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let mood = state.overall_valence();
 

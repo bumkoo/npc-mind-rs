@@ -232,7 +232,7 @@ pub fn detect_parent_place_cycle(places: &[Place]) -> Vec<Vec<PlaceId>> {
     seen_cycles.into_iter().collect()
 }
 
-fn rotate_to_min(cycle: &mut Vec<PlaceId>) {
+fn rotate_to_min(cycle: &mut [PlaceId]) {
     if cycle.is_empty() {
         return;
     }

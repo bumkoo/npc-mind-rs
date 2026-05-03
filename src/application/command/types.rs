@@ -11,7 +11,7 @@ pub enum Command {
     Appraise {
         npc_id: String,
         partner_id: String,
-        situation: Option<SituationInput>,
+        situation: Option<Box<SituationInput>>,
     },
     /// PAD 자극 적용 → 감정 변동
     ApplyStimulus {
@@ -53,23 +53,23 @@ pub enum Command {
     /// `TellInformationRequested`를 초기 이벤트로 만들고, `InformationPolicy`가
     /// 청자당 1개의 `InformationTold` follow-up을 팬아웃(B5)한다. Inline
     /// `TellingIngestionHandler`가 각 청자의 `MemoryEntry(Heard/Rumor)`를 생성한다.
-    TellInformation(TellInformationRequest),
+    TellInformation(Box<TellInformationRequest>),
     /// 소문 시딩 (Step C3, Memory 컨텍스트)
     ///
     /// 새 Rumor 애그리거트 생성. `RumorPolicy`가 `RumorSeeded` follow-up을 발행하고
     /// `RumorStore`에 저장한다. 실제 확산은 별도 `SpreadRumor` 호출이 필요.
-    SeedRumor(SeedRumorRequest),
+    SeedRumor(Box<SeedRumorRequest>),
     /// 소문 확산 (Step C3, Memory 컨텍스트)
     ///
     /// 기존 Rumor에 새 홉 추가. `RumorPolicy`가 `RumorSpread` follow-up을 발행하고,
     /// Inline `RumorDistributionHandler`가 각 수신자에게 `MemoryEntry(Rumor)`를 생성한다.
-    SpreadRumor(SpreadRumorRequest),
+    SpreadRumor(Box<SpreadRumorRequest>),
     /// 세계 사건 적용 (Step D, Mind 컨텍스트)
     ///
     /// 세계에 새 사실을 추가한다. `WorldOverlayPolicy`가 `WorldEventOccurred` follow-up을
     /// 발행하고, Inline `WorldOverlayHandler`가 Canonical `MemoryEntry(scope=World,
     /// provenance=Seeded)`를 생성하면서 같은 Topic의 기존 Canonical을 supersede한다.
-    ApplyWorldEvent(ApplyWorldEventRequest),
+    ApplyWorldEvent(Box<ApplyWorldEventRequest>),
 }
 
 impl Command {

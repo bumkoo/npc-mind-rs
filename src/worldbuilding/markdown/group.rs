@@ -43,8 +43,8 @@ pub fn group_from_markdown(md: &str) -> Result<Group, GroupMarkdownError> {
     let summary = get_str(map, "summary").map(|s| s.trim().to_string()).unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
 
-    let temporal = parse_temporal(map.get(&YamlValue::from("temporal")))?;
-    let members = parse_members(map.get(&YamlValue::from("members")))?;
+    let temporal = parse_temporal(map.get("temporal"))?;
+    let members = parse_members(map.get("members"))?;
     let headquarters = get_str(map, "headquarters").map(|s| s.to_string());
     let parent_group =
         get_str(map, "parent_group").map(|s| GroupId::new(s.to_string()));
@@ -58,7 +58,7 @@ pub fn group_from_markdown(md: &str) -> Result<Group, GroupMarkdownError> {
         .into_iter()
         .map(GroupId::new)
         .collect();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
+    let extras = parse_extras_map(map.get("extras"));
     let body_sections = parse_h2_sections(&fm.body);
 
     Ok(Group {

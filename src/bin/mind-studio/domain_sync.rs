@@ -129,7 +129,7 @@ pub async fn dispatch_appraise(
     let cmd = Command::Appraise {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
-        situation: req.situation,
+        situation: req.situation.map(Box::new),
     };
     let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
@@ -285,7 +285,7 @@ pub async fn dispatch_tell_information(
 ) -> Result<DispatchV2Output, AppError> {
     let output = state
         .shared_dispatcher
-        .dispatch_v2(Command::TellInformation(req))
+        .dispatch_v2(Command::TellInformation(Box::new(req)))
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
@@ -303,7 +303,7 @@ pub async fn dispatch_apply_world_event(
 ) -> Result<DispatchV2Output, AppError> {
     let output = state
         .shared_dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(req))
+        .dispatch_v2(Command::ApplyWorldEvent(Box::new(req)))
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
@@ -321,7 +321,7 @@ pub async fn dispatch_seed_rumor(
 ) -> Result<DispatchV2Output, AppError> {
     let output = state
         .shared_dispatcher
-        .dispatch_v2(Command::SeedRumor(req))
+        .dispatch_v2(Command::SeedRumor(Box::new(req)))
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
@@ -339,7 +339,7 @@ pub async fn dispatch_spread_rumor(
 ) -> Result<DispatchV2Output, AppError> {
     let output = state
         .shared_dispatcher
-        .dispatch_v2(Command::SpreadRumor(req))
+        .dispatch_v2(Command::SpreadRumor(Box::new(req)))
         .await?;
     {
         let guard = state.shared_dispatcher.repository_guard();
@@ -453,29 +453,20 @@ fn build_after_dialogue_from_output(
         .events
         .iter()
         .find_map(|e| match &e.payload {
-            EventPayload::RelationshipUpdated {
-                owner_id,
-                target_id,
-                before_closeness,
-                before_trust,
-                before_power,
-                after_closeness,
-                after_trust,
-                after_power,
-                ..
-            } if (owner_id == npc_id && target_id == partner_id)
-                || (owner_id == partner_id && target_id == npc_id) =>
+            EventPayload::RelationshipUpdated(p)
+                if (p.owner_id == npc_id && p.target_id == partner_id)
+                    || (p.owner_id == partner_id && p.target_id == npc_id) =>
             {
                 Some(AfterDialogueResponse {
                     before: RelationshipValues {
-                        closeness: *before_closeness,
-                        trust: *before_trust,
-                        power: *before_power,
+                        closeness: p.before_closeness,
+                        trust: p.before_trust,
+                        power: p.before_power,
                     },
                     after: RelationshipValues {
-                        closeness: *after_closeness,
-                        trust: *after_trust,
-                        power: *after_power,
+                        closeness: p.after_closeness,
+                        trust: p.after_trust,
+                        power: p.after_power,
                     },
                 })
             }

@@ -66,7 +66,7 @@ impl EventHandler for EmotionPolicy {
 
         let dominant = emotion_state
             .dominant()
-            .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()));
+            .map(|e| (e.emotion_type().as_str().to_string(), e.intensity()));
         let mood = emotion_state.overall_valence();
         let snapshot = emotion_state.snapshot();
 
@@ -128,7 +128,7 @@ mod handler_v2_tests {
             EventPayload::AppraiseRequested {
                 npc_id: npc_id.to_string(),
                 partner_id: partner_id.to_string(),
-                situation,
+                situation: Box::new(situation),
             },
         )
     }

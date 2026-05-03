@@ -50,8 +50,8 @@ Phase 3:   Place + Phase 1·2 FK 활성      ✅ 완료 (2026-05-01)
 Phase 4:   Atlas (도메인+뷰 이중성)       ✅ 완료 (2026-05-01)
 Phase 5a:  Event (인스턴스)               ✅ 완료 (2026-05-02)
 Phase 5b:  Era + Timeline + Atlas overlay (View trait 보류)   ✅ 완료 (2026-05-02)
-Phase 5c.1: Historical NPCs follow-up (D2 처리)   🔄 작전 완성 (2026-05-02)
-Phase 5c.2: Mid-era Events follow-up               ⏳ 5c.1 종결 후
+Phase 5c.1: Historical NPCs follow-up (D2 처리)   ✅ 완료 (2026-05-02)
+Phase 5c.2: Mid-era Events follow-up               🔄 작전 작성 예정
 Phase 6+:  Skill · Item · Knowledge · Lore   ⏳
 Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 ```
@@ -80,8 +80,8 @@ Phase N:   폼 시스템 · AI 협업 빈칸 · UI 패널 ⏳
 | 4 | Atlas | Phase 3 | atlas-jungwon + references 11 Place + ASCII 4단계 byte-exact + view 메서드 (도메인+뷰 이중성) | ✅ 완료 (2026-05-01) | `task-phase4-atlas-vertical-slice.md` + `phase4-checkpoint{1,2}-report.md` |
 | 5a | Event | Phase 4 | 6 Event + participants 외래키 0건 + related_events 양방향 + alias 패턴 일관 | ✅ 완료 (2026-05-02) | `task-phase5a-event-vertical-slice.md` + `phase5a-checkpoint{1,2}-report.md` |
 | 5b | Era + Timeline + Atlas overlay | Phase 5a | 5 Era + 1 Timeline + view 메서드 4종 + Atlas overlay 양방향 + 외래키 0건 | ✅ 완료 (2026-05-02) | `task-phase5b-era-timeline-vertical-slice.md` + `phase5b-checkpoint{1,2}-report.md` |
-| 5c.1 | Historical NPCs follow-up | Phase 5b | 임서운 + 7-11 historical npc + Phase 5a Event 외래키 갱신 | 🔄 작전 완성 (2026-05-02) | `task-phase5-followup-historical-npcs.md` |
-| 5c.2 | Mid-era Events follow-up | 5c.1 | era-prosperity·turning·decline 6-7 사건 추가 | ⏳ 5c.1 종결 후 작성 | (5c.1 종결 후 작성) |
+| 5c.1 | Historical NPCs follow-up | Phase 5b | 임서운 + 7 historical/active npc + Phase 5a Event 외래키 갱신 (핵심 분기 0건) | ✅ 완료 (2026-05-02) | `task-phase5-followup-historical-npcs.md` + `phase5-followup-historical-npcs-checkpoint{1,2}-report.md` |
+| 5c.2 | Mid-era Events follow-up | 5c.1 | era-prosperity·turning·decline 5-10 사건 추가 + 5c.1 historical npc 활용 | 🔄 작전 작성 예정 | (다음 단계) |
 | 6 | Skill | Phase 5 | 무공 5종 + 사문 외래키 | ⏳ | — |
 | 7 | Item | Phase 5 | 보물·신검 + Person 외래키 | ⏳ | — |
 | 8 | Knowledge·Lore | — | 학문·예술 / 짐승·영물 | ⏳ | — |
@@ -366,6 +366,10 @@ Phase 2 종결 후 외래키 활성화 시 `npc-11` (소풍자, 개방 장로) F
 | 2026-05-02 | Atlas 모델 비변경 결정 — `extras["era_id"]` + 헬퍼 그대로. top-level 필드 승격은 Phase 6+ breaking change로 미룸 | Claude Code |
 | 2026-05-02 | Phase 5+ follow-up 흐름 = (C) historical-npcs + mid-era-events 동시 → Phase 6 진입. 단 의존성으로 5c.1 → 5c.2 순서 진행 | 사용자 |
 | 2026-05-02 | Phase 5c.1 작전 완성 — 임서운(체크포인트 1) + 7-11 historical npc + HEXACO 정밀(active 4)/heritage-pending(historical 3-7) | Cowork |
+| 2026-05-02 | Phase 5c.1 종결 — 7건 변환 + Phase 5a Event 핵심 분기 사건(bloody-night·hwasan-fall) 외래키 0건 + npc-11 stub 승급 | Claude Code |
+| 2026-05-02 | 직교 플래그 컨벤션 (heritage_doc_pending + hexaco_confidence) + extras.secret 컨벤션 정착. 사양 §3.3·§3.4b 정형화 | Claude Code |
+| 2026-05-02 | npc-09-jinyarim.md ≠ npc-09 진대인 — 별개 인물 (진야림 = 영주 왕가, 진대인 = 동해 상방). 디렉터 매트릭스 사실 오류 정정 | Claude Code |
+| 2026-05-02 | npc-danun = `heritage_doc_pending: false` + `hexaco_confidence: precise` 채택 (wuxia-core 본기 존재). 사양 §3.3 일률 분류 → 인물별 결정으로 갱신 | Cowork (Claude Code 권장 채택) |
 
 ## 7. 청강만리 vs 칠국춘추 (혼동 주의)
 

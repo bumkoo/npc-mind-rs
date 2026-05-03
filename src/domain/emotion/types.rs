@@ -224,6 +224,34 @@ impl EmotionType {
             Self::Love | Self::Hate => EmotionBranch::Object,
         }
     }
+
+    /// 이 감정의 문자열 표현 (Debug 출력과 동일)
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Joy => "Joy",
+            Self::Distress => "Distress",
+            Self::HappyFor => "HappyFor",
+            Self::Pity => "Pity",
+            Self::Gloating => "Gloating",
+            Self::Resentment => "Resentment",
+            Self::Hope => "Hope",
+            Self::Fear => "Fear",
+            Self::Satisfaction => "Satisfaction",
+            Self::Disappointment => "Disappointment",
+            Self::Relief => "Relief",
+            Self::FearsConfirmed => "FearsConfirmed",
+            Self::Pride => "Pride",
+            Self::Shame => "Shame",
+            Self::Admiration => "Admiration",
+            Self::Reproach => "Reproach",
+            Self::Gratification => "Gratification",
+            Self::Remorse => "Remorse",
+            Self::Gratitude => "Gratitude",
+            Self::Anger => "Anger",
+            Self::Love => "Love",
+            Self::Hate => "Hate",
+        }
+    }
 }
 
 /// OCC 3대 분기
@@ -341,14 +369,30 @@ impl EmotionState {
             .collect()
     }
 
+    /// 활성 감정(강도 > 0)에 대해 (타입, 강도, context_ref)를 순회하는 반복자 반환
+    pub fn iter_active(&self) -> impl Iterator<Item = (EmotionType, f32, Option<&str>)> {
+        self.intensities
+            .iter()
+            .enumerate()
+            .filter(|&(_, &i)| i > 0.0)
+            .filter_map(|(idx, &i)| {
+                EmotionType::from_index(idx)
+                    .map(|t| (t, i, self.contexts[idx].as_deref()))
+            })
+    }
+
     /// 감정 상태를 (감정 타입명, 강도) 쌍 목록으로 스냅샷 변환.
     ///
     /// `DomainEvent::EmotionAppraised` / `StimulusApplied` payload의 `emotion_snapshot`
     /// 필드 구성에 사용되며, 강도 0보다 큰 감정만 포함된다.
     pub fn snapshot(&self) -> Vec<(String, f32)> {
-        self.emotions()
+        self.intensities
             .iter()
-            .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()))
+            .enumerate()
+            .filter(|&(_, &i)| i > 0.0)
+            .filter_map(|(idx, &i)| {
+                EmotionType::from_index(idx).map(|t| (t.as_str().to_string(), i))
+            })
             .collect()
     }
 
@@ -499,5 +543,28 @@ mod tests {
 
         // (1.0 * 0.8 + -1.0 * 0.4) / 2 = 0.2
         assert!((state.overall_valence() - 0.2).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_emotion_type_as_str() {
+        assert_eq!(EmotionType::Joy.as_str(), "Joy");
+        assert_eq!(EmotionType::Anger.as_str(), "Anger");
+        assert_eq!(EmotionType::FearsConfirmed.as_str(), "FearsConfirmed");
+    }
+
+    #[test]
+    fn test_emotion_state_snapshot_uses_as_str() {
+        let mut state = EmotionState::new();
+        state.add(Emotion::new(EmotionType::Joy, 0.5));
+        state.add(Emotion::new(EmotionType::Love, 0.8));
+
+        let snapshot = state.snapshot();
+        // snapshot is Vec<(String, f32)>, order is by index
+        // Joy index 0, Love index 20
+        assert_eq!(snapshot.len(), 2);
+        assert_eq!(snapshot[0].0, "Joy");
+        assert_eq!(snapshot[0].1, 0.5);
+        assert_eq!(snapshot[1].0, "Love");
+        assert_eq!(snapshot[1].1, 0.8);
     }
 }

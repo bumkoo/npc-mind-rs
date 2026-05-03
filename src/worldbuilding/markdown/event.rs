@@ -74,10 +74,11 @@ pub fn event_from_markdown(md: &str) -> Result<Event, EventMarkdownError> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
-    let temporal = parse_temporal(map.get(&YamlValue::from("temporal")))?;
+    let extras = parse_extras_map(map.get("extras"));
+    let temporal = parse_temporal(map.get("temporal"))?;
     let era_id = get_optional_str(map, "era_id").map(|s| s.to_string());
-    let participants = parse_participants(map.get(&YamlValue::from("participants")))?;
+    let participants = parse_participants(map.get("participants"))?;
+
     // R4: related_events는 Phase 5a 외래키 활성 필드 — non-String 항목 silent skip 금지.
     // alias/tags 같은 자유 메타와 달리 ID 시퀀스는 무결성 위험.
     let related_events = get_string_array_strict(map, "related_events", "related_events")?

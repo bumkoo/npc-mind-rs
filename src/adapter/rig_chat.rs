@@ -16,9 +16,9 @@
 
 use crate::adapter::llama_timings::TimingsCapturingClient;
 use crate::ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, ServerHealth,
-    ServerMetrics, InferenceServerMonitor, InferenceSlotInfo, InferenceTimings, LlmInfoProvider, LlmModelInfo,
-    StreamItem,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, InferenceServerMonitor,
+    InferenceSlotInfo, InferenceTimings, LlmInfoProvider, LlmModelInfo, MonitoringError, ServerHealth,
+    ServerMetrics, StreamItem,
 };
 use futures::{Stream, StreamExt};
 use rig::agent::MultiTurnStreamItem;
@@ -27,8 +27,8 @@ use rig::completion::{Chat, Message};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use std::collections::HashMap;
-use std::pin::Pin;
-use std::sync::Arc;
+use std:: pin::Pin;
+use std::sync::{Arc, Mutex};
 use tokio::sync::RwLock;
 
 /// rig-core OpenAI provider를 사용하는 대화 어댑터
@@ -48,7 +48,7 @@ pub struct RigChatAdapter {
     /// 세션 맵 — Arc로 감싸 streaming task로 안전하게 이동
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     /// TimingsCapturingClient와 공유하는 timings 저장소
-    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
+    last_timings: Arc<Mutex<Option<InferenceTimings>>>,
 }
 
 /// 개별 대화 세션 상태
@@ -72,7 +72,7 @@ impl RigChatAdapter {
         // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
         // completions_api()로 명시적 전환이 필요함.
         let http_client = reqwest::Client::new();
-        let timings_store = Arc::new(RwLock::new(None));
+        let timings_store = Arc::new(Mutex::new(None));
         let capturing_client =
             TimingsCapturingClient::with_client(http_client.clone(), timings_store.clone());
 
@@ -130,7 +130,9 @@ impl RigChatAdapter {
         config: &Option<LlmModelInfo>,
     ) -> Result<ChatResponse, ConversationError> {
         // 이전 timings 초기화
-        *self.last_timings.write().await = None;
+        if let Ok(mut guard) = self.last_timings.lock() {
+            *guard = None;
+        }
 
         let model_name = self.model_name.read().await;
         let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
@@ -156,7 +158,11 @@ impl RigChatAdapter {
                 ConversationError::InferenceError(e.to_string())
             })?;
 
-        let timings = self.last_timings.read().await.clone();
+        let timings = if let Ok(guard) = self.last_timings.lock() {
+            guard.clone()
+        } else {
+            None
+        };
 
         Ok(ChatResponse { text, timings })
     }
@@ -171,7 +177,7 @@ struct StreamingCtx {
     client: openai::CompletionsClient<TimingsCapturingClient>,
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     model_name: Arc<RwLock<String>>,
-    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
+    last_timings: Arc<Mutex<Option<InferenceTimings>>>,
 }
 
 /// 내부 streaming 실행 — mpsc 패턴은 어댑터 사적 구현 디테일.
@@ -246,7 +252,9 @@ async fn stream_chat_with_agent(
     config: &Option<LlmModelInfo>,
 ) -> Result<ChatResponse, ConversationError> {
     // 이전 timings 초기화
-    *ctx.last_timings.write().await = None;
+    if let Ok(mut guard) = ctx.last_timings.lock() {
+        *guard = None;
+    }
 
     let model_name_read = ctx.model_name.read().await;
     let mut builder = ctx.client.agent(&*model_name_read).preamble(system_prompt);
@@ -288,7 +296,11 @@ async fn stream_chat_with_agent(
         }
     }
 
-    let timings = ctx.last_timings.read().await.clone();
+    let timings = if let Ok(guard) = ctx.last_timings.lock() {
+        guard.clone()
+    } else {
+        None
+    };
 
     Ok(ChatResponse {
         text: full_response,
@@ -485,7 +497,7 @@ impl LlmInfoProvider for RigChatAdapter {
 
 #[async_trait::async_trait]
 impl crate::ports::LlmModelDetector for RigChatAdapter {
-    async fn refresh_model_info(&self) -> Result<LlmModelInfo, String> {
+    async fn refresh_model_info(&self) -> Result<LlmModelInfo, ConversationError> {
         let url = format!("{}/models", self.base_url.trim_end_matches('/'));
 
         let model_list: rig::model::ModelList = self
@@ -493,16 +505,16 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("LLM 서버 연결 실패: {}", e))?
+            .map_err(|e| ConversationError::ConnectionError(e.to_string()))?
             .json()
             .await
-            .map_err(|e| format!("모델 목록 파싱 실패: {}", e))?;
+            .map_err(|e| ConversationError::ConnectionError(format!("모델 목록 파싱 실패: {}", e)))?;
 
         let new_name = model_list
             .data
             .first()
             .map(|m| m.id.clone())
-            .ok_or_else(|| "모델 목록이 비어 있습니다".to_string())?;
+            .ok_or_else(|| ConversationError::ConnectionError("모델 목록이 비어 있습니다".to_string()))?;
 
         {
             let mut name = self.model_name.write().await;
@@ -516,50 +528,56 @@ impl crate::ports::LlmModelDetector for RigChatAdapter {
 
 #[async_trait::async_trait]
 impl InferenceServerMonitor for RigChatAdapter {
-    async fn health(&self) -> Result<ServerHealth, String> {
+    async fn health(&self) -> Result<ServerHealth, MonitoringError> {
         let url = format!("{}/health", self.server_url);
         let resp = self
             .http_client
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("헬스 체크 실패: {e}"))?
+            .map_err(|e: reqwest::Error| MonitoringError::Connection(e.to_string()))?
             .error_for_status()
-            .map_err(|e| format!("헬스 체크 실패 ({}): {e}", e.status().unwrap_or_default()))?;
-        resp.json()
+            .map_err(|e: reqwest::Error| {
+                MonitoringError::HttpStatus(e.status().map(|s| s.as_u16()).unwrap_or(0), e.to_string())
+            })?;
+        resp.json::<ServerHealth>()
             .await
-            .map_err(|e| format!("헬스 응답 파싱 실패: {e}"))
+            .map_err(|e: reqwest::Error| MonitoringError::Parse(e.to_string()))
     }
 
-    async fn slots(&self) -> Result<Vec<InferenceSlotInfo>, String> {
+    async fn slots(&self) -> Result<Vec<InferenceSlotInfo>, MonitoringError> {
         let url = format!("{}/slots", self.server_url);
         let resp = self
             .http_client
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("슬롯 조회 실패: {e}"))?
+            .map_err(|e: reqwest::Error| MonitoringError::Connection(e.to_string()))?
             .error_for_status()
-            .map_err(|e| format!("슬롯 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
-        resp.json()
+            .map_err(|e: reqwest::Error| {
+                MonitoringError::HttpStatus(e.status().map(|s| s.as_u16()).unwrap_or(0), e.to_string())
+            })?;
+        resp.json::<Vec<InferenceSlotInfo>>()
             .await
-            .map_err(|e| format!("슬롯 응답 파싱 실패: {e}"))
+            .map_err(|e: reqwest::Error| MonitoringError::Parse(e.to_string()))
     }
 
-    async fn metrics(&self) -> Result<ServerMetrics, String> {
+    async fn metrics(&self) -> Result<ServerMetrics, MonitoringError> {
         let url = format!("{}/metrics", self.server_url);
         let resp = self
             .http_client
             .get(&url)
             .send()
             .await
-            .map_err(|e| format!("메트릭 조회 실패: {e}"))?
+            .map_err(|e: reqwest::Error| MonitoringError::Connection(e.to_string()))?
             .error_for_status()
-            .map_err(|e| format!("메트릭 조회 실패 ({}): {e}", e.status().unwrap_or_default()))?;
+            .map_err(|e: reqwest::Error| {
+                MonitoringError::HttpStatus(e.status().map(|s| s.as_u16()).unwrap_or(0), e.to_string())
+            })?;
         let raw = resp
             .text()
             .await
-            .map_err(|e| format!("메트릭 응답 읽기 실패: {e}"))?;
+            .map_err(|e: reqwest::Error| MonitoringError::Parse(e.to_string()))?;
         Ok(ServerMetrics::parse(&raw))
     }
 }

@@ -153,8 +153,8 @@ fn make_agent_base() -> (
 /// EventStore에서 첫 StimulusApplied 이벤트의 PAD 튜플 추출
 fn first_stimulus_pad(store: &InMemoryEventStore) -> Option<(f32, f32, f32)> {
     store.get_all_events().into_iter().find_map(|e| {
-        if let EventPayload::StimulusApplied { pad, .. } = e.payload {
-            Some(pad)
+        if let EventPayload::StimulusApplied(p) = e.payload {
+            Some(p.pad)
         } else {
             None
         }

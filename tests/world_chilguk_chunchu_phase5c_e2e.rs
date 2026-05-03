@@ -204,9 +204,8 @@ fn phase5c_npc_danun_is_precise_with_heritage_doc_present() {
     let persons = load_phase5c_persons();
     let danun = persons.iter().find(|p| p.id.as_str() == "npc-danun").unwrap();
 
-    assert_eq!(
-        extras_bool(danun, "heritage_doc_pending"),
-        false,
+    assert!(
+        !extras_bool(danun, "heritage_doc_pending"),
         "npc-danun: wuxia-core 본기 존재라 heritage_doc_pending=false (사양 §3.4 직교 플래그)"
     );
     assert_eq!(
@@ -224,9 +223,8 @@ fn phase5c_other_seven_have_heritage_doc_pending_true() {
         if p.id.as_str() == "npc-danun" {
             continue;
         }
-        assert_eq!(
+        assert!(
             extras_bool(p, "heritage_doc_pending"),
-            true,
             "{}: 단독 열전 .md 부재라 heritage_doc_pending=true 기대",
             p.id
         );
@@ -244,7 +242,7 @@ fn phase5c_npc_11_stub_upgrade_removed_legacy_source_status() {
         "npc-11: legacy source_status 키 제거됐어야 함 (사양 §3.4 마이그레이션 사례 1번)"
     );
     // 새 직교 플래그 존재 + precise 등급 (npc-05 다중 묘사 근거)
-    assert_eq!(extras_bool(npc11, "heritage_doc_pending"), true);
+    assert!(extras_bool(npc11, "heritage_doc_pending"));
     assert_eq!(extras_str(npc11, "hexaco_confidence"), "precise");
 }
 

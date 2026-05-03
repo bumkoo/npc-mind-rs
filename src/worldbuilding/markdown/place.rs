@@ -58,8 +58,8 @@ pub fn place_from_markdown(md: &str) -> Result<Place, PlaceMarkdownError> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
-    let spatial = parse_spatial(map.get(&YamlValue::from("spatial")))?;
+    let extras = parse_extras_map(map.get("extras"));
+    let spatial = parse_spatial(map.get("spatial"))?;
     let body_sections: BTreeMap<String, String> = parse_h2_sections(&fm.body);
 
     Ok(Place {

@@ -13,8 +13,7 @@ use rig::http_client::{
     self, HttpClientExt, LazyBody, MultipartForm, Request, Response, StreamingResponse,
 };
 use std::pin::Pin;
-use std::sync::Arc;
-use tokio::sync::RwLock;
+use std::sync::{Arc, Mutex};
 
 type BoxedStream =
     Pin<Box<dyn rig::wasm_compat::WasmCompatSendStream<InnerItem = http_client::Result<Bytes>>>>;
@@ -32,14 +31,14 @@ struct TimingsEnvelope {
 #[derive(Clone, Debug)]
 pub struct TimingsCapturingClient {
     inner: reqwest::Client,
-    last_timings: Arc<RwLock<Option<InferenceTimings>>>,
+    last_timings: Arc<Mutex<Option<InferenceTimings>>>,
 }
 
 impl TimingsCapturingClient {
     /// 새 캡처 클라이언트를 생성한다.
     ///
     /// `timings_store`는 `RigChatAdapter`와 공유하여 마지막 timings를 조회할 수 있다.
-    pub fn new(timings_store: Arc<RwLock<Option<InferenceTimings>>>) -> Self {
+    pub fn new(timings_store: Arc<Mutex<Option<InferenceTimings>>>) -> Self {
         Self {
             inner: reqwest::Client::new(),
             last_timings: timings_store,
@@ -52,7 +51,7 @@ impl TimingsCapturingClient {
     /// rig 통신과 직접 API 호출(`/models`, `/slots` 등)이 같은 커넥션 풀을 사용하도록 한다.
     pub fn with_client(
         client: reqwest::Client,
-        timings_store: Arc<RwLock<Option<InferenceTimings>>>,
+        timings_store: Arc<Mutex<Option<InferenceTimings>>>,
     ) -> Self {
         Self {
             inner: client,
@@ -65,7 +64,7 @@ impl Default for TimingsCapturingClient {
     fn default() -> Self {
         Self {
             inner: reqwest::Client::new(),
-            last_timings: Arc::new(RwLock::new(None)),
+            last_timings: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -115,9 +114,10 @@ impl HttpClientExt for TimingsCapturingClient {
                 .map_err(|e| http_client::Error::Instance(Box::new(e)))?;
 
             // timings 추출 (파싱 실패 시 무시 — llama-server가 아닌 경우)
-            if let Ok(envelope) = serde_json::from_slice::<TimingsEnvelope>(&bytes) {
-                *timings_store.write().await = envelope.timings;
-            }
+            if let Ok(envelope) = serde_json::from_slice::<TimingsEnvelope>(&bytes)
+                && let Ok(mut guard) = timings_store.lock() {
+                    *guard = envelope.timings;
+                }
 
             let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
 
@@ -183,20 +183,19 @@ impl HttpClientExt for TimingsCapturingClient {
         T: Into<Bytes>,
     {
         let (parts, body) = req.into_parts();
-
-        let inner_req = self
-            .inner
-            .request(parts.method, parts.uri.to_string())
-            .headers(parts.headers)
-            .body::<Bytes>(body.into())
-            .build()
-            .map_err(|x| http_client::Error::Instance(x.into()))
-            .unwrap();
+        let body_bytes: Bytes = body.into();
 
         let client = self.inner.clone();
         let timings_store = self.last_timings.clone();
 
         async move {
+            let inner_req = client
+                .request(parts.method, parts.uri.to_string())
+                .headers(parts.headers)
+                .body::<Bytes>(body_bytes)
+                .build()
+                .map_err(|x| http_client::Error::Instance(x.into()))?;
+
             let response: reqwest::Response = client
                 .execute(inner_req)
                 .await
@@ -240,7 +239,7 @@ impl HttpClientExt for TimingsCapturingClient {
 /// 백그라운드에서 timings를 파싱한다.
 struct TimingsCapturingStream {
     inner: Pin<Box<dyn futures::Stream<Item = http_client::Result<Bytes>> + Send>>,
-    timings_store: Arc<RwLock<Option<InferenceTimings>>>,
+    timings_store: Arc<Mutex<Option<InferenceTimings>>>,
     /// 청크 경계를 넘는 SSE data를 축적하는 버퍼
     buffer: String,
 }
@@ -278,14 +277,10 @@ impl futures::Stream for TimingsCapturingStream {
                         if data.contains("\"timings\"")
                             && let Ok(envelope) =
                                 serde_json::from_str::<StreamingTimingsEnvelope>(data)
-                                && envelope.timings.is_some() {
-                                    let store = this.timings_store.clone();
-                                    let timings = envelope.timings;
-                                    // 비동기 write를 위해 spawn — poll에서 .await 불가
-                                    tokio::spawn(async move {
-                                        *store.write().await = timings;
-                                    });
-                                }
+                            && envelope.timings.is_some()
+                            && let Ok(mut guard) = this.timings_store.lock() {
+                                *guard = envelope.timings;
+                            }
                     }
                 }
 

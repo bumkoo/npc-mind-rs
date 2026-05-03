@@ -15,7 +15,8 @@ use crate::ports::{EmotionStore, MindRepository, NpcWorld, SceneStore};
 use super::super::event_bus::EventBus;
 use super::super::event_store::EventStore;
 
-use super::super::situation_service::SituationService;
+use crate::application::error::MindServiceError;
+use crate::application::situation_service::SituationService;
 use super::policies::{
     EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, RumorPolicy, ScenePolicy,
     StimulusPolicy, WorldOverlayPolicy,
@@ -107,7 +108,6 @@ struct DispatchState {
     staging_buffer: Vec<DomainEvent>,
     parent_indices: Vec<Option<usize>>,
     depths: Vec<u32>,
-    prior_events: Vec<DomainEvent>,
 }
 
 impl<R: MindRepository> CommandDispatcher<R> {
@@ -277,7 +277,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
         // 들고 다녀 dispatch 호출 간 간섭이 없다 (per-call 격리 원칙, §4.3).
         let cid = self.command_seq.fetch_add(1, Ordering::SeqCst);
 
-        let initial_event = self.build_initial_event(&cmd)?;
+        let initial_event = self.build_initial_event(cmd)?;
         let aggregate_key = initial_event.aggregate_key();
 
         let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
@@ -305,7 +305,6 @@ impl<R: MindRepository> CommandDispatcher<R> {
             &aggregate_key,
             &mut repo_guard,
             &mut state.shared,
-            &state.prior_events,
         );
 
         drop(repo_guard);
@@ -321,22 +320,22 @@ impl<R: MindRepository> CommandDispatcher<R> {
         })
     }
 
-    fn build_initial_event(&self, cmd: &Command) -> Result<DomainEvent, DispatchV2Error> {
+    fn build_initial_event(&self, cmd: Command) -> Result<DomainEvent, DispatchV2Error> {
         match cmd {
             Command::Appraise {
                 npc_id,
                 partner_id,
                 situation,
             } => {
-                let resolved = self.resolve_appraise_situation(npc_id, situation)?;
+                let resolved = self.resolve_appraise_situation(&npc_id, situation)?;
                 Ok(DomainEvent::new(
                     0,
                     npc_id.clone(),
                     0,
                     EventPayload::AppraiseRequested {
-                        npc_id: npc_id.clone(),
-                        partner_id: partner_id.clone(),
-                        situation: resolved,
+                        npc_id,
+                        partner_id,
+                        situation: Box::new(resolved),
                     },
                 ))
             }
@@ -354,8 +353,8 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 EventPayload::StimulusApplyRequested {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
-                    pad: (*pleasure, *arousal, *dominance),
-                    situation_description: situation_description.clone(),
+                    pad: (pleasure, arousal, dominance),
+                    situation_description,
                 },
             )),
             Command::GenerateGuide {
@@ -369,7 +368,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 EventPayload::GuideRequested {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
-                    situation_description: situation_description.clone(),
+                    situation_description,
                 },
             )),
             Command::UpdateRelationship {
@@ -383,7 +382,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 EventPayload::RelationshipUpdateRequested {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
-                    significance: *significance,
+                    significance,
                 },
             )),
             Command::EndDialogue {
@@ -397,23 +396,26 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 EventPayload::DialogueEndRequested {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
-                    significance: *significance,
+                    significance,
                 },
             )),
-            Command::TellInformation(req) => Ok(DomainEvent::new(
-                0,
-                req.speaker.clone(),
-                0,
-                EventPayload::TellInformationRequested {
-                    speaker: req.speaker.clone(),
-                    listeners: req.listeners.clone(),
-                    overhearers: req.overhearers.clone(),
-                    claim: req.claim.clone(),
-                    stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
-                    origin_chain_in: req.origin_chain_in.clone(),
-                    topic: req.topic.clone(),
-                },
-            )),
+            Command::TellInformation(req) => {
+                let speaker = req.speaker.clone();
+                Ok(DomainEvent::new(
+                    0,
+                    speaker,
+                    0,
+                    EventPayload::TellInformationRequested {
+                        speaker: req.speaker,
+                        listeners: req.listeners,
+                        overhearers: req.overhearers,
+                        claim: req.claim,
+                        stated_confidence: req.stated_confidence.clamp(0.0, 1.0),
+                        origin_chain_in: req.origin_chain_in,
+                        topic: req.topic,
+                    },
+                ))
+            }
             Command::SeedRumor(req) => {
                 // DTO→도메인 변환은 `impl From<&RumorOriginInput>` / `<&RumorReachInput>`
                 // 가 담당 (C3 리뷰 m2에서 인라인 match 제거).
@@ -438,22 +440,25 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     0,
                     EventPayload::SeedRumorRequested {
                         pending_id,
-                        topic: req.topic.clone(),
-                        seed_content: req.seed_content.clone(),
+                        topic: req.topic,
+                        seed_content: req.seed_content,
                         reach,
                         origin,
                     },
                 ))
             }
-            Command::SpreadRumor(req) => Ok(DomainEvent::new(
-                0,
-                req.rumor_id.clone(),
-                0,
-                EventPayload::SpreadRumorRequested {
-                    rumor_id: req.rumor_id.clone(),
-                    extra_recipients: req.recipients.clone(),
-                },
-            )),
+            Command::SpreadRumor(req) => {
+                let rumor_id = req.rumor_id.clone();
+                Ok(DomainEvent::new(
+                    0,
+                    rumor_id,
+                    0,
+                    EventPayload::SpreadRumorRequested {
+                        rumor_id: req.rumor_id,
+                        extra_recipients: req.recipients,
+                    },
+                ))
+            }
             Command::ApplyWorldEvent(req) => {
                 if req.world_id.is_empty() {
                     return Err(DispatchV2Error::InvalidSituation(
@@ -465,16 +470,17 @@ impl<R: MindRepository> CommandDispatcher<R> {
                         "ApplyWorldEvent: fact가 비어 있습니다".into(),
                     ));
                 }
+                let world_id = req.world_id.clone();
                 Ok(DomainEvent::new(
                     0,
-                    req.world_id.clone(),
+                    world_id,
                     0,
                     EventPayload::ApplyWorldEventRequested {
-                        world_id: req.world_id.clone(),
-                        topic: req.topic.clone(),
-                        fact: req.fact.clone(),
+                        world_id: req.world_id,
+                        topic: req.topic,
+                        fact: req.fact,
                         significance: req.significance.clamp(0.0, 1.0),
-                        witnesses: req.witnesses.clone(),
+                        witnesses: req.witnesses,
                     },
                 ))
             }
@@ -487,10 +493,10 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 use crate::domain::emotion::Scene;
                 let repo_guard = self.repository.lock().expect("repository mutex poisoned");
                 let domain_focuses: Vec<_> = focuses
-                    .iter()
+                    .into_iter()
                     .map(|f| {
                         self.situation_service
-                            .to_scene_focus(&*repo_guard, f, npc_id, partner_id)
+                            .to_scene_focus(&*repo_guard, f, &npc_id, &partner_id)
                             .map_err(|e| DispatchV2Error::InvalidSituation(e.to_string()))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
@@ -510,11 +516,11 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     npc_id.clone(),
                     0,
                     EventPayload::SceneStartRequested {
-                        npc_id: npc_id.clone(),
-                        partner_id: partner_id.clone(),
-                        significance: *significance,
+                        npc_id,
+                        partner_id,
+                        significance,
                         initial_focus_id,
-                        prebuilt_scene,
+                        prebuilt_scene: Box::new(prebuilt_scene),
                     },
                 ))
             }
@@ -524,12 +530,12 @@ impl<R: MindRepository> CommandDispatcher<R> {
     fn resolve_appraise_situation(
         &self,
         npc_id: &str,
-        situation: &Option<crate::application::dto::SituationInput>,
+        situation: Option<Box<crate::application::dto::SituationInput>>,
     ) -> Result<crate::domain::emotion::Situation, DispatchV2Error> {
         match situation {
             Some(sit) => sit
-                .to_domain(None, None, None, npc_id)
-                .map_err(|e| DispatchV2Error::InvalidSituation(e.to_string())),
+                .into_domain(None, None, None, npc_id)
+                .map_err(|e: MindServiceError| DispatchV2Error::InvalidSituation(e.to_string())),
             None => {
                 let scene = self
                     .repository
@@ -660,7 +666,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     scenes: &**repo_guard as &(dyn SceneStore + Send + Sync),
                     event_store: &*self.event_store,
                     shared: &mut state.shared,
-                    prior_events: &state.prior_events,
+                    prior_events: &state.staging_buffer,
                     aggregate_key: aggregate_key.clone(),
                 };
 
@@ -679,10 +685,9 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 }
             }
 
-            state.staging_buffer.push(event.clone());
+            state.staging_buffer.push(event);
             state.parent_indices.push(parent_idx);
             state.depths.push(depth);
-            state.prior_events.push(event.clone());
         }
         Ok(())
     }
@@ -693,11 +698,13 @@ impl<R: MindRepository> CommandDispatcher<R> {
         aggregate_key: &AggregateKey,
         repo_guard: &mut MutexGuard<'_, R>,
         shared: &mut HandlerShared,
-        prior_events: &[DomainEvent],
     ) where
         R: Send + Sync,
     {
-        for event in committed {
+        for (idx, event) in committed.iter().enumerate() {
+            // 해당 이벤트 이전까지의 이벤트들을 prior_events로 제공
+            let prior_events = &committed[0..idx];
+
             for handler in self.inline_handlers.iter() {
                 if !handler.interest().matches(event) {
                     continue;

@@ -174,6 +174,9 @@ pub enum AppError {
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
     V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
+    /// 모니터링 에러
+    #[error(transparent)]
+    Monitoring(#[from] npc_mind::ports::MonitoringError),
 }
 
 /// Phase 1 Worldbuilding — `WorldError` variant 별 HTTP 상태 매핑.
@@ -274,6 +277,17 @@ impl IntoResponse for AppError {
                     (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
                 }
             },
+            AppError::Monitoring(ref e) => {
+                use npc_mind::ports::MonitoringError as M;
+                match e {
+                    M::HttpStatus(code, _) => (
+                        StatusCode::from_u16(*code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                        e.to_string(),
+                    ),
+                    M::Connection(_) => (StatusCode::BAD_GATEWAY, e.to_string()),
+                    M::Parse(_) | M::Other(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                }
+            }
         };
 
         let body = Json(serde_json::json!({

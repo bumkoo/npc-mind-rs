@@ -45,20 +45,19 @@ impl crate::ports::StimulusProcessor for StimulusEngine {
         );
         let mut new_state = current_state.clone();
 
-        for emotion in current_state.emotions() {
-            let emotion_pad = emotion_to_pad(emotion.emotion_type());
-            let alignment = pad_dot(&emotion_pad, stimulus);
-            let inertia = (1.0 - emotion.intensity()).max(p.stimulus_min_inertia);
+        for (t, i, _) in current_state.iter_active() {
+            let emotion_pad = emotion_to_pad(t);
+            let alignment = pad_dot(emotion_pad, *stimulus);
+            let inertia = (1.0 - i).max(p.stimulus_min_inertia);
             let delta = alignment * absorb * p.stimulus_impact_rate * inertia;
-            let old_intensity = emotion.intensity();
-            let new_intensity = (old_intensity + delta).clamp(0.0, 1.0);
+            let new_intensity = (i + delta).clamp(0.0, 1.0);
 
             if new_intensity < p.stimulus_fade_threshold {
-                trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, result = "faded");
-                new_state.remove(emotion.emotion_type());
+                trace!(emotion = ?t, old = i, delta = delta, result = "faded");
+                new_state.remove(t);
             } else {
-                trace!(emotion = ?emotion.emotion_type(), old = old_intensity, delta = delta, new = new_intensity);
-                new_state.set_intensity(emotion.emotion_type(), new_intensity);
+                trace!(emotion = ?t, old = i, delta = delta, new = new_intensity);
+                new_state.set_intensity(t, new_intensity);
             }
         }
 

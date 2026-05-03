@@ -468,8 +468,9 @@ impl MemoryStore for SqliteMemoryStore {
         // v2: partition_key 포맷으로 필터 (`"personal:<npc_id>"`)
         let partition_key_filter = npc_id.map(|id| format!("personal:{id}"));
 
-        let sql = "SELECT v.id, v.distance
-                   FROM memories_vec v
+        let sql = "SELECT m.*, v.distance
+                   FROM memories m
+                   JOIN memories_vec v ON m.id = v.id
                    WHERE v.embedding MATCH ?1
                      AND k = ?2
                      AND (?3 IS NULL OR v.partition_key = ?3)
@@ -479,7 +480,7 @@ impl MemoryStore for SqliteMemoryStore {
             .prepare(sql)
             .map_err(|e| MemoryError::StorageError(e.to_string()))?;
 
-        let rows = stmt
+        let results = stmt
             .query_map(
                 params![
                     query_embedding.as_bytes(),
@@ -487,25 +488,17 @@ impl MemoryStore for SqliteMemoryStore {
                     partition_key_filter
                 ],
                 |row| {
-                    let id: String = row.get(0)?;
-                    let distance: f64 = row.get(1)?;
-                    Ok((id, distance as f32))
+                    let entry = row_to_entry(row)?;
+                    let distance: f64 = row.get(24)?;
+                    // cosine distance(0=동일, 2=반대) → similarity [−1, 1] 범위로 변환.
+                    Ok(MemoryResult {
+                        entry,
+                        relevance_score: 1.0 - distance as f32,
+                    })
                 },
             )
-            .map_err(|e| MemoryError::StorageError(e.to_string()))?;
-
-        let scored: Vec<(String, f32)> = rows.filter_map(|r| r.ok()).collect();
-
-        let results = scored
-            .into_iter()
-            .filter_map(|(id, distance)| {
-                let entry = load_entry(&conn, &id).ok()?;
-                // cosine distance(0=동일, 2=반대) → similarity [−1, 1] 범위로 변환.
-                Some(MemoryResult {
-                    entry,
-                    relevance_score: 1.0 - distance,
-                })
-            })
+            .map_err(|e| MemoryError::StorageError(e.to_string()))?
+            .filter_map(|r| r.ok())
             .collect();
 
         Ok(results)
@@ -986,13 +979,4 @@ fn scope_from_columns(
             npc_id: fallback_npc_id.to_string(),
         },
     }
-}
-
-fn load_entry(conn: &Connection, id: &str) -> Result<MemoryEntry, MemoryError> {
-    conn.query_row(
-        "SELECT * FROM memories WHERE id = ?1",
-        params![id],
-        row_to_entry,
-    )
-    .map_err(|e| MemoryError::StorageError(e.to_string()))
 }

@@ -4,7 +4,7 @@
 //! - `GET  /api/world/persons/{id}`         — single person
 //! - `GET  /api/world/persons/search?q=...` — FTS5 trigram
 //! - `POST /api/world/persons/sync`         — world_store → mind repo 일괄 재동기화
-//!                                            (Phase 2 follow-up: 런타임 작가 워크플로우)
+//!   (Phase 2 follow-up: 런타임 작가 워크플로우)
 
 use axum::Json;
 use axum::extract::{Path, Query, State};

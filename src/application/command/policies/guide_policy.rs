@@ -58,11 +58,7 @@ impl EventHandler for GuidePolicy {
                 situation_description,
                 ..
             } => (npc_id, partner_id, situation_description.clone()),
-            EventPayload::StimulusApplied {
-                npc_id,
-                partner_id,
-                ..
-            } => (npc_id, partner_id, None),
+            EventPayload::StimulusApplied(p) => (&p.npc_id, &p.partner_id, None),
             EventPayload::GuideRequested {
                 npc_id,
                 partner_id,
@@ -136,19 +132,20 @@ mod handler_v2_tests {
     }
 
     fn make_stimulus_applied(npc_id: &str, partner_id: &str) -> DomainEvent {
+        use crate::domain::event::StimulusAppliedPayload;
         DomainEvent::new(
             0,
             npc_id.to_string(),
             0,
-            EventPayload::StimulusApplied {
+            EventPayload::StimulusApplied(Box::new(StimulusAppliedPayload {
                 npc_id: npc_id.to_string(),
                 partner_id: partner_id.to_string(),
                 pad: (0.0, 0.0, 0.0),
                 mood_before: 0.0,
                 mood_after: 0.0,
-                beat_changed: false,
+                beat_triggered: false,
                 emotion_snapshot: vec![],
-            },
+            })),
         )
     }
 

@@ -9,7 +9,15 @@ impl MemoryAugmentationService {
     pub fn new() -> Self {
         Self
     }
+}
 
+impl Default for MemoryAugmentationService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl MemoryAugmentationService {
     /// 주어진 쿼리와 상태(PAD)를 기반으로 관련 기억을 찾아 프롬프트 블록으로 반환
     pub fn augment<A: UtteranceAnalyzer + ?Sized>(
         &self,
@@ -24,7 +32,7 @@ impl MemoryAugmentationService {
         // 1) 임베딩 생성 — analyzer가 있으면 쿼리 텍스트로 임베딩 생성.
         let query_embedding: Option<Vec<f32>> = match analyzer {
             Some(a) => match a.analyze_with_embedding(query) {
-                Ok((_pad, emb)) => emb.map(|e| e.to_vec()),
+                Ok((_pad, emb)) => emb.map(|e| e.into_inner()),
                 Err(e) => {
                     tracing::debug!("MemoryAugmentationService.augment: embedding 실패 {:?}", e);
                     None
@@ -40,7 +48,7 @@ impl MemoryAugmentationService {
         
         let mem_query = MemoryQuery {
             text: Some(query.to_string()),
-            embedding: query_embedding.clone(),
+            embedding: query_embedding,
             scope_filter: Some(MemoryScopeFilter::NpcAllowed(npc_id.to_string())),
             source_filter: None,
             layer_filter: None,

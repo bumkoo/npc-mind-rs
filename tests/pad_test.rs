@@ -39,7 +39,7 @@ fn 같은_방향이면_양수_내적() {
     let anger_pad = emotion_to_pad(EmotionType::Anger);
     let provocation = Pad::new(-0.6, 0.7, 0.5);
 
-    let dot = pad_dot(&anger_pad, &provocation);
+    let dot = pad_dot(anger_pad, provocation);
     // P·A: (-0.51)×(-0.6) + (0.59)×(0.7) = 0.306 + 0.413 = 0.719
     // D_scale: 1 + |0.25-0.5|×0.3 = 1.075
     // result: 0.719 × 1.075 = 0.773
@@ -51,7 +51,7 @@ fn 반대_방향이면_음수_내적() {
     let anger_pad = emotion_to_pad(EmotionType::Anger);
     let apology = Pad::new(0.5, -0.3, -0.4);
 
-    let dot = pad_dot(&anger_pad, &apology);
+    let dot = pad_dot(anger_pad, apology);
     // P·A: (-0.51)×(0.5) + (0.59)×(-0.3) = -0.255 - 0.177 = -0.432
     // D_scale: 1 + |0.25-(-0.4)|×0.3 = 1.195
     // result: -0.432 × 1.195 = -0.516
@@ -63,7 +63,7 @@ fn 중립과의_내적은_0() {
     let anger_pad = emotion_to_pad(EmotionType::Anger);
     let neutral = Pad::neutral();
 
-    let dot = pad_dot(&anger_pad, &neutral);
+    let dot = pad_dot(anger_pad, neutral);
     assert!((dot - 0.0).abs() < 0.001, "중립 PAD와의 내적은 0: {}", dot);
 }
 
@@ -74,8 +74,8 @@ fn 자극이_강할수록_내적_절대값이_큼() {
     let weak = Pad::new(-0.2, 0.1, 0.1);
     let strong = Pad::new(-0.8, 0.8, 0.6);
 
-    let dot_weak = pad_dot(&anger_pad, &weak);
-    let dot_strong = pad_dot(&anger_pad, &strong);
+    let dot_weak = pad_dot(anger_pad, weak);
+    let dot_strong = pad_dot(anger_pad, strong);
 
     assert!(
         dot_strong > dot_weak,
@@ -99,8 +99,8 @@ fn d_격차가_클수록_효과가_강함() {
     // 먼 D → 스케일러 큼
     let far_d = Pad::new(-0.6, 0.7, -0.8); // |0.25-(-0.8)| = 1.05
 
-    let dot_same = pad_dot(&anger_pad, &same_d);
-    let dot_far = pad_dot(&anger_pad, &far_d);
+    let dot_same = pad_dot(anger_pad, same_d);
+    let dot_far = pad_dot(anger_pad, far_d);
 
     assert!(
         dot_far > dot_same,
@@ -116,7 +116,7 @@ fn d_격차가_0이면_스케일러_1() {
     let a = Pad::new(-0.5, 0.5, 0.3);
     let b = Pad::new(-0.5, 0.5, 0.3); // 동일한 D
 
-    let dot = pad_dot(&a, &b);
+    let dot = pad_dot(a, b);
     let pa_only = a.pleasure * b.pleasure + a.arousal * b.arousal;
 
     assert!(
@@ -133,7 +133,7 @@ fn d_스케일러는_방향을_바꾸지_않음() {
     let shame_pad = emotion_to_pad(EmotionType::Shame); // D:-0.90
     let comfort = Pad::new(0.5, -0.3, 0.5); // D:+0.5 → 큰 격차
 
-    let dot = pad_dot(&shame_pad, &comfort);
+    let dot = pad_dot(shame_pad, comfort);
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
     // D_scale: 1 + |(-0.90)-(0.5)|×0.3 = 1.42
     // result: -0.18 × 1.42 = -0.256 → 여전히 음수 (감소)
@@ -226,8 +226,8 @@ fn shame은_불쾌_저각성_복종적() {
 fn 도발_자극은_anger와_공명하고_joy와_반발() {
     let provocation = Pad::new(-0.6, 0.7, 0.5);
 
-    let anger_dot = pad_dot(&emotion_to_pad(EmotionType::Anger), &provocation);
-    let joy_dot = pad_dot(&emotion_to_pad(EmotionType::Joy), &provocation);
+    let anger_dot = pad_dot(emotion_to_pad(EmotionType::Anger), provocation);
+    let joy_dot = pad_dot(emotion_to_pad(EmotionType::Joy), provocation);
 
     assert!(anger_dot > 0.0, "도발 → Anger 공명: {}", anger_dot);
     assert!(joy_dot < 0.0, "도발 → Joy 반발: {}", joy_dot);
@@ -237,7 +237,7 @@ fn 도발_자극은_anger와_공명하고_joy와_반발() {
 fn 사과_자극은_anger를_감소시킴() {
     let apology = Pad::new(0.5, -0.3, -0.4);
 
-    let anger_dot = pad_dot(&emotion_to_pad(EmotionType::Anger), &apology);
+    let anger_dot = pad_dot(emotion_to_pad(EmotionType::Anger), apology);
     assert!(anger_dot < 0.0, "사과 → Anger 감소: {}", anger_dot);
 }
 
@@ -245,7 +245,7 @@ fn 사과_자극은_anger를_감소시킴() {
 fn 감사_자극은_gratitude와_공명() {
     let thanks = Pad::new(0.7, 0.3, -0.3);
 
-    let gratitude_dot = pad_dot(&emotion_to_pad(EmotionType::Gratitude), &thanks);
+    let gratitude_dot = pad_dot(emotion_to_pad(EmotionType::Gratitude), thanks);
     assert!(
         gratitude_dot > 0.0,
         "감사 자극 → Gratitude 공명: {}",
@@ -258,8 +258,8 @@ fn 위협_자극은_fear와_anger_모두_공명하되_fear가_더_강함() {
     // "네놈을 죽이겠다" — 불쾌, 고각성, 지배적 (위협하는 쪽 관점)
     let threat = Pad::new(-0.8, 0.8, 0.6);
 
-    let fear_dot = pad_dot(&emotion_to_pad(EmotionType::Fear), &threat);
-    let anger_dot = pad_dot(&emotion_to_pad(EmotionType::Anger), &threat);
+    let fear_dot = pad_dot(emotion_to_pad(EmotionType::Fear), threat);
+    let anger_dot = pad_dot(emotion_to_pad(EmotionType::Anger), threat);
 
     // Fear: P·A(+0.992) × D_scale(1+|(-0.43)-0.6|×0.3 = 1.31) = 1.30
     // Anger: P·A(+0.880) × D_scale(1+|0.25-0.6|×0.3 = 1.105) = 0.972
@@ -289,7 +289,7 @@ fn 위협_자극은_fear와_anger_모두_공명하되_fear가_더_강함() {
 fn 비난_자극은_shame을_증폭_d격차로_더_강하게() {
     // "네가 한 짓을 부끄럽게 여겨라!" — 불쾌, 고각성, 지배적
     let rebuke = Pad::new(-0.6, 0.7, 0.5);
-    let shame_dot = pad_dot(&emotion_to_pad(EmotionType::Shame), &rebuke);
+    let shame_dot = pad_dot(emotion_to_pad(EmotionType::Shame), rebuke);
 
     // P·A: +0.18 + 0.07 = +0.25 (증폭 방향)
     // D_scale: 1 + |(-0.90)-(+0.5)|×0.3 = 1.42
@@ -305,7 +305,7 @@ fn 비난_자극은_shame을_증폭_d격차로_더_강하게() {
 fn 위로_자극은_shame을_감소() {
     // "괜찮소, 누구나 실수하오" — 쾌, 저각성, 복종적
     let comfort = Pad::new(0.5, -0.3, -0.4);
-    let shame_dot = pad_dot(&emotion_to_pad(EmotionType::Shame), &comfort);
+    let shame_dot = pad_dot(emotion_to_pad(EmotionType::Shame), comfort);
 
     // P·A: -0.15 - 0.03 = -0.18 (감소 방향)
     // D_scale: 1 + |(-0.90)-(-0.4)|×0.3 = 1.15
@@ -317,7 +317,7 @@ fn 위로_자극은_shame을_감소() {
 fn 위로_자극은_fear를_감소_보호자일수록_효과적() {
     // "걱정 마시오, 내가 지켜주겠소" — 쾌, 저각성, 지배적(보호)
     let reassure = Pad::new(0.6, -0.2, 0.5);
-    let fear_dot = pad_dot(&emotion_to_pad(EmotionType::Fear), &reassure);
+    let fear_dot = pad_dot(emotion_to_pad(EmotionType::Fear), reassure);
 
     // P·A: -0.384 - 0.12 = -0.504 (감소 방향)
     // D_scale: 1 + |(-0.43)-(+0.5)|×0.3 = 1.28 (큰 격차 → 강한 스케일링)
@@ -333,7 +333,7 @@ fn 위로_자극은_fear를_감소_보호자일수록_효과적() {
 fn 위협_자극은_fear를_증폭_강자일수록_효과적() {
     // "항복하지 않으면 모두 죽는다" — 강한 불쾌, 고각성, 지배적
     let threat = Pad::new(-0.8, 0.8, 0.6);
-    let fear_dot = pad_dot(&emotion_to_pad(EmotionType::Fear), &threat);
+    let fear_dot = pad_dot(emotion_to_pad(EmotionType::Fear), threat);
 
     // P·A: +0.512 + 0.48 = +0.992 (증폭 방향)
     // D_scale: 1 + |(-0.43)-(+0.6)|×0.3 = 1.31 (큰 격차 → 강한 스케일링)
@@ -354,8 +354,8 @@ fn 같은_사과도_복종적이면_anger에_더_효과적() {
     // 비굴한 사과 (D:-0.5) — D 격차 큼
     let humble_apology = Pad::new(0.5, -0.3, -0.5);
 
-    let dot_proud = pad_dot(&anger_pad, &proud_apology);
-    let dot_humble = pad_dot(&anger_pad, &humble_apology);
+    let dot_proud = pad_dot(anger_pad, proud_apology);
+    let dot_humble = pad_dot(anger_pad, humble_apology);
 
     // 둘 다 음수(감소)지만 비굴한 사과가 더 효과적
     assert!(dot_proud < 0.0, "당당한 사과도 Anger 감소: {}", dot_proud);

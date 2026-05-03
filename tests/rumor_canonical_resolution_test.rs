@@ -110,12 +110,12 @@ async fn rumor_with_topic_and_canonical_resolves_to_canonical_content() {
     let (dispatcher, memory_store, rumor_store) = build(Some(canonical));
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("leader-change".into()),
             seed_content: None, // ← Canonical을 쓰므로 필요 없음
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store
@@ -126,11 +126,11 @@ async fn rumor_with_topic_and_canonical_resolves_to_canonical_content() {
         .id;
 
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id,
             recipients: vec!["listener-a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -146,12 +146,12 @@ async fn orphan_rumor_resolves_to_seed_content() {
     let (dispatcher, memory_store, rumor_store) = build(None);
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: None,
             seed_content: Some("강호에 이상한 기운이 돈다".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Authored { by: None },
-        }))
+        })))
         .await
         .unwrap();
 
@@ -165,11 +165,11 @@ async fn orphan_rumor_resolves_to_seed_content() {
     assert!(rumor.is_orphan());
 
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor.id,
             recipients: vec!["listener-a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -184,14 +184,14 @@ async fn forecast_rumor_with_topic_but_no_canonical_uses_seed_content() {
     let (dispatcher, memory_store, rumor_store) = build(None);
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("future-event".into()),
             seed_content: Some("조만간 큰 사건이 있다더라".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Authored {
                 by: Some("informant".into()),
             },
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store
@@ -202,11 +202,11 @@ async fn forecast_rumor_with_topic_but_no_canonical_uses_seed_content() {
         .id;
 
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id,
             recipients: vec!["listener-a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -229,12 +229,12 @@ async fn canonical_seeded_after_first_spread_affects_subsequent_hops() {
     let (dispatcher, memory_store, rumor_store) = build(None);
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("late-canon".into()),
             seed_content: Some("들리는 바로는...".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Authored { by: None },
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store
@@ -246,11 +246,11 @@ async fn canonical_seeded_after_first_spread_affects_subsequent_hops() {
 
     // 첫 spread — Canonical 아직 없음
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor_id.clone(),
             recipients: vec!["listener-a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
     let before = recipient_entry(&*memory_store, "listener-a");
@@ -263,11 +263,11 @@ async fn canonical_seeded_after_first_spread_affects_subsequent_hops() {
 
     // 두 번째 spread — Canonical이 있어야 하므로 공식 본문 사용
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id,
             recipients: vec!["listener-b".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
     let after = recipient_entry(&*memory_store, "listener-b");

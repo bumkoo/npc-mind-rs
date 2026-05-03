@@ -51,7 +51,7 @@ pub fn timeline_from_markdown(md: &str) -> Result<Timeline, TimelineMarkdownErro
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
+    let extras = parse_extras_map(map.get("extras"));
     // R4 strict — references는 외래키 활성 EraId 시퀀스.
     let references = get_string_array_strict(map, "references", "references")?
         .into_iter()

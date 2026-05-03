@@ -148,19 +148,11 @@ impl MemoryProjector {
                 self.index_dialogue(event, npc_id, utterance, speaker);
             }
 
-            EventPayload::RelationshipUpdated {
-                owner_id,
-                target_id,
-                before_closeness,
-                after_closeness,
-                before_trust,
-                after_trust,
-                ..
-            } => {
-                let delta = (after_closeness - before_closeness).abs()
-                    + (after_trust - before_trust).abs();
+            EventPayload::RelationshipUpdated(p) => {
+                let delta = (p.after_closeness - p.before_closeness).abs()
+                    + (p.after_trust - p.before_trust).abs();
                 if delta > RELATIONSHIP_CHANGE_THRESHOLD {
-                    self.index_relationship(event, owner_id, target_id, delta);
+                    self.index_relationship(event, &p.owner_id, &p.target_id, delta);
                 }
             }
 

@@ -290,7 +290,7 @@ fn apply_stimulus(...) -> EmotionState {
     
     // 기존 감정 변동 (momentum 적용)
     for emotion in current_state.emotions() {
-        let alignment = pad_dot(&emotion_pad, stimulus);
+        let alignment = pad_dot(emotion_pad, stimulus);
         let inertia = (1.0 - emotion.intensity()).max(STIMULUS_MIN_INERTIA);
         let delta = alignment * absorb * STIMULUS_IMPACT_RATE * inertia * momentum;
         //                                                                ^^^^^^^^

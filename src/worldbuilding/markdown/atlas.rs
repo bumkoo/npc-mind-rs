@@ -50,8 +50,8 @@ pub fn atlas_from_markdown(md: &str) -> Result<Atlas, AtlasMarkdownError> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
-    let extent = parse_extent(map.get(&YamlValue::from("extent")))?;
+    let extras = parse_extras_map(map.get("extras"));
+    let extent = parse_extent(map.get("extent"))?;
     let references = get_string_array(map, "references")
         .unwrap_or_default()
         .into_iter()
@@ -79,7 +79,7 @@ pub fn atlas_from_markdown(md: &str) -> Result<Atlas, AtlasMarkdownError> {
 // ---------------------------------------------------------------------------
 
 fn get_str<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
-    map.get(YamlValue::from(key)).and_then(|v| match v {
+    map.get(key).and_then(|v| match v {
         YamlValue::String(s) => Some(s.as_str()),
         YamlValue::Null => None,
         _ => None,
@@ -87,7 +87,7 @@ fn get_str<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
 }
 
 fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
-    let v = map.get(YamlValue::from(key))?;
+    let v = map.get(key)?;
     match v {
         YamlValue::Sequence(seq) => Some(
             seq.iter()
@@ -120,11 +120,11 @@ fn parse_extent(v: Option<&YamlValue>) -> Result<AtlasExtent, AtlasMarkdownError
         .map(str::to_string)
         .unwrap_or_else(|| "schematic".to_string());
     let width_units = map
-        .get(YamlValue::from("width_units"))
+        .get("width_units")
         .and_then(|v| v.as_u64())
         .map(|n| n as u32);
     let height_units = map
-        .get(YamlValue::from("height_units"))
+        .get("height_units")
         .and_then(|v| v.as_u64())
         .map(|n| n as u32);
     Ok(AtlasExtent {

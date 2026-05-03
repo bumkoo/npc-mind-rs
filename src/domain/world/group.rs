@@ -250,7 +250,7 @@ pub fn detect_parent_group_cycle(groups: &[Group]) -> Vec<Vec<GroupId>> {
     seen_cycles.into_iter().collect()
 }
 
-fn rotate_to_min(cycle: &mut Vec<GroupId>) {
+fn rotate_to_min(cycle: &mut [GroupId]) {
     if cycle.is_empty() {
         return;
     }

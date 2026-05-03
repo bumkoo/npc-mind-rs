@@ -29,7 +29,7 @@ async fn seed_emotion(dispatcher: &CommandDispatcher<InMemoryRepository>, npc: &
         .dispatch_v2(Command::Appraise {
             npc_id: npc.into(),
             partner_id: partner.into(),
-            situation: Some(SituationInput {
+            situation: Some(Box::new(SituationInput {
                 description: "장면 준비".into(),
                 event: Some(EventInput {
                     description: "평범한 만남".into(),
@@ -39,8 +39,9 @@ async fn seed_emotion(dispatcher: &CommandDispatcher<InMemoryRepository>, npc: &
                 }),
                 action: None,
                 object: None,
-            }),
+            })),
         })
+
         .await
         .expect("appraise seed");
 }

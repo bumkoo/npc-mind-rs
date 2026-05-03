@@ -145,45 +145,35 @@ impl EventHandler for RelationshipMemoryHandler {
         event: &DomainEvent,
         _ctx: &mut EventHandlerContext<'_>,
     ) -> Result<HandlerResult, HandlerError> {
-        let EventPayload::RelationshipUpdated {
-            owner_id,
-            target_id,
-            before_closeness,
-            before_trust,
-            before_power,
-            after_closeness,
-            after_trust,
-            after_power,
-            cause,
-        } = &event.payload
+        let EventPayload::RelationshipUpdated(p) = &event.payload
         else {
             return Ok(HandlerResult::default());
         };
 
         // 미세 변동은 기록하지 않음. 또한 주도 축 라벨을 content에 포함해 추적성 확보.
         let (delta, axis) = Self::dominant_delta(
-            *before_closeness,
-            *before_trust,
-            *before_power,
-            *after_closeness,
-            *after_trust,
-            *after_power,
+            p.before_closeness,
+            p.before_trust,
+            p.before_power,
+            p.after_closeness,
+            p.after_trust,
+            p.after_power,
         );
         if delta < profile().memory_relationship_delta_threshold {
             return Ok(HandlerResult::default());
         }
 
-        let (source, topic, base_content) = Self::derive_from_cause(cause, target_id);
+        let (source, topic, base_content) = Self::derive_from_cause(&p.cause, &p.target_id);
         let content = format!("{base_content} [{axis} Δ={delta:.2}]");
 
-        let id = Self::derive_entry_id(event.id, owner_id);
+        let id = Self::derive_entry_id(event.id, &p.owner_id);
         #[allow(deprecated)] // Personal 투영 grand-father (§2.5 H10)
         let entry = MemoryEntry {
             id: id.clone(),
             created_seq: event.id,
             event_id: event.id,
             scope: MemoryScope::Personal {
-                npc_id: owner_id.clone(),
+                npc_id: p.owner_id.clone(),
             },
             source,
             provenance: Provenance::Runtime,
@@ -195,7 +185,7 @@ impl EventHandler for RelationshipMemoryHandler {
             timestamp_ms: event.timestamp_ms,
             last_recalled_at: None,
             recall_count: 0,
-            origin_chain: match cause {
+            origin_chain: match &p.cause {
                 RelationshipChangeCause::InformationTold { origin_chain } => origin_chain.clone(),
                 RelationshipChangeCause::Rumor { rumor_id } => vec![format!("rumor:{rumor_id}")],
                 _ => vec![],
@@ -204,14 +194,14 @@ impl EventHandler for RelationshipMemoryHandler {
             acquired_by: None,
             superseded_by: None,
             consolidated_into: None,
-            npc_id: owner_id.clone(),
+            npc_id: p.owner_id.clone(),
         };
 
         if let Err(e) = self.store.index(entry, None) {
             tracing::warn!(
                 event_id = event.id,
-                owner_id,
-                target_id,
+                owner_id = %p.owner_id,
+                target_id = %p.target_id,
                 error = %e,
                 "RelationshipMemoryHandler: MemoryStore.index failed"
             );
@@ -357,17 +347,19 @@ mod tests {
             event_id,
             owner.into(),
             1,
-            EventPayload::RelationshipUpdated {
-                owner_id: owner.into(),
-                target_id: target.into(),
-                before_closeness: 0.0,
-                before_trust: 0.0,
-                before_power: 0.0,
-                after_closeness: delta_close,
-                after_trust: 0.0,
-                after_power: 0.0,
-                cause,
-            },
+            EventPayload::RelationshipUpdated(Box::new(
+                crate::domain::event::RelationshipUpdatedPayload {
+                    owner_id: owner.into(),
+                    target_id: target.into(),
+                    before_closeness: 0.0,
+                    before_trust: 0.0,
+                    before_power: 0.0,
+                    after_closeness: delta_close,
+                    after_trust: 0.0,
+                    after_power: 0.0,
+                    cause,
+                },
+            )),
         )
     }
 

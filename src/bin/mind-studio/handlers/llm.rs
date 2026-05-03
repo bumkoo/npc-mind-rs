@@ -53,11 +53,7 @@ pub async fn llm_health(
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
 
-    monitor
-        .health()
-        .await
-        .map(Json)
-        .map_err(AppError::Internal)
+    Ok(Json(monitor.health().await?))
 }
 
 /// GET /api/llm/slots — 슬롯 상태 조회
@@ -68,11 +64,7 @@ pub async fn llm_slots(
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
 
-    monitor
-        .slots()
-        .await
-        .map(Json)
-        .map_err(AppError::Internal)
+    Ok(Json(monitor.slots().await?))
 }
 
 /// GET /api/llm/metrics — Prometheus 메트릭 조회
@@ -83,9 +75,5 @@ pub async fn llm_metrics(
         AppError::NotImplemented("LLM 모니터가 설정되지 않았습니다".into())
     })?;
 
-    monitor
-        .metrics()
-        .await
-        .map(Json)
-        .map_err(AppError::Internal)
+    Ok(Json(monitor.metrics().await?))
 }

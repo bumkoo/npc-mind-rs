@@ -80,7 +80,7 @@ fn appraise_for(scene_id: &SceneId) -> Command {
     Command::Appraise {
         npc_id: scene_id.npc_id.clone(),
         partner_id: scene_id.partner_id.clone(),
-        situation: Some(SituationInput {
+        situation: Some(Box::new(SituationInput {
             description: "검증 상황".into(),
             event: Some(EventInput {
                 description: "test".into(),
@@ -90,7 +90,7 @@ fn appraise_for(scene_id: &SceneId) -> Command {
             }),
             action: None,
             object: None,
-        }),
+        })),
     }
 }
 
@@ -253,7 +253,7 @@ async fn dispatch_to_rejects_command_targeting_different_scene() {
     let wrong_cmd = Command::Appraise {
         npc_id: "mu_baek".into(),
         partner_id: "su_ryeon".into(),
-        situation: Some(SituationInput {
+        situation: Some(Box::new(SituationInput {
             description: "wrong".into(),
             event: Some(EventInput {
                 description: "x".into(),
@@ -263,7 +263,7 @@ async fn dispatch_to_rejects_command_targeting_different_scene() {
             }),
             action: None,
             object: None,
-        }),
+        })),
     };
     let err = director
         .dispatch_to(&scene_id, wrong_cmd)
@@ -496,7 +496,7 @@ async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
         .dispatch_v2(Command::Appraise {
             npc_id: "mu_baek".into(),
             partner_id: "gyo_ryong".into(),
-            situation: Some(SituationInput {
+            situation: Some(Box::new(SituationInput {
                 description: "시드".into(),
                 event: Some(EventInput {
                     description: "x".into(),
@@ -506,7 +506,7 @@ async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
                 }),
                 action: None,
                 object: None,
-            }),
+            })),
         })
         .await
         .expect("seed appraise");
@@ -543,16 +543,12 @@ async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
         .iter()
         .find(|e| e.kind() == EventKind::RelationshipUpdated)
         .expect("BeatTransitioned 후 RelationshipUpdated 발행");
-    let EventPayload::RelationshipUpdated {
-        owner_id,
-        target_id,
-        ..
-    } = &rel_updated.payload
+    let EventPayload::RelationshipUpdated(p) = &rel_updated.payload
     else {
         panic!("payload mismatch")
     };
     assert_eq!(
-        (owner_id.as_str(), target_id.as_str()),
+        (p.owner_id.as_str(), p.target_id.as_str()),
         ("mu_baek", "gyo_ryong"),
         "RelationshipPolicy는 Scene A의 관계(mu_baek→gyo_ryong)를 갱신해야 함 — \
          이전 버그에서는 last_scene_id(Scene B)의 su_ryeon을 target으로 잡았음"

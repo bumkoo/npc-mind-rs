@@ -70,7 +70,7 @@ pub fn is_noise_chapter_title(title: &str) -> bool {
     if t.is_empty() {
         return false;
     }
-    NOISE_CHAPTER_TITLES.iter().any(|s| t == *s)
+    NOISE_CHAPTER_TITLES.contains(&t)
 }
 
 /// EPUB → 챕터 텍스트 추출 트레잇. Phase 0의 단일 구현은 `epub` 크레이트 기반.
@@ -385,15 +385,15 @@ mod epub_impl {
                 block_break_pending = false;
             }
             // 엔티티 디코드 (간이 — 자주 보이는 것만)
-            if b == b'&' {
-                if let Some(semi) = html[i..].find(';') {
+            if b == b'&'
+                && let Some(semi) = html[i..].find(';') {
                     let ent = &html[i + 1..i + semi];
                     let decoded = decode_entity(ent);
                     out.push_str(&decoded);
                     i += semi + 1;
                     continue;
                 }
-            }
+
             // UTF-8 codepoint 통째로 push
             let ch_len = utf8_char_len(b);
             let end = (i + ch_len).min(bytes.len());
@@ -420,8 +420,7 @@ mod epub_impl {
     }
 
     fn utf8_char_len(b: u8) -> usize {
-        if b < 0x80 { 1 }
-        else if b < 0xC0 { 1 } // continuation byte (정상 stream에선 안 옴, 방어)
+        if b < 0xC0 { 1 } // standard ASCII or continuation byte (fallback)
         else if b < 0xE0 { 2 }
         else if b < 0xF0 { 3 }
         else { 4 }

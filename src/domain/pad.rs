@@ -84,7 +84,7 @@ impl Pad {
 /// 직관을 방향 왜곡 없이 반영할 수 있다.
 ///
 /// 상세: docs/pad-stimulus-design-decisions.md
-pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
+pub fn pad_dot(a: Pad, b: Pad) -> f32 {
     let pa = a.pleasure * b.pleasure + a.arousal * b.arousal;
     let d_gap = (a.dominance - b.dominance).abs();
     pa * (1.0 + d_gap * profile().pad_d_scale_weight)

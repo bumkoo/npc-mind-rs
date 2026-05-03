@@ -343,7 +343,7 @@ async fn monitor_서버_미접속_에러() {
 
     let health = adapter.health().await;
     assert!(health.is_err());
-    assert!(health.unwrap_err().contains("실패"));
+    assert!(health.unwrap_err().to_string().contains("실패"));
 }
 
 #[tokio::test]
@@ -369,11 +369,10 @@ async fn monitor_base_url_v1_제거_확인() {
 #[test]
 fn with_client_생성자_동작() {
     use npc_mind::adapter::llama_timings::TimingsCapturingClient;
-    use std::sync::Arc;
-    use tokio::sync::RwLock;
+    use std::sync::{Arc, Mutex};
 
     let shared_client = reqwest::Client::new();
-    let store = Arc::new(RwLock::new(None));
+    let store = Arc::new(Mutex::new(None));
 
     // with_client로 생성해도 정상 동작
     let _capturing = TimingsCapturingClient::with_client(shared_client, store);

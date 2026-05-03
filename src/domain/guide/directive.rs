@@ -33,19 +33,11 @@ impl ActingDirective {
 
         // 판단에 필요한 정보 요약
         let dominant = state.dominant().map(|e| e.emotion_type());
-        let significant = state.significant(profile().emotion_threshold);
-        let has_anger = significant
-            .iter()
-            .any(|e| e.emotion_type() == EmotionType::Anger);
-        let has_fear = significant
-            .iter()
-            .any(|e| e.emotion_type() == EmotionType::Fear);
-        let has_shame = significant
-            .iter()
-            .any(|e| e.emotion_type() == EmotionType::Shame);
-        let has_reproach = significant
-            .iter()
-            .any(|e| e.emotion_type() == EmotionType::Reproach);
+        let threshold = profile().emotion_threshold;
+        let has_anger = state.intensity_of(EmotionType::Anger) >= threshold;
+        let has_fear = state.intensity_of(EmotionType::Fear) >= threshold;
+        let has_shame = state.intensity_of(EmotionType::Shame) >= threshold;
+        let has_reproach = state.intensity_of(EmotionType::Reproach) >= threshold;
 
         Self {
             tone: Tone::decide(dominant, mood, &avg),

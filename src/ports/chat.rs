@@ -122,7 +122,7 @@ pub trait LlmInfoProvider: Send + Sync {
 #[cfg(feature = "chat")]
 #[async_trait::async_trait]
 pub trait LlmModelDetector: Send + Sync {
-    async fn refresh_model_info(&self) -> Result<LlmModelInfo, String>;
+    async fn refresh_model_info(&self) -> Result<LlmModelInfo, ConversationError>;
 }
 
 /// 대화 오케스트레이터 포트 — LLM과의 다턴 대화 세션을 추상화

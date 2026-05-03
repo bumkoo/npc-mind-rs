@@ -10,7 +10,7 @@ mod common;
 use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::{DomainEvent, EventPayload};
-use npc_mind::ports::{EmbedError, MemoryStore, TextEmbedder};
+use npc_mind::ports::{EmbedError, MemoryStore, TextEmbedder, MemoryQuery};
 use npc_mind::{EventStore, MemoryProjector};
 
 use futures::stream;
@@ -71,7 +71,11 @@ async fn consume_stream_indexes_ok_events() {
 
     for i in 1..=3u64 {
         let hits = memory_store
-            .search_by_keyword(&format!("발화 {i}"), None, 10)
+            .search(MemoryQuery {
+                text: Some(format!("발화 {i}")),
+                limit: 10,
+                ..Default::default()
+            })
             .unwrap();
         assert_eq!(hits.len(), 1, "발화 {i} 인덱싱 1건");
     }
@@ -123,7 +127,11 @@ async fn consume_stream_replays_from_event_store_on_lag() {
     // at-least-once: 1~5 모두 인덱싱돼야 함
     for i in 1..=5u64 {
         let hits = memory_store
-            .search_by_keyword(&format!("발화 {i}"), None, 10)
+            .search(MemoryQuery {
+                text: Some(format!("발화 {i}")),
+                limit: 10,
+                ..Default::default()
+            })
             .unwrap();
         assert!(!hits.is_empty(), "발화 {i} 유실 — replay 실패");
     }
@@ -154,7 +162,11 @@ async fn consume_stream_last_processed_id_is_monotonic() {
     // 각 발화당 정확히 1건만 존재 — 중복 인덱싱 없음
     for i in 1..=5u64 {
         let hits = memory_store
-            .search_by_keyword(&format!("발화 {i}"), None, 10)
+            .search(MemoryQuery {
+                text: Some(format!("발화 {i}")),
+                limit: 10,
+                ..Default::default()
+            })
             .unwrap();
         assert_eq!(
             hits.len(),
@@ -185,7 +197,11 @@ async fn consume_stream_handles_consecutive_lag_without_duplicates() {
 
     for i in 1..=3u64 {
         let hits = memory_store
-            .search_by_keyword(&format!("발화 {i}"), None, 10)
+            .search(MemoryQuery {
+                text: Some(format!("발화 {i}")),
+                limit: 10,
+                ..Default::default()
+            })
             .unwrap();
         assert_eq!(hits.len(), 1, "발화 {i} 중복 없이 1건");
     }

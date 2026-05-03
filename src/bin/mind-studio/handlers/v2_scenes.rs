@@ -117,7 +117,7 @@ impl DispatchCommandBody {
             } => Command::Appraise {
                 npc_id,
                 partner_id,
-                situation,
+                situation: situation.map(Box::new),
             },
             Self::ApplyStimulus {
                 npc_id,

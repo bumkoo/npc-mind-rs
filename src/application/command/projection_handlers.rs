@@ -287,16 +287,17 @@ mod tests {
     fn stimulus_applied_updates_mood_after() {
         let handler = EmotionProjectionHandler::new();
         let mut harness = HandlerTestHarness::new();
+        use crate::domain::event::StimulusAppliedPayload;
 
-        let event = make_event(EventPayload::StimulusApplied {
+        let event = make_event(EventPayload::StimulusApplied(Box::new(StimulusAppliedPayload {
             npc_id: "alice".into(),
             partner_id: "bob".into(),
             pad: (0.5, 0.2, 0.0),
             mood_before: 0.2,
             mood_after: 0.5,
-            beat_changed: false,
+            beat_triggered: false,
             emotion_snapshot: vec![("Joy".into(), 0.5)],
-        });
+        })));
 
         harness.dispatch(&handler, event).expect("handler must succeed");
 
@@ -341,8 +342,9 @@ mod tests {
     fn relationship_updated_stores_after_values() {
         let handler = RelationshipProjectionHandler::new();
         let mut harness = HandlerTestHarness::new();
+        use crate::domain::event::RelationshipUpdatedPayload;
 
-        let event = make_event(EventPayload::RelationshipUpdated {
+        let event = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "alice".into(),
             target_id: "bob".into(),
             before_closeness: 0.1,
@@ -352,7 +354,7 @@ mod tests {
             after_trust: 0.5,
             after_power: 0.6,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
-        });
+        })));
 
         harness.dispatch(&handler, event).unwrap();
 
@@ -385,8 +387,9 @@ mod tests {
     fn repeated_relationship_updates_overwrite() {
         let handler = RelationshipProjectionHandler::new();
         let mut harness = HandlerTestHarness::new();
+        use crate::domain::event::RelationshipUpdatedPayload;
 
-        let ev1 = make_event(EventPayload::RelationshipUpdated {
+        let ev1 = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "a".into(),
             target_id: "b".into(),
             before_closeness: 0.0,
@@ -396,8 +399,8 @@ mod tests {
             after_trust: 0.1,
             after_power: 0.1,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
-        });
-        let ev2 = make_event(EventPayload::RelationshipUpdated {
+        })));
+        let ev2 = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "a".into(),
             target_id: "b".into(),
             before_closeness: 0.1,
@@ -407,7 +410,7 @@ mod tests {
             after_trust: 0.8,
             after_power: 0.9,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
-        });
+        })));
 
         harness.dispatch(&handler, ev1).unwrap();
         harness.dispatch(&handler, ev2).unwrap();

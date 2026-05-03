@@ -263,7 +263,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         let cmd = Command::Appraise {
             npc_id: npc_id.to_string(),
             partner_id: partner_id.to_string(),
-            situation,
+            situation: situation.map(Box::new),
         };
 
         // start_session 쿼리 힌트 — situation 설명 우선, 없으면 partner_id를 쓴다.
@@ -679,24 +679,16 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             .events
             .iter()
             .find_map(|e| match &e.payload {
-                EventPayload::RelationshipUpdated {
-                    before_closeness,
-                    before_trust,
-                    before_power,
-                    after_closeness,
-                    after_trust,
-                    after_power,
-                    ..
-                } => Some(AfterDialogueResponse {
+                EventPayload::RelationshipUpdated(p) => Some(AfterDialogueResponse {
                     before: RelationshipValues {
-                        closeness: *before_closeness,
-                        trust: *before_trust,
-                        power: *before_power,
+                        closeness: p.before_closeness,
+                        trust: p.before_trust,
+                        power: p.before_power,
                     },
                     after: RelationshipValues {
-                        closeness: *after_closeness,
-                        trust: *after_trust,
-                        power: *after_power,
+                        closeness: p.after_closeness,
+                        trust: p.after_trust,
+                        power: p.after_power,
                     },
                 }),
                 _ => None,

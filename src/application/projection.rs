@@ -55,15 +55,10 @@ impl EmotionProjection {
                     self.snapshots.insert(npc_id.clone(), emotion_snapshot.clone());
                 }
             }
-            EventPayload::StimulusApplied {
-                npc_id,
-                mood_after,
-                emotion_snapshot,
-                ..
-            } => {
-                self.moods.insert(npc_id.clone(), *mood_after);
-                if !emotion_snapshot.is_empty() {
-                    self.snapshots.insert(npc_id.clone(), emotion_snapshot.clone());
+            EventPayload::StimulusApplied(p) => {
+                self.moods.insert(p.npc_id.clone(), p.mood_after);
+                if !p.emotion_snapshot.is_empty() {
+                    self.snapshots.insert(p.npc_id.clone(), p.emotion_snapshot.clone());
                 }
             }
             EventPayload::EmotionCleared { npc_id } => {
@@ -99,18 +94,10 @@ impl RelationshipProjection {
     }
 
     pub fn apply(&mut self, event: &DomainEvent) {
-        if let EventPayload::RelationshipUpdated {
-            owner_id,
-            target_id,
-            after_closeness,
-            after_trust,
-            after_power,
-            ..
-        } = &event.payload
-        {
+        if let EventPayload::RelationshipUpdated(p) = &event.payload {
             self.values.insert(
-                (owner_id.clone(), target_id.clone()),
-                (*after_closeness, *after_trust, *after_power),
+                (p.owner_id.clone(), p.target_id.clone()),
+                (p.after_closeness, p.after_trust, p.after_power),
             );
         }
     }

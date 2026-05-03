@@ -143,11 +143,57 @@ pub enum RelationshipChangeCause {
     Unspecified,
 }
 
+/// 새 `MemoryEntry` 생성 이벤트 페이로드
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryEntryCreatedPayload {
+    pub entry_id: String,
+    pub scope: MemoryScope,
+    pub source: MemorySource,
+    pub provenance: Provenance,
+    /// 엔트리 종류 (DialogueTurn/BeatTransition/SceneSummary 등 — 설계 §3.1 요구)
+    pub memory_type: MemoryType,
+    pub layer: MemoryLayer,
+    pub topic: Option<String>,
+    pub confidence: f32,
+    pub acquired_by: Option<String>,
+    /// EventStore append sequence — entry의 `created_seq`와 일치 (A7, I-ME-10)
+    pub created_seq: u64,
+    /// 이 엔트리를 파생시킨 원본 트리거 이벤트 id
+    pub source_event_id: u64,
+}
+
+/// 관계 갱신 이벤트 페이로드
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RelationshipUpdatedPayload {
+    pub owner_id: String,
+    pub target_id: String,
+    pub before_closeness: f32,
+    pub before_trust: f32,
+    pub before_power: f32,
+    pub after_closeness: f32,
+    pub after_trust: f32,
+    pub after_power: f32,
+    pub cause: RelationshipChangeCause,
+}
+
+/// 자극 적용 완료 페이로드
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StimulusAppliedPayload {
+    pub npc_id: String,
+    pub partner_id: String,
+    pub pad: (f32, f32, f32),
+    pub mood_before: f32,
+    pub mood_after: f32,
+    pub beat_triggered: bool,
+    pub emotion_snapshot: Vec<(String, f32)>,
+}
+
 /// 도메인 이벤트 페이로드
 ///
 /// Phase 1에서는 스칼라 요약값만 포함합니다.
 /// Phase 2에서 감정 스냅샷 등 상세 데이터를 추가합니다.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum EventPayload {
     /// B1: Appraise 요청 (Command → 초기 이벤트)
     ///
@@ -158,7 +204,7 @@ pub enum EventPayload {
         npc_id: String,
         partner_id: String,
         /// 이미 해석된 도메인 상황 (SituationService 등이 SituationInput → Situation 변환 후 주입)
-        situation: Situation,
+        situation: Box<Situation>,
     },
 
     /// B1: ApplyStimulus 요청 (Command → 초기 이벤트)
@@ -208,7 +254,7 @@ pub enum EventPayload {
         /// 이미 확정된 초기 focus (내부적으로 `scene.initial_focus()`와 동일 — 탐색 단축용)
         initial_focus_id: Option<String>,
         /// 사전 구성된 Scene. focuses는 여기의 `.focuses()`로 접근.
-        prebuilt_scene: Scene,
+        prebuilt_scene: Box<Scene>,
     },
 
     /// 초기 상황 평가 완료 (appraise)
@@ -226,18 +272,7 @@ pub enum EventPayload {
     },
 
     /// PAD 자극 적용 완료 (apply_stimulus)
-    StimulusApplied {
-        npc_id: String,
-        partner_id: String,
-        /// 입력 PAD (pleasure, arousal, dominance)
-        pad: (f32, f32, f32),
-        mood_before: f32,
-        mood_after: f32,
-        beat_changed: bool,
-        /// 자극 후 감정 스냅샷
-        #[serde(default)]
-        emotion_snapshot: Vec<(String, f32)>,
-    },
+    StimulusApplied(Box<StimulusAppliedPayload>),
 
     /// Beat 전환 발생
     ///
@@ -268,21 +303,7 @@ pub enum EventPayload {
     },
 
     /// 관계 갱신
-    RelationshipUpdated {
-        owner_id: String,
-        target_id: String,
-        before_closeness: f32,
-        before_trust: f32,
-        before_power: f32,
-        after_closeness: f32,
-        after_trust: f32,
-        after_power: f32,
-        /// 갱신 원인 (Memory 시스템 §8.3 policy branching용, A8 hook).
-        /// Step A에서는 모든 발행 지점이 `Unspecified`로 고정. Step C/D에서 InformationPolicy/
-        /// WorldOverlayPolicy 등이 정식 variant를 채운다. serde default로 구 JSON 역호환.
-        #[serde(default)]
-        cause: RelationshipChangeCause,
-    },
+    RelationshipUpdated(Box<RelationshipUpdatedPayload>),
 
     /// 가이드 생성
     GuideGenerated {
@@ -316,22 +337,7 @@ pub enum EventPayload {
     // ─────────────────────────────────────────────────────────────────────
 
     /// 새 `MemoryEntry` 생성됨 (Inline 핸들러가 발행).
-    MemoryEntryCreated {
-        entry_id: String,
-        scope: MemoryScope,
-        source: MemorySource,
-        provenance: Provenance,
-        /// 엔트리 종류 (DialogueTurn/BeatTransition/SceneSummary 등 — 설계 §3.1 요구)
-        memory_type: MemoryType,
-        layer: MemoryLayer,
-        topic: Option<String>,
-        confidence: f32,
-        acquired_by: Option<String>,
-        /// EventStore append sequence — entry의 `created_seq`와 일치 (A7, I-ME-10)
-        created_seq: u64,
-        /// 이 엔트리를 파생시킨 원본 트리거 이벤트 id
-        source_event_id: u64,
-    },
+    MemoryEntryCreated(Box<MemoryEntryCreatedPayload>),
 
     /// 기존 엔트리가 새 엔트리로 대체됨 (supersede).
     MemoryEntrySuperseded {
@@ -629,12 +635,12 @@ impl DomainEvent {
             EventPayload::AppraiseRequested { .. } => EventKind::AppraiseRequested,
             EventPayload::EmotionAppraised { .. } => EventKind::EmotionAppraised,
             EventPayload::StimulusApplyRequested { .. } => EventKind::StimulusApplyRequested,
-            EventPayload::StimulusApplied { .. } => EventKind::StimulusApplied,
+            EventPayload::StimulusApplied(_) => EventKind::StimulusApplied,
             EventPayload::BeatTransitioned { .. } => EventKind::BeatTransitioned,
             EventPayload::SceneStartRequested { .. } => EventKind::SceneStartRequested,
             EventPayload::SceneStarted { .. } => EventKind::SceneStarted,
             EventPayload::SceneEnded { .. } => EventKind::SceneEnded,
-            EventPayload::RelationshipUpdated { .. } => EventKind::RelationshipUpdated,
+            EventPayload::RelationshipUpdated(_) => EventKind::RelationshipUpdated,
             EventPayload::RelationshipUpdateRequested { .. } => {
                 EventKind::RelationshipUpdateRequested
             }
@@ -643,7 +649,7 @@ impl DomainEvent {
             EventPayload::GuideGenerated { .. } => EventKind::GuideGenerated,
             EventPayload::DialogueTurnCompleted { .. } => EventKind::DialogueTurnCompleted,
             EventPayload::EmotionCleared { .. } => EventKind::EmotionCleared,
-            EventPayload::MemoryEntryCreated { .. } => EventKind::MemoryEntryCreated,
+            EventPayload::MemoryEntryCreated(_) => EventKind::MemoryEntryCreated,
             EventPayload::MemoryEntrySuperseded { .. } => EventKind::MemoryEntrySuperseded,
             EventPayload::MemoryEntryConsolidated { .. } => EventKind::MemoryEntryConsolidated,
             EventPayload::SeedRumorRequested { .. } => EventKind::SeedRumorRequested,
@@ -686,13 +692,9 @@ impl DomainEvent {
                 npc_id: npc_id.clone(),
                 partner_id: partner_id.clone(),
             },
-            EventPayload::RelationshipUpdated {
-                owner_id,
-                target_id,
-                ..
-            } => AggregateKey::Relationship {
-                owner_id: owner_id.clone(),
-                target_id: target_id.clone(),
+            EventPayload::RelationshipUpdated(p) => AggregateKey::Relationship {
+                owner_id: p.owner_id.clone(),
+                target_id: p.target_id.clone(),
             },
             EventPayload::RelationshipUpdateRequested {
                 npc_id, partner_id, ..
@@ -703,15 +705,15 @@ impl DomainEvent {
             EventPayload::AppraiseRequested { npc_id, .. }
             | EventPayload::EmotionAppraised { npc_id, .. }
             | EventPayload::StimulusApplyRequested { npc_id, .. }
-            | EventPayload::StimulusApplied { npc_id, .. }
             | EventPayload::GuideRequested { npc_id, .. }
             | EventPayload::GuideGenerated { npc_id, .. }
             | EventPayload::DialogueTurnCompleted { npc_id, .. }
             | EventPayload::EmotionCleared { npc_id } => AggregateKey::Npc(npc_id.clone()),
+            EventPayload::StimulusApplied(p) => AggregateKey::Npc(p.npc_id.clone()),
 
             // Memory 컨텍스트 — `Memory(entry_id)`.
-            EventPayload::MemoryEntryCreated { entry_id, .. }
-            | EventPayload::MemoryEntrySuperseded {
+            EventPayload::MemoryEntryCreated(p) => AggregateKey::Memory(p.entry_id.clone()),
+            EventPayload::MemoryEntrySuperseded {
                 old_entry_id: entry_id,
                 ..
             } => AggregateKey::Memory(entry_id.clone()),
@@ -787,7 +789,7 @@ mod tests {
                 EventPayload::AppraiseRequested {
                     npc_id: "a".into(),
                     partner_id: "b".into(),
-                    situation: trivial_situation(),
+                    situation: Box::new(trivial_situation()),
                 },
                 EventKind::AppraiseRequested,
                 "AppraiseRequested",
@@ -815,15 +817,15 @@ mod tests {
                 "EmotionAppraised",
             ),
             (
-                EventPayload::StimulusApplied {
+                EventPayload::StimulusApplied(Box::new(StimulusAppliedPayload {
                     npc_id: "a".into(),
                     partner_id: "b".into(),
                     pad: (0.0, 0.0, 0.0),
                     mood_before: 0.0,
                     mood_after: 0.0,
-                    beat_changed: false,
+                    beat_triggered: false,
                     emotion_snapshot: vec![],
-                },
+                })),
                 EventKind::StimulusApplied,
                 "StimulusApplied",
             ),
@@ -856,7 +858,7 @@ mod tests {
                 "SceneEnded",
             ),
             (
-                EventPayload::RelationshipUpdated {
+                EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
                     owner_id: "a".into(),
                     target_id: "b".into(),
                     before_closeness: 0.0,
@@ -866,7 +868,7 @@ mod tests {
                     after_trust: 0.0,
                     after_power: 0.0,
                     cause: RelationshipChangeCause::Unspecified,
-                },
+                })),
                 EventKind::RelationshipUpdated,
                 "RelationshipUpdated",
             ),
@@ -895,7 +897,7 @@ mod tests {
                 "EmotionCleared",
             ),
             (
-                EventPayload::MemoryEntryCreated {
+                EventPayload::MemoryEntryCreated(Box::new(MemoryEntryCreatedPayload {
                     entry_id: "mem-1".into(),
                     scope: MemoryScope::Personal {
                         npc_id: "a".into(),
@@ -909,7 +911,7 @@ mod tests {
                     acquired_by: None,
                     created_seq: 0,
                     source_event_id: 1,
-                },
+                })),
                 EventKind::MemoryEntryCreated,
                 "MemoryEntryCreated",
             ),
@@ -1048,17 +1050,19 @@ mod tests {
 
     #[test]
     fn aggregate_key_routes_relationship_to_relationship() {
-        let ev = make_event(EventPayload::RelationshipUpdated {
-            owner_id: "a".into(),
-            target_id: "b".into(),
-            before_closeness: 0.0,
-            before_trust: 0.0,
-            before_power: 0.0,
-            after_closeness: 0.0,
-            after_trust: 0.0,
-            after_power: 0.0,
-            cause: RelationshipChangeCause::Unspecified,
-        });
+        let ev = make_event(EventPayload::RelationshipUpdated(Box::new(
+            RelationshipUpdatedPayload {
+                owner_id: "a".into(),
+                target_id: "b".into(),
+                before_closeness: 0.0,
+                before_trust: 0.0,
+                before_power: 0.0,
+                after_closeness: 0.0,
+                after_trust: 0.0,
+                after_power: 0.0,
+                cause: RelationshipChangeCause::Unspecified,
+            },
+        )));
         assert_eq!(
             ev.aggregate_key(),
             AggregateKey::Relationship {
@@ -1083,7 +1087,7 @@ mod tests {
 
     #[test]
     fn aggregate_key_routes_memory_events_to_memory() {
-        let created = make_event(EventPayload::MemoryEntryCreated {
+        let created = make_event(EventPayload::MemoryEntryCreated(Box::new(MemoryEntryCreatedPayload {
             entry_id: "mem-7".into(),
             scope: MemoryScope::Personal {
                 npc_id: "a".into(),
@@ -1097,7 +1101,7 @@ mod tests {
             acquired_by: None,
             created_seq: 0,
             source_event_id: 1,
-        });
+        })));
         assert_eq!(created.aggregate_key(), AggregateKey::Memory("mem-7".into()));
 
         let superseded = make_event(EventPayload::MemoryEntrySuperseded {
@@ -1246,7 +1250,7 @@ mod tests {
         let ev = make_event(EventPayload::AppraiseRequested {
             npc_id: "a".into(),
             partner_id: "b".into(),
-            situation: trivial_situation(),
+            situation: Box::new(trivial_situation()),
         });
         assert!(ev.is_command_intent());
     }

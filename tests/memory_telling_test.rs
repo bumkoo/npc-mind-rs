@@ -92,7 +92,7 @@ async fn tell_information_emits_one_told_event_per_listener() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     let _ = dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into(), "wanderer".into()],
             overhearers: vec![],
@@ -100,7 +100,7 @@ async fn tell_information_emits_one_told_event_per_listener() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .expect("dispatch must succeed");
 
@@ -121,7 +121,7 @@ async fn direct_speaker_creates_heard_memory_in_listener_scope() {
     let (dispatcher, _) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec![],
@@ -129,7 +129,7 @@ async fn direct_speaker_creates_heard_memory_in_listener_scope() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -153,7 +153,7 @@ async fn relayed_information_classified_as_rumor_when_chain_length_two_or_more()
     let (dispatcher, _) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "relay".into(),
             listeners: vec!["final_listener".into()],
             overhearers: vec![],
@@ -161,7 +161,7 @@ async fn relayed_information_classified_as_rumor_when_chain_length_two_or_more()
             stated_confidence: 1.0,
             origin_chain_in: vec!["original_witness".into()],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -192,7 +192,7 @@ async fn confidence_multiplies_stated_by_normalized_trust() {
         .with_memory(store.clone() as Arc<dyn MemoryStore>);
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec![],
@@ -200,7 +200,7 @@ async fn confidence_multiplies_stated_by_normalized_trust() {
             stated_confidence: 0.5,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -219,7 +219,7 @@ async fn overhearers_receive_distinct_told_events_with_overhearer_role() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec!["wanderer".into()],
@@ -227,7 +227,7 @@ async fn overhearers_receive_distinct_told_events_with_overhearer_role() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -263,7 +263,7 @@ async fn without_memory_builder_events_still_fire_but_no_memory_stored() {
     // 주의: with_memory 호출 없음.
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec![],
@@ -271,7 +271,7 @@ async fn without_memory_builder_events_still_fire_but_no_memory_stored() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -291,7 +291,7 @@ async fn empty_listeners_no_events_no_memory() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec![],
             overhearers: vec![],
@@ -299,7 +299,7 @@ async fn empty_listeners_no_events_no_memory() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -320,7 +320,7 @@ async fn information_told_stored_under_listener_aggregate_id_not_speaker() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into(), "wanderer".into()],
             overhearers: vec![],
@@ -328,7 +328,7 @@ async fn information_told_stored_under_listener_aggregate_id_not_speaker() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -373,7 +373,7 @@ async fn listeners_overhearers_overlap_deduped_to_single_entry_as_direct() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec!["pupil".into(), "wanderer".into()],
@@ -381,7 +381,7 @@ async fn listeners_overhearers_overlap_deduped_to_single_entry_as_direct() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -413,7 +413,7 @@ async fn memory_entry_id_is_deterministic_from_event_id_and_listener() {
     let (dispatcher, _) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into(), "wanderer".into()],
             overhearers: vec![],
@@ -421,7 +421,7 @@ async fn memory_entry_id_is_deterministic_from_event_id_and_listener() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -443,7 +443,7 @@ async fn topic_is_threaded_from_dto_through_event_to_memory_entry() {
     let (dispatcher, event_store) = build_dispatcher(store.clone());
 
     dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: vec!["pupil".into()],
             overhearers: vec![],
@@ -451,7 +451,7 @@ async fn topic_is_threaded_from_dto_through_event_to_memory_entry() {
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: Some("moorim-leader-change".into()),
-        }))
+        })))
         .await
         .unwrap();
 
@@ -490,7 +490,7 @@ async fn event_budget_exceeded_when_recipients_plus_initial_exceed_max_events_pe
     // 19명 → 초기 1 + 19 follow-up = 20, 통과
     let listeners_19: Vec<String> = (0..19).map(|i| format!("listener-{i}")).collect();
     let ok = dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: listeners_19,
             overhearers: vec![],
@@ -498,14 +498,14 @@ async fn event_budget_exceeded_when_recipients_plus_initial_exceed_max_events_pe
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await;
     assert!(ok.is_ok(), "19 청자는 경계 내 — 성공해야 함: {ok:?}");
 
     // 20명 → 초기 1 + 20 follow-up = 21, 실패
     let listeners_20: Vec<String> = (0..20).map(|i| format!("listener-{i}")).collect();
     let err = dispatcher
-        .dispatch_v2(Command::TellInformation(TellInformationRequest {
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: listeners_20,
             overhearers: vec![],
@@ -513,7 +513,7 @@ async fn event_budget_exceeded_when_recipients_plus_initial_exceed_max_events_pe
             stated_confidence: 1.0,
             origin_chain_in: vec![],
             topic: None,
-        }))
+        })))
         .await
         .expect_err("20 청자는 예산 초과로 실패해야 함");
     // Display 문자열 또는 Debug에서 "budget" 키워드 확인

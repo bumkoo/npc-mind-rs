@@ -21,6 +21,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::application::error::MindServiceError;
 use crate::application::dto::SceneFocusInput;
 use crate::domain::emotion::{EmotionState, Scene, SceneFocus};
 use crate::domain::personality::{Npc, NpcBuilder, Score};
@@ -349,7 +350,7 @@ impl InMemoryRepository {
 
         let focuses: Vec<SceneFocus> = scene_json
             .focuses
-            .iter()
+            .into_iter()
             .map(|f| {
                 let event_other_modifiers = f
                     .event
@@ -369,15 +370,16 @@ impl InMemoryRepository {
                     .as_ref()
                     .and_then(|o| self.get_object_description(&o.target_id));
 
-                f.to_domain(
+                f.into_domain(
                     event_other_modifiers,
                     action_agent_modifiers,
                     object_description,
                     npc_id,
                 )
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| RepositoryLoadError::ConversionError(e.to_string()))?;
+                })
+                .collect::<Result<Vec<SceneFocus>, MindServiceError>>()
+                .map_err(|e: MindServiceError| RepositoryLoadError::ConversionError(e.to_string()))?;
+
 
         let mut scene = Scene::new(npc_id.clone(), partner_id.clone(), focuses);
 

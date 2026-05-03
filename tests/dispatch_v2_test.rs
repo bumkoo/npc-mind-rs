@@ -40,7 +40,7 @@ fn appraise_cmd() -> Command {
     Command::Appraise {
         npc_id: "mu_baek".into(),
         partner_id: "gyo_ryong".into(),
-        situation: Some(SituationInput {
+        situation: Some(Box::new(SituationInput {
             description: "배신 상황".into(),
             event: Some(EventInput {
                 description: "사건".into(),
@@ -50,7 +50,7 @@ fn appraise_cmd() -> Command {
             }),
             action: None,
             object: None,
-        }),
+        })),
     }
 }
 
@@ -120,11 +120,11 @@ async fn v2_stimulus_without_beat_emits_request_applied_guide() {
     assert_eq!(kinds[1], EventKind::StimulusApplied);
     assert_eq!(kinds[2], EventKind::GuideGenerated);
 
-    // StimulusApplied의 beat_changed=false 검증
-    let EventPayload::StimulusApplied { beat_changed, .. } = &out.events[1].payload else {
+    // StimulusApplied의 beat_triggered=false 검증
+    let EventPayload::StimulusApplied(p) = &out.events[1].payload else {
         panic!("expected StimulusApplied")
     };
-    assert!(!beat_changed, "Scene 없으면 beat_changed=false");
+    assert!(!p.beat_triggered, "Scene 없으면 beat_triggered=false");
 }
 
 // ---------------------------------------------------------------------------
@@ -209,11 +209,11 @@ async fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
         kinds
     );
 
-    // StimulusApplied.beat_changed=true 검증
-    let EventPayload::StimulusApplied { beat_changed, .. } = &out.events[1].payload else {
+    // StimulusApplied.beat_triggered=true 검증
+    let EventPayload::StimulusApplied(p) = &out.events[1].payload else {
         panic!("expected StimulusApplied at index 1")
     };
-    assert!(*beat_changed, "Beat trigger 충족 시 beat_changed=true");
+    assert!(p.beat_triggered, "Beat trigger 충족 시 beat_triggered=true");
 }
 
 // ---------------------------------------------------------------------------
@@ -915,13 +915,13 @@ mod error_paths {
         let dispatcher = make_dispatcher_v2(ctx.repo);
 
         let err = dispatcher
-            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+            .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
                 world_id: "".into(),
                 topic: None,
                 fact: "어떤 사실".into(),
                 significance: 0.5,
                 witnesses: vec![],
-            }))
+            })))
             .await
             .expect_err("빈 world_id는 거부되어야 함");
 
@@ -937,13 +937,13 @@ mod error_paths {
         let dispatcher = make_dispatcher_v2(ctx.repo);
 
         let err = dispatcher
-            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+            .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
                 world_id: "jianghu".into(),
                 topic: Some("topic".into()),
                 fact: "   ".into(), // whitespace only
                 significance: 0.5,
                 witnesses: vec![],
-            }))
+            })))
             .await
             .expect_err("공백뿐인 fact는 거부되어야 함");
 
@@ -959,12 +959,12 @@ mod error_paths {
         let dispatcher = make_dispatcher_v2(ctx.repo);
 
         let err = dispatcher
-            .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+            .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
                 topic: None,
                 seed_content: None,
                 reach: RumorReachInput::default(),
                 origin: RumorOriginInput::Seeded,
-            }))
+            })))
             .await
             .expect_err("topic도 seed_content도 없는 고아 Rumor는 거부");
 
@@ -1185,13 +1185,13 @@ mod error_paths {
             .with_default_handlers();
 
         dispatcher
-            .dispatch_v2(Command::ApplyWorldEvent(ApplyWorldEventRequest {
+            .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
                 world_id: "jianghu".into(),
                 topic: None,
                 fact: "어떤 사실".into(),
                 significance: 5.0, // out of range
                 witnesses: vec![],
-            }))
+            })))
             .await
             .expect("clamp되어 성공해야 함");
 

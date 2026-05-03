@@ -73,12 +73,12 @@ async fn seed_rumor_persists_aggregate_and_emits_rumor_seeded() {
     let (dispatcher, event_store, _, rumor_store) = build_dispatcher();
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("moorim-leader-change".into()),
             seed_content: None,
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .expect("seed must succeed");
 
@@ -101,12 +101,12 @@ async fn seed_rumor_persists_aggregate_and_emits_rumor_seeded() {
 async fn seed_orphan_without_content_fails_with_invalid_situation() {
     let (dispatcher, _, _, _) = build_dispatcher();
     let err = dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: None,
             seed_content: None,
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .expect_err("orphan without seed_content must fail");
     let msg = format!("{err:?}");
@@ -119,23 +119,23 @@ async fn spread_emits_rumor_spread_and_creates_recipient_memories() {
 
     // 먼저 seed
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("topic-a".into()),
             seed_content: Some("초기 본문".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store.find_by_topic("topic-a").unwrap().pop().unwrap().id;
 
     // 그 다음 spread
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor_id.clone(),
             recipients: vec!["a".into(), "b".into(), "c".into()],
             content_version: None,
-        }))
+        })))
         .await
         .expect("spread must succeed");
 
@@ -167,41 +167,41 @@ async fn successive_spreads_increment_hop_and_decay_confidence() {
     let (dispatcher, _, memory_store, rumor_store) = build_dispatcher();
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("topic-b".into()),
             seed_content: Some("본문".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store.find_by_topic("topic-b").unwrap().pop().unwrap().id;
 
     // hop 0
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor_id.clone(),
             recipients: vec!["a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
     // hop 1
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor_id.clone(),
             recipients: vec!["b".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
     // hop 2
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: rumor_id.clone(),
             recipients: vec!["c".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -230,11 +230,11 @@ async fn spread_unknown_rumor_fails() {
 
     let (dispatcher, _, _, _) = build_dispatcher();
     let err = dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id: "ghost".into(),
             recipients: vec!["a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .expect_err("unknown rumor_id must fail");
 
@@ -258,22 +258,22 @@ async fn spread_unknown_rumor_fails() {
 async fn spread_dedupes_repeated_recipients() {
     let (dispatcher, _, memory_store, rumor_store) = build_dispatcher();
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("t".into()),
             seed_content: Some("x".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store.find_by_topic("t").unwrap().pop().unwrap().id;
 
     dispatcher
-        .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+        .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
             rumor_id,
             recipients: vec!["a".into(), "b".into(), "a".into()],
             content_version: None,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -289,21 +289,21 @@ async fn successive_seeds_produce_distinct_rumor_ids_in_same_dispatcher() {
     let (dispatcher, _, _, rumor_store) = build_dispatcher();
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("t1".into()),
             seed_content: None,
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("t2".into()),
             seed_content: None,
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -319,12 +319,12 @@ async fn seed_rumor_is_stored_under_rumor_id_aggregate() {
     let (dispatcher, event_store, _, rumor_store) = build_dispatcher();
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("topic-c".into()),
             seed_content: None,
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
 
@@ -340,12 +340,12 @@ async fn deep_hop_confidence_floors_at_min() {
     let (dispatcher, _, memory_store, rumor_store) = build_dispatcher();
 
     dispatcher
-        .dispatch_v2(Command::SeedRumor(SeedRumorRequest {
+        .dispatch_v2(Command::SeedRumor(Box::new(SeedRumorRequest {
             topic: Some("deep-topic".into()),
             seed_content: Some("본문".into()),
             reach: RumorReachInput::default(),
             origin: RumorOriginInput::Seeded,
-        }))
+        })))
         .await
         .unwrap();
     let rumor_id = rumor_store
@@ -359,11 +359,11 @@ async fn deep_hop_confidence_floors_at_min() {
     for hop in 0..=20_u32 {
         let npc_id = format!("listener-{hop}");
         dispatcher
-            .dispatch_v2(Command::SpreadRumor(SpreadRumorRequest {
+            .dispatch_v2(Command::SpreadRumor(Box::new(SpreadRumorRequest {
                 rumor_id: rumor_id.clone(),
                 recipients: vec![npc_id],
                 content_version: None,
-            }))
+            })))
             .await
             .unwrap();
     }

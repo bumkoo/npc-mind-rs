@@ -57,23 +57,23 @@ impl SituationService {
     pub fn to_situation<R: NpcWorld>(
         &self,
         repo: &R,
-        input: &SituationInput,
+        input: SituationInput,
         npc_id: &str,
         partner_id: &str,
     ) -> Result<Situation, MindServiceError> {
-        let ctx = Self::resolve_focus_context(repo, input, npc_id, partner_id);
-        input.to_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, npc_id)
+        let ctx = Self::resolve_focus_context(repo, &input, npc_id, partner_id);
+        input.into_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, npc_id)
     }
 
     /// SceneFocusInput DTO를 SceneFocus 도메인 모델로 변환합니다.
     pub fn to_scene_focus<R: NpcWorld>(
         &self,
         repo: &R,
-        input: &SceneFocusInput,
+        input: SceneFocusInput,
         npc_id: &str,
         partner_id: &str,
     ) -> Result<SceneFocus, MindServiceError> {
-        let ctx = Self::resolve_focus_context(repo, input, npc_id, partner_id);
-        input.to_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, npc_id)
+        let ctx = Self::resolve_focus_context(repo, &input, npc_id, partner_id);
+        input.into_domain(ctx.event_other_modifiers, ctx.action_agent_modifiers, ctx.object_description, npc_id)
     }
 }

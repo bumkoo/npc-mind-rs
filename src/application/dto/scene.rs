@@ -2,7 +2,7 @@ use crate::application::error::MindServiceError;
 use crate::domain::emotion::SceneFocus;
 use crate::ports::GuideFormatter;
 use serde::{Deserialize, Serialize};
-use super::emotion::{AppraiseResult, AppraiseResponse, convert_focuses, parse_trigger, EventInput, ActionInput, ObjectInput, ConditionInput};
+use super::emotion::{AppraiseResult, AppraiseResponse, convert_focuses_owned, parse_trigger, EventInput, ActionInput, ObjectInput, ConditionInput};
 
 /// Scene 등록 요청
 #[derive(Serialize, Deserialize, Clone)]
@@ -28,8 +28,8 @@ pub struct SceneFocusInput {
 }
 
 impl SceneFocusInput {
-    pub fn to_domain(
-        &self,
+    pub fn into_domain(
+        self,
         event_other_modifiers: Option<crate::domain::emotion::RelationshipModifiers>,
         action_agent_modifiers: Option<crate::domain::emotion::RelationshipModifiers>,
         object_description: Option<String>,
@@ -37,16 +37,16 @@ impl SceneFocusInput {
     ) -> Result<SceneFocus, MindServiceError> {
         let trigger = parse_trigger(&self.trigger)?;
         let (event, action, object) =
-            convert_focuses(self, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
+            convert_focuses_owned(self.event, self.action, self.object, event_other_modifiers, action_agent_modifiers, object_description, npc_id)?;
 
         Ok(SceneFocus {
-            id: self.id.clone(),
-            description: self.description.clone(),
+            id: self.id,
+            description: self.description,
             trigger,
             event,
             action,
             object,
-            test_script: self.test_script.clone(),
+            test_script: self.test_script,
         })
     }
 }

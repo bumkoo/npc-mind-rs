@@ -368,7 +368,7 @@ D- (복종): "어찌할 바를 모르겠다" / "무력하고 속수무책이다"
 ## 9. 최종 pad_dot 공식
 
 ```rust
-pub fn pad_dot(a: &Pad, b: &Pad) -> f32 {
+pub fn pad_dot(a: Pad, b: Pad) -> f32 {
     let pa = a.pleasure * b.pleasure + a.arousal * b.arousal;
     let d_gap = (a.dominance - b.dominance).abs();
     pa * (1.0 + d_gap * 0.3)

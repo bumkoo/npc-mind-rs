@@ -53,8 +53,8 @@ pub fn era_from_markdown(md: &str) -> Result<Era, EraMarkdownError> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
-    let temporal = parse_temporal(map.get(&YamlValue::from("temporal")))?;
+    let extras = parse_extras_map(map.get("extras"));
+    let temporal = parse_temporal(map.get("temporal"))?;
     // R4 strict (Phase 5a 패턴): key_events는 외래키 활성 ID 시퀀스 — silent skip 차단.
     let key_events = get_string_array_strict(map, "key_events", "key_events")?
         .into_iter()
@@ -82,7 +82,7 @@ pub fn era_from_markdown(md: &str) -> Result<Era, EraMarkdownError> {
 // ---------------------------------------------------------------------------
 
 fn get_str<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
-    map.get(YamlValue::from(key)).and_then(|v| match v {
+    map.get(key).and_then(|v| match v {
         YamlValue::String(s) => Some(s.as_str()),
         YamlValue::Null => None,
         _ => None,
@@ -90,7 +90,7 @@ fn get_str<'a>(map: &'a serde_yaml::Mapping, key: &str) -> Option<&'a str> {
 }
 
 fn get_string_array(map: &serde_yaml::Mapping, key: &str) -> Option<Vec<String>> {
-    let v = map.get(YamlValue::from(key))?;
+    let v = map.get(key)?;
     match v {
         YamlValue::Sequence(seq) => Some(
             seq.iter()
@@ -112,7 +112,7 @@ fn get_string_array_strict(
     key: &str,
     field: &'static str,
 ) -> Result<Vec<String>, EraMarkdownError> {
-    let Some(v) = map.get(YamlValue::from(key)) else {
+    let Some(v) = map.get(key) else {
         return Ok(Vec::new());
     };
     match v {
@@ -161,7 +161,7 @@ fn parse_temporal(v: Option<&YamlValue>) -> Result<EraTemporal, EraMarkdownError
 }
 
 fn get_i32(map: &serde_yaml::Mapping, key: &str) -> Option<i32> {
-    map.get(YamlValue::from(key)).and_then(|v| match v {
+    map.get(key).and_then(|v| match v {
         YamlValue::Number(n) => n.as_i64().map(|x| x as i32),
         _ => None,
     })

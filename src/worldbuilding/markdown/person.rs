@@ -61,8 +61,8 @@ pub fn person_from_markdown(md: &str) -> Result<Person, PersonMarkdownError> {
         })?,
         None => PersonStatus::default(),
     };
-    let hexaco = parse_hexaco(map.get(&YamlValue::from("hexaco")))?;
-    let temporal = parse_temporal(map.get(&YamlValue::from("temporal")))?;
+    let hexaco = parse_hexaco(map.get("hexaco"))?;
+    let temporal = parse_temporal(map.get("temporal"))?;
     let affiliation = get_string_array(map, "affiliation")
         .unwrap_or_default()
         .into_iter()
@@ -74,7 +74,7 @@ pub fn person_from_markdown(md: &str) -> Result<Person, PersonMarkdownError> {
         .map(|s| s.trim().to_string())
         .unwrap_or_default();
     let tags = get_string_array(map, "tags").unwrap_or_default();
-    let extras = parse_extras_map(map.get(&YamlValue::from("extras")));
+    let extras = parse_extras_map(map.get("extras"));
     let body_sections: BTreeMap<String, String> = parse_h2_sections(&fm.body);
 
     Ok(Person {

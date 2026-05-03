@@ -71,7 +71,7 @@ impl EventHandler for ScenePolicy {
         };
 
         let focus_count = prebuilt_scene.focuses().len();
-        let mut scene = prebuilt_scene.clone();
+        let mut scene = (**prebuilt_scene).clone();
 
         let npc = ctx.get_npc(npc_id)?;
         let relationship = ctx.get_relationship(npc_id, partner_id)?;
@@ -193,7 +193,7 @@ mod handler_v2_tests {
                 partner_id: partner_id.to_string(),
                 significance: Some(0.5),
                 initial_focus_id,
-                prebuilt_scene,
+                prebuilt_scene: Box::new(prebuilt_scene),
             },
         )
     }

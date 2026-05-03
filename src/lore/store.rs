@@ -4,7 +4,7 @@
 //! - `lore_chunks`      : 일반 테이블 (메타 + 원문 TEXT)
 //! - `lore_chunks_fts`  : FTS5 가상 테이블 (trigram 토크나이저)
 //! - `lore_chunks_vec`  : sqlite-vec vec0 (FLOAT[1024], 코사인)
-//! 세 테이블은 `chunk_id`로 조인.
+//!   세 테이블은 `chunk_id`로 조인.
 
 #[cfg(feature = "embed")]
 use super::query::Chunk;
