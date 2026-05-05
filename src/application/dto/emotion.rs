@@ -249,7 +249,7 @@ pub(crate) fn parse_trigger(
 }
 
 /// PAD 정보 출력용 DTO
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct PadOutput {
     pub pleasure: f32,
     pub arousal: f32,
@@ -257,7 +257,7 @@ pub struct PadOutput {
 }
 
 /// 감정 정보 출력용 DTO
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct EmotionOutput {
     pub emotion_type: String,
     pub intensity: f32,
@@ -337,7 +337,7 @@ pub fn build_appraise_result(
 }
 
 /// 감정 평가 응답 (포맷팅 완료)
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppraiseResponse {
     pub emotions: Vec<EmotionOutput>,
     pub dominant: Option<EmotionOutput>,
@@ -347,7 +347,7 @@ pub struct AppraiseResponse {
 }
 
 /// PAD 자극 적용 응답 (포맷팅 완료)
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct StimulusResponse {
     pub emotions: Vec<EmotionOutput>,
     pub dominant: Option<EmotionOutput>,

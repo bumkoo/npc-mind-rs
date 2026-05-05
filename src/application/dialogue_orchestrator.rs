@@ -71,14 +71,14 @@ use crate::ports::{
 // ---------------------------------------------------------------------------
 
 /// 세션 시작 결과
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DialogueStartOutcome {
     pub session_id: String,
     pub appraise: AppraiseResponse,
 }
 
 /// 한 턴 결과
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DialogueTurnOutcome {
     /// NPC의 LLM 응답 텍스트
     pub npc_response: String,
@@ -91,7 +91,7 @@ pub struct DialogueTurnOutcome {
 }
 
 /// 세션 종료 결과
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DialogueEndOutcome {
     pub dialogue_history: Vec<crate::ports::DialogueTurn>,
     /// `Command::EndDialogue`가 dispatch되었으면 관계 갱신 결과
@@ -108,6 +108,8 @@ pub enum DialogueOrchestratorError {
     DispatchV2(#[from] DispatchV2Error),
     #[error("ConversationPort 에러: {0}")]
     Conversation(#[from] ConversationError),
+    #[error("분석기 에러: {0}")]
+    Embed(#[from] crate::ports::EmbedError),
     #[error("PAD 분석 실패: {0}")]
     Analysis(String),
     #[error("세션을 찾을 수 없습니다: {0}")]
@@ -357,9 +359,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
                 Some(p) => (Some(p), None),
                 None => match self.analyzer.as_mut() {
                     Some(analyzer) => {
-                        let (p, emb) = analyzer
-                            .analyze_with_embedding(user_utterance)
-                            .map_err(|e| DialogueOrchestratorError::Analysis(e.to_string()))?;
+                        let (p, emb) = analyzer.analyze_with_embedding(user_utterance)?;
                         (Some(p), emb)
                     }
                     None => (None, None),

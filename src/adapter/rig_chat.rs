@@ -49,6 +49,8 @@ pub struct RigChatAdapter {
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     /// TimingsCapturingClient와 공유하는 timings 저장소
     last_timings: Arc<Mutex<Option<InferenceTimings>>>,
+    /// LLM 응답 타임아웃
+    timeout: std::time::Duration,
 }
 
 /// 개별 대화 세션 상태
@@ -63,7 +65,7 @@ struct ChatSession {
 }
 
 impl RigChatAdapter {
-    /// 새 어댑터를 생성한다.
+    /// 새 어댑터를 생성한다. (기본 타임아웃 60초)
     ///
     /// - `base_url`: OpenAI-compatible API URL (예: `"http://127.0.0.1:8081/v1"`)
     /// - `model_name`: 추론 서버의 모델 이름 (예: `"local-model"`, `"qwen2.5"`)
@@ -92,7 +94,14 @@ impl RigChatAdapter {
             http_client,
             sessions: Arc::new(RwLock::new(HashMap::new())),
             last_timings: timings_store,
+            timeout: std::time::Duration::from_secs(60),
         }
+    }
+
+    /// 타임아웃 설정 빌더
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = timeout;
+        self
     }
 
     /// LLM 서버의 `/models` 엔드포인트에서 모델명을 자동 감지하여 어댑터를 생성한다.
@@ -152,8 +161,10 @@ impl RigChatAdapter {
 
         let agent = builder.build();
 
-        let text: String = Chat::chat(&agent, user_message, history)
+        let timeout_duration = self.timeout;
+        let text: String = tokio::time::timeout(timeout_duration, Chat::chat(&agent, user_message, history))
             .await
+            .map_err(|_| ConversationError::Timeout(timeout_duration))?
             .map_err(|e: rig::completion::PromptError| {
                 ConversationError::InferenceError(e.to_string())
             })?;
@@ -178,6 +189,7 @@ struct StreamingCtx {
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     model_name: Arc<RwLock<String>>,
     last_timings: Arc<Mutex<Option<InferenceTimings>>>,
+    timeout: std::time::Duration,
 }
 
 /// 내부 streaming 실행 — mpsc 패턴은 어댑터 사적 구현 디테일.
@@ -274,26 +286,36 @@ async fn stream_chat_with_agent(
 
     let agent = builder.build();
 
-    let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
-
+    let timeout_duration = ctx.timeout;
     let mut full_response = String::new();
 
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
-                let s = text.text;
-                if !s.is_empty() {
-                    full_response.push_str(&s);
-                    let _ = token_tx.send(s).await;
+    let result = tokio::time::timeout(timeout_duration, async {
+        let mut stream = StreamingChat::stream_chat(&agent, user_message, history).await;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamedAssistantContent::Text(text))) => {
+                    let s = text.text;
+                    if !s.is_empty() {
+                        full_response.push_str(&s);
+                        let _ = token_tx.send(s).await;
+                    }
+                }
+                Ok(_) => {
+                    // ToolCall, Reasoning, FinalResponse 등은 무시
+                }
+                Err(e) => {
+                    return Err(ConversationError::InferenceError(e.to_string()));
                 }
             }
-            Ok(_) => {
-                // ToolCall, Reasoning, FinalResponse 등은 무시
-            }
-            Err(e) => {
-                return Err(ConversationError::InferenceError(e.to_string()));
-            }
         }
+        Ok(())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(ConversationError::Timeout(timeout_duration)),
     }
 
     let timings = if let Ok(guard) = ctx.last_timings.lock() {
@@ -395,6 +417,7 @@ impl ConversationPort for RigChatAdapter {
             sessions: Arc::clone(&self.sessions),
             model_name: Arc::clone(&self.model_name),
             last_timings: Arc::clone(&self.last_timings),
+            timeout: self.timeout,
         };
         let session_id = session_id.to_string();
         let user_message = user_message.to_string();

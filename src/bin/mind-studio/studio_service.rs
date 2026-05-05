@@ -546,9 +546,7 @@ impl StudioService {
         req: ChatTurnRequest,
     ) -> Result<ChatTurnResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let chat_resp = chat_port.send_message(&req.session_id, &req.utterance)
-            .await
-            .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
+        let chat_resp = chat_port.send_message(&req.session_id, &req.utterance).await?;
         let npc_response = chat_resp.text;
         let timings = chat_resp.timings;
         let (stimulus, beat_changed) = Self::process_chat_turn_result(state, &req, npc_response.clone()).await?;
@@ -561,9 +559,7 @@ impl StudioService {
         req: ChatEndRequest,
     ) -> Result<ChatEndResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
-        let dialogue_history = chat_port.end_session(&req.session_id)
-            .await
-            .map_err(|e: npc_mind::ports::ConversationError| AppError::Internal(e.to_string()))?;
+        let dialogue_history = chat_port.end_session(&req.session_id).await?;
         let after_dialogue = if let Some(after_req) = req.after_dialogue {
             Self::perform_after_dialogue(state, after_req).await.ok()
         } else {

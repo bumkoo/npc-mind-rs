@@ -59,6 +59,8 @@ pub enum ConversationError {
     SessionNotFound(String),
     #[error("LLM 추론 오류: {0}")]
     InferenceError(String),
+    #[error("LLM 응답 타임아웃 ({0:?})")]
+    Timeout(std::time::Duration),
 }
 
 /// LLM 모델 정보 DTO

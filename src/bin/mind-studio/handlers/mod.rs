@@ -174,6 +174,9 @@ pub enum AppError {
     /// HandlerFailed는 500 (server invariant 위반).
     #[error(transparent)]
     V2Dispatch(#[from] npc_mind::application::command::dispatcher::DispatchV2Error),
+    /// DialogueOrchestrator 에러 (강타입 보존)
+    #[error(transparent)]
+    Dialogue(#[from] npc_mind::DialogueOrchestratorError),
     /// 모니터링 에러
     #[error(transparent)]
     Monitoring(#[from] npc_mind::ports::MonitoringError),
@@ -211,13 +214,12 @@ impl From<npc_mind::application::director::DirectorError> for AppError {
 #[cfg(feature = "chat")]
 impl From<npc_mind::ports::ConversationError> for AppError {
     fn from(e: npc_mind::ports::ConversationError) -> Self {
-        AppError::Internal(e.to_string())
+        AppError::Dialogue(npc_mind::DialogueOrchestratorError::Conversation(e))
     }
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        use npc_mind::application::command::dispatcher::DispatchV2Error as Dv2;
         use npc_mind::application::director::DirectorError as Derr;
 
         let (status, message) = match self {
@@ -233,52 +235,34 @@ impl IntoResponse for AppError {
             AppError::NotFound(ref msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::NotImplemented(ref msg) => (StatusCode::NOT_IMPLEMENTED, msg.clone()),
             AppError::Internal(ref msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
-            // B4 Session 3 Option B-Mini: Director lifecycle variant 별 매핑
-            AppError::Director(ref e) => match e {
-                Derr::SceneAlreadyActive(_) => (StatusCode::CONFLICT, e.to_string()),
-                Derr::SceneNotActive(_) => (StatusCode::NOT_FOUND, e.to_string()),
-                Derr::SceneMismatch(_, _, _) => (StatusCode::BAD_REQUEST, e.to_string()),
-                // SceneChannelClosed: SceneTask receiver가 drop된 비정상 상태 — 서버 invariant 위반.
-                Derr::SceneChannelClosed(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-                // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
-                Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-            },
-            // v2 dispatch: 클라이언트 입력 오류(400/404) vs 서버 invariant 위반(500) 분기
-            AppError::V2Dispatch(ref e) => match e {
-                // InvalidSituation의 메시지에 "not found"가 섞여있으면 404, 그 외 400.
-                Dv2::InvalidSituation(msg) => {
-                    if msg.to_lowercase().contains("not found") {
-                        (StatusCode::NOT_FOUND, e.to_string())
-                    } else {
-                        (StatusCode::BAD_REQUEST, e.to_string())
+            // DialogueOrchestrator 에러 매핑
+            AppError::Dialogue(ref e) => {
+                use npc_mind::DialogueOrchestratorError as Doe;
+                use npc_mind::ports::ConversationError as Ce;
+                use npc_mind::ports::EmbedError as Ee;
+
+                match e {
+                    Doe::SessionNotFound(_) => (StatusCode::NOT_FOUND, e.to_string()),
+                    Doe::Conversation(Ce::Timeout(_)) => (StatusCode::GATEWAY_TIMEOUT, e.to_string()),
+                    Doe::Conversation(Ce::ConnectionError(_)) => (StatusCode::BAD_GATEWAY, e.to_string()),
+                    Doe::Embed(Ee::InitError(_)) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                    Doe::DispatchV2(dv2) => map_dispatch_v2_error(&dv2),
+                    _ => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
                     }
-                }
-                // HandlerFailed의 source variant별 HTTP 매핑:
-                //   - NpcNotFound / RelationshipNotFound → 404 (리소스 부재)
-                //   - EmotionStateNotFound → 400 (워크플로우 순서 오류: appraise 선행 누락)
-                //   - InvalidInput → 400 (DTO 검증 실패)
-                //   - Infrastructure / Repository → 500 (서버 invariant 위반)
-                Dv2::HandlerFailed { source, .. } => {
-                    use npc_mind::application::command::handler_v2::HandlerError;
-                    match source {
-                        HandlerError::NpcNotFound(_)
-                        | HandlerError::RelationshipNotFound { .. } => {
-                            (StatusCode::NOT_FOUND, e.to_string())
-                        }
-                        HandlerError::EmotionStateNotFound(_) | HandlerError::InvalidInput(_) => {
-                            (StatusCode::BAD_REQUEST, e.to_string())
-                        }
-                        HandlerError::Infrastructure(_) | HandlerError::Repository(_) => {
-                            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-                        }
                     }
-                }
-                Dv2::CascadeTooDeep { .. } | Dv2::EventBudgetExceeded => {
-                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-                }
-            },
-            AppError::Monitoring(ref e) => {
-                use npc_mind::ports::MonitoringError as M;
+                    // B4 Session 3 Option B-Mini: Director lifecycle variant 별 매핑
+                    AppError::Director(ref e) => match e {
+                    Derr::SceneAlreadyActive(_) => (StatusCode::CONFLICT, e.to_string()),
+                    Derr::SceneNotActive(_) => (StatusCode::NOT_FOUND, e.to_string()),
+                    Derr::SceneMismatch(_, _, _) => (StatusCode::BAD_REQUEST, e.to_string()),
+                    // SceneChannelClosed: SceneTask receiver가 drop된 비정상 상태 — 서버 invariant 위반.
+                    Derr::SceneChannelClosed(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                    // Dispatch variant는 From에서 V2Dispatch로 분리되므로 도달 불가
+                    Derr::Dispatch(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+                    },
+                    // v2 dispatch: 클라이언트 입력 오류(400/404) vs 서버 invariant 위반(500) 분기
+                    AppError::V2Dispatch(dv2) => map_dispatch_v2_error(&dv2),
+                    AppError::Monitoring(ref e) => {                use npc_mind::ports::MonitoringError as M;
                 match e {
                     M::HttpStatus(code, _) => (
                         StatusCode::from_u16(*code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
@@ -296,4 +280,36 @@ impl IntoResponse for AppError {
 
         (status, body).into_response()
     }
+}
+
+/// DispatchV2Error를 HTTP 상태 코드와 메시지로 매핑한다.
+fn map_dispatch_v2_error(e: &npc_mind::application::command::dispatcher::DispatchV2Error) -> (StatusCode, String) {
+    use npc_mind::application::command::dispatcher::DispatchV2Error as Dv2;
+    use npc_mind::application::command::handler_v2::HandlerError;
+
+    let status = match e {
+        Dv2::InvalidSituation(msg) => {
+            if msg.to_lowercase().contains("not found") {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::BAD_REQUEST
+            }
+        }
+        Dv2::HandlerFailed { source, .. } => match source {
+            HandlerError::NpcNotFound(_) | HandlerError::RelationshipNotFound { .. } => {
+                StatusCode::NOT_FOUND
+            }
+            HandlerError::EmotionStateNotFound(_) | HandlerError::InvalidInput(_) => {
+                StatusCode::BAD_REQUEST
+            }
+            HandlerError::Infrastructure(_) | HandlerError::Repository(_) => {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        },
+        Dv2::CascadeTooDeep { .. } | Dv2::EventBudgetExceeded => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+
+    (status, e.to_string())
 }
