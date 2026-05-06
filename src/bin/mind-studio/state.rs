@@ -152,7 +152,7 @@ pub struct AppState {
 /// `with_default_handlers`를 그대로 쓰면 내부 `::new()`로 별도 Arc가 생성되어 중복
 /// 등록이 되므로 본 헬퍼로 치환한다. Library core는 무변경.
 fn build_shared_dispatcher(
-    repo: InMemoryRepository,
+    repo: Arc<StdMutex<InMemoryRepository>>,
     store: Arc<InMemoryEventStore>,
     bus: Arc<EventBus>,
     emotion_projection: Arc<StdMutex<EmotionProjection>>,
@@ -191,9 +191,10 @@ impl AppState {
         // Spawner는 Mind Studio가 tokio 런타임 위에서 돌아가므로 tokio::spawn 클로저.
         let director_v2 = {
             let repo = InMemoryRepository::new();
+            let repo_arc = Arc::new(StdMutex::new(repo));
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
-            let dispatcher = CommandDispatcher::new(repo, store, bus).with_default_handlers();
+            let dispatcher = CommandDispatcher::new(repo_arc, store, bus).with_default_handlers();
             let spawner: Arc<dyn Spawner> = Arc::new(|fut: BoxFuture<'static, ()>| {
                 tokio::spawn(fut);
             });
@@ -244,11 +245,12 @@ impl AppState {
             };
 
             let repo = InMemoryRepository::new();
+            let repo_arc = Arc::new(StdMutex::new(repo));
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
             let dispatcher = Arc::new(
                 build_shared_dispatcher(
-                    repo,
+                    repo_arc,
                     store,
                     bus,
                     emotion_projection.clone(),
@@ -265,10 +267,11 @@ impl AppState {
         #[cfg(not(feature = "embed"))]
         let shared_dispatcher = {
             let repo = InMemoryRepository::new();
+            let repo_arc = Arc::new(StdMutex::new(repo));
             let store = Arc::new(InMemoryEventStore::new());
             let bus = Arc::new(EventBus::new());
             Arc::new(build_shared_dispatcher(
-                repo,
+                repo_arc,
                 store,
                 bus,
                 emotion_projection.clone(),

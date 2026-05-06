@@ -20,7 +20,7 @@
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -69,11 +69,6 @@ impl RumorDistributionHandler {
     }
 
     fn confidence_for_hop(hop_index: u32) -> f32 {
-        // 1.0 × decay^hop_index, 하한 clamp.
-        //
-        // u32 → i32 캐스트 방어: 이론적으로 `hop_index > i32::MAX`면 음수 지수로 변환되어
-        // `f32::powi`가 발산(1/x^|n|로 수렴)할 수 있다. 현실 hop이 수백 이상인 경우는
-        // `decay^N`이 이미 0에 수렴해 floor가 걸리므로 상한 128로 saturate해도 무해.
         let p = profile();
         let capped = hop_index.min(128) as i32;
         let raw = p.rumor_hop_confidence_decay.powi(capped);
@@ -91,19 +86,15 @@ impl EventHandler for RumorDistributionHandler {
     }
 
     fn mode(&self) -> DeliveryMode {
-        // `TellingIngestionHandler`와 같은 MEMORY_INGESTION 상수 공유 — 서로 다른
-        // EventKind를 소비하므로 실행 순서 의존성 없음.
         DeliveryMode::Inline {
             priority: priority::inline::MEMORY_INGESTION,
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        // 의도적 미사용: 콘텐츠 해소·confidence 계산은 주입받은 MemoryStore/RumorStore만
-        // 사용. repo/shared state는 필요 없음.
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::RumorSpread {
             rumor_id,
@@ -117,13 +108,11 @@ impl EventHandler for RumorDistributionHandler {
 
         let content = self.resolve_content(rumor_id, content_version);
         let confidence = Self::confidence_for_hop(*hop_index);
-        // topic은 저장 시 필요하므로 한 번 조회.
         let rumor = self.rumor_store.load(rumor_id).ok().flatten();
         let topic = rumor.as_ref().and_then(|r| r.topic.clone());
 
         for recipient in recipients {
             let id = Self::derive_entry_id(event.id, recipient);
-            // Rumor 수신 시 청자의 origin_chain은 rumor_id 자체를 마커로 사용(추후 Source 확장 시 세분화).
             let chain = vec![format!("rumor:{rumor_id}")];
             #[allow(deprecated)] // Personal 투영 grand-father (§2.5 H10)
             let entry = MemoryEntry {
@@ -376,7 +365,6 @@ mod tests {
         let a = &entries[0];
         let b = &entries[1];
         assert!((a.confidence - 1.0).abs() < 1e-6, "hop 0 → decay^0 = 1.0");
-        // decay=0.8, hop=2 → 0.64
         assert!((b.confidence - 0.64).abs() < 1e-5, "hop 2 → 0.64 (got {})", b.confidence);
         assert!(b.confidence < a.confidence);
     }
@@ -393,7 +381,6 @@ mod tests {
             0,
         ))
         .unwrap();
-        // Canonical 등록
         #[allow(deprecated)]
         let canon = MemoryEntry {
             id: "canon-1".into(),
@@ -443,7 +430,6 @@ mod tests {
             0,
         ))
         .unwrap();
-        // 고아 Rumor → topic 없음 → canonical 조회 생략, seed_content 사용
         let handler = RumorDistributionHandler::new(mem.clone(), rum);
         let mut harness = HandlerTestHarness::new();
         harness
@@ -477,7 +463,6 @@ mod tests {
 
         let handler = RumorDistributionHandler::new(mem.clone(), rum);
         let mut harness = HandlerTestHarness::new();
-        // content_version = "d1"인 spread 이벤트 수동 생성
         let ev = DomainEvent::new(
             1,
             "r".into(),

@@ -24,7 +24,7 @@ use npc_mind::ports::{MemoryQuery, MemoryScopeFilter, MemoryStore, RumorStore};
 use npc_mind::{
     InMemoryRepository, RumorOriginInput, RumorReachInput, SeedRumorRequest, SpreadRumorRequest,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn build(
     canonical: Option<MemoryEntry>,
@@ -49,7 +49,8 @@ fn build(
             .unwrap();
     }
 
-    let dispatcher = CommandDispatcher::new(repo, event_store, bus)
+    let repo_arc = Arc::new(Mutex::new(repo));
+    let dispatcher = CommandDispatcher::new(repo_arc, event_store, bus)
         .with_default_handlers()
         .with_memory(memory_store.clone() as Arc<dyn MemoryStore>)
         .with_rumor(

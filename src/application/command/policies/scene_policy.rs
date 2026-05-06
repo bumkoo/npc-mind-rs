@@ -1,21 +1,17 @@
 //! ScenePolicy — Scene 시작 전담 (B안 B4.1)
 //!
-//! `SceneStartRequested` 이벤트를 수신하여 Scene을 `ctx.shared.scene`에 등록하고
+//! `SceneStartRequested` 이벤트를 수신하여 Scene을 `UnitOfWork`에 등록하고
 //! 초기 Focus가 있으면 appraise를 수행해 `EmotionAppraised` follow-up을 발행한다.
-//!
-//! v1의 `CommandDispatcher::handle_start_scene`(dispatcher.rs)가 이 핸들러로 대체된다.
-//! v1이 side-effect flag로 scene 저장을 지시했던 부분이 v2에서는 `ctx.shared.scene`으로,
-//! 초기 감정도 `ctx.shared.emotion_state`로 전파되어 Dispatcher가 write-back.
 //!
 //! 가이드 생성은 이 policy 책임 밖 — GuidePolicy가 `EmotionAppraised`에 반응해 자동 생성.
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
-use crate::domain::emotion::AppraisalEngine;
+use crate::domain::emotion::{AppraisalEngine, EmotionState};
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
-use crate::ports::Appraiser;
+use crate::ports::personality::Appraiser;
 
 /// Scene 시작 전담 폴리시
 pub struct ScenePolicy {
@@ -54,10 +50,10 @@ impl EventHandler for ScenePolicy {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        ctx: &mut EventHandlerContext<'_>,
+        ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::SceneStartRequested {
             npc_id,
@@ -77,7 +73,7 @@ impl EventHandler for ScenePolicy {
         let relationship = ctx.get_relationship(npc_id, partner_id)?;
 
         // 초기 Focus가 있으면 appraise
-        let (active_focus_id, emotion_state) = if let Some(initial) =
+        let (_active_focus_id, emotion_state): (Option<String>, Option<EmotionState>) = if let Some(initial) =
             initial_focus_id.as_ref().and_then(|id| {
                 scene.focuses().iter().find(|f| f.id == *id).cloned()
             })
@@ -98,11 +94,11 @@ impl EventHandler for ScenePolicy {
             (None, None)
         };
 
-        // shared에 전파 — Dispatcher가 commit 후 repo에 반영
-        ctx.shared.scene = Some(scene);
+        // UoW에 등록
+        ctx.save_scene(scene);
         if let Some(state) = &emotion_state {
-            ctx.shared.emotion_state = Some(state.clone());
-            ctx.shared.relationship = Some(relationship);
+            ctx.save_emotion_state(npc_id.clone(), state.clone());
+            ctx.save_relationship(relationship);
         }
 
         // follow-ups: SceneStarted + (옵션) EmotionAppraised
@@ -114,7 +110,7 @@ impl EventHandler for ScenePolicy {
                 npc_id: npc_id.clone(),
                 partner_id: partner_id.clone(),
                 focus_count,
-                initial_focus_id: active_focus_id.clone(),
+                initial_focus_id: initial_focus_id.clone(),
             },
         );
         let mut follow_ups = vec![scene_started];
@@ -122,11 +118,9 @@ impl EventHandler for ScenePolicy {
         if let Some(state) = emotion_state {
             let dominant = state
                 .dominant()
-                .map(|e| (format!("{:?}", e.emotion_type()), e.intensity()));
+                .map(|e: crate::domain::emotion::Emotion| (format!("{:?}", e.emotion_type()), e.intensity()));
             let mood = state.overall_valence();
             let snapshot = state.snapshot();
-            // situation_description은 Focus의 to_situation의 description에서 유도됨.
-            // SceneStartRequested payload엔 명시 없으므로 None으로 둔다 — v1 handle_start_scene과 동일.
             let emotion_event = DomainEvent::new(
                 0,
                 npc_id.clone(),
@@ -157,6 +151,7 @@ impl EventHandler for ScenePolicy {
 mod handler_v2_tests {
     use super::*;
     use crate::application::command::handler_v2::test_support::HandlerTestHarness;
+    use crate::application::command::handler_v2::HandlerError;
     use crate::domain::emotion::{EventFocus, FocusTrigger, Scene, SceneFocus};
     use crate::domain::personality::NpcBuilder;
     use crate::domain::relationship::Relationship;
@@ -214,22 +209,16 @@ mod handler_v2_tests {
             "bob",
             vec![make_focus("initial", FocusTrigger::Initial)],
         );
-        let result = harness.dispatch(&policy, event).expect("must succeed");
+        let (result, uow) = harness.dispatch(&policy, event).expect("must succeed");
 
-        // 순서 고정: SceneStarted → EmotionAppraised (ScenePolicy가 한 트랜잭션에서 2 follow-ups)
-        // SceneStarted가 먼저 나와야 Projection/downstream이 Scene 등록을 인지한 뒤
-        // EmotionAppraised를 소비하는 의미상 올바른 순서.
         let kinds: Vec<_> = result.follow_up_events.iter().map(|e| e.kind()).collect();
         assert_eq!(
             kinds,
             vec![EventKind::SceneStarted, EventKind::EmotionAppraised],
             "ScenePolicy는 SceneStarted 먼저, EmotionAppraised 뒤 순서로 발행"
         );
-        assert!(harness.shared.scene.is_some(), "shared.scene 설정");
-        assert!(
-            harness.shared.emotion_state.is_some(),
-            "초기 appraise 결과가 shared에 전파"
-        );
+        assert!(uow.scene.is_some());
+        assert!(uow.emotion_state.is_some());
     }
 
     #[test]
@@ -239,24 +228,23 @@ mod handler_v2_tests {
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new().with_npc(npc).with_relationship(rel);
 
-        // Initial trigger 없는 focus만 → 초기 appraise 없음
         let event = make_scene_start_req(
             "alice",
             "bob",
             vec![make_focus("pending", FocusTrigger::Conditions(vec![]))],
         );
-        let result = harness.dispatch(&policy, event).expect("must succeed");
+        let (result, uow) = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::SceneStarted);
-        assert!(harness.shared.scene.is_some());
-        assert!(harness.shared.emotion_state.is_none());
+        assert!(uow.scene.is_some());
+        assert!(uow.emotion_state.is_none());
     }
 
     #[test]
     fn missing_npc_returns_precondition_error() {
         let policy = ScenePolicy::new();
-        let mut harness = HandlerTestHarness::new(); // repo 비어있음
+        let mut harness = HandlerTestHarness::new(); 
 
         let event = make_scene_start_req(
             "ghost",

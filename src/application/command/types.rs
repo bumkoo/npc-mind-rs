@@ -162,3 +162,27 @@ pub enum CommandResult {
     DialogueEnded(AfterDialogueResponse),
     SceneStarted(SceneResult),
 }
+
+/// dispatch_v2 반환 타입
+#[derive(Debug)]
+pub struct DispatchV2Output {
+    pub events: Vec<crate::domain::event::DomainEvent>,
+    pub shared: super::handler_v2::HandlerShared,
+}
+
+/// dispatch_v2 오류 타입
+#[derive(Debug, thiserror::Error)]
+pub enum DispatchV2Error {
+    #[error("상황 평가 검증 실패: {0}")]
+    InvalidSituation(String),
+    #[error("이벤트 연쇄가 너무 깊음: {depth}")]
+    CascadeTooDeep { depth: u32 },
+    #[error("단일 커맨드 이벤트 예산 초과")]
+    EventBudgetExceeded,
+    #[error("핸들러 '{handler}' 처리 실패: {source}")]
+    HandlerFailed {
+        handler: &'static str,
+        #[source]
+        source: super::handler_v2::HandlerError,
+    },
+}

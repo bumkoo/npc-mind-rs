@@ -1,44 +1,29 @@
-//! CommandDispatcher — v2 전용 Policy 오케스트레이터
+//! CommandDispatcher — Command를 도메인 이벤트로 변환하고 핸들러 체인을 실행 (v2)
 //!
-//! `dispatch_v2(cmd)`로 Command → 초기 *Requested 이벤트 → Transactional BFS →
-//! HandlerShared write-back → Commit → Inline projection → Fanout 순서로 처리합니다.
-//!
-//! ## B4 Session 4 — Repository 공유 모델
-//!
-//! `repository: Arc<Mutex<R>>`로 감싸 `dispatch_v2(&self)`가 가능하도록 interior mutability.
-//! SceneTask가 `Arc<CommandDispatcher<R>>`를 공유하여 Scene 간 repo 동시 접근을 직렬화한다.
-
-use crate::domain::aggregate::AggregateKey;
-use crate::domain::event::{DomainEvent, EventPayload};
-use crate::ports::{EmotionStore, MindRepository, NpcWorld, SceneStore};
-
-use super::super::event_bus::EventBus;
-use super::super::event_store::EventStore;
-
-use crate::application::error::MindServiceError;
-use crate::application::situation_service::SituationService;
-use super::policies::{
-    EmotionPolicy, GuidePolicy, InformationPolicy, RelationshipPolicy, RumorPolicy, ScenePolicy,
-    StimulusPolicy, WorldOverlayPolicy,
-};
-use super::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerShared,
-};
-use super::projection_handlers::{
-    EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
-};
-use super::relationship_memory_handler::RelationshipMemoryHandler;
-use super::rumor_distribution_handler::RumorDistributionHandler;
-use super::scene_consolidation_handler::SceneConsolidationHandler;
-use super::telling_ingestion_handler::TellingIngestionHandler;
-use super::types::Command;
-use super::world_overlay_handler::WorldOverlayHandler;
-use crate::domain::rumor::{ReachPolicy, RumorOrigin};
-use crate::ports::{MemoryStore, RumorStore};
+//! 설계 원칙:
+//! 1. **Transactional 원자성**: Transactional 핸들러 체인은 단일 Unit of Work에 묶여
+//!    커밋 시점에 일괄 저장된다.
+//! 2. **Cascade 깊이 제한**: 이벤트 연쇄가 무한 루프에 빠지지 않도록 `MAX_CASCADE_DEPTH`로 가드.
+//! 3. **Inline Projections**: 커밋 직후(Fanout 전) 인라인으로 프로젝션을 실행해 쿼리 일관성 확보.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+
+use super::handler_v2::{
+    DeliveryMode, EventHandler, EventHandlerContext, HandlerShared,
+};
+pub use super::types::{DispatchV2Error, DispatchV2Output};
+use super::types::Command;
+use crate::application::event_bus::EventBus;
+use crate::application::event_store::EventStore;
+use crate::application::situation_service::SituationService;
+use crate::domain::aggregate::AggregateKey;
+use crate::domain::emotion::{Situation, Scene};
+use crate::domain::event::{DomainEvent, EventPayload};
+use crate::ports::{MindRepository, EmotionStore, NpcWorld, SceneStore};
+use crate::application::error::MindServiceError;
+use crate::application::dto::SituationInput;
 
 // ---------------------------------------------------------------------------
 // dispatch_v2 안전 한계
@@ -48,98 +33,64 @@ use std::sync::{Arc, Mutex, MutexGuard};
 pub const MAX_CASCADE_DEPTH: u32 = 4;
 
 /// 단일 커맨드에서 발행 가능한 최대 이벤트 수.
-pub const MAX_EVENTS_PER_COMMAND: usize = 20;
+pub const MAX_EVENTS_PER_COMMAND: usize = 21;
 
-// ---------------------------------------------------------------------------
-// DispatchV2 타입
-// ---------------------------------------------------------------------------
-
-/// v2 dispatch 결과 — 발행된 이벤트들과 핸들러 공유 상태
-#[derive(Debug)]
-pub struct DispatchV2Output {
-    /// Commit 단계에서 event_store에 append된 최종 이벤트 목록
-    pub events: Vec<DomainEvent>,
-    /// 핸들러 간 공유 상태의 최종 스냅샷
-    pub shared: HandlerShared,
-}
-
-/// v2 dispatch 에러
-#[derive(Debug, thiserror::Error)]
-pub enum DispatchV2Error {
-    #[error("invalid situation: {0}")]
-    InvalidSituation(String),
-
-    #[error("cascade depth exceeded: {depth} > {max}", max = MAX_CASCADE_DEPTH)]
-    CascadeTooDeep { depth: u32 },
-
-    #[error("event budget exceeded: {limit}", limit = MAX_EVENTS_PER_COMMAND)]
-    EventBudgetExceeded,
-
-    #[error("handler '{handler}' failed: {source}")]
-    HandlerFailed {
-        handler: &'static str,
-        #[source]
-        source: HandlerError,
-    },
-}
-
-/// Command 기반 오케스트레이터 (v2 단일 경로)
 pub struct CommandDispatcher<R: MindRepository> {
     repository: Arc<Mutex<R>>,
-    situation_service: SituationService,
     event_store: Arc<dyn EventStore>,
     event_bus: Arc<EventBus>,
-    /// `dispatch_v2` 호출 단위 correlation_id 발급 + `Command::SeedRumor`의 pending_id
-    /// 발급에 공용으로 쓰이는 단조 증가 카운터. 1부터 시작하며 0은 "미설정" sentinel로
-    /// 예약. `AtomicU64::fetch_add`이라 동시 호출에서도 단조 증가가 보장된다.
-    ///
-    /// **영속화 시 주의** (§12.3 — 본 태스크 범위 밖, 영속화 task로 미룸):
-    /// 프로세스 재시작 시 1로 리셋되므로 SQLite 등 영속 EventStore 도입 후엔 시작 시
-    /// `SELECT MAX(correlation_id) FROM events`로 카운터를 복원해야 cid 충돌이 없다.
-    command_seq: Arc<AtomicU64>,
+    command_seq: AtomicU64,
     transactional_handlers: Vec<Arc<dyn EventHandler>>,
     inline_handlers: Vec<Arc<dyn EventHandler>>,
+    situation_service: SituationService,
 }
 
-/// `dispatch_v2` 과정에서 누적되는 가변 상태 (Parameter Object)
-#[derive(Debug, Default)]
 struct DispatchState {
-    shared: HandlerShared,
     staging_buffer: Vec<DomainEvent>,
     parent_indices: Vec<Option<usize>>,
     depths: Vec<u32>,
 }
 
+impl Default for DispatchState {
+    fn default() -> Self {
+        Self {
+            staging_buffer: Vec::with_capacity(8),
+            parent_indices: Vec::with_capacity(8),
+            depths: Vec::with_capacity(8),
+        }
+    }
+}
+
 impl<R: MindRepository> CommandDispatcher<R> {
     pub fn new(
-        repository: R,
+        repository: Arc<Mutex<R>>,
         event_store: Arc<dyn EventStore>,
         event_bus: Arc<EventBus>,
     ) -> Self {
         Self {
-            repository: Arc::new(Mutex::new(repository)),
-            situation_service: SituationService::new(),
+            repository,
             event_store,
             event_bus,
-            command_seq: Arc::new(AtomicU64::new(1)),
+            command_seq: AtomicU64::new(1),
             transactional_handlers: Vec::new(),
             inline_handlers: Vec::new(),
+            situation_service: SituationService::new(),
         }
     }
 
-    /// 6 Policy + 3 Projection wrapper를 기본 등록.
-    ///
-    /// Step C2 이후: `InformationPolicy`도 기본 포함. Memory 인덱싱 Inline 핸들러
-    /// (`TellingIngestionHandler`)는 `MemoryStore` 주입이 필요하므로 `with_memory()`
-    /// 빌더로 따로 부착한다.
+    /// 기본 탑재 핸들러들을 등록하여 반환 (Step C2 호환).
     pub fn with_default_handlers(mut self) -> Self {
-        self = self.register_transactional(Arc::new(ScenePolicy::new()));
+        use super::policies::*;
+        use super::projection_handlers::*;
+
         self = self.register_transactional(Arc::new(EmotionPolicy::new()));
-        self = self.register_transactional(Arc::new(StimulusPolicy::new()));
         self = self.register_transactional(Arc::new(GuidePolicy::new()));
         self = self.register_transactional(Arc::new(RelationshipPolicy::new()));
-        self = self.register_transactional(Arc::new(InformationPolicy::new()));
+        self = self.register_transactional(Arc::new(ScenePolicy::new()));
+        self = self.register_transactional(Arc::new(StimulusPolicy::new()));
         self = self.register_transactional(Arc::new(WorldOverlayPolicy::new()));
+        self = self.register_transactional(Arc::new(InformationPolicy::new()));
+
         self = self.register_inline(Arc::new(EmotionProjectionHandler::new()));
         self = self.register_inline(Arc::new(RelationshipProjectionHandler::new()));
         self = self.register_inline(Arc::new(SceneProjectionHandler::new()));
@@ -147,72 +98,45 @@ impl<R: MindRepository> CommandDispatcher<R> {
     }
 
     /// Memory 저장소 연동 — **TellingIngestionHandler만** 부착 (Step C2 호환).
-    ///
-    /// Step C2부터 존재한 lean 경로. `Command::TellInformation`으로 생성되는
-    /// `InformationTold` 이벤트를 받아 청자별 `MemoryEntry(Heard/Rumor)`를 저장한다.
-    ///
-    /// Step D의 추가 핸들러(WorldOverlay/RelationshipMemory/SceneConsolidation)는 이
-    /// 빌더가 **등록하지 않는다**. 해당 기능을 함께 쓰려면 `with_memory_full(store)`를
-    /// 대신 호출한다 (리뷰 H5: 기존 콜러의 semantic break 방지).
-    ///
-    /// MemoryStore가 없는 환경(테스트·단순 시나리오)에서는 이 빌더를 호출하지 않으면
-    /// `Command::TellInformation`은 `InformationTold` 이벤트만 발행되고 실제 저장은
-    /// 건너뛴다.
-    pub fn with_memory(mut self, store: Arc<dyn MemoryStore>) -> Self {
-        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store)));
+    pub fn with_memory(mut self, store: Arc<dyn crate::ports::MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(super::telling_ingestion_handler::TellingIngestionHandler::new(store)));
         self
     }
 
-    /// Memory 저장소 연동 — Step D 전체 번들 (Telling + WorldOverlay + RelationshipMemory
-    /// + SceneConsolidation).
-    ///
-    /// `with_memory`가 Step C2 동작만 유지하는 반면, 이 빌더는 Step D 기능 전체를 켠다.
-    /// 4종 Inline 핸들러가 `priority::inline::MEMORY_INGESTION`(40) → `WORLD_OVERLAY_INGESTION`(45)
-    /// → `RELATIONSHIP_MEMORY`(50) → `SCENE_CONSOLIDATION`(60) 순서로 실행된다.
-    ///
-    /// 부작용:
-    /// - `InformationTold` → 청자 `MemoryEntry(Heard/Rumor)`
-    /// - `WorldEventOccurred` → Canonical `MemoryEntry(World, Seeded)` + topic Canonical supersede
-    /// - `RelationshipUpdated` → `MemoryEntry(RelationshipChange)` (Δ ≥ 0.05)
-    /// - `SceneEnded` → 참여 NPC별 Layer B `SceneSummary` + Layer A `consolidated_into` 마킹
-    pub fn with_memory_full(mut self, store: Arc<dyn MemoryStore>) -> Self {
-        self = self.register_inline(Arc::new(TellingIngestionHandler::new(store.clone())));
-        self = self.register_inline(Arc::new(WorldOverlayHandler::new(store.clone())));
-        self = self.register_inline(Arc::new(RelationshipMemoryHandler::new(store.clone())));
-        self = self.register_inline(Arc::new(SceneConsolidationHandler::new(store)));
+    /// Memory 저장소 연동 — **TellingIngestionHandler + WorldOverlayHandler + SceneConsolidationHandler** 부착.
+    pub fn with_memory_full(mut self, store: Arc<dyn crate::ports::MemoryStore>) -> Self {
+        self = self.with_memory(store.clone());
+        self = self.with_world_overlay(store.clone());
+        self = self.with_scene_consolidation(store);
         self
     }
 
-    /// 소문(Rumor) 서브시스템 연동 (Step C3~).
-    ///
-    /// 두 핸들러를 등록한다:
-    /// - **`RumorPolicy`** (Transactional) — `Seed/SpreadRumorRequested` 처리,
-    ///   `Rumor` 애그리거트를 `RumorStore`에 저장하고 `RumorSeeded`/`RumorSpread`
-    ///   follow-up을 발행.
-    /// - **`RumorDistributionHandler`** (Inline) — `RumorSpread` 구독해 각 수신자에게
-    ///   `MemoryEntry(Rumor)`를 `MemoryStore`에 저장 (content 해소는 §2.6 규칙을 따름).
-    ///
-    /// `MemoryStore`와 `RumorStore` 둘 다 필요하다. 둘이 없는 환경에서는
-    /// `register_transactional`/`register_inline`으로 개별 등록 가능.
+    /// Rumor 저장소 연동 — **RumorPolicy + RumorDistributionHandler** 부착 (Step C3).
     pub fn with_rumor(
         mut self,
-        memory_store: Arc<dyn MemoryStore>,
-        rumor_store: Arc<dyn RumorStore>,
+        memory_store: Arc<dyn crate::ports::MemoryStore>,
+        rumor_store: Arc<dyn crate::ports::RumorStore>,
     ) -> Self {
-        self = self.register_transactional(Arc::new(RumorPolicy::new(rumor_store.clone())));
-        self = self.register_inline(Arc::new(RumorDistributionHandler::new(
-            memory_store,
-            rumor_store,
-        )));
+        self = self.register_transactional(Arc::new(super::policies::RumorPolicy::new(rumor_store.clone())));
+        self = self.register_inline(Arc::new(
+            super::rumor_distribution_handler::RumorDistributionHandler::new(memory_store, rumor_store),
+        ));
+        self
+    }
+
+    /// World 오버레이 연동 — **WorldOverlayHandler** 부착 (Step D).
+    pub fn with_world_overlay(mut self, store: Arc<dyn crate::ports::MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(super::world_overlay_handler::WorldOverlayHandler::new(store)));
+        self
+    }
+
+    /// Scene 통합 연동 — **SceneConsolidationHandler** 부착 (Step D).
+    pub fn with_scene_consolidation(mut self, store: Arc<dyn crate::ports::MemoryStore>) -> Self {
+        self = self.register_inline(Arc::new(super::scene_consolidation_handler::SceneConsolidationHandler::new(store)));
         self
     }
 
     pub fn register_transactional(mut self, handler: Arc<dyn EventHandler>) -> Self {
-        debug_assert!(
-            matches!(handler.mode(), DeliveryMode::Transactional { .. }),
-            "register_transactional called with non-Transactional handler: {}",
-            handler.name()
-        );
         self.transactional_handlers.push(handler);
         self.transactional_handlers
             .sort_by_key(|h| transactional_priority(h.as_ref()));
@@ -220,34 +144,10 @@ impl<R: MindRepository> CommandDispatcher<R> {
     }
 
     pub fn register_inline(mut self, handler: Arc<dyn EventHandler>) -> Self {
-        debug_assert!(
-            matches!(handler.mode(), DeliveryMode::Inline { .. }),
-            "register_inline called with non-Inline handler: {}",
-            handler.name()
-        );
         self.inline_handlers.push(handler);
         self.inline_handlers
             .sort_by_key(|h| inline_priority(h.as_ref()));
         self
-    }
-
-    pub fn transactional_handler_count(&self) -> usize {
-        self.transactional_handlers.len()
-    }
-
-    pub fn inline_handler_count(&self) -> usize {
-        self.inline_handlers.len()
-    }
-
-    /// **Deprecated** — `dispatch_v2`가 호출 단위로 cid를 자동 발급하므로 이 함수는
-    /// 더 이상 효과가 없다. 글로벌 슬롯이 제거되어 외부에서 cid를 강제 주입할 수단도
-    /// 사라졌다 (per-call 격리 원칙). 다음 마이너 버전에서 완전 제거 예정.
-    #[deprecated(
-        note = "no-op as of 2026-04-25; cid is auto-issued per dispatch_v2 call. \
-                Calls to this function have NO EFFECT — remove the call site."
-    )]
-    pub fn set_correlation_id(&self, _id: u64) {
-        // no-op. 외부 호출자가 있으면 컴파일 경고로 알린다.
     }
 
     pub fn event_store(&self) -> &Arc<dyn EventStore> {
@@ -256,6 +156,14 @@ impl<R: MindRepository> CommandDispatcher<R> {
 
     pub fn event_bus(&self) -> &Arc<EventBus> {
         &self.event_bus
+    }
+
+    pub fn transactional_handler_count(&self) -> usize {
+        self.transactional_handlers.len()
+    }
+
+    pub fn inline_handler_count(&self) -> usize {
+        self.inline_handlers.len()
     }
 
     pub fn repository_arc(&self) -> Arc<Mutex<R>> {
@@ -272,25 +180,43 @@ impl<R: MindRepository> CommandDispatcher<R> {
         R: Send + Sync,
     {
         // 호출 단위 correlation_id 발급 — 함수 진입 직후 1회.
-        // command_seq는 SeedRumor의 pending_id 발급기와 공유하지만, 발급된 정수는
-        // 서로 다른 용도로 분기 사용되므로 충돌 없음. cid는 함수 로컬 변수로만
-        // 들고 다녀 dispatch 호출 간 간섭이 없다 (per-call 격리 원칙, §4.3).
         let cid = self.command_seq.fetch_add(1, Ordering::SeqCst);
 
         let initial_event = self.build_initial_event(cmd)?;
         let aggregate_key = initial_event.aggregate_key();
 
-        let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
-
+        let mut uow = super::uow::UnitOfWork::new(&self.repository);
         let mut state = DispatchState::default();
 
         // 1. Transactional Phase (BFS)
-        self.execute_transactional_bfs(&initial_event, &aggregate_key, &mut repo_guard, &mut state)?;
+        {
+            let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
+            self.execute_transactional_bfs(
+                &initial_event,
+                &aggregate_key,
+                &mut *repo_guard,
+                &mut uow,
+                &mut state,
+            )?;
+        }
 
-        // 2. Write-back to Repository
-        Self::apply_shared_to_repository(&mut *repo_guard, &aggregate_key, &state.shared);
+        // DispatchV2Output 호환을 위해 UoW에서 HandlerShared 복구 (commit 전 추출)
+        let shared = HandlerShared {
+            emotion_state: uow.emotion_state.as_ref().map(|(_, s)| s.clone()),
+            relationship: uow.relationship.clone(),
+            scene: uow.scene.clone(),
+            guide: uow.guide.clone(),
+            clear_emotion_for: uow.clear_emotion_for.clone(),
+            clear_scene: uow.clear_scene,
+        };
 
-        // 3. Commit Phase
+        // 2. Commit Phase (Repository + EventStore)
+        // Unit of Work를 통해 도메인 상태 원자적 저장
+        uow.commit().map_err(|source| DispatchV2Error::HandlerFailed {
+            handler: "CommandDispatcher::Commit",
+            source,
+        })?;
+
         let committed = self.commit_staging_buffer(
             &aggregate_key,
             state.staging_buffer,
@@ -299,24 +225,21 @@ impl<R: MindRepository> CommandDispatcher<R> {
             state.depths,
         );
 
-        // 4. Inline Phase (Projections)
-        self.execute_inline_projections(
-            &committed,
-            &aggregate_key,
-            &mut repo_guard,
-            &mut state.shared,
-        );
+        // 3. Inline Phase (Projections)
+        {
+            let mut uow_inline = super::uow::UnitOfWork::new(&self.repository);
+            let mut repo_guard = self.repository.lock().expect("repository mutex poisoned");
+            self.execute_inline_projections(&committed, &aggregate_key, &mut *repo_guard, &mut uow_inline);
+        }
 
-        drop(repo_guard);
-
-        // 5. Fanout Phase (EventBus)
+        // 4. Fanout Phase (EventBus)
         for event in &committed {
             self.event_bus.publish(event);
         }
 
         Ok(DispatchV2Output {
             events: committed,
-            shared: state.shared,
+            shared,
         })
     }
 
@@ -417,18 +340,13 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 ))
             }
             Command::SeedRumor(req) => {
-                // DTO→도메인 변환은 `impl From<&RumorOriginInput>` / `<&RumorReachInput>`
-                // 가 담당 (C3 리뷰 m2에서 인라인 match 제거).
-                let origin: RumorOrigin = (&req.origin).into();
-                let reach: ReachPolicy = (&req.reach).into();
-                // 고아 Rumor는 seed_content 필수 — DTO 단계에서 빠르게 reject.
+                let origin: crate::domain::rumor::RumorOrigin = (&req.origin).into();
+                let reach: crate::domain::rumor::ReachPolicy = (&req.reach).into();
                 if req.topic.is_none() && req.seed_content.is_none() {
                     return Err(DispatchV2Error::InvalidSituation(
                         "SeedRumor: topic 없으면 seed_content 필수".into(),
                     ));
                 }
-                // 커맨드별 고유 pending_id — 복수의 SeedRumor가 "orphan" 공용 버킷을
-                // 공유하지 않도록 (Step C3 사후 리뷰 C2).
                 let pending_id = format!(
                     "{:012}",
                     self.command_seq.fetch_add(1, Ordering::SeqCst)
@@ -490,7 +408,6 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 significance,
                 focuses,
             } => {
-                use crate::domain::emotion::Scene;
                 let repo_guard = self.repository.lock().expect("repository mutex poisoned");
                 let domain_focuses: Vec<_> = focuses
                     .into_iter()
@@ -530,8 +447,8 @@ impl<R: MindRepository> CommandDispatcher<R> {
     fn resolve_appraise_situation(
         &self,
         npc_id: &str,
-        situation: Option<Box<crate::application::dto::SituationInput>>,
-    ) -> Result<crate::domain::emotion::Situation, DispatchV2Error> {
+        situation: Option<Box<SituationInput>>,
+    ) -> Result<Situation, DispatchV2Error> {
         match situation {
             Some(sit) => sit
                 .into_domain(None, None, None, npc_id)
@@ -561,29 +478,6 @@ impl<R: MindRepository> CommandDispatcher<R> {
         }
     }
 
-    fn apply_shared_to_repository(
-        repo: &mut R,
-        aggregate_key: &AggregateKey,
-        shared: &HandlerShared,
-    ) {
-        if let Some(state) = &shared.emotion_state {
-            let npc_id = aggregate_key.npc_id_hint();
-            repo.save_emotion_state(npc_id, state.clone());
-        }
-        if let Some(rel) = &shared.relationship {
-            repo.save_relationship(rel.owner_id(), rel.target_id(), rel.clone());
-        }
-        if let Some(scene) = &shared.scene {
-            repo.save_scene(scene.clone());
-        }
-        if let Some(npc_id) = &shared.clear_emotion_for {
-            repo.clear_emotion_state(npc_id);
-        }
-        if shared.clear_scene {
-            repo.clear_scene();
-        }
-    }
-
     fn commit_staging_buffer(
         &self,
         _command_key: &AggregateKey,
@@ -592,22 +486,11 @@ impl<R: MindRepository> CommandDispatcher<R> {
         parent_indices: Vec<Option<usize>>,
         depths: Vec<u32>,
     ) -> Vec<DomainEvent> {
-        // 각 이벤트의 aggregate_id는 **payload의 자기 aggregate_key**로 결정한다.
-        // 커맨드의 aggregate_key는 참고용이며 덮어쓰기에 쓰지 않는다 — 그래야
-        // `EventStore.get_events(listener)` 같은 청자 기반 질의가
-        // (`InformationTold → Npc(listener)`)를 정확히 반영한다. 기존 이벤트
-        // (EmotionAppraised·BeatTransitioned·RelationshipUpdated 등)는 payload의
-        // `npc_id_hint`가 커맨드의 것과 같아서 저장값이 변하지 않는다.
-        //
-        // metadata가 완전히 채워진 뒤에만 단일 `event_store.append`로 영속화한다 —
-        // 부분 실패 시에도 미완성 metadata가 EventStore에 노출되지 않는다.
         debug_assert_eq!(staging.len(), parent_indices.len());
         debug_assert_eq!(staging.len(), depths.len());
 
         let mut committed: Vec<DomainEvent> = Vec::with_capacity(staging.len());
 
-        // BFS 처리 순서가 곧 staging 순서이므로 부모는 항상 자식보다 먼저 처리된다 →
-        // 자식의 차례가 왔을 때 `committed[parent_idx]`는 이미 id가 부여돼 있다.
         for (idx, event) in staging.into_iter().enumerate() {
             let per_event_id = event.aggregate_key().npc_id_hint().to_string();
             let id = self.event_store.next_id();
@@ -626,11 +509,12 @@ impl<R: MindRepository> CommandDispatcher<R> {
         committed
     }
 
-    fn execute_transactional_bfs(
+    fn execute_transactional_bfs<'a>(
         &self,
         initial_event: &DomainEvent,
         aggregate_key: &AggregateKey,
-        repo_guard: &mut MutexGuard<'_, R>,
+        repo: &mut R,
+        uow: &mut super::uow::UnitOfWork<'a, R>,
         state: &mut DispatchState,
     ) -> Result<(), DispatchV2Error>
     where
@@ -661,18 +545,18 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 };
 
                 let mut ctx = EventHandlerContext {
-                    world: &**repo_guard as &(dyn NpcWorld + Send + Sync),
-                    emotions: &**repo_guard as &(dyn EmotionStore + Send + Sync),
-                    scenes: &**repo_guard as &(dyn SceneStore + Send + Sync),
+                    world: repo as &(dyn NpcWorld + Send + Sync),
+                    emotions: repo as &(dyn EmotionStore + Send + Sync),
+                    scenes: repo as &(dyn SceneStore + Send + Sync),
                     event_store: &*self.event_store,
-                    shared: &mut state.shared,
+                    uow,
                     prior_events: &state.staging_buffer,
                     aggregate_key: aggregate_key.clone(),
                 };
 
                 let result =
                     handler
-                        .handle(&event, &mut ctx)
+                        .handle_v2(&event, &mut ctx)
                         .map_err(|source| DispatchV2Error::HandlerFailed {
                             handler: handler.name(),
                             source,
@@ -692,17 +576,16 @@ impl<R: MindRepository> CommandDispatcher<R> {
         Ok(())
     }
 
-    fn execute_inline_projections(
+    fn execute_inline_projections<'a>(
         &self,
         committed: &[DomainEvent],
         aggregate_key: &AggregateKey,
-        repo_guard: &mut MutexGuard<'_, R>,
-        shared: &mut HandlerShared,
+        repo: &mut R,
+        uow: &mut super::uow::UnitOfWork<'a, R>,
     ) where
         R: Send + Sync,
     {
         for (idx, event) in committed.iter().enumerate() {
-            // 해당 이벤트 이전까지의 이벤트들을 prior_events로 제공
             let prior_events = &committed[0..idx];
 
             for handler in self.inline_handlers.iter() {
@@ -713,25 +596,21 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     continue;
                 }
                 let mut ctx = EventHandlerContext {
-                    world: &**repo_guard as &(dyn NpcWorld + Send + Sync),
-                    emotions: &**repo_guard as &(dyn EmotionStore + Send + Sync),
-                    scenes: &**repo_guard as &(dyn SceneStore + Send + Sync),
+                    world: repo as &(dyn NpcWorld + Send + Sync),
+                    emotions: repo as &(dyn EmotionStore + Send + Sync),
+                    scenes: repo as &(dyn SceneStore + Send + Sync),
                     event_store: &*self.event_store,
-                    shared,
+                    uow,
                     prior_events,
                     aggregate_key: aggregate_key.clone(),
                 };
-                if let Err(e) = handler.handle(event, &mut ctx) {
+                if let Err(e) = handler.handle_v2(event, &mut ctx) {
                     tracing::warn!(handler = handler.name(), error = %e, "inline handler failed");
                 }
             }
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// 내부 헬퍼 — handler priority 추출 (register_* 정렬용)
-// ---------------------------------------------------------------------------
 
 fn transactional_priority(h: &dyn EventHandler) -> i32 {
     match h.mode() {

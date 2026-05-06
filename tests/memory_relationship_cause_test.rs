@@ -13,9 +13,9 @@ mod common;
 
 use common::in_memory_store::InMemoryMemoryStore;
 use npc_mind::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerShared,
+    DeliveryMode, DynamicHandlerContext, EventHandler, EventHandlerContext,
 };
-use npc_mind::application::command::{Command, CommandDispatcher, RelationshipMemoryHandler};
+use npc_mind::application::command::{Command, CommandDispatcher, RelationshipMemoryHandler, UnitOfWork};
 use npc_mind::application::dto::{EventInput, SituationInput};
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
@@ -27,7 +27,7 @@ use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::scene_id::SceneId;
 use npc_mind::ports::{MemoryQuery, MemoryScopeFilter, MemoryStore};
 use npc_mind::InMemoryRepository;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 fn personal_rel_entries(store: &dyn MemoryStore, owner: &str) -> Vec<npc_mind::MemoryEntry> {
     store
@@ -56,9 +56,10 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
     repo.add_relationship(Relationship::neutral("alice", "bob"));
     repo.add_relationship(Relationship::neutral("bob", "alice"));
 
+    let repo_arc = Arc::new(Mutex::new(repo));
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(repo, event_store, bus)
+    let dispatcher = CommandDispatcher::new(repo_arc, event_store, bus)
         .with_default_handlers()
         .with_memory_full(store.clone() as Arc<dyn MemoryStore>);
 
@@ -103,8 +104,6 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
         .expect("end");
 
     // alice 관점의 RelationshipChange 엔트리가 기록됨 (Δ가 threshold 넘을 때만)
-    // 관계가 neutral에서 after_dialogue 갱신 — 현재 관성상 변동 폭이 threshold를 넘는지는
-    // 구현 의존이라, 엔트리 수를 하한 없이 검증: 생성되었다면 Experienced source.
     let entries = personal_rel_entries(&*store, "alice");
     for e in &entries {
         assert_eq!(e.memory_type, MemoryType::RelationshipChange);
@@ -145,24 +144,26 @@ fn run_cause(
         })),
     );
 
-    let repo = InMemoryRepository::new();
+    let repo = Arc::new(Mutex::new(InMemoryRepository::new()));
     let es = InMemoryEventStore::new();
-    let mut shared = HandlerShared::default();
+    let mut uow = UnitOfWork::new(&repo);
     let prior: Vec<DomainEvent> = Vec::new();
     let agg = AggregateKey::Relationship {
         owner_id: "alice".into(),
         target_id: "bob".into(),
     };
+    
+    let repo_guard = repo.lock().unwrap();
     let mut ctx = EventHandlerContext {
-        world: &repo,
-        emotions: &repo,
-        scenes: &repo,
+        world: &*repo_guard,
+        emotions: &*repo_guard,
+        scenes: &*repo_guard,
         event_store: &es,
-        shared: &mut shared,
+        uow: &mut uow,
         prior_events: &prior,
         aggregate_key: agg,
     };
-    handler.handle(&event, &mut ctx).unwrap();
+    handler.handle_v2(&event, &mut ctx).unwrap();
 }
 
 #[test]
@@ -255,9 +256,6 @@ fn rumor_cause_sets_rumor_source_and_chain_marker() {
 
 #[tokio::test]
 async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_cause() {
-    // Scene에 Beat 트리거 Focus를 넣고 ApplyStimulus로 Beat 전환을 유발하면,
-    // RelationshipPolicy가 RelationshipUpdated를 cause=SceneInteraction으로 발행하고
-    // RelationshipMemoryHandler가 Experienced source + topic=None의 엔트리를 만든다.
     use npc_mind::domain::emotion::{
         ConditionThreshold, EmotionCondition, EmotionType, EventFocus, FocusTrigger, Scene,
         SceneFocus,
@@ -270,7 +268,7 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
     repo.add_npc(NpcBuilder::new("bob", "Bob").build());
     repo.add_relationship(Relationship::neutral("alice", "bob"));
     repo.add_relationship(Relationship::neutral("bob", "alice"));
-    // Beat 트리거 Scene 직접 저장 (StartScene 경로는 focus 재구성이 번거로워 우회)
+    
     let scene = {
         let focuses = vec![
             SceneFocus {
@@ -311,13 +309,14 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
     };
     repo.save_scene(scene);
 
+    let repo_arc = Arc::new(Mutex::new(repo));
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(repo, event_store, bus)
+    let dispatcher = CommandDispatcher::new(repo_arc, event_store, bus)
         .with_default_handlers()
         .with_memory_full(store.clone() as Arc<dyn MemoryStore>);
 
-    // Appraise seed (emotion_state 필요)
+    // Appraise seed
     dispatcher
         .dispatch_v2(Command::Appraise {
             npc_id: "alice".into(),
@@ -351,7 +350,6 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
         .await
         .expect("stimulus");
 
-    // 커맨드 결과에 BeatTransitioned + RelationshipUpdated(cause=SceneInteraction) 포함.
     let rel_updated = out
         .events
         .iter()
@@ -368,10 +366,6 @@ async fn beat_transition_cascades_to_relationship_memory_with_scene_interaction_
         other => panic!("expected SceneInteraction cause, got {other:?}"),
     }
 
-    // 본 테스트의 주된 assert는 cause=SceneInteraction 이미 검증됨.
-    // RelationshipMemoryHandler가 MemoryEntry를 만드는지는 Δ ≥ 0.05일 때만이며, 기본
-    // Beat 변동은 threshold 아래일 수 있다 (CLOSENESS_UPDATE_RATE=0.05 × sig × valence).
-    // 엔트리가 생긴 경우에만 source/라벨 형태를 확인한다 — 없어도 fail 아님.
     let entries = personal_rel_entries(&*store, "alice");
     for e in &entries {
         assert_eq!(e.source, MemorySource::Experienced);

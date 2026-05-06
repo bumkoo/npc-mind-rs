@@ -7,17 +7,12 @@
 //! - `SpreadRumorRequested` → 기존 `Rumor` 로드 → 새 홉 추가 → `RumorStore.save` →
 //!   `RumorSpread` follow-up (이후 Inline `RumorDistributionHandler`가 수신자 MemoryEntry를
 //!   생성)
-//!
-//! **Rumor id 생성**: `rumor-{event.id:012}` — 결정적(Event Sourcing replay 안전).
-//!
-//! **불변식**: Rumor 자체의 I-RU-1~6은 `Rumor::add_hop`/`add_distortion`/`transition_to`가
-//! 방어한다. 본 폴리시는 저장소 오류를 `HandlerError::Infrastructure`로 전파한다.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -26,9 +21,6 @@ use crate::ports::RumorStore;
 
 pub struct RumorPolicy {
     store: Arc<dyn RumorStore>,
-    /// Rumor id 생성용 단조 카운터. `EventStore::next_id()`와 독립 관리되어
-    /// **event log에 id gap을 유발하지 않는다** (Step C3 사후 리뷰 M1).
-    /// 프로세스 수명 동안만 유일 — replay 시 재생성 필요성은 설계 §15 결정 유보.
     counter: Arc<AtomicU64>,
 }
 
@@ -40,7 +32,6 @@ impl RumorPolicy {
         }
     }
 
-    /// Rumor id 포맷: `rumor-{counter:012}`. RumorPolicy 인스턴스별 카운터 기반.
     fn next_rumor_id(&self) -> String {
         let n = self.counter.fetch_add(1, Ordering::SeqCst);
         format!("rumor-{n:012}")
@@ -56,7 +47,6 @@ impl RumorPolicy {
     ) -> Result<HandlerResult, HandlerError> {
         let rumor_id = self.next_rumor_id();
 
-        // Rumor 생성 — topic/seed_content 조합에 따른 생성자 분기 (§2.6 Canonical 해소표).
         let rumor = match (topic, seed_content) {
             (Some(t), Some(sc)) => Rumor::with_forecast_content(
                 &rumor_id,
@@ -122,16 +112,6 @@ impl RumorPolicy {
                 HandlerError::InvalidInput(format!("SpreadRumor: rumor_id '{rumor_id}' 없음"))
             })?;
 
-        // TODO(step-f): Fading/Faded status 전이가 도입되면 여기서 `Faded` rumor의 spread를
-        // 거부해야 한다. Step C3 시점에는 status 전이 트리거(백그라운드 틱)가 없어 항상
-        // Active라 가드 불필요. 리뷰 M4 참조.
-
-        // 동일 수신자 중복 제거 — 같은 홉에서 같은 사람에게 두 번 저장되지 않도록.
-        //
-        // **빈 recipients 정책**: 수신자 0명이면 홉은 여전히 추가되고 `RumorSpread`
-        // 이벤트도 발행된다 (Inline `RumorDistributionHandler`는 반복 대상이 없어 no-op).
-        // "유령 홉" 형태이지만 `hop_index` 단조성을 유지하므로 허용 — caller가 원하지
-        // 않으면 dispatch 전에 검증하라.
         let mut seen = std::collections::HashSet::new();
         let recipients: Vec<String> = extra_recipients
             .iter()
@@ -142,7 +122,7 @@ impl RumorPolicy {
         let hop_index = rumor.next_hop_index();
         let hop = RumorHop {
             hop_index,
-            content_version: None, // Step C3 초기: 원본 content, distortion chain은 후속 작업.
+            content_version: None, 
             recipients: recipients.clone(),
             spread_at: event.timestamp_ms,
         };
@@ -191,21 +171,18 @@ impl EventHandler for RumorPolicy {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        // 의도적 미사용: RumorPolicy는 자체 AtomicU64 카운터로 rumor_id를 생성하고
-        // RumorStore 외 repo/shared state를 참조하지 않는다. `prior_events`·
-        // `aggregate_key`도 현재 분기에 쓸 일 없음.
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         match &event.payload {
             EventPayload::SeedRumorRequested {
-                pending_id: _,
                 topic,
                 seed_content,
                 reach,
                 origin,
+                ..
             } => self.handle_seed(event, topic, seed_content, reach, origin),
             EventPayload::SpreadRumorRequested {
                 rumor_id,
@@ -223,7 +200,6 @@ mod tests {
     use crate::domain::rumor::{RumorOrigin, RumorStatus};
     use std::sync::Mutex;
 
-    /// 테스트용 인메모리 RumorStore.
     #[derive(Default)]
     struct SpyRumorStore {
         inner: Mutex<Vec<Rumor>>,
@@ -309,7 +285,7 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let result = harness
+        let (result, _) = harness
             .dispatch(
                 &policy,
                 seed_req_event(42, Some("moorim-leader-change"), None, RumorOrigin::Seeded),
@@ -330,7 +306,6 @@ mod tests {
         assert_eq!(topic.as_deref(), Some("moorim-leader-change"));
         assert!(seed_content.is_none());
 
-        // follow-up의 rumor_id로 저장소에서 조회 가능해야 한다 (round-trip)
         let saved = store.load(rumor_id).unwrap().unwrap();
         assert_eq!(saved.topic.as_deref(), Some("moorim-leader-change"));
         assert!(!saved.is_orphan());
@@ -363,7 +338,7 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let result = harness
+        let (result, _) = harness
             .dispatch(
                 &policy,
                 seed_req_event(7, None, Some("떠도는 얘기"), RumorOrigin::Authored { by: None }),
@@ -381,7 +356,7 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let result = harness
+        let (result, _) = harness
             .dispatch(
                 &policy,
                 seed_req_event(
@@ -402,16 +377,14 @@ mod tests {
 
     #[test]
     fn successive_seeds_get_distinct_rumor_ids() {
-        // 핵심 회귀 가드 — `event.id=0`을 쓰던 버그를 방지. 두 번 시드하면 서로 다른
-        // rumor_id가 나와야 한다.
         let store = Arc::new(SpyRumorStore::default());
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let r1 = harness
+        let (r1, _) = harness
             .dispatch(&policy, seed_req_event(0, Some("t1"), None, RumorOrigin::Seeded))
             .unwrap();
-        let r2 = harness
+        let (r2, _) = harness
             .dispatch(&policy, seed_req_event(0, Some("t2"), None, RumorOrigin::Seeded))
             .unwrap();
 
@@ -437,7 +410,6 @@ mod tests {
     #[test]
     fn spread_appends_hop_and_emits_rumor_spread() {
         let store = Arc::new(SpyRumorStore::default());
-        // 먼저 seed
         let seeded = Rumor::new(
             "rumor-seed",
             "t",
@@ -450,7 +422,7 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let result = harness
+        let (result, _) = harness
             .dispatch(
                 &policy,
                 spread_req_event(99, "rumor-seed", &["npc-a", "npc-b"]),
@@ -467,10 +439,9 @@ mod tests {
             panic!("expected RumorSpread");
         };
         assert_eq!(rumor_id, "rumor-seed");
-        assert_eq!(*hop_index, 0);
+        assert_eq!(hop_index, &0);
         assert_eq!(recipients, &vec!["npc-a".to_string(), "npc-b".to_string()]);
 
-        // 저장소에도 홉이 추가됨
         let reloaded = store.load("rumor-seed").unwrap().unwrap();
         assert_eq!(reloaded.hops().len(), 1);
         assert_eq!(reloaded.hops()[0].hop_index, 0);
@@ -491,7 +462,7 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let result = harness
+        let (result, _) = harness
             .dispatch(
                 &policy,
                 spread_req_event(1, "r", &["a", "b", "a"]),
@@ -520,10 +491,10 @@ mod tests {
         let policy = RumorPolicy::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        let r1 = harness
+        let (r1, _) = harness
             .dispatch(&policy, spread_req_event(1, "r", &["a"]))
             .unwrap();
-        let r2 = harness
+        let (r2, _) = harness
             .dispatch(&policy, spread_req_event(2, "r", &["b"]))
             .unwrap();
 

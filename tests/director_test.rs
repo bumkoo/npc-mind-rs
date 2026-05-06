@@ -22,7 +22,7 @@ use npc_mind::domain::scene_id::SceneId;
 use npc_mind::InMemoryRepository;
 use npc_mind::EventStore;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -53,9 +53,10 @@ fn three_npc_director() -> Director<InMemoryRepository> {
     repo.add_relationship(Relationship::neutral("mu_baek", "su_ryeon"));
     repo.add_relationship(Relationship::neutral("su_ryeon", "mu_baek"));
 
+    let repo_arc = Arc::new(Mutex::new(repo));
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(repo, store, bus).with_default_handlers();
+    let dispatcher = CommandDispatcher::new(repo_arc, store, bus).with_default_handlers();
     Director::new(dispatcher, test_spawner())
 }
 
@@ -487,9 +488,10 @@ async fn beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b() {
     );
 
     // Scene A에 대해 appraise + stimulus 순서로 dispatch → Beat 전환 유발
+    let repo_arc = Arc::new(Mutex::new(repo));
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(repo, store.clone(), bus).with_default_handlers();
+    let dispatcher = CommandDispatcher::new(repo_arc, store.clone(), bus).with_default_handlers();
 
     // seed emotion_state for mu_baek (via appraise-like command against Scene A partner)
     dispatcher

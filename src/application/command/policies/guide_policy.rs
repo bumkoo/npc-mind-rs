@@ -1,10 +1,11 @@
 //! GuidePolicy — 연기 가이드 생성 전담 (v2)
 //!
 //! `EmotionAppraised` / `StimulusApplied` / `GuideRequested` 이벤트에 자동 반응하여
-//! 가이드를 생성한다. `ctx.shared.emotion_state`가 설정돼 있으면 이를 참조.
+//! 가이드를 생성한다. `UnitOfWork`에 설정된 감정 상태가 있으면 이를 참조.
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest,
+    HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -46,10 +47,10 @@ impl EventHandler for GuidePolicy {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        ctx: &mut EventHandlerContext<'_>,
+        ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let (npc_id, partner_id, situation_description) = match &event.payload {
             EventPayload::EmotionAppraised {
@@ -72,7 +73,6 @@ impl EventHandler for GuidePolicy {
         let relationship = ctx.get_relationship(npc_id, partner_id).ok();
 
         let partner_name = ctx
-            .world
             .get_npc(partner_id)
             .map(|n| n.name().to_string())
             .unwrap_or_default();
@@ -85,7 +85,7 @@ impl EventHandler for GuidePolicy {
             &partner_name,
         );
 
-        ctx.shared.guide = Some(guide);
+        ctx.set_guide(guide);
 
         let follow_up = DomainEvent::new(
             0,
@@ -159,14 +159,14 @@ mod handler_v2_tests {
             .with_npc(npc)
             .with_npc(partner)
             .with_relationship(rel)
-            .with_shared_emotion_state(EmotionState::default());
+            .with_emotion_state("alice", EmotionState::default());
 
         let event = make_emotion_appraised("alice", "bob");
-        let result = harness.dispatch(&policy, event).expect("must succeed");
+        let (result, uow) = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::GuideGenerated);
-        assert!(harness.shared.guide.is_some());
+        assert!(uow.guide.is_some());
     }
 
     #[test]
@@ -177,20 +177,21 @@ mod handler_v2_tests {
         let mut harness = HandlerTestHarness::new()
             .with_npc(npc)
             .with_relationship(rel)
-            .with_shared_emotion_state(EmotionState::default());
+            .with_emotion_state("alice", EmotionState::default());
 
         let event = make_stimulus_applied("alice", "bob");
-        let result = harness.dispatch(&policy, event).expect("must succeed");
+        let (result, uow) = harness.dispatch(&policy, event).expect("must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::GuideGenerated);
+        assert!(uow.guide.is_some());
     }
 
     #[test]
     fn missing_shared_emotion_state_returns_precondition_error() {
         let policy = GuidePolicy::new();
         let npc = NpcBuilder::new("alice", "Alice").build();
-        // shared.emotion_state 미주입
+        // emotion_state 미주입
         let mut harness = HandlerTestHarness::new().with_npc(npc);
 
         let event = make_emotion_appraised("alice", "bob");

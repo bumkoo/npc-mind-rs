@@ -11,7 +11,6 @@ use common::mock_chat::MockConversationPort;
 use common::TestContext;
 use npc_mind::ports::ConversationError;
 use npc_mind::application::command::dispatcher::DispatchV2Error;
-use npc_mind::application::command::handler_v2::HandlerError;
 use npc_mind::{DialogueOrchestrator, DialogueOrchestratorError};
 use npc_mind::ports::UtteranceAnalyzer;
 use npc_mind::domain::pad::Pad;
@@ -38,13 +37,17 @@ fn valid_situation() -> npc_mind::application::dto::SituationInput {
 
 #[tokio::test]
 async fn orchestrator_propagates_handler_error_from_dispatcher() {
-    let mut ctx = TestContext::new();
+    let ctx = TestContext::new();
     let alice = npc_mind::domain::personality::NpcBuilder::new("alice", "Alice").build();
     let bob = npc_mind::domain::personality::NpcBuilder::new("bob", "Bob").build();
-    ctx.repo.add_npc(alice);
-    ctx.repo.add_npc(bob);
+    
+    {
+        let mut repo = ctx.repo.lock().unwrap();
+        repo.add_npc(alice);
+        repo.add_npc(bob);
+    }
 
-    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
+    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo.clone());
     let toml = npc_mind::presentation::builtin_toml("ko").unwrap();
     let formatter = Arc::new(npc_mind::presentation::formatter::LocaleFormatter::from_toml(toml).unwrap());
     let chat = MockConversationPort::new();
@@ -75,14 +78,18 @@ async fn orchestrator_propagates_handler_error_from_dispatcher() {
 
 #[tokio::test]
 async fn orchestrator_propagates_conversation_timeout() {
-    let mut ctx = TestContext::new();
+    let ctx = TestContext::new();
     let alice = npc_mind::domain::personality::NpcBuilder::new("alice", "Alice").build();
     let bob = npc_mind::domain::personality::NpcBuilder::new("bob", "Bob").build();
-    ctx.repo.add_npc(alice);
-    ctx.repo.add_npc(bob);
-    ctx.repo.add_relationship(npc_mind::domain::relationship::Relationship::neutral("alice", "bob"));
+    
+    {
+        let mut repo = ctx.repo.lock().unwrap();
+        repo.add_npc(alice);
+        repo.add_npc(bob);
+        repo.add_relationship(npc_mind::domain::relationship::Relationship::neutral("alice", "bob"));
+    }
 
-    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
+    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo.clone());
     let toml = npc_mind::presentation::builtin_toml("ko").unwrap();
     let formatter = Arc::new(npc_mind::presentation::formatter::LocaleFormatter::from_toml(toml).unwrap());
     
@@ -123,14 +130,18 @@ impl UtteranceAnalyzer for FailingAnalyzer {
 
 #[tokio::test]
 async fn orchestrator_propagates_analyzer_error() {
-    let mut ctx = TestContext::new();
+    let ctx = TestContext::new();
     let alice = npc_mind::domain::personality::NpcBuilder::new("alice", "Alice").build();
     let bob = npc_mind::domain::personality::NpcBuilder::new("bob", "Bob").build();
-    ctx.repo.add_npc(alice);
-    ctx.repo.add_npc(bob);
-    ctx.repo.add_relationship(npc_mind::domain::relationship::Relationship::neutral("alice", "bob"));
+    
+    {
+        let mut repo = ctx.repo.lock().unwrap();
+        repo.add_npc(alice);
+        repo.add_npc(bob);
+        repo.add_relationship(npc_mind::domain::relationship::Relationship::neutral("alice", "bob"));
+    }
 
-    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo);
+    let (dispatcher, _store, _bus) = common::v2_dispatcher_with_defaults(ctx.repo.clone());
     let toml = npc_mind::presentation::builtin_toml("ko").unwrap();
     let formatter = Arc::new(npc_mind::presentation::formatter::LocaleFormatter::from_toml(toml).unwrap());
     let chat = MockConversationPort::new();

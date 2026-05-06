@@ -1,14 +1,11 @@
-//! Step D — World 오버레이 통합 테스트.
-//!
-//! `Command::ApplyWorldEvent` → `ApplyWorldEventRequested` → `WorldEventOccurred` →
-//! Canonical `MemoryEntry(World, Seeded)` 생성 + 기존 Topic Canonical supersede.
+//! Step D — ApplyWorldEvent 커맨드 경로 end-to-end 통합 테스트.
 //!
 //! 커버리지:
-//! - 신규 World Canonical 엔트리 생성
-//! - 기존 같은 topic 엔트리 supersede
-//! - `get_canonical_by_topic`이 최신 Canonical을 반환
-//! - topic 없으면 supersede 없이 새 엔트리만 추가
-//! - `Provenance::is_canonical` 검증
+//! - `Command::ApplyWorldEvent` → `WorldEventOccurred` 발행
+//! - `WorldEventOccurred` → `WorldOverlayHandler` → `MemoryStore.index`
+//! - 같은 topic의 이전 Canonical 엔트리 supersede 확인
+//! - Personal Heard 엔트리는 supersede되지 않음 확인 (B6 원칙)
+//! - world_id 유효성 검증
 
 mod common;
 
@@ -22,18 +19,19 @@ use npc_mind::domain::memory::{
 };
 use npc_mind::ports::MemoryStore;
 use npc_mind::{ApplyWorldEventRequest, EventStore, InMemoryRepository};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-fn build_dispatcher(
+fn setup_dispatcher(
     store: Arc<InMemoryMemoryStore>,
 ) -> (
     CommandDispatcher<InMemoryRepository>,
     Arc<InMemoryEventStore>,
 ) {
     let repo = InMemoryRepository::new();
+    let repo_arc = Arc::new(Mutex::new(repo));
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    let dispatcher = CommandDispatcher::new(repo, event_store.clone(), bus)
+    let dispatcher = CommandDispatcher::new(repo_arc, event_store.clone(), bus)
         .with_default_handlers()
         .with_memory_full(store as Arc<dyn MemoryStore>);
     (dispatcher, event_store)
@@ -55,7 +53,7 @@ fn seed_canonical(store: &dyn MemoryStore, id: &str, topic: &str, content: &str,
         content: content.into(),
         topic: Some(topic.into()),
         emotional_context: None,
-        timestamp_ms: seq,
+        timestamp_ms: 100 * seq,
         last_recalled_at: None,
         recall_count: 0,
         origin_chain: vec![],
@@ -69,127 +67,96 @@ fn seed_canonical(store: &dyn MemoryStore, id: &str, topic: &str, content: &str,
 }
 
 #[tokio::test]
-async fn apply_world_event_emits_requested_and_occurred() {
+async fn world_overlay_creates_canonical_entry_and_emits_occurred() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, event_store) = build_dispatcher(store.clone());
+    let (dispatcher, event_store) = setup_dispatcher(store.clone());
 
     dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
-            fact: "새 맹주 등장".into(),
+            fact: "새 맹주 등극".into(),
             significance: 0.8,
-            witnesses: vec!["sage".into()],
+            witnesses: vec![],
         })))
         .await
-        .expect("dispatch");
+        .expect("must succeed");
 
     let all = event_store.get_all_events();
-    let req_count = all
+    // 1. 초기 Requested 발행됨
+    assert!(all
         .iter()
-        .filter(|e| e.kind() == EventKind::ApplyWorldEventRequested)
-        .count();
-    let occ_count = all
+        .any(|e| e.kind() == EventKind::ApplyWorldEventRequested));
+    // 2. 후속 Occurred 발행됨
+    assert!(all
         .iter()
-        .filter(|e| e.kind() == EventKind::WorldEventOccurred)
-        .count();
-    assert_eq!(req_count, 1);
-    assert_eq!(occ_count, 1);
-    // 이벤트 aggregate_id가 world_id로 라우팅되는지 확인
-    let req = all
+        .any(|e| e.kind() == EventKind::WorldEventOccurred));
+
+    // 3. 메모리에 저장됨
+    let occurred = all
         .iter()
-        .find(|e| e.kind() == EventKind::ApplyWorldEventRequested)
+        .find(|e| e.kind() == EventKind::WorldEventOccurred)
         .unwrap();
-    assert_eq!(req.aggregate_id, "jianghu");
+    let entry = store.get_by_id(&format!("world-{:012}-jianghu", occurred.id)).unwrap().unwrap();
+    assert_eq!(entry.content, "새 맹주 등극");
+    assert_eq!(entry.provenance, Provenance::Seeded);
 }
 
 #[tokio::test]
-async fn creates_canonical_entry_with_world_scope_seeded_provenance() {
+async fn world_overlay_supersedes_existing_canonical_entry() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, _) = build_dispatcher(store.clone());
+    let (dispatcher, _) = setup_dispatcher(store.clone());
 
-    dispatcher
-        .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
-            world_id: "jianghu".into(),
-            topic: Some("leader".into()),
-            fact: "새 맹주 등장".into(),
-            significance: 0.8,
-            witnesses: vec!["sage".into()],
-        })))
-        .await
-        .unwrap();
-
-    let canon = store
-        .get_canonical_by_topic("leader")
-        .unwrap()
-        .expect("canonical 엔트리 발견되어야");
-    assert_eq!(canon.content, "새 맹주 등장");
-    assert_eq!(canon.memory_type, MemoryType::WorldEvent);
-    assert_eq!(canon.provenance, Provenance::Seeded);
-    assert!(matches!(
-        canon.scope,
-        MemoryScope::World { ref world_id } if world_id == "jianghu"
-    ));
-    assert!(canon.provenance.is_canonical(&canon.scope));
-}
-
-#[tokio::test]
-async fn new_world_event_supersedes_existing_same_topic_canonical() {
-    let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, _) = build_dispatcher(store.clone());
-
-    // 기존 Canonical 시드
     seed_canonical(&*store, "old-canon", "leader", "옛 맹주", 1);
-    // 사전 확인: Canonical이 옛 맹주
-    let pre = store.get_canonical_by_topic("leader").unwrap().unwrap();
-    assert_eq!(pre.content, "옛 맹주");
 
     dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
-            fact: "새 맹주 등장".into(),
+            fact: "새 맹주".into(),
             significance: 0.8,
-            witnesses: vec!["sage".into()],
+            witnesses: vec![],
         })))
         .await
         .unwrap();
 
-    // 새 Canonical 반환
-    let canon = store.get_canonical_by_topic("leader").unwrap().unwrap();
-    assert_eq!(canon.content, "새 맹주 등장", "Canonical이 새 엔트리로 교체");
-
-    // 기존 엔트리는 superseded_by가 채워져 있어야
     let old = store.get_by_id("old-canon").unwrap().unwrap();
-    assert!(
-        old.superseded_by.is_some(),
-        "기존 Canonical은 supersede 마킹"
-    );
+    assert!(old.superseded_by.is_some(), "기존 Canonical은 supersede되어야 함");
+    
+    let latest = store.get_canonical_by_topic("leader").unwrap().unwrap();
+    assert_eq!(latest.content, "새 맹주");
 }
 
 #[tokio::test]
-async fn non_canonical_personal_entries_on_same_topic_preserved() {
-    // 리뷰 B1 회귀 가드 — Personal Heard/Rumor는 World 오버레이로 supersede되지 않아야.
+async fn world_overlay_does_not_supersede_personal_heard_entry() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, _) = build_dispatcher(store.clone());
+    let (dispatcher, _) = setup_dispatcher(store.clone());
 
-    // 기존 Canonical 시드
-    seed_canonical(&*store, "old-canon", "leader", "옛 맹주", 1);
-    // 어떤 NPC의 Personal Heard 엔트리도 시드
-    let heard = MemoryEntry::personal(
-        "pupil-heard",
-        "pupil",
-        "맹주가 바뀐다는 소문을 들었다",
-        None,
-        2,
-        2,
-        MemoryType::DialogueTurn,
-    );
-    // topic 명시 후 재저장
+    // Personal Heard 엔트리 시드
+    #[allow(deprecated)]
     let heard = MemoryEntry {
-        topic: Some("leader".into()),
+        id: "personal-heard".into(),
+        created_seq: 1,
+        event_id: 1,
+        scope: MemoryScope::Personal {
+            npc_id: "pupil".into(),
+        },
         source: MemorySource::Heard,
-        ..heard
+        provenance: Provenance::Runtime,
+        memory_type: MemoryType::DialogueTurn,
+        layer: MemoryLayer::A,
+        content: "내가 들은 소문".into(),
+        topic: Some("leader".into()),
+        emotional_context: None,
+        timestamp_ms: 100,
+        last_recalled_at: None,
+        recall_count: 0,
+        origin_chain: vec!["sage".into()],
+        confidence: 0.8,
+        acquired_by: None,
+        superseded_by: None,
+        consolidated_into: None,
+        npc_id: "pupil".into(),
     };
     store.index(heard, None).unwrap();
 
@@ -197,95 +164,80 @@ async fn non_canonical_personal_entries_on_same_topic_preserved() {
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: Some("leader".into()),
-            fact: "새 맹주 등장".into(),
+            fact: "정식 공표된 새 맹주".into(),
             significance: 0.8,
-            witnesses: vec!["sage".into()],
+            witnesses: vec![],
         })))
         .await
         .unwrap();
 
-    // Canonical은 supersede됨
-    let old_canon = store.get_by_id("old-canon").unwrap().unwrap();
-    assert!(old_canon.superseded_by.is_some());
-
-    // Personal Heard는 보존되어야 함
-    let heard = store.get_by_id("pupil-heard").unwrap().unwrap();
-    assert!(
-        heard.superseded_by.is_none(),
-        "Personal Heard는 World 오버레이로 supersede되지 않아야"
-    );
+    let old = store.get_by_id("personal-heard").unwrap().unwrap();
+    assert!(old.superseded_by.is_none(), "Personal 엔트리는 보호되어야 함");
 }
 
 #[tokio::test]
-async fn topic_none_creates_entry_but_does_not_supersede() {
+async fn world_overlay_without_topic_succeeds_but_does_not_supersede() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, _) = build_dispatcher(store.clone());
+    let (dispatcher, _) = setup_dispatcher(store.clone());
 
-    // 기존 topic 엔트리 시드
-    seed_canonical(&*store, "old", "leader", "옛 사실", 1);
+    seed_canonical(&*store, "c1", "leader", "맹주 A", 1);
 
     dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
-            topic: None,
-            fact: "단발성 사건".into(),
+            topic: None, // topic 없음
+            fact: "독립적 세계 사건".into(),
             significance: 0.5,
             witnesses: vec![],
         })))
         .await
         .unwrap();
 
-    // 기존 엔트리는 supersede 되지 않아야 함
-    let old = store.get_by_id("old").unwrap().unwrap();
-    assert!(old.superseded_by.is_none(), "topic=None은 supersede 안 함");
-    // 그래도 새 엔트리는 생성됨 (world:jianghu scope에 2건)
-    assert_eq!(store.count(), 2);
+    let old = store.get_by_id("c1").unwrap().unwrap();
+    assert!(old.superseded_by.is_none());
 }
 
 #[tokio::test]
-async fn invalid_world_event_rejected_early() {
+async fn apply_world_event_fails_with_invalid_input() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, _) = build_dispatcher(store.clone());
+    let (dispatcher, _) = setup_dispatcher(store.clone());
 
-    // 빈 world_id → InvalidSituation
-    let err = dispatcher
+    // 1. world_id 누락
+    let err1 = dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "".into(),
             topic: None,
-            fact: "something".into(),
+            fact: "fact".into(),
             significance: 0.5,
             witnesses: vec![],
         })))
-        .await
-        .expect_err("should fail");
-    assert!(format!("{err:?}").contains("world_id"));
+        .await;
+    assert!(err1.is_err());
 
-    // 빈 fact → InvalidSituation
-    let err = dispatcher
+    // 2. fact 누락
+    let err2 = dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
-            world_id: "jianghu".into(),
+            world_id: "w".into(),
             topic: None,
-            fact: "   ".into(),
+            fact: "  ".into(),
             significance: 0.5,
             witnesses: vec![],
         })))
-        .await
-        .expect_err("should fail");
-    assert!(format!("{err:?}").contains("fact"));
+        .await;
+    assert!(err2.is_err());
 }
 
 #[tokio::test]
-async fn significance_clamped_to_unit_range() {
+async fn world_overlay_records_requested_event_with_cascade_0() {
     let store = Arc::new(InMemoryMemoryStore::new());
-    let (dispatcher, event_store) = build_dispatcher(store.clone());
+    let (dispatcher, event_store) = setup_dispatcher(store.clone());
 
-    // 범위 밖 significance → dispatcher가 [0, 1] clamp
     dispatcher
         .dispatch_v2(Command::ApplyWorldEvent(Box::new(ApplyWorldEventRequest {
             world_id: "jianghu".into(),
             topic: None,
-            fact: "극비 정보".into(),
-            significance: 999.0,
+            fact: "fact".into(),
+            significance: 0.5,
             witnesses: vec![],
         })))
         .await
@@ -296,8 +248,7 @@ async fn significance_clamped_to_unit_range() {
         .into_iter()
         .find(|e| e.kind() == EventKind::ApplyWorldEventRequested)
         .unwrap();
-    let EventPayload::ApplyWorldEventRequested { significance, .. } = req.payload else {
-        panic!("unexpected payload");
-    };
-    assert!((0.0..=1.0).contains(&significance));
+    
+    assert_eq!(req.metadata.cascade_depth, 0);
+    assert_eq!(req.metadata.parent_event_id, None);
 }

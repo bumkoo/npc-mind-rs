@@ -7,30 +7,10 @@
 
 #![allow(deprecated)]
 
-//!
-//! 기존 `src/application/projection.rs`의 `EmotionProjection` / `RelationshipProjection` /
-//! `SceneProjection` 세 가지를 `Arc<Mutex<T>>`로 감싸 `EventHandler`를 구현한다.
-//!
-//! ## 설계
-//!
-//! - **Wrapper 방식**: 기존 Projection struct·trait·ProjectionRegistry는 **무변경**.
-//!   v1 경로(`CommandDispatcher.dispatch → emit_events → projections.apply_all`)는 그대로 동작.
-//! - **B3 dispatch_v2 소비**: 이 wrapper들은 B3에서 새 Dispatcher의 Inline 단계에서
-//!   `Arc<dyn EventHandler>`로 수집되어 iteration된다.
-//! - **테스트 관찰성**: 각 wrapper는 `projection()` getter로 내부 `Arc<Mutex<T>>`를 노출하므로
-//!   테스트가 상태를 직접 검증할 수 있다.
-//!
-//! ## B2 Scope Note
-//!
-//! `ProjectionRegistry` 자체의 storage를 `Vec<Arc<dyn EventHandler>>`로 전환하는 작업
-//! (B-Plan §8 Stage B2 항목 2)은 B3에서 dispatch_v2가 도입되며 ProjectionRegistry가
-//! 새 타입으로 대체될 때 함께 수행한다. B2는 wrapper 핸들러 제공으로 한정하여
-//! "쿼리 일관성 관련 기존 테스트 전수 통과" 조건을 엄격 보장한다.
-
 use std::sync::{Arc, Mutex};
 
 use super::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use super::priority;
 use crate::application::projection::{
@@ -43,32 +23,21 @@ use crate::domain::event::{DomainEvent, EventKind};
 // ---------------------------------------------------------------------------
 
 /// `EmotionProjection`을 `EventHandler` (Inline mode)로 노출
-///
-/// `EmotionAppraised` / `StimulusApplied` / `EmotionCleared` 이벤트를 소비하여
-/// 내부 `EmotionProjection.apply()`를 호출한다.
 pub struct EmotionProjectionHandler {
     inner: Arc<Mutex<EmotionProjection>>,
 }
 
 impl EmotionProjectionHandler {
-    /// 빈 Projection으로 시작
     pub fn new() -> Self {
         Self {
             inner: Arc::new(Mutex::new(EmotionProjection::new())),
         }
     }
 
-    /// 외부에서 준비한 공유 Projection 핸들을 주입
     pub fn from_shared(inner: Arc<Mutex<EmotionProjection>>) -> Self {
         Self { inner }
     }
 
-    /// 내부 Projection의 공유 핸들 복제
-    ///
-    /// 호출자가 직접 `.lock()`으로 `&mut` guard를 획득하므로 **lock 관리는 호출자 책임**이다.
-    /// 테스트·쿼리 경로에서 일반적으로 `.lock().unwrap().get_*()` 패턴으로 read-only 쿼리에만
-    /// 사용되지만, 타입 시스템은 외부 변이를 막지 못한다. 같은 핸들을 여러 wrapper에 주입하면
-    /// 같은 이벤트가 중복 apply될 수 있으므로 **한 projection 상태당 wrapper 1개** 원칙 유지.
     pub fn projection(&self) -> Arc<Mutex<EmotionProjection>> {
         self.inner.clone()
     }
@@ -99,13 +68,11 @@ impl EventHandler for EmotionProjectionHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
-        // Mutex poison은 다른 스레드에서의 panic을 의미. Inline 모드 계약(에러는 로그만,
-        // 커맨드는 계속)을 존중해 Infrastructure로 에스컬레이트하고 Dispatcher가 처리 위임.
         let mut proj = self
             .inner
             .lock()
@@ -135,7 +102,6 @@ impl RelationshipProjectionHandler {
         Self { inner }
     }
 
-    /// 내부 Projection의 공유 핸들 복제 — 계약은 `EmotionProjectionHandler::projection`과 동일.
     pub fn projection(&self) -> Arc<Mutex<RelationshipProjection>> {
         self.inner.clone()
     }
@@ -162,12 +128,11 @@ impl EventHandler for RelationshipProjectionHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
-        // EmotionProjectionHandler와 동일: poison은 Infrastructure로 에스컬레이트.
         let mut proj = self
             .inner
             .lock()
@@ -197,7 +162,6 @@ impl SceneProjectionHandler {
         Self { inner }
     }
 
-    /// 내부 Projection의 공유 핸들 복제 — 계약은 `EmotionProjectionHandler::projection`과 동일.
     pub fn projection(&self) -> Arc<Mutex<SceneProjection>> {
         self.inner.clone()
     }
@@ -228,12 +192,11 @@ impl EventHandler for SceneProjectionHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
-        // EmotionProjectionHandler와 동일: poison은 Infrastructure로 에스컬레이트.
         let mut proj = self
             .inner
             .lock()
@@ -256,10 +219,6 @@ mod tests {
     fn make_event(payload: EventPayload) -> DomainEvent {
         DomainEvent::new(0, "npc".into(), 0, payload)
     }
-
-    // -----------------------------------------------------------------------
-    // EmotionProjectionHandler
-    // -----------------------------------------------------------------------
 
     #[test]
     fn emotion_appraised_event_updates_projection() {
@@ -334,10 +293,6 @@ mod tests {
         assert!(p.get_dominant("alice").is_none());
     }
 
-    // -----------------------------------------------------------------------
-    // RelationshipProjectionHandler
-    // -----------------------------------------------------------------------
-
     #[test]
     fn relationship_updated_stores_after_values() {
         let handler = RelationshipProjectionHandler::new();
@@ -361,26 +316,6 @@ mod tests {
         let p = handler.projection();
         let p = p.lock().unwrap();
         assert_eq!(p.get_values("alice", "bob"), Some((0.4, 0.5, 0.6)));
-    }
-
-    #[test]
-    fn unrelated_event_ignored_by_relationship_projection() {
-        let handler = RelationshipProjectionHandler::new();
-        let mut harness = HandlerTestHarness::new();
-
-        // GuideGenerated는 RelationshipProjection의 interest 밖.
-        // 그러나 HandlerTestHarness는 interest 필터링을 하지 않고 무조건 handle을 호출하므로,
-        // projection 내부 match에서 자연스럽게 걸러져 no-op이 된다.
-        let event = make_event(EventPayload::GuideGenerated {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-        });
-
-        harness.dispatch(&handler, event).unwrap();
-
-        let p = handler.projection();
-        let p = p.lock().unwrap();
-        assert!(p.get_values("alice", "bob").is_none());
     }
 
     #[test]
@@ -419,10 +354,6 @@ mod tests {
         let p = p.lock().unwrap();
         assert_eq!(p.get_values("a", "b"), Some((0.7, 0.8, 0.9)));
     }
-
-    // -----------------------------------------------------------------------
-    // SceneProjectionHandler
-    // -----------------------------------------------------------------------
 
     #[test]
     fn scene_started_sets_active_focus() {

@@ -1,7 +1,8 @@
 //! EmotionPolicy — 감정 평가 전담 (v2)
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest,
+    HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::emotion::AppraisalEngine;
@@ -43,10 +44,10 @@ impl EventHandler for EmotionPolicy {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        ctx: &mut EventHandlerContext<'_>,
+        ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::AppraiseRequested {
             npc_id,
@@ -70,8 +71,8 @@ impl EventHandler for EmotionPolicy {
         let mood = emotion_state.overall_valence();
         let snapshot = emotion_state.snapshot();
 
-        ctx.shared.emotion_state = Some(emotion_state.clone());
-        ctx.shared.relationship = Some(relationship);
+        ctx.save_emotion_state(npc_id.clone(), emotion_state.clone());
+        ctx.save_relationship(relationship);
 
         let follow_up = DomainEvent::new(
             0,
@@ -146,12 +147,12 @@ mod handler_v2_tests {
             .with_relationship(rel);
 
         let event = make_request("alice", "bob", positive_situation());
-        let result = harness.dispatch(&policy, event).expect("handler must succeed");
+        let (result, uow) = harness.dispatch(&policy, event).expect("handler must succeed");
 
         assert_eq!(result.follow_up_events.len(), 1);
         assert_eq!(result.follow_up_events[0].kind(), EventKind::EmotionAppraised);
-        assert!(harness.shared.emotion_state.is_some());
-        assert!(harness.shared.relationship.is_some());
+        assert!(uow.emotion_state.is_some());
+        assert!(uow.relationship.is_some());
     }
 
     #[test]
@@ -169,9 +170,9 @@ mod handler_v2_tests {
             },
         );
 
-        let result = harness.dispatch(&policy, event).expect("unrelated event should no-op");
+        let (result, uow) = harness.dispatch(&policy, event).expect("unrelated event should no-op");
         assert!(result.follow_up_events.is_empty());
-        assert!(harness.shared.emotion_state.is_none());
+        assert!(uow.emotion_state.is_none());
     }
 
     #[test]

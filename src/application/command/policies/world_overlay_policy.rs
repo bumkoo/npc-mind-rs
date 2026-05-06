@@ -17,7 +17,7 @@
 //! **Priority**: `WORLD_OVERLAY = 25` — Guide 직후, Relationship 이전 (§6.5 B6).
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -52,10 +52,10 @@ impl EventHandler for WorldOverlayPolicy {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::ApplyWorldEventRequested {
             world_id,
@@ -111,7 +111,7 @@ mod tests {
     fn emits_world_event_occurred_with_same_payload() {
         let policy = WorldOverlayPolicy::new();
         let mut harness = HandlerTestHarness::new();
-        let result = harness
+        let (result, _) = harness
             .dispatch(&policy, request_event("jianghu", Some("leader"), "새 맹주 등장"))
             .expect("must succeed");
 
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(world_id, "jianghu");
         assert_eq!(topic.as_deref(), Some("leader"));
         assert_eq!(fact, "새 맹주 등장");
-        assert!((*significance - 0.6).abs() < 1e-6);
+        assert!((significance - 0.6).abs() < 1e-6);
         assert_eq!(witnesses, &vec!["a".to_string()]);
     }
 
@@ -145,7 +145,7 @@ mod tests {
             0,
             EventPayload::EmotionCleared { npc_id: "x".into() },
         );
-        let result = harness.dispatch(&policy, event).expect("must succeed");
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
         assert!(result.follow_up_events.is_empty());
     }
 }

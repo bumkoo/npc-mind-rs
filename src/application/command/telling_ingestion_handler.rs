@@ -4,23 +4,11 @@
 //!
 //! **책임**: `InformationTold` 이벤트 (청자당 1개, §3.1 B5) 를 구독해 청자의
 //! 관점에서 `MemoryEntry`를 만들고 주입받은 `MemoryStore`로 영속화한다.
-//!
-//! **왜 Inline인가**: Transactional EventHandler 체인이 `InformationTold` follow-up을
-//! commit한 뒤, Inline phase에서 projection/저장을 수행한다. Inline 핸들러의 에러는
-//! 치명적이지 않고 로그만 남기므로, 저장 실패로 커맨드 전체가 롤백되지 않는다.
-//!
-//! **Source 결정 (§7.1 MemoryClassifier)**: 청자의 `origin_chain` = `[speaker, ...in]`.
-//! - len = 1 → `Heard` (화자가 직접 경험·목격)
-//! - len ≥ 2 → `Rumor` (체인이 둘 이상 — 중간 hop 존재)
-//!
-//! **Confidence (§8.5)**: `entry.confidence = stated_confidence × normalized_trust`.
-//! `normalized_trust = (trust.value() + 1) / 2` 로 [-1, 1] → [0, 1] 매핑.
-//! 관계가 없으면 0.5 (중립)로 fallback.
 
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -40,9 +28,6 @@ impl TellingIngestionHandler {
     }
 
     /// 결정적 엔트리 id — `mem-{event_id:012}-{listener}` 형식.
-    ///
-    /// (event.id, listener) 쌍이 유일하므로 프로세스 재시작·replay·동시 쓰기 경로
-    /// 모두에서 id 충돌이 발생하지 않는다. `mem-` prefix는 기존 포맷과의 시각적 호환.
     fn derive_id(event_id: u64, listener: &str) -> String {
         format!("mem-{event_id:012}-{listener}")
     }
@@ -63,15 +48,15 @@ impl EventHandler for TellingIngestionHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        ctx: &mut EventHandlerContext<'_>,
+        ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::InformationTold {
             speaker,
             listener,
-            listener_role: _, // TODO(step-d): Overhearer의 confidence 감쇠·관계 cause 분기 (리뷰 M2)
+            listener_role: _, 
             claim,
             stated_confidence,
             origin_chain_in,
@@ -89,9 +74,7 @@ impl EventHandler for TellingIngestionHandler {
         let source = MemorySource::from_origin_chain(chain.len(), None);
 
         // confidence = stated × normalized_trust
-        // normalized_trust = (trust.value() + 1) / 2, 관계 없으면 0.5
         let normalized_trust = ctx
-            .world
             .get_relationship(listener, speaker)
             .map(|r| (r.trust().value() + 1.0) / 2.0)
             .unwrap_or(0.5);
@@ -125,7 +108,6 @@ impl EventHandler for TellingIngestionHandler {
         };
 
         if let Err(e) = self.store.index(entry, None) {
-            // Inline 계약: 에러는 로그만, 커맨드 전체는 계속.
             tracing::warn!(
                 event_id = event.id,
                 listener,
@@ -147,10 +129,6 @@ mod tests {
     use crate::domain::relationship::Relationship;
     use crate::ports::MemoryQuery;
 
-    /// 테스트용 인메모리 MemoryStore. 실제 SqliteMemoryStore는 embed feature 전용이라
-    /// 여기서는 test_support의 InMemoryMemoryStore와 동등한 간이 스토어를 쓴다.
-    /// (기존 tests/common/in_memory_store.rs는 통합 테스트 전용이므로, 단위 테스트에서는
-    /// 카운트와 최근 추가 엔트리만 검증할 수 있는 최소 스파이를 사용.)
     #[derive(Default)]
     struct SpyStore {
         inner: std::sync::Mutex<Vec<MemoryEntry>>,
@@ -294,7 +272,6 @@ mod tests {
         let saved = store.inner.lock().unwrap().clone();
         assert_eq!(saved.len(), 1);
         assert_eq!(saved[0].source, MemorySource::Heard);
-        // 체인은 [speaker] + inherited → 화자만 있음
         assert_eq!(saved[0].origin_chain, vec!["sage".to_string()]);
     }
 
@@ -329,7 +306,6 @@ mod tests {
         let store = Arc::new(SpyStore::default());
         let handler = TellingIngestionHandler::new(store.clone());
 
-        // trust = 0.6 → normalized = 0.8, stated = 0.5 → confidence = 0.4
         let rel = Relationship::new(
             "pupil",
             "sage",
@@ -358,7 +334,6 @@ mod tests {
 
     #[test]
     fn missing_relationship_falls_back_to_neutral_trust() {
-        // 관계 없음 → normalized_trust = 0.5, stated = 0.8 → confidence = 0.4
         let store = Arc::new(SpyStore::default());
         let handler = TellingIngestionHandler::new(store.clone());
 

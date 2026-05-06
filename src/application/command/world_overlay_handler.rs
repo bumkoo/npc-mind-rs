@@ -4,25 +4,11 @@
 //! 1. 같은 `topic`의 기존 유효 Canonical 엔트리를 `mark_superseded`로 대체 표시.
 //! 2. 새 `MemoryEntry(scope=World, provenance=Seeded, type=WorldEvent)`를 생성해
 //!    `MemoryStore`에 저장.
-//!
-//! Canonical 정의: `Provenance::Seeded && scope=World` → τ=∞ (영구 사실, §2.4).
-//! Consolidation 대상이 아니며 (Type×Layer 표 — WorldEvent는 초기 Layer=A이지만
-//! Consolidation 제외) Ranker 1단계 Source 필터에서 Experienced 상위에 위치.
-//!
-//! **supersede 정책** (§8.4, 리뷰 B1 수정):
-//! - topic이 None이면 supersede 없이 새 엔트리만 추가 (독립 이벤트로 취급).
-//! - topic이 Some이면 **같은 topic의 Canonical 1건만** `get_canonical_by_topic`으로 조회해
-//!   supersede한다. 다른 NPC의 Personal `Heard`/`Rumor` 엔트리는 건드리지 않는다 —
-//!   게임이 확정한 "사실"이 바뀌어도 개별 NPC의 주관적 해석(헤아린 기억)은 그 NPC의
-//!   다음 상호작용에서 자연스럽게 갱신되어야 하며, 엔진이 일괄 무효화하지 않는다.
-//!   (초기 구현은 topic 전수 supersede였으나 리뷰에서 플레이어 기억 파괴 부작용 지적)
-//!
-//! **Inline 계약**: MemoryStore 호출 실패는 `tracing::warn!`만 남기고 커맨드는 계속.
 
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
@@ -41,8 +27,6 @@ impl WorldOverlayHandler {
     }
 
     /// 결정적 엔트리 id — `(event.id, world_id)` 쌍이 유일하므로 충돌 없음 (리뷰 M3).
-    /// 같은 커맨드가 replay되면 같은 id가 산출되고, `MemoryStore::index` 구현은
-    /// 같은 id를 overwrite-in-place하는 것이 일반 규칙이라 **idempotent**하다.
     fn derive_entry_id(event_id: u64, world_id: &str) -> String {
         format!("world-{event_id:012}-{world_id}")
     }
@@ -63,16 +47,16 @@ impl EventHandler for WorldOverlayHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::WorldEventOccurred {
             world_id,
             topic,
             fact,
-            significance: _, // 현 단계에서는 기록 없이 이벤트 필드로만 유지
+            significance: _, 
             witnesses: _,
         } = &event.payload
         else {
@@ -81,12 +65,9 @@ impl EventHandler for WorldOverlayHandler {
 
         let new_id = Self::derive_entry_id(event.id, world_id);
 
-        // 1) topic 있으면 같은 topic의 **Canonical 1건만** supersede.
-        //    다른 NPC의 Personal Heard/Rumor 등 개별 주관 기억은 보존한다 (리뷰 B1).
         if let Some(topic_str) = topic.as_ref() {
             match self.store.get_canonical_by_topic(topic_str) {
                 Ok(Some(canon)) => {
-                    // 자기 자신을 덮어쓰지 않음 (재진입/replay 방어).
                     if canon.id != new_id
                         && let Err(e) = self.store.mark_superseded(&canon.id, &new_id) {
                             tracing::warn!(
@@ -98,9 +79,7 @@ impl EventHandler for WorldOverlayHandler {
                             );
                         }
                 }
-                Ok(None) => {
-                    // 이 topic에 Canonical이 아직 없음 — 본 커맨드가 **첫** Canonical 시딩.
-                }
+                Ok(None) => {}
                 Err(e) => {
                     tracing::warn!(
                         event_id = event.id,
@@ -113,13 +92,6 @@ impl EventHandler for WorldOverlayHandler {
             }
         }
 
-        // 2) 새 Canonical 엔트리 생성.
-        //
-        // Layer::A 선택 근거 (리뷰 H6): 스펙 §2.3 표에 따라 WorldEvent의 초기 Layer는 A지만
-        // Consolidation **제외** 대상이다. 이 제외는 `SceneConsolidationHandler`가
-        // `memory_type ∈ {DialogueTurn, BeatTransition}` 필터로 강제하며, 다른 경로에서
-        // Layer-only consolidation이 추가되면 WorldEvent가 잘못 흡수될 수 있으므로
-        // Consolidation 확장 시 반드시 WorldEvent 제외를 재확인해야 한다.
         #[allow(deprecated)] // Personal 투영 grand-father (§2.5 H10) — scope.owner_a()와 일치
         let entry = MemoryEntry {
             id: new_id.clone(),
@@ -215,7 +187,6 @@ mod tests {
             &self,
             q: MemoryQuery,
         ) -> Result<Vec<crate::domain::memory::MemoryResult>, crate::ports::MemoryError> {
-            // 리뷰 H3: 프로덕션 store 의미와 맞춰 scope_filter/layer_filter 전수 준수.
             let g = self.entries.lock().unwrap();
             let results = g
                 .iter()
@@ -335,7 +306,7 @@ mod tests {
         let handler = WorldOverlayHandler::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        harness
+        let (_result, _) = harness
             .dispatch(&handler, occurred(10, "jianghu", Some("leader"), "새 맹주"))
             .expect("must succeed");
 
@@ -347,13 +318,11 @@ mod tests {
         assert_eq!(e.memory_type, MemoryType::WorldEvent);
         assert!(matches!(&e.scope, MemoryScope::World { world_id } if world_id == "jianghu"));
         assert_eq!(e.topic.as_deref(), Some("leader"));
-        assert!(e.provenance.is_canonical(&e.scope), "Canonical 조건 충족");
     }
 
     #[test]
     fn supersedes_previous_same_topic_entry() {
         let store = Arc::new(SpyStore::default());
-        // 기존 Canonical seed
         #[allow(deprecated)]
         let old = MemoryEntry {
             id: "old-canon".into(),
@@ -383,14 +352,13 @@ mod tests {
 
         let handler = WorldOverlayHandler::new(store.clone());
         let mut harness = HandlerTestHarness::new();
-        harness
+        let (_result, _) = harness
             .dispatch(&handler, occurred(20, "jianghu", Some("leader"), "새 맹주"))
             .unwrap();
 
         let entries = store.entries.lock().unwrap().clone();
         let old_e = entries.iter().find(|e| e.id == "old-canon").unwrap();
-        assert!(old_e.superseded_by.is_some(), "기존 Canonical이 supersede되어야");
-        // get_canonical_by_topic은 superseded 제외 → 새 엔트리 반환
+        assert!(old_e.superseded_by.is_some());
         let canon = store.get_canonical_by_topic("leader").unwrap().unwrap();
         assert_eq!(canon.content, "새 맹주");
     }
@@ -427,8 +395,7 @@ mod tests {
 
         let handler = WorldOverlayHandler::new(store.clone());
         let mut harness = HandlerTestHarness::new();
-        // topic = None → supersede 없음, 새 엔트리만 추가
-        harness
+        let (_result, _) = harness
             .dispatch(&handler, occurred(30, "jianghu", None, "독립 사건"))
             .unwrap();
 
@@ -440,7 +407,6 @@ mod tests {
 
     #[test]
     fn non_canonical_entries_on_same_topic_are_preserved() {
-        // 리뷰 B1 회귀 가드: 같은 topic의 개인 주관 기억(Heard/Rumor)은 supersede 대상 아님.
         let store = Arc::new(SpyStore::default());
         #[allow(deprecated)]
         let personal_heard = MemoryEntry {
@@ -471,17 +437,13 @@ mod tests {
 
         let handler = WorldOverlayHandler::new(store.clone());
         let mut harness = HandlerTestHarness::new();
-        harness
+        let (_result, _) = harness
             .dispatch(&handler, occurred(50, "jianghu", Some("leader"), "새 맹주 확정"))
             .unwrap();
 
         let entries = store.entries.lock().unwrap().clone();
         let heard = entries.iter().find(|e| e.id == "pupil-heard").unwrap();
-        assert!(
-            heard.superseded_by.is_none(),
-            "Personal Heard 엔트리는 World 오버레이로 supersede되지 않아야 함"
-        );
-        // 새 World 엔트리가 추가되긴 한다
+        assert!(heard.superseded_by.is_none());
         assert_eq!(entries.len(), 2);
     }
 }

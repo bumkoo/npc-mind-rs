@@ -31,7 +31,7 @@
 use std::sync::Arc;
 
 use crate::application::command::handler_v2::{
-    DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest, HandlerResult,
+    DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload, RelationshipChangeCause};
@@ -140,10 +140,10 @@ impl EventHandler for RelationshipMemoryHandler {
         }
     }
 
-    fn handle(
+    fn handle_v2(
         &self,
         event: &DomainEvent,
-        _ctx: &mut EventHandlerContext<'_>,
+        _ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let EventPayload::RelationshipUpdated(p) = &event.payload
         else {
@@ -262,9 +262,6 @@ mod tests {
             &self,
             q: crate::ports::MemoryQuery,
         ) -> Result<Vec<crate::domain::memory::MemoryResult>, crate::ports::MemoryError> {
-            // 리뷰 H3: scope_filter 준수 — 프로덕션 InMemoryMemoryStore와 의미 맞추기.
-            // RelationshipMemoryHandler 자체는 search를 쓰지 않지만, 같은 store가 다른
-            // 핸들러와 공유되는 상위 시나리오에서 spy가 거짓 empty를 반환하면 안 된다.
             use crate::ports::MemoryScopeFilter;
             let g = self.entries.lock().unwrap();
             let out: Vec<_> = g

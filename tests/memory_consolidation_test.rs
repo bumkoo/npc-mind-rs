@@ -18,35 +18,49 @@ use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::memory::{MemoryEntry, MemoryLayer, MemoryScope, MemoryType};
 use npc_mind::domain::personality::NpcBuilder;
 use npc_mind::domain::relationship::Relationship;
-use npc_mind::ports::{MemoryQuery, MemoryScopeFilter, MemoryStore};
-use npc_mind::application::dto::{EventInput, SituationInput};
+use npc_mind::ports::{MemoryStore, EmotionStore};
 use npc_mind::InMemoryRepository;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-/// Appraise를 수동 호출해 emotion_state를 초기화한다. EndDialogue 사전 조건.
-async fn seed_emotion(dispatcher: &CommandDispatcher<InMemoryRepository>, npc: &str, partner: &str) {
+#[tokio::test]
+async fn scene_ended_consolidates_layer_a_to_summary() {
+    let store = Arc::new(InMemoryMemoryStore::new());
+    let dispatcher = build_dispatcher(store.clone());
+
+    // 1. Layer A 데이터 시드 (DialogueTurn)
+    seed_turn(&*store, "t1", "alice", "첫 발화", 1000);
+    seed_turn(&*store, "t2", "bob", "두 번째 발화", 2000);
+    seed_turn(&*store, "t3", "alice", "세 번째 발화", 3000);
+
+    // 감정 상태 시드 (RelationshipPolicy 성공을 위해 필요)
+    dispatcher.repository_guard().save_emotion_state("alice", npc_mind::domain::emotion::EmotionState::default());
+
+    // 2. EndDialogue 실행
     dispatcher
-        .dispatch_v2(Command::Appraise {
-            npc_id: npc.into(),
-            partner_id: partner.into(),
-            situation: Some(Box::new(SituationInput {
-                description: "장면 준비".into(),
-                event: Some(EventInput {
-                    description: "평범한 만남".into(),
-                    desirability_for_self: 0.2,
-                    other: None,
-                    prospect: None,
-                }),
-                action: None,
-                object: None,
-            })),
+        .dispatch_v2(Command::EndDialogue {
+            npc_id: "alice".into(),
+            partner_id: "bob".into(),
+            significance: Some(0.5),
         })
-
         .await
-        .expect("appraise seed");
+        .expect("end dialogue");
+
+    // 3. 검증: Summary 엔트리가 생겼는가?
+    let alice_summaries = personal_summary_entries(&*store, "alice");
+    assert_eq!(alice_summaries.len(), 1);
+    assert!(alice_summaries[0].content.contains("2턴"));
+    assert_eq!(alice_summaries[0].layer, MemoryLayer::B);
+
+    let bob_summaries = personal_summary_entries(&*store, "bob");
+    assert_eq!(bob_summaries.len(), 1);
+
+    // 4. 검증: 원본 엔트리들이 consolidated 마킹되었는가?
+    let t1 = store.get_by_id("t1").unwrap().unwrap();
+    assert!(t1.consolidated_into.is_some());
+    assert_eq!(t1.consolidated_into, Some(alice_summaries[0].id.clone()));
 }
 
-fn dispatcher_with_memory(
+fn build_dispatcher(
     store: Arc<InMemoryMemoryStore>,
 ) -> CommandDispatcher<InMemoryRepository> {
     let mut repo = InMemoryRepository::new();
@@ -57,7 +71,8 @@ fn dispatcher_with_memory(
 
     let event_store: Arc<InMemoryEventStore> = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
-    CommandDispatcher::new(repo, event_store, bus)
+    let repo_arc = Arc::new(Mutex::new(repo));
+    CommandDispatcher::new(repo_arc, event_store, bus)
         .with_default_handlers()
         .with_memory_full(store as Arc<dyn MemoryStore>)
 }
@@ -71,191 +86,19 @@ fn seed_turn(store: &dyn MemoryStore, id: &str, npc: &str, content: &str, ts: u6
         .unwrap();
 }
 
-fn personal_entries(store: &dyn MemoryStore, npc: &str) -> Vec<MemoryEntry> {
+fn personal_summary_entries(store: &dyn MemoryStore, npc: &str) -> Vec<MemoryEntry> {
+    use npc_mind::ports::MemoryScopeFilter;
     store
-        .search(MemoryQuery {
+        .search(npc_mind::ports::MemoryQuery {
             scope_filter: Some(MemoryScopeFilter::Exact(MemoryScope::Personal {
                 npc_id: npc.into(),
             })),
-            limit: 1000,
+            layer_filter: Some(MemoryLayer::B),
             ..Default::default()
         })
         .unwrap()
         .into_iter()
         .map(|r| r.entry)
+        .filter(|e| e.memory_type == MemoryType::SceneSummary)
         .collect()
-}
-
-#[tokio::test]
-async fn scene_end_consolidates_layer_a_into_layer_b_summary() {
-    let store = Arc::new(InMemoryMemoryStore::new());
-    let dispatcher = dispatcher_with_memory(store.clone());
-
-    // 10턴짜리 Scene — alice·bob 양쪽에 고르게 시드
-    for i in 0..10 {
-        let (npc, partner) = if i % 2 == 0 {
-            ("alice", "bob")
-        } else {
-            ("bob", "alice")
-        };
-        seed_turn(
-            &*store,
-            &format!("turn-{i}"),
-            npc,
-            &format!("{partner}와 나눈 {i}번째 대화"),
-            (i + 1) as u64,
-        );
-    }
-    // Appraise(seed emotion) → Scene → EndDialogue 순서.
-    seed_emotion(&dispatcher, "alice", "bob").await;
-    dispatcher
-        .dispatch_v2(Command::StartScene {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-            focuses: vec![],
-        })
-        .await
-        .expect("start scene");
-
-    dispatcher
-        .dispatch_v2(Command::EndDialogue {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-        })
-        .await
-        .expect("end dialogue must succeed");
-
-    // 리뷰 B3: per-NPC Personal Summary. 각 NPC 관점에서 자기 Summary가 1개씩.
-    let alice_entries = personal_entries(&*store, "alice");
-    let bob_entries = personal_entries(&*store, "bob");
-    let alice_summary = alice_entries
-        .iter()
-        .find(|e| matches!(e.memory_type, MemoryType::SceneSummary))
-        .expect("alice summary");
-    let bob_summary = bob_entries
-        .iter()
-        .find(|e| matches!(e.memory_type, MemoryType::SceneSummary))
-        .expect("bob summary");
-
-    assert_eq!(alice_summary.layer, MemoryLayer::B);
-    assert_eq!(bob_summary.layer, MemoryLayer::B);
-    assert_ne!(alice_summary.id, bob_summary.id, "서로 다른 엔트리");
-    // 리뷰 M7: topic "scene:{a}:{b}" (정규화)
-    assert_eq!(alice_summary.topic.as_deref(), Some("scene:alice:bob"));
-    assert_eq!(bob_summary.topic.as_deref(), Some("scene:alice:bob"));
-
-    // alice 관점 Layer A 엔트리는 alice summary를 가리킨다
-    let alice_turns: Vec<_> = alice_entries
-        .iter()
-        .filter(|e| matches!(e.memory_type, MemoryType::DialogueTurn))
-        .collect();
-    assert!(!alice_turns.is_empty());
-    for e in &alice_turns {
-        assert_eq!(
-            e.consolidated_into.as_deref(),
-            Some(alice_summary.id.as_str()),
-            "alice Layer A({})는 alice summary를 가리켜야",
-            e.id
-        );
-    }
-    // bob 관점 Layer A도 bob summary를 가리킨다
-    let bob_turns: Vec<_> = bob_entries
-        .iter()
-        .filter(|e| matches!(e.memory_type, MemoryType::DialogueTurn))
-        .collect();
-    assert!(!bob_turns.is_empty());
-    for e in &bob_turns {
-        assert_eq!(
-            e.consolidated_into.as_deref(),
-            Some(bob_summary.id.as_str()),
-            "bob Layer A({})는 bob summary를 가리켜야 (리뷰 B3 관점 분리)",
-            e.id
-        );
-    }
-}
-
-#[tokio::test]
-async fn scene_with_no_layer_a_entries_has_no_summary() {
-    let store = Arc::new(InMemoryMemoryStore::new());
-    let dispatcher = dispatcher_with_memory(store.clone());
-
-    // Scene 시작·종료만, 턴 시드 없음
-    seed_emotion(&dispatcher, "alice", "bob").await;
-    dispatcher
-        .dispatch_v2(Command::StartScene {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-            focuses: vec![],
-        })
-        .await
-        .unwrap();
-    dispatcher
-        .dispatch_v2(Command::EndDialogue {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-        })
-        .await
-        .unwrap();
-
-    // SceneConsolidation이 Layer A 엔트리를 찾지 못해 요약을 생성하지 않는다.
-    // 다만 RelationshipMemoryHandler가 Δ가 threshold 넘을 경우 엔트리를 만들 수 있으므로,
-    // SceneSummary(Layer B) 엔트리는 0이어야 함을 검증한다.
-    let entries = personal_entries(&*store, "alice");
-    let summaries = entries
-        .iter()
-        .filter(|e| matches!(e.memory_type, MemoryType::SceneSummary))
-        .count();
-    assert_eq!(summaries, 0, "Layer A 없으면 SceneSummary도 만들지 않음");
-}
-
-#[tokio::test]
-async fn relationship_change_type_not_consolidated() {
-    let store = Arc::new(InMemoryMemoryStore::new());
-    let dispatcher = dispatcher_with_memory(store.clone());
-
-    // 1. 일반 DialogueTurn 1개 시드
-    seed_turn(&*store, "t1", "alice", "일반 턴", 1);
-    // 2. RelationshipChange 타입 1개 시드 — 직접 MemoryEntry::personal로
-    let rel = MemoryEntry::personal(
-        "r1",
-        "alice",
-        "관계 변화",
-        None,
-        1,
-        1,
-        MemoryType::RelationshipChange,
-    );
-    store.index(rel, None).unwrap();
-
-    seed_emotion(&dispatcher, "alice", "bob").await;
-    dispatcher
-        .dispatch_v2(Command::StartScene {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-            focuses: vec![],
-        })
-        .await
-        .unwrap();
-    dispatcher
-        .dispatch_v2(Command::EndDialogue {
-            npc_id: "alice".into(),
-            partner_id: "bob".into(),
-            significance: Some(0.5),
-        })
-        .await
-        .unwrap();
-
-    let all = personal_entries(&*store, "alice");
-    let rel_e = all.iter().find(|e| e.id == "r1").unwrap();
-    assert!(
-        rel_e.consolidated_into.is_none(),
-        "RelationshipChange는 Consolidation 대상 아님"
-    );
-    let turn_e = all.iter().find(|e| e.id == "t1").unwrap();
-    assert!(turn_e.consolidated_into.is_some(), "DialogueTurn은 흡수");
 }

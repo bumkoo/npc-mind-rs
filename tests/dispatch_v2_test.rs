@@ -24,13 +24,13 @@ use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::domain::event::{EventKind, EventPayload};
 use npc_mind::InMemoryRepository;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-fn make_dispatcher_v2(repo: InMemoryRepository) -> CommandDispatcher<InMemoryRepository> {
+fn make_dispatcher_v2(repo: Arc<Mutex<InMemoryRepository>>) -> CommandDispatcher<InMemoryRepository> {
     let store = Arc::new(InMemoryEventStore::new());
     let bus = Arc::new(EventBus::new());
     CommandDispatcher::new(repo, store, bus).with_default_handlers()
@@ -140,7 +140,7 @@ async fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
     use npc_mind::ports::SceneStore;
 
     let ctx = TestContext::new();
-    let mut repo = ctx.repo;
+    let _repo = ctx.repo.clone();
 
     // Beat 트리거 가능 Scene 주입: 활성 focus "initial" + 조건 충족하는 "next"
     let scene = {
@@ -181,9 +181,9 @@ async fn v2_stimulus_with_beat_trigger_cascades_to_relationship_update() {
         s.set_active_focus("initial".into());
         s
     };
-    repo.save_scene(scene);
+    ctx.repo.lock().unwrap().save_scene(scene);
 
-    let dispatcher = make_dispatcher_v2(repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo.clone());
 
     // emotion_state seed
     dispatcher
@@ -257,7 +257,7 @@ async fn v2_appraise_persists_events_to_event_store() {
 #[tokio::test]
 async fn v2_max_cascade_depth_is_enforced() {
     use npc_mind::application::command::handler_v2::{
-        DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest,
+        DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest,
         HandlerResult,
     };
     use npc_mind::domain::event::DomainEvent;
@@ -278,10 +278,10 @@ async fn v2_max_cascade_depth_is_enforced() {
                 can_emit_follow_up: true,
             }
         }
-        fn handle(
+        fn handle_v2(
             &self,
             event: &DomainEvent,
-            _ctx: &mut EventHandlerContext<'_>,
+            _ctx: &mut dyn DynamicHandlerContext,
         ) -> Result<HandlerResult, HandlerError> {
             // 같은 종류의 이벤트를 follow-up으로 재발행 → 무한 cascade
             Ok(HandlerResult {
@@ -335,7 +335,7 @@ async fn v2_beat_transition_persists_new_active_focus_to_repo() {
     use npc_mind::ports::SceneStore;
 
     let ctx = TestContext::new();
-    let mut repo = ctx.repo;
+    let _repo = ctx.repo.clone();
 
     let scene = {
         let focuses = vec![
@@ -375,9 +375,9 @@ async fn v2_beat_transition_persists_new_active_focus_to_repo() {
         s.set_active_focus("initial".into());
         s
     };
-    repo.save_scene(scene);
+    ctx.repo.lock().unwrap().save_scene(scene);
 
-    let dispatcher = make_dispatcher_v2(repo);
+    let dispatcher = make_dispatcher_v2(ctx.repo.clone());
     dispatcher.dispatch_v2(appraise_cmd()).await.expect("seed");
     dispatcher.dispatch_v2(stimulus_cmd()).await.expect("beat stimulus");
 
@@ -899,7 +899,7 @@ mod error_paths {
     use super::*;
     use npc_mind::application::command::dispatcher::MAX_EVENTS_PER_COMMAND;
     use npc_mind::application::command::handler_v2::{
-        DeliveryMode, EventHandler, EventHandlerContext, HandlerError, HandlerInterest,
+        DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest,
         HandlerResult,
     };
     use npc_mind::application::dto::{
@@ -1014,10 +1014,10 @@ mod error_paths {
                 can_emit_follow_up: true,
             }
         }
-        fn handle(
+        fn handle_v2(
             &self,
             event: &DomainEvent,
-            _ctx: &mut EventHandlerContext<'_>,
+            _ctx: &mut dyn DynamicHandlerContext,
         ) -> Result<HandlerResult, HandlerError> {
             let follow_ups = (0..5).map(|_| event.clone()).collect();
             Ok(HandlerResult {
@@ -1072,10 +1072,10 @@ mod error_paths {
                 can_emit_follow_up: false,
             }
         }
-        fn handle(
+        fn handle_v2(
             &self,
             _event: &DomainEvent,
-            _ctx: &mut EventHandlerContext<'_>,
+            _ctx: &mut dyn DynamicHandlerContext,
         ) -> Result<HandlerResult, HandlerError> {
             Err(HandlerError::InvalidInput("강제 실패".into()))
         }
