@@ -289,7 +289,7 @@ fn map_dispatch_v2_error(e: &npc_mind::application::command::dispatcher::Dispatc
 
     let status = match e {
         Dv2::InvalidSituation(msg) => {
-            if msg.to_lowercase().contains("not found") {
+            if msg.to_lowercase().contains("not found") || msg.contains("찾을 수 없습니다") {
                 StatusCode::NOT_FOUND
             } else {
                 StatusCode::BAD_REQUEST

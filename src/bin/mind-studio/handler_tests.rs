@@ -416,7 +416,7 @@ async fn appraise_npc_not_found() {
     // 에러 메시지에 포함되어야 함 — 다중 NPC 환경에서 디버깅에 필수.
     let json = body_json(resp).await;
     let err = json["error"].as_str().unwrap();
-    assert!(err.to_lowercase().contains("not found"), "error: {}", err);
+    assert!(err.contains("찾을 수 없습니다"), "error: {}", err);
     assert!(err.contains("nonexistent"), "error should include npc_id: {}", err);
 }
 
