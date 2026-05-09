@@ -131,7 +131,7 @@ Phase별 외래키 검증 (위반 시 partial commit 방지):
 - `person_to_npc(&Person) -> Option<Npc>` — `kind in {active, player}`만 변환,
   HEXACO 6-dim → 4-facet spread (24 facet 정형 보존은 후속 phase)
 
-설계 문서: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) (10 Phase 흐름) +
+설계 문서: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world building/00-roadmap.md) (10 Phase 흐름) +
 phase별 task/report (`docs/tasks/task-phaseN-*.md` + `phaseN-checkpointM-report.md`).
 
 ### 빌드 주의사항 (Windows)
@@ -561,7 +561,7 @@ relevance_score = `1.0 - cosine_distance`.
 | **Worldbuilding Phase 2** | ✅ 완료 (2026-05-01) | Person 도메인 + HEXACO 6-dim — Group 외래키 활성. `mind_sync.rs::person_to_npc`로 active/player Person 자동 NPC 등록. **2.1 Player follow-up** (id="player" 시작값) + **2.2 Runtime sync** (`POST /api/world/persons/sync`, emotion 보존). |
 | **Worldbuilding Phase 3** | ✅ 완료 (2026-05-01) | Place 도메인 (settlement+geography 2 layer) — sect/geography_refs 양방향 + `parent_place` cycle. Phase 1·2 외래키 일제히 에러 승격 (`headquarters`/`birthplace`/`current_location` 등 0건 보장). 11 Place. |
 | **Worldbuilding Phase 4** | ✅ 완료 (2026-05-01) | Atlas 첫 관계 도메인 (도메인+뷰 이중성) — `references` ↔ Place FK + `place_atlas_refs` 양방향 인덱스 + view 메서드 (places_in 등 N+1 회피용 `get_places_batch`). atlas-jungwon ASCII 다이어그램. `EventHandlerContext::get_npc/relationship/emotion_state` 헬퍼 중앙화 (commit `9ff5645`). |
-| Worldbuilding Phase 5+ | ⏳ 예정 | Event + Era + Timeline view → Skill → Item → Knowledge → Lore. Roadmap: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md). |
+| Worldbuilding Phase 5+ | ⏳ 예정 | Event + Era + Timeline view → Skill → Item → Knowledge → Lore. Roadmap: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world building/00-roadmap.md). |
 | Phase 5 (npc-mind) | 미구현 | StoryAgent (서사 진행 판단) |
 | Phase 6 (npc-mind) | 미구현 | Tool 시스템 (ToolRegistry) |
 | Phase 7 (npc-mind) | 미구현 | WorldKnowledgeStore (세계관 정적 지식) — Worldbuilding Phase 6+가 이를 흡수 검토 |
@@ -878,7 +878,8 @@ end_session(sid, significance?)
 - **EventHandler 카탈로그**: [`docs/architecture/event-handler-catalog.md`](docs/architecture/event-handler-catalog.md)
 - **프론트엔드 아키텍처**: [`docs/architecture/frontend-architecture.md`](docs/architecture/frontend-architecture.md) — Vite+React+Zustand 구조, 스토어 설계, 데이터 흐름, 컴포넌트 트리
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
-- **Worldbuilding 로드맵**: [`docs/tasks/00-roadmap.md`](docs/tasks/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report (`docs/tasks/archive/` 종결분 보존)
+- **Worldbuilding 로드맵**: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world%20building/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report (`docs/tasks/archive/` 종결분 보존)
+- **Mind 아키텍처 마이그레이션 로드맵**: [`docs/tasks/mind-architecture/00-roadmap.md`](docs/tasks/mind-architecture/00-roadmap.md) — Phase 1/2/3a/3b/3c (Reflection·4축·BondKind·Channel·ActionTrigger). relationships.md v0.7 동반 트랙.
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **Listener-perspective 변환** (Phase 7): [`docs/emotion/sign-classifier-design.md`](docs/emotion/sign-classifier-design.md) (부호/강도 분류기 설계 + §3.7 Register 전략) + [`docs/emotion/phase7-converter-integration.md`](docs/emotion/phase7-converter-integration.md) (프로덕션 통합, **Step 1-5+ 완료** — 88% baseline, default-on, DialogueOrchestrator · Mind Studio 통합, §6.1 테스트 카탈로그 71개)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세
