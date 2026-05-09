@@ -8,7 +8,7 @@ v0.3.0에서 v1 경로(`MindService`/`EventAwareMindService`/`Pipeline`/`Command
 
 ## 기술 스택
 - **Language:** Rust (Edition 2024)
-- **Architecture:** Hexagonal + DDD + **EventBus(tokio broadcast)/CQRS/Event Sourcing** + **Multi-Handler** (Policy + Projector + Orchestrator)
+- **Architecture:** Hexagonal + DDD + **EventBus(tokio broadcast)/CQRS/Event Sourcing** + **Multi-Handler** (Policy + Projector + Orchestrator) + **Unit of Work** (트랜잭션 원자적 커밋, `application/command/uow.rs`)
 - **Libraries:** `serde`/`serde_json`, `serde_yaml`(Worldbuilding 마크다운 frontmatter, default-on), `thiserror`, `tokio/sync`+`tokio-stream`+`futures` (EventBus 내부 구현), `axum`(WebUI), `tracing`, `ort`(ONNX 임베딩), `rig-core`(LLM 대화 클라이언트), `rusqlite`+`sqlite-vec`(RAG·Worldbuilding·Rumor 저장소 [embed] — FTS5 + vec0 벡터 인덱스), `epub`(Lore RAG EPUB 파서 [embed]), `regex` (`listener_perspective` feature, default-on — 한국어 정규식 프리필터)
 - **런타임 정책:** 코어는 `tokio::sync`의 `broadcast`만 내부 구현으로 사용. 공개 API는 `futures::Stream` 타입만 노출하므로 **호출자는 tokio를 deps에 추가할 필요 없음**(Bevy 등 임의 async 런타임에서 Stream 소비 가능). `chat`/`mind-studio` feature가 tokio `rt-multi-thread` 런타임을 추가 활성화. `embed` feature는 sqlite-vec이 순수 C 확장이라 tokio 런타임을 전이시키지 않는다.
 
@@ -78,31 +78,31 @@ cargo run --features embed --bin lore-ingest -- --all --reembed
 `data/corpus/lore.sqlite`가 존재하면 Mind Studio가 자동으로 부착하고
 `search_lore` / `list_corpora` / `get_chunk` MCP 도구를 노출한다.
 
-### Worldbuilding (Phase 1-4 완료, 진행 중)
+### Worldbuilding (Phase 0-5c 완료 — Phase 5 시리즈 종결, Phase 6+ 예정)
 
 NPC Mind Studio = **장르 중립 worldbuilding 도구**. 무협(칠국춘추)은 첫 사용자
 프로젝트일 뿐, 도구 자체는 wuxia·SF·판타지 어휘를 모른다. 9 인스턴스 도메인
-(Place·Person·Group·Item·Skill·Knowledge·Lore·Event·Era) + 1 관계 도메인 (Atlas)
+(Place·Person·Group·Item·Skill·Knowledge·Lore·Event·Era) + 2 관계 도메인 (Atlas·Timeline)
 구조이며 Phase별로 추가된다.
 
 **3 계층 분리** (절대 섞지 말 것):
 
 ```
 src/                = 도구 (장르 영원히 모름)
-  domain/world/     — 9+1 도메인 (Phase 1·2·3·4: Group/Person/Place/Atlas; 나머지 stub)
+  domain/world/     — 9+2 도메인 (Phase 1·2·3·4·5a·5b 활성: Group/Person/Place/Atlas/Event/Era/Timeline; Item/Skill/Knowledge/Lore stub)
   worldbuilding/    — 마크다운(SoT) → 도메인 변환 + WorldRepository 포트
   adapter/sqlite_world.rs — SqliteWorldStore (FTS5 + 외래키 인덱스)
 genres/<name>/      = 장르 패키지 (도구 위에 입히는 옷)
   ex: genres/wuxia/{forms, genre.toml, markdown_template}
 projects/<name>/    = 사용자 산출물 (마크다운 SoT + 빌드 SQLite)
-  ex: projects/chilguk-chunchu/{project.toml, world/{group,person,place,atlas}/*.md}
+  ex: projects/chilguk-chunchu/{project.toml, world/{group,person,place,atlas,event,era,timeline}/*.md}
                   build/world.sqlite (gitignore — 빌드 산출물)
 ```
 
 **`world-load` 빌드 CLI** (마크다운 → SQLite ingest, embed feature):
 
 ```bash
-# 프로젝트 ingest (Phase 1·2·3·4 모두 한 번에)
+# 프로젝트 ingest (Phase 1·2·3·4·5a·5b 모두 한 번에)
 cargo run --features embed --bin world-load -- --project chilguk-chunchu
 
 # 옵션
@@ -112,16 +112,19 @@ cargo run --features embed --bin world-load -- --project chilguk-chunchu
 ```
 
 Phase별 외래키 검증 (위반 시 partial commit 방지):
-- Phase 1 Group: `parent_group` cycle, `members` (Phase 2에서 활성), `headquarters` (Phase 3에서 활성), `allied_groups`/`rival_groups` 존재 여부
-- Phase 2 Person: `birthplace`/`current_location` (Phase 3에서 활성), 그룹 멤버십 양방향
+- Phase 1 Group: `parent_group` cycle, `members`, `headquarters`, `allied_groups`/`rival_groups` 존재 여부 (Phase 2·3에서 일제히 에러 승격, 0건 보장)
+- Phase 2 Person: `birthplace`/`current_location`(Phase 3 활성), 그룹 멤버십 양방향
 - Phase 3 Place: `parent_place` cycle, `bordering_places`/`geography_refs` 존재, `Place.spatial.geography_refs` layer 일치, `controlling_group` (sect kind만)
 - Phase 4 Atlas: `references` ↔ `places.id` 모두 존재 + 중복 금지
+- Phase 5a Event: `participants.{persons,groups,places}` 외래키 0건 + `related_events` 양방향, `era_id`(Phase 5b 활성)
+- Phase 5b Era: `parent_era`/`successor_era` 존재 + `key_events`(Phase 5a Event 양방향) + Atlas overlay
+- Phase 5b Timeline: `events`/`eras` references 외래키 (관계 도메인)
 
 **Mind Studio 통합** (`NPC_MIND_WORLD_DB` 환경변수로 빌드된 SQLite 부착):
 - 부팅 시 `kind in {active, player}`인 Person을 자동으로 인메모리 `MindRepository`에
   `add_npc`로 등록 → dialogue/scene 경로가 즉시 NPC를 인식
 - REST 엔드포인트 (embed feature):
-  - `GET /api/world/{groups,persons,places,atlases}` 목록
+  - `GET /api/world/{groups,persons,places,atlases,events,eras,timelines}` 목록
   - `GET /api/world/{...}/search?q=` FTS5 trigram 검색
   - `GET /api/world/{...}/{id}` 단건
   - `POST /api/world/persons/sync` 런타임 재동기화 (emotion/scene 보존)
@@ -145,8 +148,10 @@ phase별 task/report (`docs/tasks/task-phaseN-*.md` + `phaseN-checkpointM-report
 ```
 src/
   application/    어플리케이션 계층, 라이브러리 진입점 (v2 단일 경로)
-                  - error.rs (MindServiceError — 공용 서비스 에러)
-                  - dto.rs (Appraise/Stimulus/Guide/AfterDialogue Request·Response + WorldOverlay/Tell/Rumor)
+                  - error.rs (MindServiceError — 공용 서비스 에러, 5 variant: NpcNotFound/RelationshipNotFound/InvalidSituation/EmotionStateNotFound/LocaleError)
+                  - dto/ 도메인별 DTO 모듈 (76237c2 hexagonal refactor — 단일 dto.rs에서 분리)
+                    - emotion.rs / guide.rs / information.rs / relationship.rs / rumor.rs / scene.rs / world.rs
+                    - mod.rs (CanFormat trait + 공용 re-export)
                   - event_store.rs, event_bus.rs (Event Sourcing 인프라)
                   - projection.rs (EmotionProjection/RelationshipProjection/SceneProjection 구조체 — v2 wrapper가 재사용)
                   - memory_projector.rs (EventBus 구독 기억 인덱싱 [embed])
@@ -159,25 +164,26 @@ src/
                     - scene_task.rs (spawn_scene_task — mpsc 루프)
                     - spawner.rs (Spawner trait — runtime-agnostic)
                   - command/ (CQRS Command Side — v2 단일 경로)
-                    - types.rs (Command enum + aggregate_key)
-                    - handler_v2.rs (EventHandler trait, EventHandlerContext, HandlerShared + test_support::HandlerTestHarness)
+                    - types.rs (Command enum + aggregate_key + DispatchV2Output/Error)
+                    - uow.rs (**UnitOfWork** — 트랜잭션 내 변경 애그리거트 추적 + 일괄 commit, bb746c2 도입)
+                    - handler_v2.rs (EventHandler::handle_v2 + EventHandlerContext<'a, 'b, R> + DynamicHandlerContext trait + HandlerShared(출력 쉐이프) + test_support::HandlerTestHarness)
                     - priority.rs (SCENE_START/EMOTION_APPRAISAL/STIMULUS_APPLICATION/GUIDE_GENERATION/WORLD_OVERLAY/RELATIONSHIP_UPDATE/INFORMATION_TELLING/RUMOR_SPREAD 상수 + inline WORLD_OVERLAY_INGESTION/RELATIONSHIP_MEMORY/SCENE_CONSOLIDATION + invariants)
-                    - dispatcher.rs (CommandDispatcher: dispatch_v2 + with_default_handlers + with_memory + with_rumor 빌더)
+                    - dispatcher.rs (CommandDispatcher: dispatch_v2 + with_default_handlers + with_memory/with_memory_full + with_rumor + with_world_overlay + with_scene_consolidation 빌더)
                     - projection_handlers.rs (EmotionProjectionHandler/RelationshipProjectionHandler/SceneProjectionHandler Inline EventHandler wrappers)
                     - telling_ingestion_handler.rs (TellingIngestionHandler — InformationTold → MemoryEntry(Heard/Rumor), Step C2)
                     - rumor_distribution_handler.rs (RumorDistributionHandler — RumorSpread → 수신자별 MemoryEntry, Step C3)
                     - world_overlay_handler.rs (WorldOverlayHandler — WorldEventOccurred → Canonical MemoryEntry + supersede, Step D)
                     - scene_consolidation_handler.rs (SceneConsolidationHandler — SceneEnded → Layer A→B 흡수, Step D)
                     - relationship_memory_handler.rs (RelationshipMemoryHandler — RelationshipUpdated.cause별 분기 → MemoryEntry(RelationshipChange), Step D)
-                    - agents/ (impl EventHandler)
-                      - emotion_agent.rs (AppraiseRequested → EmotionAppraised)
-                      - stimulus_agent.rs (StimulusApplyRequested → StimulusApplied/BeatTransitioned)
-                      - guide_agent.rs (EmotionAppraised/StimulusApplied/GuideRequested → GuideGenerated)
-                      - relationship_agent.rs (BeatTransitioned/RelationshipUpdateRequested/DialogueEndRequested)
-                      - scene_agent.rs (SceneStartRequested → SceneStarted + EmotionAppraised)
-                      - information_agent.rs (TellInformationRequested → 청자당 1 InformationTold, Step C2)
-                      - rumor_agent.rs (Seed/SpreadRumorRequested → RumorSeeded/RumorSpread + RumorStore 연동, Step C3)
-                      - world_overlay_agent.rs (ApplyWorldEventRequested → WorldEventOccurred, Step D)
+                    - policies/ (impl EventHandler — 76237c2에서 agents/ → policies/ 이름 정리)
+                      - emotion_policy.rs (AppraiseRequested → EmotionAppraised)
+                      - stimulus_policy.rs (StimulusApplyRequested → StimulusApplied/BeatTransitioned)
+                      - guide_policy.rs (EmotionAppraised/StimulusApplied/GuideRequested → GuideGenerated)
+                      - relationship_policy.rs (BeatTransitioned/RelationshipUpdateRequested/DialogueEndRequested)
+                      - scene_policy.rs (SceneStartRequested → SceneStarted + EmotionAppraised)
+                      - information_policy.rs (TellInformationRequested → 청자당 1 InformationTold, Step C2)
+                      - rumor_policy.rs (Seed/SpreadRumorRequested → RumorSeeded/RumorSpread + RumorStore 연동, Step C3)
+                      - world_overlay_policy.rs (ApplyWorldEventRequested → WorldEventOccurred, Step D)
   domain/         순수 도메인 로직
                   - personality (HEXACO), emotion (OCC appraisal), relationship, pad, guide
                   - listener_perspective [feature, default-on — Phase 7 Step 5] (화자 PAD → 청자 PAD 변환: prefilter + sign/magnitude k-NN + Converter trait, 88% baseline. DialogueOrchestrator · Mind Studio 양 경로에서 옵셔널 자동 적용)
@@ -185,30 +191,46 @@ src/
                   - rumor.rs (Rumor 애그리거트 — RumorOrigin/ReachPolicy/RumorHop/RumorDistortion/RumorStatus + 불변식 I-RU-1~6, Step C1)
                   - aggregate.rs (AggregateKey: Scene/Npc/Relationship/Memory/Rumor/World)
                   - scene_id.rs (B안 B4 S2 — SceneId composite key)
-                  - memory.rs / memory/ (MemoryEntry, MemoryType, MemoryResult — RAG; MemoryScope/Source/Layer/Provenance Step A 확장)
+                  - memory.rs (MemoryEntry, MemoryType, MemoryResult — RAG; MemoryScope/Source/Layer/Provenance Step A 확장)
+                  - memory/ (도메인 서비스: ranker.rs MemoryRanker + service.rs MemoryAugmentationService — 76237c2에서 dialogue_orchestrator의 augmentation 로직을 도메인으로 추출)
                   - tuning.rs (조정 가능 파라미터 중앙 관리)
-                  - world/ (Worldbuilding 9+1 도메인 — atlas/era/event/group/item/knowledge/lore/person/place/skill, **장르 어휘 절대 미사용**)
+                  - world/ (Worldbuilding 9+2 도메인 — atlas/era/event/group/item/knowledge/lore/person/place/skill/timeline, **장르 어휘 절대 미사용**)
   worldbuilding/  마크다운(SoT) → 도메인 변환 + WorldRepository 포트 (sync trait)
-                  - markdown/ (frontmatter YAML + H2 섹션 파서, atlas/group/person/place 변환기)
+                  - markdown/ (frontmatter YAML + H2 섹션 파서, atlas/era/event/group/person/place/timeline 변환기 7종)
                   - repository.rs (WorldRepository trait — list/get/search/upsert/count, get_*_batch override 가능)
                   - mind_sync.rs (Person → Npc 변환, kind in {active, player}만)
                   - builder.rs (Phase 2 폼 시스템 진입점 — Phase 1엔 빈 자리)
   lore/           Lore RAG (EPUB → SQLite 임베딩 인덱스) — corpus/ingest/query/store
-  ports.rs        헥사고날 포트 트레이트 전체 + MemoryStore 포트 + SceneStore::get_scene_by_id (B4 S3 multi-scene)
+  ports/          헥사고날 포트 트레이트 (76237c2에서 단일 ports.rs를 ISP 기반 모듈로 분할)
+                  - persistence.rs (MindRepository + NpcWorld + EmotionStore + SceneStore — 분리된 super-trait + SceneStore::get_scene_by_id)
+                  - personality.rs (PersonalityProfile, PadAnchorSource, AnchorLoadError)
+                  - guide.rs (GuideFormatter, Appraiser, StimulusProcessor)
+                  - memory.rs (MemoryStore + RumorStore + MemoryFramer)
+                  - analysis.rs (UtteranceAnalyzer, EmbedError)
+                  - chat.rs [chat] (ConversationPort + InferenceTimings + ChatResponse + LlmModelInfo + LlmInfoProvider/LlmModelDetector + ConversationError(Timeout 포함))
+                  - monitoring.rs [chat] (InferenceServerMonitor + ServerHealth + InferenceSlotInfo + ServerMetrics + MonitoringError — 76237c2에서 Llama* → Inference*/Server* 일반화)
   adapter/        포트 구현 (InMemoryRepository — multi-scene HashMap + last_scene_id, OrtEmbedder, RigChatAdapter,
                   SqliteMemoryStore/SqliteRumorStore/SqliteWorldStore [embed])
   presentation/   다국어 포맷터 (ko, en TOML 기반, deep merge 지원) + memory_formatter
   bin/mind-studio/  Axum REST API + SSE MCP 서버 + SSE 실시간 동기화 + static 파일 서빙
+                  - main.rs       라우팅 셋업 + 부팅 (Worldbuilding 자동 부착 + Person sync)
+                  - state.rs      AppState/StateInner — shared_dispatcher + memory_store/rumor_store(embed) + projection Arc 공유
+                  - studio_service.rs  cross-handler 도메인 helper (시나리오 list, 자동 분석기 fallback 등)
+                  - repository.rs ReadOnlyAppStateRepo — handler 내부 read 전용 어댑터
+                  - mcp_server.rs MCP rmcp 서버 (search_lore/list_corpora/get_chunk + world 조회 + Mind 조작 도구)
+                  - events.rs     SSE StateEvent 정의 + 송신 헬퍼
+                  - domain_sync.rs  9 dispatch helper (appraise/stimulus/end_dialogue/guide/start_scene/tell_information/apply_world_event/seed_rumor/spread_rumor) + sync_from_repo (shared_dispatcher 재사용, per-request snapshot 제거됨)
+                  - trace_collector.rs  AppraisalCollector — Mind Studio 전용 추적 수집기
+                  - handlers/     REST 핸들러 (chat/events/llm/memory/npc/object/query/relationship/rumor/scenario/v2_scenes/world{,_atlases,_eras,_events,_groups,_persons,_places,_timelines})
+                  - handler_tests.rs / init_tests.rs  in-process REST 통합 테스트
                   - /api/*       메인 UI 경로 — AppState(StateInner) 기반, B5.2 (2/3)부터 내부적으로 v2 dispatch_v2 호출
                   - /api/v2/*    Director shadow 경로 (B4 S3 B-Mini, 분리 Repository + SceneTask 실험용)
-                  - /api/world/* Worldbuilding 조회 (groups/persons/places/atlases, embed feature)
+                  - /api/world/* Worldbuilding 조회 (groups/persons/places/atlases/events/eras/timelines, embed feature)
                   - /api/projection/{emotion,relationship,scene}/* Read Side projection 조회
                   - /api/projection/trace/{correlation_id}  dispatch_v2 한 호출의 인과 사슬 조회
-                  - domain_sync.rs  9 dispatch helper + sync_from_repo (shared_dispatcher 재사용, per-request snapshot 제거됨)
-                  - trace_collector.rs  AppraisalCollector — Mind Studio 전용 추적 수집기
   bin/lore_ingest.rs   EPUB → SQLite 인덱싱 CLI (embed feature)
-  bin/world_load.rs    마크다운 → SQLite 빌드 CLI (embed feature, Phase 1·2·3·4)
-tests/            통합 테스트 (TestContext 공유) — dispatch_v2_test, director_test, dialogue_*, world_chilguk_chunchu_* 등 v2 기준
+  bin/world_load.rs    마크다운 → SQLite 빌드 CLI (embed feature, Phase 1·2·3·4·5a·5b)
+tests/            통합 테스트 (TestContext 공유) — dispatch_v2_test, director_test, dialogue_*, world_chilguk_chunchu_*, orchestrator_error_propagation_test, rig_chat_timeout_test 등 v2 기준
 locales/          ko.toml, en.toml + PAD 앵커 (locales/anchors/)
 docs/             아키텍처/감정/성격/가이드 상세 문서 + tasks/(phase 명세) + changes/(API 변경 로그)
 data/             소설 기반 테스트 시나리오 + 캐릭터 프리셋(presets/) + listener_perspective 학습 데이터 + corpus(Lore RAG)
@@ -222,7 +244,7 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 ### 계층 구조
 1. **Domain** (`src/domain`): 순수 비즈니스 로직, 외부 의존성 없음
 2. **Application** (`src/application`): 도메인 조립 및 흐름 제어, 라이브러리 사용자 진입점
-3. **Ports** (`src/ports.rs`): 헥사고날 경계 정의
+3. **Ports** (`src/ports/`): 헥사고날 경계 정의 (`persistence`/`personality`/`guide`/`memory`/`analysis`/`chat`/`monitoring` ISP 분할, 76237c2)
 4. **Infrastructure/Presentation** (`src/adapter`, `src/presentation`, `src/bin`): 외부 구현 및 API 노출
 
 ### 핵심 진입점
@@ -235,12 +257,13 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 - `::new(repo, event_store, event_bus)` — 기본 생성. 내부에서 `Arc<Mutex<R>>`로 감싸짐
 - `.with_default_handlers()` — ScenePolicy/EmotionPolicy/StimulusPolicy/GuidePolicy/RelationshipPolicy/InformationPolicy/WorldOverlayPolicy + 3 Projection wrapper 자동 등록
 - `.with_memory(store)` — **lean** (Step C2 호환): `TellingIngestionHandler`만 부착. 기존 콜러의 silent behavior change 방지용.
-- `.with_memory_full(store)` — **Step D 전체 번들**: Telling + WorldOverlay + RelationshipMemory + SceneConsolidation 4종 Inline 핸들러 일괄 부착.
+- `.with_memory_full(store)` — **Step D 전체 번들**: Telling + WorldOverlay + SceneConsolidation 3종 Inline 핸들러 일괄 부착 (RelationshipMemory는 별도 register_inline 필요).
+- `.with_world_overlay(store)` / `.with_scene_consolidation(store)` — Step D 핸들러 단일 부착 빌더.
 - `.with_rumor(memory_store, rumor_store)` — RumorPolicy (Transactional) + RumorDistributionHandler (Inline)
-- `async fn dispatch_v2(&self, cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 10 Command 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene/TellInformation/SeedRumor/SpreadRumor/ApplyWorldEvent). Command → 초기 *Requested 이벤트 → Transactional BFS → HandlerShared write-back → Commit → Inline projection → Fanout 순서.
-  - `DispatchV2Output { events: Vec<DomainEvent>, shared: HandlerShared }` — `events`는 commit된 이벤트 시퀀스, `shared`는 핸들러 간 최종 scratchpad 스냅샷. 호출자(`DialogueOrchestrator`/`domain_sync`)가 Response DTO 재구성에 사용.
+- `async fn dispatch_v2(&self, cmd) -> Result<DispatchV2Output, DispatchV2Error>` — 10 Command 지원 (Appraise/ApplyStimulus/GenerateGuide/UpdateRelationship/EndDialogue/StartScene/TellInformation/SeedRumor/SpreadRumor/ApplyWorldEvent). Command → 초기 *Requested 이벤트 → **Transactional BFS (UnitOfWork에 변경 누적)** → **UoW.commit() (repo 일괄 반영)** → Commit staging buffer (이벤트 영속화) → Inline projection (별도 UoW) → Fanout 순서.
+  - `DispatchV2Output { events: Vec<DomainEvent>, shared: HandlerShared }` — `events`는 commit된 이벤트 시퀀스, `shared`는 핸들러 간 최종 scratchpad 스냅샷(UoW에서 출력 호환용으로 복원). 호출자(`DialogueOrchestrator`/`domain_sync`)가 Response DTO 재구성에 사용.
   - `DispatchV2Error` variants: `InvalidSituation` (400) · `CascadeTooDeep` / `EventBudgetExceeded` (500 invariant) · `HandlerFailed { handler, source: HandlerError }` (handler.error 매핑 그대로).
-- **안전 한계**: `MAX_CASCADE_DEPTH = 4`, `MAX_EVENTS_PER_COMMAND = 20`
+- **안전 한계**: `MAX_CASCADE_DEPTH = 4`, `MAX_EVENTS_PER_COMMAND = 21`
 - `event_store()` / `event_bus()` — 내부 의존성 노출
 - `repository_guard() -> MutexGuard<R>` — NPC/관계 등록 같은 `&mut self` 메서드 호출용. `repository_arc() -> Arc<Mutex<R>>` — 공유 소유가 필요한 드문 경우.
 - `.register_transactional(h)` / `.register_inline(h)` — 커스텀 EventHandler 등록
@@ -282,7 +305,7 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 | `SpreadRumor` | `SpreadRumorRequested` | 기존 Rumor 홉 추가 → `RumorSpread` + 수신자별 `MemoryEntry(Rumor)` (Step C3) |
 | `ApplyWorldEvent` | `ApplyWorldEventRequested` | 세계 사건 적용 → `WorldEventOccurred` + Canonical `MemoryEntry(World, Seeded)` + 기존 Topic supersede (Step D) |
 
-### 주요 포트 (전체는 `ports.rs` 참조)
+### 주요 포트 (전체는 `src/ports/` 참조)
 
 | 포트 | 용도 | 기본 구현체 |
 |------|------|----------|
@@ -291,8 +314,8 @@ mind-studio-ui/   Vite + React + TypeScript + Zustand 프론트엔드 (빌드 �
 | `StimulusProcessor` | PAD 자극 처리 엔진 | `StimulusEngine` |
 | `GuideFormatter` | 가이드 → 텍스트/JSON | `LocaleFormatter` |
 | `UtteranceAnalyzer` | 대사 → PAD ([embed feature]) | `PadAnalyzer` |
-| `ConversationPort` | LLM 다턴 대화 세션 ([chat feature]) | `RigChatAdapter` |
-| `LlamaServerMonitor` | llama-server 모니터링: health/slots/metrics ([chat feature]) | `RigChatAdapter` |
+| `ConversationPort` | LLM 다턴 대화 세션 ([chat feature]) | `RigChatAdapter` (with_timeout 빌더 — 기본 60s) |
+| `InferenceServerMonitor` | 추론 서버 모니터링: health/slots/metrics ([chat feature], 76237c2에서 `LlamaServerMonitor` → 일반화) | `RigChatAdapter` |
 | `MemoryStore` | RAG 기억 저장/검색 | `SqliteMemoryStore` [embed] (FTS5 + sqlite-vec vec0). 테스트 전용 `InMemoryMemoryStore`는 `tests/common/in_memory_store.rs` |
 | `RumorStore` | Rumor 애그리거트 저장/검색 (Step C1) | `SqliteRumorStore` [embed]. 테스트 전용 `InMemoryRumorStore`는 `tests/common/in_memory_rumor.rs` |
 | `MemoryFramer` | 기억 엔트리 → 프롬프트 블록 (Source별 라벨, Step B) | `LocaleMemoryFramer` (`presentation/memory_formatter.rs`, ko/en 빌트인) |
@@ -321,8 +344,8 @@ B안(v2) 이행 완료. v0.3.0에서 v1 경로(Pipeline/MindService/FormattedMin
 │  active_scenes / DirectorError::Scene{NotActive|Mismatch|…}  │
 ├─ CommandDispatcher::dispatch_v2 (v2 write side) ────────────┤
 │  Command → initial *Requested event → BFS cascade →          │
-│    [Transactional handlers] → HandlerShared write-back →     │
-│    [Commit to EventStore] → [Inline projections] → [Fanout]  │
+│    [Transactional handlers + UnitOfWork] → UoW.commit() →    │
+│    [Append to EventStore] → [Inline projections] → [Fanout]  │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
 │  │ Scene    │ │ Emotion  │ │Stimulus  │ │  Guide   │        │
 │  │ Policy   │ │ Policy   │ │ Policy   │ │ Policy   │        │
@@ -360,14 +383,17 @@ B안(v2) 이행 완료. v0.3.0에서 v1 경로(Pipeline/MindService/FormattedMin
 Command 수신
   → CommandDispatcher.dispatch_v2(cmd)
   → build_initial_event(cmd) → *Requested event (enqueue depth=0)
+  → UnitOfWork::new(&repo) — 트랜잭션 시작
   → [Transactional phase — BFS]
        각 event pop → priority 오름차순 transactional_handlers 실행
-         → HandlerShared 상태 전파 (emotion_state/relationship/scene/guide/clear_*)
+         → DynamicHandlerContext 헬퍼로 UoW에 변경 예약
+            (save_emotion_state/save_relationship/save_scene/set_guide/clear_*)
          → follow_up_events → queue.push(depth+1) [MAX_CASCADE_DEPTH=4 가드]
-       event → staging_buffer [MAX_EVENTS_PER_COMMAND=20 가드]
-  → apply_shared_to_repository (save_* + clear_*)
+       event → staging_buffer [MAX_EVENTS_PER_COMMAND=21 가드]
+  → HandlerShared 스냅샷 추출 (DispatchV2Output 출력 호환)
+  → uow.commit() — repository에 save_*/clear_* 일괄 반영 (Unit of Work 원자적 커밋)
   → [Commit phase] staging_buffer → event_store.append (실 ID/seq 할당)
-  → [Inline phase] projection handlers — best-effort, 에러는 로그만
+  → [Inline phase] 별도 UoW로 projection handlers — best-effort, 에러는 로그만
   → [Fanout phase] event_bus.publish (tokio::broadcast)
 ```
 
@@ -417,28 +443,44 @@ Command 수신
 v2 `dispatch_v2`의 transactional handler chain (BFS + follow_up_events)이 Pipeline을 대체.
 `with_default_handlers()` + `dispatch_v2(cmd)` 조합이 유일한 write 경로.
 
-### v2 EventHandler + HandlerShared
+### v2 EventHandler + UnitOfWork
 
-모든 Policy + Projection wrapper는 공통 `EventHandler` trait을 구현:
+모든 Policy + Projection wrapper는 공통 `EventHandler` trait을 구현 (bb746c2 UoW
+도입으로 `handle()` → `handle_v2()` + `DynamicHandlerContext` 동적 디스패치로 전환):
 
 ```rust
 pub trait EventHandler: Send + Sync {
     fn name(&self) -> &'static str;
     fn interest(&self) -> HandlerInterest;          // Kinds(vec![EventKind::...])
     fn mode(&self) -> DeliveryMode;                  // Transactional/Inline
-    fn handle(&self, event: &DomainEvent, ctx: &mut EventHandlerContext) -> Result<HandlerResult, HandlerError>;
+    fn handle_v2(
+        &self,
+        event: &DomainEvent,
+        ctx: &mut dyn DynamicHandlerContext,
+    ) -> Result<HandlerResult, HandlerError>;
 }
 ```
 
-`HandlerShared` (커맨드 범위 mutable scratchpad):
-- `emotion_state: Option<EmotionState>` · `relationship: Option<Relationship>` · `scene: Option<Scene>` · `guide: Option<ActingGuide>`
-- destructive 시그널: `clear_emotion_for: Option<String>` · `clear_scene: bool` (B4.1 DialogueEnd)
+**`UnitOfWork<'a, R>`** (`application/command/uow.rs`, bb746c2) — 단일 dispatch_v2 호출
+범위에서 변경된 애그리거트(NPC 감정·관계·Scene·guide)를 dirty checking으로 추적하고
+`commit()` 시 `Arc<Mutex<R>>`에 일괄 반영하는 작업 단위. dispatcher는 Transactional BFS
+종료 후 `uow.commit()`을 호출하고, Inline projection 단계에서는 별도 `UnitOfWork`
+인스턴스로 격리한다. 핸들러는 UoW를 직접 보지 않고 `DynamicHandlerContext` 메서드
+(`save_emotion_state`/`save_relationship`/`save_scene`/`clear_emotion_for`/`clear_scene`/
+`set_guide`)를 통해 변경을 예약한다.
 
-`EventHandlerContext` 헬퍼 (2026-05-02 commit `9ff5645`로 중앙화 — 핸들러는
-직접 `ctx.repo.get_npc()` 대신 다음 메서드를 호출하면 자동으로 `HandlerError`를 매핑):
+**`HandlerShared`** — `DispatchV2Output.shared`로만 노출되는 출력 쉐이프 (UoW의
+최종 상태 스냅샷). 호출자 DTO 재구성용으로만 사용되며 핸들러 내부 mutation은
+UoW 측에서 일어난다. 필드는 `emotion_state`/`relationship`/`scene`/`guide` +
+destructive 시그널 (`clear_emotion_for`/`clear_scene`).
+
+`EventHandlerContext<'a, 'b, R>` 헬퍼 (bb746c2에서 ISP 적용 — `world: &dyn NpcWorld`,
+`emotions: &dyn EmotionStore`, `scenes: &dyn SceneStore`로 분리). 핸들러는
+`DynamicHandlerContext` 메서드를 통해 자동 `HandlerError` 매핑을 받는다:
 - `ctx.get_npc(id) -> Result<Npc, HandlerError>` — `HandlerError::NpcNotFound`
-- `ctx.get_relationship(owner, target) -> Result<Relationship, _>` — shared 우선, repo fallback
-- `ctx.get_emotion_state(npc_id) -> Result<EmotionState, _>` — shared 우선, repo fallback
+- `ctx.get_relationship(owner, target) -> Result<Relationship, _>` — UoW 우선, repo fallback
+- `ctx.get_emotion_state(npc_id) -> Result<EmotionState, _>` — UoW 우선, repo fallback
+- `ctx.get_scene_by_id(&SceneId) -> Option<Scene>` — UoW 우선, repo fallback
 
 **EventMetadata 활성** (2026-04-25): 모든 이벤트는 `correlation_id`(dispatch_v2 호출
 단위 cid, 1부터) + `parent_event_id`(BFS 큐잉 시 자동) + `cascade_depth` 필드를
@@ -561,7 +603,16 @@ relevance_score = `1.0 - cosine_distance`.
 | **Worldbuilding Phase 2** | ✅ 완료 (2026-05-01) | Person 도메인 + HEXACO 6-dim — Group 외래키 활성. `mind_sync.rs::person_to_npc`로 active/player Person 자동 NPC 등록. **2.1 Player follow-up** (id="player" 시작값) + **2.2 Runtime sync** (`POST /api/world/persons/sync`, emotion 보존). |
 | **Worldbuilding Phase 3** | ✅ 완료 (2026-05-01) | Place 도메인 (settlement+geography 2 layer) — sect/geography_refs 양방향 + `parent_place` cycle. Phase 1·2 외래키 일제히 에러 승격 (`headquarters`/`birthplace`/`current_location` 등 0건 보장). 11 Place. |
 | **Worldbuilding Phase 4** | ✅ 완료 (2026-05-01) | Atlas 첫 관계 도메인 (도메인+뷰 이중성) — `references` ↔ Place FK + `place_atlas_refs` 양방향 인덱스 + view 메서드 (places_in 등 N+1 회피용 `get_places_batch`). atlas-jungwon ASCII 다이어그램. `EventHandlerContext::get_npc/relationship/emotion_state` 헬퍼 중앙화 (commit `9ff5645`). |
-| Worldbuilding Phase 5+ | ⏳ 예정 | Event + Era + Timeline view → Skill → Item → Knowledge → Lore. Roadmap: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world building/00-roadmap.md). |
+| **Worldbuilding Phase 5a** | ✅ 완료 (2026-05-02) | Event 도메인 (두 번째 인스턴스) — 6 Event + `participants.{persons,groups,places}` 외래키 0건 + `related_events` 양방향 + alias 패턴 일관. MCP/REST `world_events` 도구. bloody-night ingest E2E. |
+| **Worldbuilding Phase 5b** | ✅ 완료 (2026-05-02) | Era + Timeline + Atlas overlay (View trait 보류) — 5 Era + 1 Timeline + view 메서드 4종 + Atlas overlay 양방향 + 외래키 0건. Phase 4·5a `era_id` 외래키 활성. |
+| **Worldbuilding Phase 5c.1** | ✅ 완료 (2026-05-02) | Historical NPCs follow-up — 임서운 + 7 historical/active npc 정밀 매핑 + Phase 5a Event 외래키 갱신 (핵심 분기 0건). 직교 플래그 + `extras.secret` 컨벤션 정형화. |
+| **Worldbuilding Phase 5c.2** | ✅ 완료 (2026-05-03) ★ **Phase 5 시리즈 종결** | Mid-era Events follow-up — 6 mid-era event(founding/prosperity/turning/decline) + era key_events 4종 갱신 + Phase 5a 6 event related_events 역방향 정합 + 5c.1 npc 외래키 활성 + 신규 kind 5종 도입. Dynamic FK validation. |
+| Worldbuilding Phase 6+ | ⏳ 예정 | Skill → Item → Knowledge → Lore. Roadmap: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world%20building/00-roadmap.md). |
+| **Hexagonal refactor** | ✅ 완료 (2026-05-02, `76237c2`) | `src/ports.rs` → 7-모듈 ISP 분할 (`ports/{persistence,personality,guide,memory,analysis,chat,monitoring}`). `src/application/dto.rs` → 도메인별 7-모듈 분할. `LlamaServerMonitor`/`LlamaTimings`/`LlamaHealth`/`LlamaSlotInfo`/`LlamaMetrics` → `InferenceServerMonitor`/`InferenceTimings`/`ServerHealth`/`InferenceSlotInfo`/`ServerMetrics` (인프라 누출 제거). `MemoryAugmentationService` 도메인 추출. `MindRepository` + `EventHandlerContext`에 ISP 적용. 357 단위 테스트 0 회귀. |
+| **Performance & safety pass** | ✅ 완료 (2026-05-03, `11eccbb`) | `Command` 64% 축소 (248B→88B) + `EventPayload` 34% 축소 (280B→184B) — 전략적 boxing. `SqliteMemoryStore::search_by_meaning` N+1 제거 (SQL JOIN). `EmotionState::iter_active()` zero-allocation + emotion `as_str()`. `into_domain` 소유권 기반 DTO 변환. `unwrap()` → idiomatic 에러 핸들링. Prometheus parser single-pass (>90% CPU 절감). |
+| **에러 처리 + LLM 타임아웃** | ✅ 완료 (`166bde6`) | `RigChatAdapter::with_timeout(Duration)` 빌더 (기본 60s) + `ConversationError::Timeout(Duration)` variant + `AppError::Dialogue(Conversation(Timeout))` → HTTP 504. handler 레이어가 `?` operator로 `MindServiceError`/`DispatchV2Error`/`DialogueOrchestratorError`를 단일 `AppError`로 흡수. `tests/orchestrator_error_propagation_test.rs` + `tests/rig_chat_timeout_test.rs` 신설. |
+| **Unit of Work pattern** | ✅ 완료 (`bb746c2`) | `UnitOfWork<'a, R>` 도입 (`application/command/uow.rs`) — Transactional BFS 동안 변경된 애그리거트를 dirty checking으로 추적하고 `commit()`로 일괄 반영. `EventHandler::handle()` → `handle_v2(&mut dyn DynamicHandlerContext)`로 시그니처 변경(타입 은닉). `EventHandlerContext<'a, 'b, R>` 이중 수명 도입(borrow-checker + deadlock 회피). `HandlerShared`는 `DispatchV2Output.shared` 출력 쉐이프로만 잔존. dispatcher 트랜잭션 수명주기 정교화 (Transactional → UoW.commit → EventStore append → Inline projection(별도 UoW) → Fanout). |
+| **Memory keyword search 구현** | ✅ 완료 (`dbf5624`) | `SqliteMemoryStore::search_by_keyword`가 FTS5(trigram) 기반으로 실 구현 (이전: 빈 반환). `#[deprecated(since="0.4.0")]` 마킹은 유지(권장 경로는 `MemoryStore::search(MemoryQuery {..})`). `InMemoryMemoryStore` search 로직 버그 수정 + memory_projector_test 회복. |
 | Phase 5 (npc-mind) | 미구현 | StoryAgent (서사 진행 판단) |
 | Phase 6 (npc-mind) | 미구현 | Tool 시스템 (ToolRegistry) |
 | Phase 7 (npc-mind) | 미구현 | WorldKnowledgeStore (세계관 정적 지식) — Worldbuilding Phase 6+가 이를 흡수 검토 |
@@ -580,13 +631,16 @@ relevance_score = `1.0 - cosine_distance`.
 ### 네이밍 (DDD)
 - Domain Services: `~Engine` / `~Analyzer`
 - Application Services: `~Service`
-- Ports: 행위 명사 (`ports.rs`)
+- Ports: 행위 명사 (`src/ports/`)
 - Domain Events: 과거형
 
-### 에러 처리
-- 서비스 계층: `MindServiceError` (`application::error`) 반환 — NpcNotFound/RelationshipNotFound/InvalidSituation/EmotionStateNotFound/LocaleError
+### 에러 처리 (`166bde6`에서 체계화)
+- 서비스 계층: `MindServiceError` (`application::error`) 반환 — NpcNotFound/RelationshipNotFound/InvalidSituation/EmotionStateNotFound/LocaleError (5 variant)
 - dispatch 계층: `DispatchV2Error` (`CommandDispatcher`) — HandlerFailed/CascadeTooDeep/EventBudgetExceeded/InvalidSituation
-- 웹 계층(`mind-studio`): `AppError` → 적절한 HTTP 상태 코드와 JSON으로 자동 변환 (`IntoResponse`)
+- 핸들러 계층: `HandlerError` (`application::command::handler_v2`) — NpcNotFound/RelationshipNotFound/EmotionStateNotFound/InvalidInput/Infrastructure/Repository
+- 대화 계층: `ConversationError` — ConnectionError/SessionNotFound/InferenceError/Timeout(Duration)
+- 모니터링: `MonitoringError` — Connection/HttpStatus/Parse/Other
+- 웹 계층(`mind-studio`): `AppError` (`From<MindServiceError>` + `From<DispatchV2Error>` + `From<DialogueOrchestratorError>` + `From<MonitoringError>` + `From<WorldError>` + `From<DirectorError>`) → variant별 HTTP 상태 자동 매핑(`IntoResponse`). Timeout → 504, Connection → 502, NotFound → 404, InvalidSituation → 400, invariant 위반 → 500.
 
 ### 데이터 변환 (Mapping)
 - DTO(`SituationInput` 등)는 `SituationService`를 통해 도메인 모델로 변환
@@ -797,9 +851,10 @@ src/
 
 Mind Engine이 생성한 프롬프트를 실제 LLM에 system prompt로 주입하고 다턴 대화로 NPC 연기 품질을 검증합니다.
 
-- **ConversationPort** (`ports.rs`): LLM 대화 세션 추상화 — `start_session`, `send_message`, `update_system_prompt`, `end_session`
-  - `send_message()` / `send_message_stream()`은 `ChatResponse { text, timings }` 반환
-- **RigChatAdapter** (`adapter/rig_chat.rs`): rig-core 0.33 `openai::CompletionsClient<TimingsCapturingClient>` 기반 구현. 세션별 system_prompt + rig_history + dialogue_history 관리. `LlamaServerMonitor` 구현도 포함
+- **ConversationPort** (`ports/chat.rs`): LLM 대화 세션 추상화 — `start_session`, `send_message`, `update_system_prompt`, `end_session`
+  - `send_message()` / `send_message_stream()`은 `ChatResponse { text, timings: Option<InferenceTimings> }` 반환
+  - `ConversationError::Timeout(Duration)` variant — `RigChatAdapter::with_timeout()` 적용 시 발생 (Mind Studio가 504 Gateway Timeout으로 매핑)
+- **RigChatAdapter** (`adapter/rig_chat.rs`): rig-core 0.33 `openai::CompletionsClient<TimingsCapturingClient>` 기반 구현. 세션별 system_prompt + rig_history + dialogue_history 관리. `with_timeout(Duration)` 빌더 (기본 60s, `166bde6`). `InferenceServerMonitor` 구현도 포함 (76237c2에서 `LlamaServerMonitor` → 일반화)
 - **TimingsCapturingClient** (`adapter/llama_timings.rs`): rig의 `HttpClientExt` 래퍼. HTTP 응답에서 llama-server `timings`를 캡처하여 `ChatResponse`에 포함. rig 소스 수정 없이 `ClientBuilder.http_client()`로 주입. `with_client()`로 외부 `reqwest::Client` 주입 지원
 - **DialogueOrchestrator** (`application/dialogue_orchestrator.rs`): `CommandDispatcher` + `ConversationPort` 오케스트레이터. `start_session`/`turn`/`end_session` API
 - **dialogue_test_service.rs**: Mind Studio ↔ DialogueOrchestrator DTO (`Chat*Request`/`Chat*Response`) 전용. 오케스트레이션 struct는 없음 (v0.3.0에서 제거됨)
@@ -812,7 +867,7 @@ rig-core의 OpenAI 응답 타입은 이 필드를 무시하므로, `TimingsCaptu
 ```
 [llama-server] → JSON 응답 (timings 포함)
        ↓
-[TimingsCapturingClient] → timings 파싱 & 저장 → Arc<RwLock<Option<LlamaTimings>>>
+[TimingsCapturingClient] → timings 파싱 & 저장 → Arc<Mutex<Option<InferenceTimings>>>
        ↓ (body 그대로 전달)
 [rig CompletionModel] → CompletionResponse 파싱 (timings 무시)
        ↓
@@ -821,18 +876,18 @@ rig-core의 OpenAI 응답 타입은 이 필드를 무시하므로, `TimingsCaptu
 
 - **Non-streaming** (`send()`): 응답 body 전체를 읽어 `timings` 추출 후 rig에 전달
 - **Streaming** (`send_streaming()`): SSE 청크를 래핑하여 `"timings"` 포함 청크에서 캡처
-- **주요 타입**: `LlamaTimings` (8개 필드), `ChatResponse { text, timings: Option<LlamaTimings> }`
+- **주요 타입**: `InferenceTimings` (8개 필드 — `prompt_n/ms/per_token_ms/per_second` + `predicted_*` 동일), `ChatResponse { text, timings: Option<InferenceTimings> }`
 
-### llama-server 모니터링 (`LlamaServerMonitor`)
+### 추론 서버 모니터링 (`InferenceServerMonitor`)
 
-llama-server는 Chat Completions 외에 서버 관리용 엔드포인트를 제공한다.
-`LlamaServerMonitor` 포트 트레이트가 이를 추상화하고, `RigChatAdapter`가 구현한다.
+llama-server 등 OpenAI-compatible 추론 서버는 Chat Completions 외에 서버 관리용 엔드포인트를 제공한다.
+`InferenceServerMonitor` 포트 트레이트(76237c2에서 `LlamaServerMonitor` → 일반화)가 이를 추상화하고, `RigChatAdapter`가 구현한다.
 
-| 메서드 | llama-server 엔드포인트 | 반환 타입 | 용도 |
-|--------|----------------------|-----------|------|
-| `health()` | `GET /health` | `LlamaHealth` | 서버 상태 (`ok`, `loading model` 등) |
-| `slots()` | `GET /slots` | `Vec<LlamaSlotInfo>` | 슬롯별 idle/processing 상태, 토큰 수 |
-| `metrics()` | `GET /metrics` | `LlamaMetrics` | Prometheus 메트릭 (KV 캐시, 처리 속도 등) |
+| 메서드 | 엔드포인트 | 반환 타입 | 용도 |
+|--------|-----------|-----------|------|
+| `health()` | `GET /health` | `ServerHealth` | 서버 상태 (`ok`, `loading model` 등) |
+| `slots()` | `GET /slots` | `Vec<InferenceSlotInfo>` | 슬롯별 idle/processing 상태, 토큰 수 |
+| `metrics()` | `GET /metrics` | `ServerMetrics` | Prometheus 메트릭 (KV 캐시, 처리 속도 등 — single-pass parser, `11eccbb`) |
 
 **URL 관리**: `base_url` (`http://host:port/v1`)에서 `/v1`을 제거하여 `server_url` (`http://host:port`)을 도출. 모니터링 엔드포인트는 `/v1` 없이 root 경로를 사용한다.
 
