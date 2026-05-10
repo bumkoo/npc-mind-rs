@@ -1,0 +1,93 @@
+{
+  "format": "mind-studio/scenario",
+  "current_situation": null,
+  "_phase1_band": "low",
+  "_purpose": "Phase 1 narrative validation 1/3 — chitchat 케이스. 임충이 길에서 행인과 의례적 인사를 나눔. RelationshipPolicy 게이트가 outer loop를 skip해야 함 (RelationshipUpdated 미발행, axes 보존).",
+  "_expected_reflection": {
+    "is_chitchat": true,
+    "significance_score": "< 0.2",
+    "summary_pattern": "행인과의 의례적 인사 — 서사적 비중 없음"
+  },
+  "_expected_events": ["DialogueReflected", "EmotionCleared", "SceneEnded"],
+  "_expected_axes_delta": "0 (axes 보존)",
+  "npcs": {
+    "lin_chong": {
+      "id": "lin_chong",
+      "name": "임충",
+      "description": "팔십만금군 교두 출신의 무인. 곧고 강직한 성품이지만, 체제에 대한 신뢰가 흔들리는 시점.",
+      "inner_compass": "체제의 법도와 의리를 지킨다 — 칠지에 검을 빼지 않는다",
+      "sincerity": 0.6,
+      "fairness": 0.7,
+      "greed_avoidance": 0.5,
+      "modesty": 0.4,
+      "fearfulness": 0.2,
+      "anxiety": 0.3,
+      "dependence": -0.1,
+      "sentimentality": 0.2,
+      "social_self_esteem": 0.5,
+      "social_boldness": 0.6,
+      "sociability": 0.0,
+      "liveliness": 0.1,
+      "forgiveness": 0.3,
+      "gentleness": 0.4,
+      "flexibility": 0.0,
+      "patience": 0.7,
+      "organization": 0.6,
+      "diligence": 0.7,
+      "perfectionism": 0.5,
+      "prudence": 0.6,
+      "aesthetic_appreciation": 0.2,
+      "inquisitiveness": 0.3,
+      "creativity": 0.1,
+      "unconventionality": -0.3
+    },
+    "passerby": {
+      "id": "passerby",
+      "name": "행인",
+      "description": "이름 없는 길손. 임충과 잠깐 마주쳐 인사를 나눈다.",
+      "inner_compass": "교대 시간까지 무사히 — 그러고 집에 가서 자식 얼굴 본다",
+      "sincerity": 0.0,
+      "fairness": 0.0,
+      "greed_avoidance": 0.0,
+      "modesty": 0.0,
+      "fearfulness": 0.0,
+      "anxiety": 0.0,
+      "dependence": 0.0,
+      "sentimentality": 0.0,
+      "social_self_esteem": 0.0,
+      "social_boldness": 0.0,
+      "sociability": 0.0,
+      "liveliness": 0.0,
+      "forgiveness": 0.0,
+      "gentleness": 0.0,
+      "flexibility": 0.0,
+      "patience": 0.0,
+      "organization": 0.0,
+      "diligence": 0.0,
+      "perfectionism": 0.0,
+      "prudence": 0.0,
+      "aesthetic_appreciation": 0.0,
+      "inquisitiveness": 0.0,
+      "creativity": 0.0,
+      "unconventionality": 0.0
+    }
+  },
+  "relationships": {
+    "lin_chong:passerby": {
+      "owner_id": "lin_chong",
+      "target_id": "passerby",
+      "closeness": 0.0,
+      "trust": 0.0,
+      "power": 0.0
+    }
+  },
+  "objects": {},
+  "_test_script": [
+    {"speaker": "passerby", "utterance": "오늘 날씨가 좋군요."},
+    {"speaker": "lin_chong", "utterance": "네, 그렇네요."},
+    {"speaker": "passerby", "utterance": "어디로 가시는 길이오?"},
+    {"speaker": "lin_chong", "utterance": "그저 길을 걷고 있소."},
+    {"speaker": "passerby", "utterance": "조심히 가시오."},
+    {"speaker": "lin_chong", "utterance": "고맙소."}
+  ]
+}
