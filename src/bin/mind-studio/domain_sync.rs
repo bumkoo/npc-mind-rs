@@ -169,6 +169,12 @@ pub async fn dispatch_stimulus(
 }
 
 /// `Command::EndDialogue` dispatch — 관계 갱신 + 감정 clear + Scene clear.
+///
+/// Phase 1 Mind Architecture: Mind Studio domain_sync 경로는 turn_buffers 미보유 →
+/// `reflection: None`으로만 dispatch (legacy 동작 — RelationshipPolicy의 None 분기로
+/// 기존 무조건 RelationshipUpdated 발행). DialogueOrchestrator 경로(/api/v2/* /
+/// 추후 chat 통합 패스)와 *서로 다른 동작*. spec §3.2 결정 (사) 그대로
+/// (Phase 1.5 frontend 통합 시 일원화 검토).
 pub async fn dispatch_end_dialogue(
     state: &AppState,
     inner: &mut StateInner,
@@ -178,6 +184,7 @@ pub async fn dispatch_end_dialogue(
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         significance: req.significance,
+        reflection: None,
     };
     let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 
@@ -443,39 +450,61 @@ fn build_stimulus_result_from_output(
     })
 }
 
-/// EndDialogue 결과 events에서 본 요청에 해당하는 RelationshipUpdated를 선택.
+/// EndDialogue 결과 events에서 본 요청에 해당하는 AfterDialogueResponse 재구성.
+///
+/// Phase 1 Mind Architecture: chitchat 케이스에는 RelationshipPolicy 게이트로
+/// `RelationshipUpdated` 미발행. 그 경우 axes 보존 (before == after) + reflection 박제.
+/// `DialogueReflected` 이벤트도 같이 회수.
 fn build_after_dialogue_from_output(
     output: &DispatchV2Output,
     npc_id: &str,
     partner_id: &str,
 ) -> Result<AfterDialogueResponse, AppError> {
-    output
-        .events
-        .iter()
-        .find_map(|e| match &e.payload {
-            EventPayload::RelationshipUpdated(p)
-                if (p.owner_id == npc_id && p.target_id == partner_id)
-                    || (p.owner_id == partner_id && p.target_id == npc_id) =>
-            {
-                Some(AfterDialogueResponse {
-                    before: RelationshipValues {
-                        closeness: p.before_closeness,
-                        trust: p.before_trust,
-                        power: p.before_power,
-                    },
-                    after: RelationshipValues {
-                        closeness: p.after_closeness,
-                        trust: p.after_trust,
-                        power: p.after_power,
-                    },
-                })
-            }
-            _ => None,
-        })
-        .ok_or_else(|| {
-            AppError::V2Dispatch(DispatchV2Error::InvalidSituation(format!(
-                "RelationshipUpdated 이벤트 부재 ({}↔{})",
-                npc_id, partner_id
-            )))
-        })
+    // 1. DialogueReflected에서 reflection 회수
+    let reflection = output.events.iter().find_map(|e| match &e.payload {
+        EventPayload::DialogueReflected { result, .. } => Some(result.clone()),
+        _ => None,
+    });
+
+    // 2. RelationshipUpdated 있으면 before/after 사용
+    let rel_payload = output.events.iter().find_map(|e| match &e.payload {
+        EventPayload::RelationshipUpdated(p)
+            if (p.owner_id == npc_id && p.target_id == partner_id)
+                || (p.owner_id == partner_id && p.target_id == npc_id) =>
+        {
+            Some(p.clone())
+        }
+        _ => None,
+    });
+
+    if let Some(p) = rel_payload {
+        return Ok(AfterDialogueResponse {
+            before: RelationshipValues {
+                closeness: p.before_closeness,
+                trust: p.before_trust,
+                power: p.before_power,
+            },
+            after: RelationshipValues {
+                closeness: p.after_closeness,
+                trust: p.after_trust,
+                power: p.after_power,
+            },
+            reflection,
+        });
+    }
+
+    // 3. RelationshipUpdated 미발행 (chitchat skip) → axes 보존 + reflection만
+    Ok(AfterDialogueResponse {
+        before: RelationshipValues {
+            closeness: 0.0,
+            trust: 0.0,
+            power: 0.0,
+        },
+        after: RelationshipValues {
+            closeness: 0.0,
+            trust: 0.0,
+            power: 0.0,
+        },
+        reflection,
+    })
 }

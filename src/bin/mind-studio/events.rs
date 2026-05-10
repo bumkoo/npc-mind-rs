@@ -44,6 +44,12 @@ pub enum StateEvent {
     MemoryConsolidated,
     RumorSeeded,
     RumorSpread,
+
+    // Phase 1 Mind Architecture (relationships.md v0.7 §6) — Reflection 박제 SSE.
+    // Phase 1.5 frontend ReflectionPanel 사전 배선용. 현재는 EventBus 구독자가 자동
+    // 발행하지 않음 (선언만) — Stage 4 narrative validation 시 프런트 갱신 검토.
+    #[allow(dead_code)]
+    DialogueReflected,
 }
 
 impl StateEvent {
@@ -73,6 +79,7 @@ impl StateEvent {
             Self::MemoryConsolidated => "memory_consolidated",
             Self::RumorSeeded => "rumor_seeded",
             Self::RumorSpread => "rumor_spread",
+            Self::DialogueReflected => "dialogue_reflected",
         }
     }
 }

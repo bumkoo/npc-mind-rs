@@ -777,32 +777,78 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
 
     /// `dispatch_v2(Command::EndDialogue)` 결과 → `AfterDialogueResponse`
     ///
-    /// `RelationshipUpdated` 이벤트의 before/after 6필드로 스냅샷 재구성.
+    /// dispatch_v2 결과 → `AfterDialogueResponse` 재구성.
+    ///
+    /// Phase 1 Mind Architecture: RelationshipPolicy의 게이트로 인해 chitchat 케이스
+    /// (reflection.is_chitchat && significance < 0.3)에는 `RelationshipUpdated` 미발행.
+    /// 그 경우 `before == after` (axes 보존)로 응답을 만들고 `reflection`만 채운다.
+    /// `DialogueReflected` 이벤트에서 reflection 회수.
     fn build_end_dialogue_from_v2(
         &self,
         output: &DispatchV2Output,
     ) -> Result<AfterDialogueResponse, DialogueOrchestratorError> {
-        output
+        // 1. DialogueReflected 이벤트에서 reflection 회수 (있으면).
+        let reflection = output.events.iter().find_map(|e| match &e.payload {
+            EventPayload::DialogueReflected { result, .. } => Some(result.clone()),
+            _ => None,
+        });
+
+        // 2. RelationshipUpdated 이벤트가 있으면 before/after 사용.
+        if let Some(rel_payload) = output.events.iter().find_map(|e| match &e.payload {
+            EventPayload::RelationshipUpdated(p) => Some(p),
+            _ => None,
+        }) {
+            return Ok(AfterDialogueResponse {
+                before: RelationshipValues {
+                    closeness: rel_payload.before_closeness,
+                    trust: rel_payload.before_trust,
+                    power: rel_payload.before_power,
+                },
+                after: RelationshipValues {
+                    closeness: rel_payload.after_closeness,
+                    trust: rel_payload.after_trust,
+                    power: rel_payload.after_power,
+                },
+                reflection,
+            });
+        }
+
+        // 3. RelationshipUpdated 미발행 (chitchat skip) — Scene NPC/partner를 events에서
+        // 추론해 현재 relationship snapshot을 before == after로 채움.
+        let (npc_id, partner_id) = output
             .events
             .iter()
             .find_map(|e| match &e.payload {
-                EventPayload::RelationshipUpdated(p) => Some(AfterDialogueResponse {
-                    before: RelationshipValues {
-                        closeness: p.before_closeness,
-                        trust: p.before_trust,
-                        power: p.before_power,
-                    },
-                    after: RelationshipValues {
-                        closeness: p.after_closeness,
-                        trust: p.after_trust,
-                        power: p.after_power,
-                    },
-                }),
+                EventPayload::SceneEnded { npc_id, partner_id } => {
+                    Some((npc_id.clone(), partner_id.clone()))
+                }
                 _ => None,
             })
             .ok_or(DialogueOrchestratorError::ResultReconstruction(
-                "RelationshipUpdated event",
-            ))
+                "SceneEnded event",
+            ))?;
+
+        let snapshot = {
+            let repo = self.dispatcher.repository_guard();
+            repo.get_relationship(&npc_id, &partner_id)
+                .or_else(|| repo.get_relationship(&partner_id, &npc_id))
+                .map(|r| RelationshipValues {
+                    closeness: r.closeness().value(),
+                    trust: r.trust().value(),
+                    power: r.power().value(),
+                })
+                .unwrap_or(RelationshipValues {
+                    closeness: 0.0,
+                    trust: 0.0,
+                    power: 0.0,
+                })
+        };
+
+        Ok(AfterDialogueResponse {
+            before: snapshot.clone(),
+            after: snapshot,
+            reflection,
+        })
     }
 
     /// NPC + Partner NPC (→ name) + 관계를 repo에서 한 번에 조회.
