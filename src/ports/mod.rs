@@ -7,6 +7,8 @@ pub mod memory;
 pub mod monitoring;
 pub mod persistence;
 pub mod personality;
+#[cfg(feature = "chat")]
+pub mod reflection;
 
 pub use analysis::*;
 #[cfg(feature = "chat")]
@@ -17,3 +19,5 @@ pub use memory::*;
 pub use monitoring::*;
 pub use persistence::*;
 pub use personality::*;
+#[cfg(feature = "chat")]
+pub use reflection::*;

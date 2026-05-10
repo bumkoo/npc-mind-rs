@@ -33,7 +33,12 @@ use crate::application::dto::SituationInput;
 pub const MAX_CASCADE_DEPTH: u32 = 4;
 
 /// 단일 커맨드에서 발행 가능한 최대 이벤트 수.
-pub const MAX_EVENTS_PER_COMMAND: usize = 21;
+///
+/// Phase 1 Mind Architecture (Stage 0 Findings F3 (아) / spec §11.7) — `EndDialogue`
+/// 경로의 worst-case가 7~8 이벤트 (DialogueEndRequested + RelationshipUpdated +
+/// EmotionCleared + SceneEnded + 3 inline projection). `DialogueReflected`가
+/// 항상 발행되어 1개 추가됨 → 8~9. 안전 마진 큼. 21 → 22로 인상.
+pub const MAX_EVENTS_PER_COMMAND: usize = 22;
 
 pub struct CommandDispatcher<R: MindRepository> {
     repository: Arc<Mutex<R>>,

@@ -15,3 +15,5 @@ pub mod situation_service;
 pub mod dialogue_orchestrator;
 #[cfg(feature = "chat")]
 pub mod dialogue_test_service;
+#[cfg(feature = "chat")]
+pub mod reflection_service;

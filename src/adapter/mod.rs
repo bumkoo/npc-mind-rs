@@ -19,6 +19,8 @@ pub mod sqlite_world;
 pub mod llama_timings;
 #[cfg(feature = "chat")]
 pub mod rig_chat;
+#[cfg(feature = "chat")]
+pub mod reflection_via_chat;
 
 pub mod anchor_common;
 pub mod file_anchor_source;

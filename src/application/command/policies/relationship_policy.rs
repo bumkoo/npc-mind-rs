@@ -9,6 +9,8 @@ use crate::application::command::handler_v2::{
 };
 use crate::application::command::priority;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
+use crate::domain::reflection::ReflectionResult;
+use crate::domain::scene_id::SceneId;
 use crate::domain::tuning::profile;
 
 /// 관계 갱신 폴리시
@@ -60,8 +62,8 @@ impl EventHandler for RelationshipPolicy {
                 npc_id,
                 partner_id,
                 significance,
-                reflection: _,
-            } => self.handle_dialogue_end(npc_id, partner_id, *significance, ctx),
+                reflection,
+            } => self.handle_dialogue_end(npc_id, partner_id, *significance, reflection, ctx),
 
             EventPayload::RelationshipUpdateRequested {
                 npc_id,
@@ -165,61 +167,95 @@ impl RelationshipPolicy {
         })
     }
 
-    /// DialogueEnd — 관계 갱신 + 감정 clear + scene clear. 3 follow-ups.
+    /// DialogueEnd — Phase 1 Mind Architecture (relationships.md v0.7 §6) Reflection 게이트 적용.
+    ///
+    /// follow-up 발행 순서 (spec §4.4 결정 (라)):
+    /// 1. `DialogueReflected` — `reflection.is_some()`일 때만, *항상 첫 번째* (chitchat 케이스 포함 박제)
+    /// 2. `RelationshipUpdated` — 게이트 통과 시만 (chitchat skip)
+    /// 3. `EmotionCleared` — 항상
+    /// 4. `SceneEnded` — 항상
+    ///
+    /// 게이트 (spec §4.4 결정 8 / relationships.md v0.7 §6.4):
+    /// - `reflection: Some(_)` 케이스: significance ≥ 0.3 OR !is_chitchat OR
+    ///   declarative_events 비어있지 않음 OR partnership_event 있음 OR (Phase 3a/3b external/temporal — Phase 1엔 없음)
+    /// - `reflection: None` 케이스: legacy_significance.is_some() (기존 무조건 동작 호환)
     fn handle_dialogue_end(
         &self,
         npc_id: &str,
         partner_id: &str,
         significance: Option<f32>,
+        reflection: &Option<ReflectionResult>,
         ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
+        // Scene/relationship/emotion lookup은 *모든* follow-up 발행에 필요.
         let sig = significance.unwrap_or(profile().beat_default_significance);
-        let relationship = ctx.get_relationship(npc_id, partner_id)?;
-        let emotion = ctx.get_emotion_state(npc_id)?;
+        let enter_outer = outer_loop_entry(reflection, significance);
 
-        let updated = relationship.after_dialogue(&emotion, sig);
-        let (bc, bt, bp) = (
-            relationship.closeness().value(),
-            relationship.trust().value(),
-            relationship.power().value(),
-        );
-        let (ac, at, ap) = (
-            updated.closeness().value(),
-            updated.trust().value(),
-            updated.power().value(),
-        );
-        ctx.save_relationship(updated);
+        let mut follow_ups: Vec<DomainEvent> = Vec::with_capacity(4);
+
+        // 1. DialogueReflected — reflection 있으면 항상 발행 (chitchat 박제)
+        if let Some(refl) = reflection {
+            follow_ups.push(DomainEvent::new(
+                0,
+                npc_id.to_string(),
+                0,
+                EventPayload::DialogueReflected {
+                    npc_id: npc_id.to_string(),
+                    partner_id: partner_id.to_string(),
+                    scene_id: SceneId::new(npc_id.to_string(), partner_id.to_string()),
+                    result: refl.clone(),
+                },
+            ));
+        }
+
+        // 2. RelationshipUpdated — 게이트 통과 시만 (chitchat skip 시 axes 보존).
+        if enter_outer {
+            let relationship = ctx.get_relationship(npc_id, partner_id)?;
+            let emotion = ctx.get_emotion_state(npc_id)?;
+            let updated = relationship.after_dialogue(&emotion, sig);
+            let (bc, bt, bp) = (
+                relationship.closeness().value(),
+                relationship.trust().value(),
+                relationship.power().value(),
+            );
+            let (ac, at, ap) = (
+                updated.closeness().value(),
+                updated.trust().value(),
+                updated.power().value(),
+            );
+            ctx.save_relationship(updated);
+            follow_ups.push(DomainEvent::new(
+                0,
+                npc_id.to_string(),
+                0,
+                EventPayload::RelationshipUpdated(Box::new(
+                    crate::domain::event::RelationshipUpdatedPayload {
+                        owner_id: npc_id.to_string(),
+                        target_id: partner_id.to_string(),
+                        before_closeness: bc,
+                        before_trust: bt,
+                        before_power: bp,
+                        after_closeness: ac,
+                        after_trust: at,
+                        after_power: ap,
+                        cause: crate::domain::event::RelationshipChangeCause::Unspecified,
+                    },
+                )),
+            ));
+        }
+
+        // 3. EmotionCleared + 4. SceneEnded — Scene 종료는 항상 (감정 초기화 / Scene 정리).
         ctx.clear_emotion_for(npc_id.to_string());
         ctx.clear_scene();
-
-        // 3 follow-ups: RelationshipUpdated + EmotionCleared + SceneEnded
-        let rel_event = DomainEvent::new(
-            0,
-            npc_id.to_string(),
-            0,
-            EventPayload::RelationshipUpdated(Box::new(
-                crate::domain::event::RelationshipUpdatedPayload {
-                    owner_id: npc_id.to_string(),
-                    target_id: partner_id.to_string(),
-                    before_closeness: bc,
-                    before_trust: bt,
-                    before_power: bp,
-                    after_closeness: ac,
-                    after_trust: at,
-                    after_power: ap,
-                    cause: crate::domain::event::RelationshipChangeCause::Unspecified,
-                },
-            )),
-        );
-        let clear_event = DomainEvent::new(
+        follow_ups.push(DomainEvent::new(
             0,
             npc_id.to_string(),
             0,
             EventPayload::EmotionCleared {
                 npc_id: npc_id.to_string(),
             },
-        );
-        let scene_event = DomainEvent::new(
+        ));
+        follow_ups.push(DomainEvent::new(
             0,
             npc_id.to_string(),
             0,
@@ -227,10 +263,41 @@ impl RelationshipPolicy {
                 npc_id: npc_id.to_string(),
                 partner_id: partner_id.to_string(),
             },
-        );
+        ));
+
         Ok(HandlerResult {
-            follow_up_events: vec![rel_event, clear_event, scene_event],
+            follow_up_events: follow_ups,
         })
+    }
+}
+
+/// Outer Loop 진입 게이트 평가.
+///
+/// `relationships.md` v0.7 §6.4 가드레일 (양형식 = 진입 조건):
+///
+/// ```text
+/// significance >= 0.3
+/// OR  !is_chitchat
+/// OR  declarative_events 비어있지 않음
+/// OR  partnership_event 있음
+/// OR  external_events 비어있지 않음     (Phase 3b 입력 — 현재 미존재)
+/// OR  temporal_signals 비어있지 않음    (Phase 3a 입력 — 현재 미존재)
+/// ```
+///
+/// `reflection: None` 케이스: chat feature 비활성 또는 호환 caller — 기존 무조건
+/// 동작으로 fallback (legacy_significance.is_some() 시 진입). 0.x 사용자 코드 깨짐 0.
+pub(crate) fn outer_loop_entry(
+    reflection: &Option<ReflectionResult>,
+    legacy_significance: Option<f32>,
+) -> bool {
+    match reflection {
+        Some(refl) => {
+            refl.significance_score >= 0.3
+                || !refl.is_chitchat
+                || !refl.declarative_events.is_empty()
+                || refl.partnership_event.is_some()
+        }
+        None => legacy_significance.is_some(),
     }
 }
 
@@ -379,12 +446,14 @@ mod handler_v2_tests {
     }
 
     #[test]
-    fn missing_relationship_returns_precondition_error() {
+    fn missing_relationship_returns_precondition_error_when_outer_loop_enters() {
+        // Phase 1 Mind Architecture: 게이트 통과 시에만 relationship lookup 발생.
+        // legacy significance Some(0.5) → reflection=None이지만 호환 분기로 진입.
         let policy = RelationshipPolicy::new();
         let mut harness =
             HandlerTestHarness::new().with_emotion_state("alice", EmotionState::default());
 
-        let event = make_dialogue_end("alice", "bob", None);
+        let event = make_dialogue_end("alice", "bob", Some(0.5));
         let err = harness.dispatch(&policy, event).expect_err("must fail");
 
         assert!(matches!(
@@ -392,5 +461,203 @@ mod handler_v2_tests {
             HandlerError::RelationshipNotFound { ref owner_id, ref target_id }
                 if owner_id == "alice" && target_id == "bob"
         ));
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 1 Mind Architecture — Reflection 게이트 단위 테스트 (Stage 2.6)
+    // -----------------------------------------------------------------------
+
+    use crate::domain::reflection::{DeclarativeEventPlaceholder, ReflectionResult};
+
+    fn make_dialogue_end_with_reflection(
+        npc_id: &str,
+        partner_id: &str,
+        significance: Option<f32>,
+        reflection: Option<ReflectionResult>,
+    ) -> DomainEvent {
+        DomainEvent::new(
+            0,
+            npc_id.to_string(),
+            0,
+            EventPayload::DialogueEndRequested {
+                npc_id: npc_id.to_string(),
+                partner_id: partner_id.to_string(),
+                significance,
+                reflection,
+            },
+        )
+    }
+
+    fn chitchat_reflection() -> ReflectionResult {
+        ReflectionResult {
+            is_chitchat: true,
+            summary: "지나가는 인사".into(),
+            significance_score: 0.05,
+            declarative_events: vec![],
+            partnership_event: None,
+            turn_count: 2,
+            llm_reasoning: Some("의례적".into()),
+        }
+    }
+
+    fn significant_reflection() -> ReflectionResult {
+        ReflectionResult {
+            is_chitchat: false,
+            summary: "결단 사건".into(),
+            significance_score: 0.85,
+            declarative_events: vec![],
+            partnership_event: None,
+            turn_count: 12,
+            llm_reasoning: Some("OCC peak 0.95".into()),
+        }
+    }
+
+    #[test]
+    fn chitchat_skips_outer_loop_emits_only_reflected_clear_scene() {
+        let policy = RelationshipPolicy::new();
+        // 의도적으로 relationship 미부착 — 게이트 skip이라 lookup 발생 안 함을 검증.
+        let mut harness = HandlerTestHarness::new()
+            .with_emotion_state("alice", EmotionState::default());
+
+        let event = make_dialogue_end_with_reflection(
+            "alice",
+            "bob",
+            None,
+            Some(chitchat_reflection()),
+        );
+        let (result, uow) = harness.dispatch(&policy, event).expect("must succeed");
+
+        // 3 follow-ups: DialogueReflected + EmotionCleared + SceneEnded
+        // (RelationshipUpdated 미발행 → axes 보존)
+        assert_eq!(result.follow_up_events.len(), 3);
+        let kinds: Vec<EventKind> =
+            result.follow_up_events.iter().map(|e| e.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                EventKind::DialogueReflected,
+                EventKind::EmotionCleared,
+                EventKind::SceneEnded,
+            ]
+        );
+
+        // Clear 시그널은 항상
+        assert_eq!(uow.clear_emotion_for.as_deref(), Some("alice"));
+        assert!(uow.clear_scene);
+    }
+
+    #[test]
+    fn significant_reflection_enters_outer_loop_emits_four_follow_ups() {
+        let policy = RelationshipPolicy::new();
+        let rel = Relationship::neutral("alice", "bob");
+        let mut harness = HandlerTestHarness::new()
+            .with_relationship(rel)
+            .with_emotion_state("alice", EmotionState::default());
+
+        let event = make_dialogue_end_with_reflection(
+            "alice",
+            "bob",
+            None,
+            Some(significant_reflection()),
+        );
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        // 4 follow-ups: DialogueReflected + RelationshipUpdated + EmotionCleared + SceneEnded
+        assert_eq!(result.follow_up_events.len(), 4);
+        let kinds: Vec<EventKind> =
+            result.follow_up_events.iter().map(|e| e.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                EventKind::DialogueReflected,
+                EventKind::RelationshipUpdated,
+                EventKind::EmotionCleared,
+                EventKind::SceneEnded,
+            ]
+        );
+    }
+
+    #[test]
+    fn legacy_caller_no_reflection_uses_legacy_significance_branch() {
+        // chat feature 비활성 또는 호환 caller — reflection=None + significance=Some
+        // 시 기존 무조건 동작 (RelationshipUpdated 발행, DialogueReflected 미발행).
+        let policy = RelationshipPolicy::new();
+        let rel = Relationship::neutral("alice", "bob");
+        let mut harness = HandlerTestHarness::new()
+            .with_relationship(rel)
+            .with_emotion_state("alice", EmotionState::default());
+
+        let event = make_dialogue_end_with_reflection("alice", "bob", Some(0.7), None);
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        assert_eq!(result.follow_up_events.len(), 3);
+        let kinds: Vec<EventKind> =
+            result.follow_up_events.iter().map(|e| e.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                EventKind::RelationshipUpdated,
+                EventKind::EmotionCleared,
+                EventKind::SceneEnded,
+            ]
+        );
+    }
+
+    #[test]
+    fn declarative_event_forces_outer_loop_even_when_chitchat_and_low_significance() {
+        // is_chitchat=true + significance=0.05 + declarative_events 비어있지 않음
+        // → 게이트 통과 (Channel 1 Declarative 활성화 사전 동작)
+        let mut refl = chitchat_reflection();
+        refl.declarative_events.push(DeclarativeEventPlaceholder {
+            kind: "execute".into(),
+            target: Some("lu_qian".into()),
+            text: "처단".into(),
+        });
+
+        let policy = RelationshipPolicy::new();
+        let rel = Relationship::neutral("alice", "bob");
+        let mut harness = HandlerTestHarness::new()
+            .with_relationship(rel)
+            .with_emotion_state("alice", EmotionState::default());
+
+        let event = make_dialogue_end_with_reflection("alice", "bob", None, Some(refl));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        // 4 follow-ups
+        assert_eq!(result.follow_up_events.len(), 4);
+        assert!(result.follow_up_events.iter().any(|e| e.kind() == EventKind::RelationshipUpdated));
+    }
+
+    #[test]
+    fn outer_loop_entry_unit_truth_table() {
+        use super::outer_loop_entry;
+
+        // Some(refl) 케이스
+        let mut refl = chitchat_reflection();
+        // (1) significance >= 0.3 OR !is_chitchat 모두 false → skip
+        assert!(!outer_loop_entry(&Some(refl.clone()), None));
+
+        // (2) significance >= 0.3 → enter
+        refl.significance_score = 0.5;
+        assert!(outer_loop_entry(&Some(refl.clone()), None));
+
+        // (3) is_chitchat=false → enter
+        refl.significance_score = 0.05;
+        refl.is_chitchat = false;
+        assert!(outer_loop_entry(&Some(refl.clone()), None));
+
+        // (4) declarative_events 있음 → enter
+        refl.is_chitchat = true;
+        refl.declarative_events.push(DeclarativeEventPlaceholder {
+            kind: "k".into(),
+            target: None,
+            text: "t".into(),
+        });
+        assert!(outer_loop_entry(&Some(refl.clone()), None));
+
+        // None 케이스 — legacy 호환
+        assert!(!outer_loop_entry(&None, None));
+        assert!(outer_loop_entry(&None, Some(0.0)));
+        assert!(outer_loop_entry(&None, Some(0.9)));
     }
 }

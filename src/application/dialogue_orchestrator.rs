@@ -54,12 +54,14 @@ use crate::application::dto::{
     AfterDialogueResponse, CanFormat, PadOutput, RelationshipValues, SituationInput,
     StimulusResponse, StimulusResult,
 };
+use crate::application::reflection_service::ReflectionRunner;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 #[cfg(feature = "listener_perspective")]
 use crate::domain::listener_perspective::ListenerPerspectiveConverter;
 use crate::domain::memory::service::MemoryAugmentationService;
 use crate::domain::pad::{Pad, UtteranceEmbedding};
 use crate::domain::personality::Npc;
+use crate::domain::reflection::TurnSnapshot;
 use crate::domain::relationship::Relationship;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, GuideFormatter, InferenceTimings,
@@ -151,6 +153,15 @@ pub struct DialogueOrchestrator<R: MindRepository + Send + Sync + 'static, C: Co
     /// memory_framer가 사용할 locale. 기본 "ko".
     memory_locale: String,
     sessions: HashMap<String, SessionMeta>,
+    /// Phase 1 Mind Architecture (Stage 0 Findings F2 #2): trait object로 보유 →
+    /// `<R, C>` generic 유지. 부착 시 `end_session`이 reflection 호출 후
+    /// `Command::EndDialogue { reflection: Some(_) }` dispatch.
+    /// 미부착 시 `reflection: None` → RelationshipPolicy 기존 무조건 동작 호환.
+    reflection_service: Option<Arc<dyn ReflectionRunner>>,
+    /// Phase 1 (결정 (사) — Stage 0 Findings F3): 세션별 turn snapshot 누적.
+    /// `&mut self` 일관성 (sessions HashMap 패턴 따름, Mutex 불필요).
+    /// `end_session`에서 `remove`로 회수 후 ReflectionService에 전달.
+    turn_buffers: HashMap<String, Vec<TurnSnapshot>>,
 }
 
 impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrchestrator<R, C> {
@@ -177,7 +188,24 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             memory_framer: None,
             memory_locale: "ko".to_string(),
             sessions: HashMap::new(),
+            reflection_service: None,
+            turn_buffers: HashMap::new(),
         }
+    }
+
+    /// Phase 1 Mind Architecture (relationships.md v0.7 §6) — Reflection 활성화 (Opt-in).
+    ///
+    /// 부착 시 `turn()`이 매 턴 `TurnSnapshot`을 누적하고, `end_session(sid, Some(_))`이
+    /// `ReflectionRunner.reflect`를 호출하여 결과를 `Command::EndDialogue { reflection }`
+    /// payload에 박는다. RelationshipPolicy 게이트가 chitchat 케이스를 outer loop skip.
+    ///
+    /// 미부착 시 `reflection: None`으로 dispatch → 기존 무조건 동작 (호환).
+    ///
+    /// Stage 0 Findings F2 #2 — `Arc<dyn ReflectionRunner>`로 generic 추가 0.
+    /// 호출자: `ReflectionService::new(port, builder)` 생성 → `Arc::new(svc)` 후 본 빌더에 전달.
+    pub fn with_reflection(mut self, service: Arc<dyn ReflectionRunner>) -> Self {
+        self.reflection_service = Some(service);
+        self
     }
 
     /// Step B: 기억 주입 활성화 (Opt-in).
@@ -418,6 +446,34 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         let assistant_snapshot = self.current_emotion_snapshot(&meta.npc_id);
         self.emit_dialogue_turn(&meta, "assistant", &text, assistant_snapshot);
 
+        // ⑦ Phase 1 Mind Architecture (결정 (사) — Stage 0 Findings F3): Reflection이
+        // 부착됐을 때만 TurnSnapshot 누적. 미부착 시 메모리 leaky bucket 회피.
+        if self.reflection_service.is_some() {
+            // PAD: stimulus 적용 후 PAD를 turn 대표 PAD로 사용.
+            // compute_significance의 pad trajectory는 *turn 사이* delta만 보므로
+            // turn 내 before/after는 같은 값으로 두어도 무관 (engine이 무시).
+            let turn_pad = stimulus_resp
+                .as_ref()
+                .and_then(|r| r.input_pad.as_ref())
+                .map(|p| Pad::new(p.pleasure, p.arousal, p.dominance))
+                .unwrap_or_else(Pad::neutral);
+            let occ_emotions = self.current_emotion_pairs(&meta.npc_id);
+            let buffer = self
+                .turn_buffers
+                .entry(session_id.to_string())
+                .or_default();
+            let turn_index = (buffer.len() as u32) + 1;
+            buffer.push(TurnSnapshot {
+                user_utterance: user_utterance.to_string(),
+                npc_response: text.clone(),
+                occ_emotions,
+                pad_before: turn_pad,
+                pad_after: turn_pad,
+                beat_changed,
+                turn_index,
+            });
+        }
+
         Ok(DialogueTurnOutcome {
             npc_response: text,
             timings,
@@ -441,16 +497,26 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             .remove(session_id)
             .ok_or_else(|| DialogueOrchestratorError::SessionNotFound(session_id.to_string()))?;
 
+        // Phase 1 Mind Architecture: turn buffer는 reflection 호출 *전*에 회수
+        // (orphan 방지). reflection 미부착이면 무시 (이미 비어있을 것).
+        let turns = self.turn_buffers.remove(session_id).unwrap_or_default();
+
+        // Phase 1 (Stage 0 Findings F3 / 권장 순서): reflection은 dialogue_history
+        // 회수 *전*에 호출 — LLM 부하를 dialogue 종료보다 먼저 끝내 응답 latency 분산.
+        let reflection = self.run_reflection(session_id, &turns, &meta).await;
+
         let dialogue_history = self.chat.end_session(session_id).await?;
 
-        let after_dialogue = if let Some(sig) = significance {
-            // Phase 1: ReflectionService 부착은 Stage 2에서. 현재는 reflection=None.
-            // RelationshipPolicy의 게이트는 None일 때 기존 무조건 동작 fallback.
+        // Outer Loop 진입 결정: significance.is_some() OR reflection.is_some().
+        // reflection만 있고 significance 없는 케이스도 EndDialogue dispatch (게이트가
+        // chitchat skip 자체 결정). 이전 호환성 유지.
+        let should_dispatch = significance.is_some() || reflection.is_some();
+        let after_dialogue = if should_dispatch {
             let cmd = Command::EndDialogue {
                 npc_id: meta.npc_id.clone(),
                 partner_id: meta.partner_id.clone(),
-                significance: Some(sig),
-                reflection: None,
+                significance,
+                reflection,
             };
             let output = self.dispatcher.dispatch_v2(cmd).await?;
             Some(self.build_end_dialogue_from_v2(&output)?)
@@ -462,6 +528,27 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             dialogue_history,
             after_dialogue,
         })
+    }
+
+    /// Phase 1 Mind Architecture: ReflectionService 호출. 미부착 / NPC lookup 실패 시
+    /// `None` (legacy 호환 → RelationshipPolicy 기존 무조건 동작).
+    async fn run_reflection(
+        &self,
+        session_id: &str,
+        turns: &[TurnSnapshot],
+        meta: &SessionMeta,
+    ) -> Option<crate::domain::reflection::ReflectionResult> {
+        let service = self.reflection_service.clone()?;
+
+        // NPC lookup — repository_guard scope 짧게 유지 (LLM 호출 전 unlock).
+        let (npc, partner) = {
+            let repo = self.dispatcher.repository_guard();
+            let n = repo.get_npc(&meta.npc_id)?;
+            let p = repo.get_npc(&meta.partner_id)?;
+            (n, p)
+        };
+
+        Some(service.reflect(session_id, turns, &npc, &partner).await)
     }
 
     // -----------------------------------------------------------------------
@@ -571,6 +658,23 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             .repository_guard()
             .get_emotion_state(npc_id)
             .map(|s| s.snapshot())
+            .unwrap_or_default()
+    }
+
+    /// Phase 1 Mind Architecture: TurnSnapshot용 (EmotionType, intensity) 쌍.
+    /// `iter_active()` 직접 사용 — `current_emotion_snapshot`의 String 변환 우회.
+    fn current_emotion_pairs(
+        &self,
+        npc_id: &str,
+    ) -> Vec<(crate::domain::emotion::EmotionType, f32)> {
+        self.dispatcher
+            .repository_guard()
+            .get_emotion_state(npc_id)
+            .map(|s| {
+                s.iter_active()
+                    .map(|(t, intensity, _ctx)| (t, intensity))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 

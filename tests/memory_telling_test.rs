@@ -232,12 +232,16 @@ async fn confidence_is_scaled_by_trust() {
 }
 
 #[tokio::test]
-async fn budget_exhaustion_test_20_listeners_succeeds_but_21_fails() {
+async fn budget_exhaustion_test_21_listeners_succeeds_but_22_fails() {
+    // Phase 1 Mind Architecture (Stage 0 Findings F3 (아) / spec §11.7):
+    // MAX_EVENTS_PER_COMMAND 21 → 22로 인상. TellInformation은 청자당 1 이벤트 +
+    // 초기 TellInformationRequested 1개. 22명까지 한 커맨드 안에서 처리 가능,
+    // 23명부터 EventBudgetExceeded.
     let store = Arc::new(InMemoryMemoryStore::new());
-    
+
     let mut repo = InMemoryRepository::new();
-    // 21명의 NPC 등록
-    for i in 0..21 {
+    // 23명의 NPC 등록
+    for i in 0..23 {
         repo.add_npc(make_npc(&format!("pupil-{i}")));
     }
     let repo_arc = Arc::new(Mutex::new(repo));
@@ -247,31 +251,12 @@ async fn budget_exhaustion_test_20_listeners_succeeds_but_21_fails() {
         .with_default_handlers()
         .with_memory(store.clone() as Arc<dyn MemoryStore>);
 
-    let mut listeners_20 = Vec::new();
-    for i in 0..20 {
-        listeners_20.push(format!("pupil-{i}"));
-    }
-
-    let ok = dispatcher
-        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
-            speaker: "sage".into(),
-            listeners: listeners_20,
-            overhearers: vec![],
-            claim: "claim".into(),
-            stated_confidence: 1.0,
-            origin_chain_in: vec![],
-            topic: None,
-        })))
-        .await;
-
-    assert!(ok.is_ok(), "20명까지는 한 커맨드 예산 내");
-
     let mut listeners_21 = Vec::new();
     for i in 0..21 {
         listeners_21.push(format!("pupil-{i}"));
     }
 
-    let err = dispatcher
+    let ok = dispatcher
         .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
             speaker: "sage".into(),
             listeners: listeners_21,
@@ -283,5 +268,24 @@ async fn budget_exhaustion_test_20_listeners_succeeds_but_21_fails() {
         })))
         .await;
 
-    assert!(err.is_err(), "21명은 이벤트 예산(20개) 초과로 실패해야 함");
+    assert!(ok.is_ok(), "21명까지는 한 커맨드 예산(22) 내");
+
+    let mut listeners_22 = Vec::new();
+    for i in 0..22 {
+        listeners_22.push(format!("pupil-{i}"));
+    }
+
+    let err = dispatcher
+        .dispatch_v2(Command::TellInformation(Box::new(TellInformationRequest {
+            speaker: "sage".into(),
+            listeners: listeners_22,
+            overhearers: vec![],
+            claim: "claim".into(),
+            stated_confidence: 1.0,
+            origin_chain_in: vec![],
+            topic: None,
+        })))
+        .await;
+
+    assert!(err.is_err(), "22명은 이벤트 예산(22개) 초과로 실패해야 함 (TellInformationRequested 1 + 22 fanout = 23)");
 }
