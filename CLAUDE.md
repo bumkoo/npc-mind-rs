@@ -938,6 +938,8 @@ end_session(sid, significance?)
 - **협업 워크플로우**: [`docs/collaboration-workflow.md`](docs/collaboration-workflow.md)
 - **Worldbuilding 로드맵**: [`docs/tasks/world building/00-roadmap.md`](docs/tasks/world%20building/00-roadmap.md) — 10 Phase 흐름 + Phase별 task/checkpoint report (`docs/tasks/archive/` 종결분 보존)
 - **Mind 아키텍처 마이그레이션 로드맵**: [`docs/tasks/mind-architecture/00-roadmap.md`](docs/tasks/mind-architecture/00-roadmap.md) — Phase 1/2/3a/3b/3c (Reflection·4축·BondKind·Channel·ActionTrigger). relationships.md v0.7 동반 트랙.
+- **Phase 1 task spec**: [`docs/tasks/mind-architecture/task-rel-phase1-reflection.md`](docs/tasks/mind-architecture/task-rel-phase1-reflection.md) — Scene Boundary Reflection 도입. 6 stage (Stage 0 Pre-flight Impact Analysis 포함), OCP 준수 (`ReflectionPort` trait + `ConversationBackedReflectionPort` 어댑터), 3 narrative validation 시나리오.
+- **Phase 1 kickoff 가이드**: [`docs/tasks/mind-architecture/PHASE1-KICKOFF.md`](docs/tasks/mind-architecture/PHASE1-KICKOFF.md) — Claude Code 인계용 진입 가이드. 작업 시작 순서 + Tier 권한 + 체크포인트 보고 형식.
 - **감정 엔진**: [`docs/emotion/`](docs/emotion/) — OCC 모델, HEXACO 매핑, PAD 앵커 매트릭스, appraisal 엔진 설계
 - **Listener-perspective 변환** (Phase 7): [`docs/emotion/sign-classifier-design.md`](docs/emotion/sign-classifier-design.md) (부호/강도 분류기 설계 + §3.7 Register 전략) + [`docs/emotion/phase7-converter-integration.md`](docs/emotion/phase7-converter-integration.md) (프로덕션 통합, **Step 1-5+ 완료** — 88% baseline, default-on, DialogueOrchestrator · Mind Studio 통합, §6.1 테스트 카탈로그 71개)
 - **성격 모델**: [`docs/personality/`](docs/personality/) — HEXACO 6차원 facet 상세

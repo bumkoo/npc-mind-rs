@@ -16,7 +16,7 @@
 | 산출물 | 도메인 구조체 + SQLite 스키마 | 도메인 모델 변경 + application service + read model |
 | 관련 docs | `_schema.md`, `wuxia-core/` | `relationships.md` v0.7, `action_triggers.md` v0.1 |
 
-**왜 이 문서가 필요한가**: relationships.md v0.7은 *목표 아키텍처*(4축 + BondKind + Channel 1/2/3 + ActionTrigger)를 정의. 코드는 *부분 구현*(3축 Relationship + RelationshipService + after_dialogue 골격). 누군가 docs만 읽으면 더 많이 구현된 것으로 오해. 이 문서가 그 갭을 명시.
+**왜 이 문서가 필요한가**: relationships.md v0.7은 *목표 아키텍처*(4축 + BondKind + Channel 1/2/3 + ActionTrigger)를 정의. 코드는 *부분 구현*(3축 Relationship + DialogueOrchestrator/dispatch_v2 + RelationshipPolicy 무조건 follow-up). 누군가 docs만 읽으면 더 많이 구현된 것으로 오해. 이 문서가 그 갭을 명시.
 
 ## 2. 현재 상태 (2026-05-09 spot-check 기준)
 
@@ -25,7 +25,7 @@
 본 절의 모든 항목에 verification level 표시:
 
 - ✅ **직접 읽음** — 이번 spot-check에서 해당 파일 본문 확인
-- ◯ **architecture-v2.md 인용** — 아키텍처 문서 기반, 현재 코드 미검증
+- ◯ **CLAUDE.md 인용** — 사용자가 갱신한 SOR 문서 기반, 현재 코드 직접 미검증
 - △ **파일/디렉토리 존재만 확인** — list_directory 결과만, 내용 미확인
 
 미래에 ◯/△가 ✅로 승격되려면 *해당 파일을 직접 읽은 시점* — Phase 작업 spec 작성 시 자연 발생.
@@ -41,33 +41,54 @@
 | `personality.rs` | HEXACO 24 facet, Score 타입 | △ |
 | `listener_perspective/` | Phase 7 마이그레이션, feature flag `listener_perspective` | △ (userMemories 인용) |
 
+### 2.2.5 Ports Layer (`src/ports/`)
+
+ISP 기반 모듈 분할 (이전 단일 `ports.rs`):
+
+| 모듈 | 트레이트 | 검증 |
+|---|---|---|
+| `persistence.rs` | `MindRepository` + `NpcWorld` + `EmotionStore` + `SceneStore` (super-trait 분리) | ◯ |
+| `personality.rs` | `PersonalityProfile`, `PadAnchorSource`, `AnchorLoadError` | ◯ |
+| `guide.rs` | `GuideFormatter`, `Appraiser`, `StimulusProcessor` | ◯ |
+| `memory.rs` | `MemoryStore` + `RumorStore` + `MemoryFramer` | ◯ |
+| `analysis.rs` | `UtteranceAnalyzer` | ◯ |
+| `chat.rs` [chat] | `ConversationPort` + `ChatResponse` + `InferenceTimings` + `LlmModelInfo` + `ConversationError(Timeout 포함)` | ◯ |
+| `monitoring.rs` [chat] | `InferenceServerMonitor` + `ServerHealth` + `InferenceSlotInfo` + `ServerMetrics` (이전 Llama* → Inference* 일반화) | ◯ |
+
 ### 2.3 Application Layer (`src/application/`)
+
+> **v0.3.0 정정 노트**: v1 경로 (`MindService` / `EventAwareMindService` / `Pipeline` / `CommandDispatcher::dispatch` / `shadow_v2`)는 모두 제거됨. 진입점은 `Director` / `CommandDispatcher::dispatch_v2` / `DialogueOrchestrator` (chat) 셋. v0.1 초안의 architecture-v2.md 인용은 stale이었음 — 이번 갱신에서 정정.
 
 | 모듈 | 상태 | 검증 |
 |---|---|---|
-| `MindService` | 퍼사드. `apply_stimulus`/`start_scene`/`after_beat`/`after_dialogue` 진입점. Generic engine injection (`<R, A: Appraiser, S: StimulusProcessor>`) | ◯ |
-| `RelationshipService` | 관계 수치 계산·갱신 전담 | ◯ |
-| `SituationService` | DTO → 도메인 모델 변환 | ◯ |
-| `SceneService` | Scene 상태 + Beat 전환 | ◯ |
+| `command/dispatcher.rs` (`CommandDispatcher<R>`) | dispatch_v2 단일 진입점. `with_default_handlers` / `with_memory` / `with_memory_full` / `with_world_overlay` / `with_scene_consolidation` / `with_rumor` 빌더 | ◯ |
+| `command/uow.rs` (`UnitOfWork`) | Transactional BFS 변경 누적 → 일괄 commit. `HandlerShared`는 *출력 호환용 쉐이프*로 변경 | ◯ |
+| `command/policies/` (8 핸들러) | `emotion`/`stimulus`/`guide`/`relationship`/`scene`/`information`/`rumor`/`world_overlay` (이전 `agents/` → `policies/` 리네임) | ◯ |
+| `command/{telling_ingestion,rumor_distribution,world_overlay,scene_consolidation,relationship_memory}_handler.rs` | Inline 핸들러 5종 — Step C/D 메모리 흡수 | ◯ |
+| `dialogue_orchestrator.rs` (`DialogueOrchestrator<R, C>`) [chat] | LLM 다턴 오케스트레이터. `start_session`/`turn`/`end_session`. `BeatTransitioned` 발생 시 `update_system_prompt` | ◯ |
+| `director/` (`Director<R>`) | 다중 Scene facade. `start_scene`/`dispatch_to`/`end_scene`/`active_scenes` | ◯ |
 | `event_bus.rs` | tokio broadcast, futures::Stream 노출, lag 처리 | ✅ 1~80줄 |
-| `event_store.rs` | 이벤트 영속화 | △ |
-| `memory_projector.rs` | Memory CQRS read-model | ◯ |
-| `dialogue_orchestrator.rs` | Turn 단위 오케스트레이션 | △ |
-| `director/` | Agentic AI directorate | △ |
+| `event_store.rs` | 이벤트 영속화 (commit staging buffer) | △ |
+| `memory_projector.rs` | EventBus 구독 기억 인덱싱 [embed] | ◯ |
+| `dto/` (7 도메인 모듈) | `emotion`/`guide`/`information`/`relationship`/`rumor`/`scene`/`world` 분할 | ◯ |
+| `error.rs` (`MindServiceError`) | 5 variants: NpcNotFound · RelationshipNotFound · InvalidSituation · EmotionStateNotFound · LocaleError | ◯ |
 
 ### 2.4 Inner/Outer 골격 — 부분 구현됨 (★)
 
-architecture-v2.md 기준, `MindService`에 두 진입점이 이미 분리:
+CLAUDE.md 기준 (v0.3.0 후), Inner/Outer 두 흐름은 다음 컴포넌트들로 *부분 구현*되어 있음:
 
-- `after_beat()` — Beat 종료. **감정 유지**. (Inner Loop의 segment 경계)
-- `after_dialogue()` — Scene 종료. **감정 초기화**. (Outer Loop 진입점)
+**Inner Loop (대화 turn)** — `DialogueOrchestrator.turn` (chat feature):
+- `Command::ApplyStimulus.dispatch_v2().await` → 도메인 동기 처리
+- 처리 결과 events에 `BeatTransitioned` 포함 시 → `ConversationPort::update_system_prompt` 호출
+- `ConversationPort::send_message` → 다음 turn
 
-`DialogueEndRequested` → `RelationshipPolicy` → 3 follow-ups (`RelationshipUpdated` + `EmotionCleared` + `SceneEnded`) 흐름이 작동. 단 *내용*이 v0.7 목표와 다름:
+**Outer Loop 진입점** — `DialogueOrchestrator.end_session`:
+- (significance 있으면) `Command::EndDialogue.dispatch_v2().await`
+- 도메인 안에서 `RelationshipPolicy`가 `DialogueEndRequested` 수신 → 3 follow-ups (`RelationshipUpdated` + `EmotionCleared` + `SceneEnded`) 일괄 발행
+- 현재: 무조건 작동. 잡담도 axes 변화.
+- 목표 (Phase 1): Reflection 단계 추가 → is_chitchat / significance 게이트 통과 시만 RelationshipUpdated 발행 (EmotionCleared/SceneEnded는 항상)
 
-- 현재: 매 `after_dialogue` 호출 시 *무조건* RelationshipPolicy 작동
-- 목표: Reflection 단계로 is_chitchat 판정 후 *조건부* 진입
-
-→ Phase 1의 핵심 작업이 정확히 이 *gate 추가*.
+→ Phase 1의 핵심 작업이 정확히 이 *gate 추가*. 아키텍처 자체(Director/CommandDispatcher/DialogueOrchestrator)는 그대로 유지.
 
 ### 2.5 EventKind 인벤토리 (✅ 직접 verified)
 
@@ -159,9 +180,9 @@ pub struct EventMetadata {
 **비포함**: 4축 마이그레이션, BondKind, ActionTrigger, Channel 2/3.
 
 **포함**:
-- 도메인: `compute_significance(turns)` 함수, `TurnSnapshot` 구조체, `DialogueReflected` 새 EventKind + payload
-- Application: `ReflectionService` 신설 (LLM 호출 + engine signal 결합), `RelationshipPolicy` 진입 조건 변경 (DialogueReflected 받아 is_chitchat 분기)
-- MCP: `dialogue_end` tool에 ReflectionService 호출 추가, 결과 응답 노출 (디버깅용)
+- 도메인: `compute_significance(turns)` 함수 (위치 Stage 0 결정 — `domain/relationship.rs` 또는 신설 `domain/reflection.rs`), `TurnSnapshot` 구조체, `DialogueReflected` 새 EventKind + payload (`domain/event.rs`)
+- Application: `ReflectionService` 신설 (`application/reflection_service.rs`), `RelationshipPolicy` 진입 조건 변경 (`application/command/policies/relationship_policy.rs`). LLM 호출은 *dispatch_v2 바깥* (DialogueOrchestrator.end_session 안)에서 — UoW/dispatch 동기 fast-path 보존.
+- MCP: `dialogue_end` tool에 reflection 결과 응답 노출 (디버깅용)
 - 테스트: significance 4가지 신호 unit, 잡담/일상/결단 narrative integration
 
 **위험**: 작음. 도메인 모델 그대로. 기존 테스트 영향 미미.
@@ -175,7 +196,7 @@ pub struct EventMetadata {
    - **중간 (일상)**: 수련-춘설병 일상 무공 수련 대화 → is_chitchat=false, declarative_events 비어 있음, 기존 RelationshipPolicy 미세 axes 변화
    - **높음 (결단)**: 임충 산신묘 처단 사건 → DialogueReflected에 reasoning 박제, 기존 axes 큰 변화 작동
 
-**산출물 spec**: `task-rel-phase1-reflection.md` (별도 작성).
+**산출물 spec**: [`task-rel-phase1-reflection.md`](task-rel-phase1-reflection.md) (v0.1 작성됨, 2026-05-10).
 
 **완료 조건**: 위 4 게이트 통과 + Phase 1 checkpoint report.
 
@@ -279,18 +300,20 @@ pub struct EventMetadata {
 |---|---|---|---|
 | OCC appraise | rel §4.1 | `src/domain/emotion/` | (변경 없음) |
 | PAD | rel §4.4 Inner | `src/domain/pad.rs` | (변경 없음) |
-| Inner Loop | rel §4.4 + §6.1 | `src/application/dialogue_orchestrator.rs` + `MindService::after_beat` | (변경 없음) |
-| Outer Loop entry | rel §4.4 + §6.1 | `MindService::after_dialogue` + `RelationshipPolicy` | Phase 1: Reflection 거쳐 분기 |
+| Inner Loop | rel §4.4 + §6.1 | `application/dialogue_orchestrator.rs::turn` + `BeatTransitioned`-trigger `update_system_prompt` | (변경 없음) |
+| Outer Loop entry | rel §4.4 + §6.1 | `DialogueOrchestrator::end_session` → `dispatch_v2(EndDialogue)` → `RelationshipPolicy` | Phase 1: ReflectionService 통과 후 dispatch (게이트 적용) |
 | Reflection | rel §6.2 | — | Phase 1: `src/application/reflection_service.rs` 신설 |
-| Engine significance | rel §6.3 | — | Phase 1: 도메인 함수 (위치 spec에서 결정) |
+| Engine significance | rel §6.3 | — | Phase 1: `src/domain/relationship.rs` 또는 신설 `domain/reflection.rs` (Stage 0 결정) |
 | DialogueReflected | rel §6.2 | — | Phase 1: `src/domain/event.rs` EventKind 추가 |
+| DTO (Reflection 응답) | rel §6.2 | `application/dto/` (7 도메인 분할) | Phase 1: `dto/scene.rs` 흡수 vs `dto/reflection.rs` 신설 (Stage 0 결정) |
+| UoW 영향 | (본 문서 §2.3) | `application/command/uow.rs` (HandlerShared 출력 쉐이프) | Phase 1: `RelationshipPolicy` 변경 시 *UoW 변경 등록* 패턴 확인 (Stage 0) |
 | 4 axes | rel §1 | 3축 (closeness/trust/power) | Phase 2: `src/domain/relationship.rs` 재작성 |
 | BondKind | rel §3.1 | — | Phase 2: 새 enum |
 | BondStatus | rel §3.5 | — | Phase 2 |
 | Partnership | rel §3.6 | — | Phase 2 |
 | type/type_history | rel §2 | — | Phase 2 |
-| Channel 1 Declarative | rel §6.4 | — | Phase 2: `reflection_service` 확장 |
-| 사회적 일관성 검증 (A~E) | rel §6.4 | — | Phase 2: `relationship_service` 확장 |
+| Channel 1 Declarative | rel §6.4 | — | Phase 2: `reflection_service.rs` 확장 + `command/policies/relationship_policy.rs` 진입 조건 변경 |
+| 사회적 일관성 검증 (A~E) | rel §6.4 | — | Phase 2: `command/policies/relationship_policy.rs` 확장 |
 | 적용 모드 (4-tier) | rel §6.4 | — | Phase 2: scenario JSON schema |
 | Channel 2 (BondKindCandidacy) | rel §6.4 | — | Phase 3a: `src/application/projection/bond_kind_candidacy.rs` |
 | Channel 3 (EventPropagator) | rel §6.4 | (Rumor/Information 인프라 일부) | Phase 3b: `src/application/event_propagator.rs` |
@@ -328,3 +351,4 @@ pub struct EventMetadata {
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-05-09 | 초안. relationships.md v0.7과 동반 신설. Phase 1/2/3a/3b/3c 정의 + Gap analysis + Concept-Code 매핑 + verification level 표기. |
+| v0.2 | 2026-05-10 | CLAUDE.md 갱신 반영: **MindService 폐기 정정** (v0.3.0 제거 — Director/CommandDispatcher/DialogueOrchestrator 단일화, §1·§2.3·§2.4 정정). **ports/ ISP 분할** (§2.2.5 신설, 7 모듈). **`agents/` → `policies/`** 리네임 반영 (§2.3, §6 매핑). **UnitOfWork 도입** 반영 (§2.3, §6 신설 행). **dto/ 7 도메인 분할** 반영 (§2.3). **Phase 1 §5 코드 경로 정확화**. |
