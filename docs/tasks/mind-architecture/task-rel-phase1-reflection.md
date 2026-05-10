@@ -134,14 +134,15 @@ OR  temporal_signals 비어 있지 않음       (Phase 3a 입력 — Phase 1엔 
 
 **필수 수정**:
 - `src/ports/` — `reflection.rs` 신규 추가, `mod.rs` 한 줄 추가
-- `src/adapter/` — `reflection_via_chat.rs` 신규
+- `src/adapter/` — `reflection_via_chat.rs` 신규, `memory_repository.rs` (시나리오 JSON `inner_compass` `serde(default)` deserialization — Stage 0 Findings F4)
 - `src/application/` — `reflection_service.rs` 신규, `command/policies/relationship_policy.rs` 수정, `dialogue_orchestrator.rs` 수정, DTO 한 곳
 - `src/domain/event.rs` — EventKind 추가, payload 확장
+- **`src/domain/personality.rs` — A-min: `Npc.inner_compass: Option<String>` 필드 + `compass_short_label() -> Option<&str>` 메서드 (~30 LoC, Stage 0 Findings F4 결정)**
 - `src/domain/relationship.rs` 또는 신규 `domain/reflection.rs` — `compute_significance` + `TurnSnapshot`
 - `src/bin/mind-studio/` — `domain_sync.rs` (dispatch_end_dialogue 응답 확장), `mcp_server.rs` (dialogue_end tool 응답 확장), 관련 handler
 
 **수정 금지**:
-- 다른 도메인 모듈 (`personality`, `pad`, `emotion`, `memory`, `world` 등)
+- 다른 도메인 모듈 (`pad`, `emotion`, `memory`, `world` 등) — *`personality`는 A-min minimal 변경 허용 (Stage 0 Findings F4)*
 - 다른 application service (`scene_service`, `situation_service`, `memory_projector`, `director` 등)
 - 다른 Inline 핸들러 (`telling_ingestion_handler`, `world_overlay_handler`, `scene_consolidation_handler`, `relationship_memory_handler`)
 - `command/dispatcher.rs` (UoW 흐름 자체) — 신규 핸들러 등록만 *주입 시점*에 결정 (변경 없음)
@@ -173,19 +174,23 @@ Phase 1에서는 *백엔드 응답에 reflection 필드만* 포함. Frontend는 
 
 ### 4.4 핵심 설계 결정 (확정 사항)
 
-이번 spec 작성 전 대화에서 합의된 11개 결정 — Phase 1 구현 시 *반드시 준수*.
+이번 spec 작성 전 대화에서 합의된 11개 결정 + Stage 0 Findings 신규 2개 (사)·(아) = **총 13개 결정** — Phase 1 구현 시 *반드시 준수*. Stage 0 결정 (가)~(마)는 Stage 0 Findings에서 확정, (바)는 A-min으로 선결정 (F4).
 
 1. **LLM 호출은 dispatch_v2 *바깥*** (DialogueOrchestrator.end_session 안). dispatch_v2의 동기 fast-path 보존. UoW invariant 유지.
 2. **별도 Reflection 에이전트** — 같은 LLM 모델, 별도 ConversationPort 세션. Dialogue 세션의 KV 캐시 유지.
-3. **OCP 준수** — `ReflectionService<P: ReflectionPort>` 제네릭. Phase 2.5+에서 다른 모델 어댑터 추가 시 기존 코드 변경 0.
+3. **OCP 준수** — `ReflectionService<P: ReflectionPort>` 제네릭. Phase 2.5+에서 다른 모델 어댑터 추가 시 기존 코드 변경 0. *Stage 0 보정 (Findings F2 #2)*: DialogueOrchestrator는 `<R, C>` 유지 + `Option<Arc<dyn ReflectionService>>` 트레이트 객체 — generic 추가 0.
 4. **Phase 1 어댑터** — `ConversationBackedReflectionPort<C: ConversationPort>`. 기존 ConversationPort 메서드(`start_session`/`send_message`/`end_session`)만 사용. 새 trait 메서드 추가 0.
-5. **TurnSnapshot 누적** — DialogueOrchestrator의 `turn_buffers: HashMap<SessionId, Vec<TurnSnapshot>>` 책임. 매 `turn()`에서 누적, `end_session()`에서 회수 후 ReflectionService 인자로 전달.
-6. **Reflection을 dispatch_v2 입력에** — `Command::EndDialogue { reflection }`. payload로 박혀 들어감. 핸들러는 *읽기만*.
+5. **TurnSnapshot 누적** — DialogueOrchestrator의 `turn_buffers: HashMap<SessionId, Vec<TurnSnapshot>>` 책임. 매 `turn()`에서 누적, `end_session()`에서 회수 후 ReflectionService 인자로 전달. *Stage 0 보정 (Findings F1 #3)*: plain HashMap (`&mut self` 일관성), Mutex 불필요.
+6. **Reflection을 dispatch_v2 입력에** — `Command::EndDialogue { reflection }`. payload로 박혀 들어감. 핸들러는 *읽기만*. *Stage 0 보정 (Findings F2 #1)*: `ReflectionResult`는 chat feature 무관 순수 도메인 타입 → 필드 항상 존재, chat 비활성 시 `None`.
 7. **DialogueReflected 항상 발행** — RelationshipPolicy가 outer loop skip 케이스에서도 reflection 결과를 박제 (memory_projector가 summary 흡수, audit 가능).
 8. **게이트 조건 정확** — `significance >= 0.3 OR !is_chitchat OR declarative_events 비어있지 않음 OR external_events 비어있지 않음 OR temporal_signals 비어있지 않음`.
 9. **Phase 1 placeholder** — declarative_events / partnership_event는 항상 *empty / None*. ReflectionLlmOutput 스키마에 슬롯은 있음, 사용은 Phase 2.
 10. **동기 실행** — Phase 1은 `end_session().await`이 reflection 완료까지 블록. Async 변형 (Director Spawner 활용)은 미래 phase.
 11. **JSON 파싱 실패 fallback** — invalid JSON or LLM timeout 시 fallback ReflectionResult. is_chitchat=false (보수적: outer loop 진입), significance=engine 값, declarative 비어있음. 게임 진행 막히지 않음.
+12. **(사) turn_buffers 소유 위치** — DialogueOrchestrator 내부 (Stage 0 Findings F3, *Bekay 확정 보류*). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection.
+13. **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 21 → 22로 상수 인상 (Stage 0 Findings F3 권장). 미인상 시 `EventBudgetExceeded`로 EndDialogue dispatch 실패. §11.7 위험 참조.
+
+**선결정 (Stage 0 Findings F4)** — (바) `compass_short_label()` 신설 전략: **A-min 채택** — `Npc.inner_compass: Option<String>` + `compass_short_label() -> Option<&str>` (~30 LoC, [src/domain/personality.rs](src/domain/personality.rs)). taboo/life_question은 Phase 3c 승격.
 
 ---
 
@@ -289,6 +294,116 @@ dir /B tests\dialogue_*.rs
 - [ ] Impact Map 표 (영향 파일 × 변경 종류) 완성
 
 → Stage 0 *코드 변경 0*. 분석·결정만. *spec 문서 갱신*이 산출물.
+
+---
+
+### Stage 0 Findings (2026-05-10 검토 결과)
+
+> **검토 환경**: Claude (claude-opus-4-7) — 본 워크트리 `claude/silly-engelbart-293e54` (commit `771de13` base, spec/KICKOFF는 main commit `87c8b32` untracked로 메인 저장소에만 존재). cargo test baseline·dispatch_v2 latency 미실측 (LLM 의존 통합 테스트는 llama-server 가동 환경 필요 — 후속 측정).
+> **검증 방법**: 8 grep audit 중 5 패턴 + 4 spot-read 모두 + 추가 6 파일. Explore 에이전트 2종 cross-check.
+
+#### F1. Tier B 7-가정 검증 결과
+
+| # | spec 가정 | 실제 코드 | 결과 |
+|---|---|---|---|
+| 1 | `RigChatAdapter` 다중 세션 동시 처리 | `Arc<RwLock<HashMap<String, ChatSession>>>` 기반 | ✅ — dialogue + reflection 세션 동시 보유 OK |
+| 2 | `RelationshipPolicy` follow-up 발행 | `relationship_policy.rs:194-231 handle_dialogue_end` 정확히 3 follow-up + UoW clear 시그널 | ✅ — spec 가정 정확. 게이트 추가는 본 메서드 분기 |
+| 3 | `DialogueOrchestrator` 세션→NPC 매핑 | `sessions: HashMap<String, SessionMeta>` (`&mut self` 직접, Mutex 없음) | ⚠️ — spec §2.5 `tokio::sync::Mutex<...>` 가정과 차이. **turn_buffers도 plain HashMap (`&mut self` 일관성)로** |
+| 4 | UoW `add_event` 호출 패턴 | UoW는 dirty checking; follow-up 이벤트는 `HandlerResult.follow_up_events: Vec<DomainEvent>` 반환 | ⚠️ — spec §2.4 의사코드 "ctx.add_event"는 부정확. `Ok(HandlerResult { follow_up_events: vec![...] })` 반환 패턴이 맞음 |
+| 5 | `AfterDialogueResponse` 위치 | `src/application/dto/relationship.rs` 별도 모듈 (DialogueOrchestrator는 `dto/mod.rs` re-export) | ✅ — 결정 (나)는 (b) 신규 `dto/reflection.rs`가 깔끔 |
+| 6 | `Npc::compass_short_label()` 메서드 | ❌ 부재. `Npc` = `id/name/description/personality: HexacoProfile` 4 필드. **`inner_compass` 도메인 자체 부재** | ⚠️ → ✅ **A-min 채택** (사용자 확정 2026-05-10). F4 참조 |
+| 7 | `uuid` crate 의존성 | `Cargo.toml:42` — `uuid = { version = "1.11", features = ["v4"], optional = true }` (embed/mind-studio gated) | ⚠️ — **chat feature 단독에서 미가용**. chat에 추가하거나 reflection_sid를 `format!("reflection-{epoch_ms}-{counter}")`로 우회 |
+
+**가정 검증 결론**: 7개 중 ✅ 4 / ⚠️ 3 (F2 의사코드 보정 + F4 결정으로 모두 해소). 본질적 blocker 0건.
+
+#### F2. spec이 다루지 않은 코드 사실 (5건)
+
+1. **`Command::EndDialogue` 시그니처** ([types.rs:38-42](src/application/command/types.rs:38)) — 현재 `npc_id/partner_id/significance: Option<f32>` 3 필드. spec의 `reflection: Option<ReflectionResult>` 추가는 결정 (다)와 정합 — **`ReflectionResult`를 chat feature 무관 순수 도메인 타입으로** 두면 `EventPayload::DialogueEndRequested` 필드도 항상 존재 가능 (필드 자체는 항상 존재, chat 비활성 시 `None`).
+
+2. **`DialogueOrchestrator` 제네릭** ([dialogue_orchestrator.rs:140](src/application/dialogue_orchestrator.rs:140)) — 현재 `<R: MindRepository, C: ConversationPort>`. spec §2.5의 `<R, C, P: ReflectionPort>` 추가는 모든 callsite 깨뜨림. **권장 보정**: `reflection_service: Option<Arc<dyn ReflectionService>>` 트레이트 객체 또는 `Option<Box<dyn ...>>` — generic 추가 0, OCP 유지, callsite 무영향.
+
+3. **`EventPayload::DialogueEndRequested` 현재 payload** ([event.rs:39](src/domain/event.rs:39)) — 정확히 spec 가정과 일치. spec §7.2의 "기존 호출자 reflection: None 추가" 작업은 **Director 경로 포함 grep 필수** (F3 §6.6 참조).
+
+4. **`EventKind` enum 변형 확장 영향** ([event.rs:23-77](src/domain/event.rs:23)) — 현재 28 variants. `DialogueReflected` 추가 시 (a) `payload_type()` 매칭, (b) `EventPayload::aggregate_key()` → `AggregateKey::Npc(npc_id)`, (c) `EventKind::iter()`는 부재 → 모든 `EventKind::` grep 위치 수동 추가, (d) `correlation_id`/`parent_event_id`는 BFS 큐잉 시 자동 설정.
+
+5. **`RelationshipPolicy::handle_v2`의 partner_id 회수** — spec §2.4 의사코드 "..."는 단순 `.clone()`로 충족. **`DialogueEndRequested` payload에 이미 `partner_id` 포함** ([relationship_policy.rs:60-62](src/application/command/policies/relationship_policy.rs:60)). 별도 ctx 호출 불필요.
+
+#### F3. 신규 결정 항목 (사)·(아)
+
+기존 결정 (가)~(마) 5개 + 본 검토 신규 2개 (= 총 13개, 단 (바)는 F4로 선결정):
+
+- **(사) turn_buffers 소유 위치** — DialogueOrchestrator vs Mind Studio AppState. *권장*: DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection. **결정 보류 (Stage 1 진입 전 Bekay 확정)**.
+- **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 현재 21 (worst-case). `DialogueReflected` 1개 추가 → 22가 됨. 옵션: (a) 상수 22로 인상 (가장 단순) (b) 21 유지 + DialogueReflected를 Inline phase로 이관 (cascade 깊이 감소). *권장*: **(a)** — 상수 인상 (테스트 회귀 0).
+
+#### F4. ❗ A-min 결정 (사용자 확정 2026-05-10) — `Npc::compass_short_label()` 신설
+
+spec §2.3 `DefaultReflectionPromptBuilder.build()`가 호출. 현재 부재. `Npc` 도메인에 **`inner_compass` 필드 자체 미존재** — `_schema.md`/character-validation 문서에만 정의된 디자인 콘텐츠.
+
+**A-min 구현** (~30 LoC, [src/domain/personality.rs](src/domain/personality.rs)):
+1. `Npc` struct: `inner_compass: Option<String>` 필드 추가 (4 → 5 필드)
+2. `NpcBuilder::with_inner_compass(s)` 빌더 메서드 (NpcBuilder 패턴 일관성)
+3. `Npc::inner_compass(&self) -> Option<&str>` getter
+4. `Npc::compass_short_label(&self) -> Option<&str>` — Phase 1: `inner_compass.as_deref()` 그대로 (cut 없음). 후속에서 첫 N자 cut 또는 short_form 필드
+5. 시나리오 JSON 로더 ([adapter/memory_repository.rs](src/adapter/memory_repository.rs) `from_file/from_json`): `serde(default)` deserialization — 기존 시나리오 호환
+
+**범위**: compass 한 줄만. taboo/life_question은 Phase 3c (ActionTrigger) 시점에 `InnerCompass` struct로 승격. YAGNI.
+
+**spec 본문 영향**: 
+- §4.1 "수정 금지"에서 `personality` 제외 (minimal 변경 허용 명시)
+- §9.3 "변경 없음" 표에서 `personality.rs` 제거
+- §9.2 "수정 파일" 표에 `personality.rs` + `adapter/memory_repository.rs` 행 추가
+- §11에 신규 위험 1건 (시나리오 JSON migration — F5 참조)
+
+→ Stage 0 결정 (바) **선결정 — 폐지**.
+
+#### F5. spec §11에 누락된 위험 (2건 추가)
+
+§11.7 + §11.8로 본 spec 하단에 추가됨. 요약:
+- **§11.7 event budget** — `MAX_EVENTS_PER_COMMAND = 21` → 22 인상 필요. 미인상 시 `EventBudgetExceeded` 에러로 `EndDialogue` dispatch 실패.
+- **§11.8 inner_compass JSON migration** — 기존 시나리오 JSON에 `inner_compass` 키 부재. `serde(default)` + `Option`으로 회피. 검증 시나리오 3종 (chitchat-passerby/daily-training/lin-chong-shanshenmiao)에는 명시적으로 inner_compass 추가.
+
+#### F6. 의사코드 보정 (Stage 1~2 진입 전)
+
+spec 본문 의사코드 2곳 보정 필요:
+- **§2.4 `ctx.add_event(...)` → `Ok(HandlerResult { follow_up_events: vec![...] })`** — UoW는 dirty checking. follow-up 이벤트는 HandlerResult 반환으로 전달 (BFS 큐잉).
+- **§2.5 `cfg!(feature = "chat")` → `#[cfg(feature = "chat")]`** — 런타임 bool이 아니라 컴파일 타임 어노테이션이어야 ReflectionService 타입 컴파일 제외 가능.
+
+#### F7. spec §10.11 Director 경로 — Phase 1에서도 grep 필수
+
+spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPayload::DialogueEndRequested.reflection` 필드 추가 시 **모든 호출자에 `reflection: None` 명시 필수** — 컴파일 에러 회피. Director는 `Command::EndDialogue` dispatch하므로 [src/application/director/](src/application/director/) 디렉토리 grep + `reflection: None` 추가 작업이 Stage 1 마지막 cleanup에 포함.
+
+#### F8. 추가 spot-read 권장 (구현 진입 전)
+
+본 검토는 Explore 에이전트 보고에 일부 의존. 구현 시작 전 직접 Read 권장:
+- [ ] `src/adapter/rig_chat.rs` 본문 (Tier B #1 직접 검증)
+- [ ] `Cargo.toml` chat feature 섹션 (async-trait 포함 여부, F1 #7 관련)
+- [ ] `src/application/director/` 디렉토리 (F7 grep 대상)
+- [ ] `docs/game-design/2-characters/relationships.md` §6 본문 — Phase 1 가드레일 5조건 정의
+- [ ] `dispatcher.rs`의 `MAX_EVENTS_PER_COMMAND` 상수 + 21 도달 worst-case 경로 (F3 (아) 결정 입력)
+
+#### F9. Impact Map
+
+| 영역 | 신규 | 수정 | 영향만 (테스트 fixture) |
+|---|---|---|---|
+| Domain | `domain/reflection.rs` | `event.rs` (EventKind+payload 확장) · **`personality.rs` (A-min)** | — |
+| Ports | `ports/reflection.rs` | `mod.rs` re-export | — |
+| Adapter | `adapter/reflection_via_chat.rs` | `mod.rs` re-export · **`memory_repository.rs` (JSON deserialize)** | — |
+| Application | `reflection_service.rs` · `dto/reflection.rs` | `mod.rs` · `dto/mod.rs` · `command/types.rs` (조건부) · `policies/relationship_policy.rs` · `dialogue_orchestrator.rs` | — |
+| Mind Studio | — | `state.rs` · `domain_sync.rs` · `mcp_server.rs` · `handlers/*` · (선택) `events.rs` | — |
+| Tests | `reflection_service_test.rs` · `relationship_policy_phase1_test.rs` · `phase1_{chitchat,daily_training,shanshenmiao}_test.rs` | — | `dispatch_v2_test.rs` · `dialogue_*.rs` · `director_test.rs` (`reflection: None` 추가) |
+| Scenarios | `data/scenarios/phase1-validation/{chitchat-passerby,daily-training,lin-chong-shanshenmiao}.json` | — | — |
+
+#### F10. 권장 작업 순서 (Stage 1~5 진입 전)
+
+| 순서 | 작업 | 산출물 |
+|---|---|---|
+| 0 | 워크트리 prep — 본 spec/KICKOFF/relationships.md를 작업 워크트리에 sync (`87c8b32` rebase 또는 cherry-pick) | 모든 reference doc 가용 |
+| 1 | `cargo test --workspace --features chat,embed,listener_perspective` baseline 박제 + 환경 명시 (llama-server 가동 여부) | 회귀 검증 base |
+| 2 | F8 추가 spot-read 5개 완료 + Findings에 결과 박제 (필요 시) | F1·F4·F7 보강 |
+| 3 | F3 결정 (사)·(아) Bekay 확정 | spec §4.4 13 결정 fix |
+| 4 | **Stage 1 직전** — `Npc::inner_compass` + `compass_short_label()` 신설 (~30 LoC, **분리 commit**). 기존 NPC 생성 callsite는 `Option` 기본값으로 자동 호환 | A-min 인프라 완료 |
+| 5 | Stage 1~5 spec대로. Stage 1 마지막에 모든 dispatch 호출자 (Director 포함) `reflection: None` 추가 | Phase 1 완료 |
+| 6 | (신규) Stage 6 — `docs/changes/` changelog + `mind-architecture/00-roadmap.md` Phase 1 완료 표기 + checkpoint report | Phase 1 archive |
 
 ---
 
@@ -1711,6 +1826,9 @@ findstr /S /I "declarative_events" src\application\reflection_service.rs
 | 역할 | 경로 | 변경 종류 |
 |---|---|---|
 | EventKind + EventPayload | `src/domain/event.rs` | variant 2개 추가, payload 1개 확장 |
+| **A-min: Npc.inner_compass + compass_short_label** | **`src/domain/personality.rs`** | **`inner_compass: Option<String>` 필드 + getter + `compass_short_label() -> Option<&str>` + `NpcBuilder::with_inner_compass()` (~30 LoC, Stage 0 Findings F4)** |
+| **A-min: 시나리오 JSON inner_compass deserialize** | **`src/adapter/memory_repository.rs`** | **`from_file/from_json` 경로에 `serde(default)` 호환 — 기존 시나리오 무영향 (Stage 0 Findings F4)** |
+| dispatcher 안전한계 (조건부) | `src/application/command/dispatcher.rs` | `MAX_EVENTS_PER_COMMAND = 21` → 22 (결정 13 / Stage 0 Findings F3 (아), §11.7 참조) |
 | RelationshipPolicy 핸들러 | `src/application/command/policies/relationship_policy.rs` | DialogueEndRequested 핸들 게이트 추가, DialogueReflected 발행 추가 |
 | DialogueOrchestrator | `src/application/dialogue_orchestrator.rs` | turn_buffers 필드 + turn() 누적 + end_session() reflection + with_reflection() 빌더 |
 | Ports mod | `src/ports/mod.rs` | `pub mod reflection;` 한 줄 |
@@ -1727,19 +1845,18 @@ findstr /S /I "declarative_events" src\application\reflection_service.rs
 
 확인용 명시 — 본 phase가 *건드리지 않는 곳*:
 
-- `src/domain/personality.rs`, `pad.rs`, `pad_anchors.rs`, `pad_table.rs`
+- `src/domain/pad.rs`, `pad_anchors.rs`, `pad_table.rs` *(`personality.rs`는 A-min으로 §9.2로 이동 — Stage 0 Findings F4)*
 - `src/domain/emotion/` 전체
 - `src/domain/relationship.rs` (Stage 0 결정 (가)에서 (b) 선택 시 — `domain/reflection.rs` 신설이라 relationship.rs 변경 0)
 - `src/domain/memory/`, `src/domain/rumor.rs`
 - `src/domain/world/` 전체
 - `src/domain/listener_perspective/`
-- `src/application/command/dispatcher.rs` — UoW 흐름 변경 없음
-- `src/application/command/uow.rs` — 변경 없음
+- `src/application/command/uow.rs` — 변경 없음 *(`dispatcher.rs`의 `MAX_EVENTS_PER_COMMAND` 상수는 §9.2로 이동 — 결정 13 / Stage 0 Findings F3 (아))*
 - `src/application/command/policies/` 중 relationship_policy 외 (emotion/stimulus/guide/scene/information/rumor/world_overlay)
 - `src/application/command/{telling_ingestion,rumor_distribution,world_overlay,scene_consolidation,relationship_memory}_handler.rs` — Inline 핸들러 5종
 - `src/application/director/` — Director 경로는 Phase 1.5
 - `src/application/{event_bus,event_store,memory_projector,scene_service,situation_service}.rs`
-- `src/adapter/` 중 `rig_chat.rs`, `memory_repository.rs`, `sqlite_*` 등 — *변경 없음* (ConversationPort 시그니처 그대로)
+- `src/adapter/` 중 `rig_chat.rs`, `sqlite_*` 등 — *변경 없음* (ConversationPort 시그니처 그대로). *`memory_repository.rs`는 A-min JSON deserialize로 §9.2 이동 — Stage 0 Findings F4*
 - `src/ports/` 중 `chat.rs` 자체 — *변경 없음* (트레이트 시그니처 그대로 유지, 새 트레이트 reflection.rs는 별도)
 - `src/worldbuilding/`, `src/lore/`
 - `src/bin/world_load.rs`, `src/bin/lore_ingest.rs`
@@ -1919,6 +2036,28 @@ Phase 1.5 task에서 Director 경로도 동등 reflection 거치게 통일.
 
 **잔여 위험**: 외부 사용자가 자체 어댑터/테스트로 EndDialogue 직접 dispatch하는 경우, 새 `reflection` 필드 명시 필요. 0.x 버전이라 breaking 허용 가능. CLAUDE.md changelog에 명시.
 
+### 11.7 `MAX_EVENTS_PER_COMMAND = 21` budget 초과 (Stage 0 Findings F3·F5)
+
+**증상**: `EndDialogue` 경로의 worst-case가 현재 21 이벤트 (`MAX_EVENTS_PER_COMMAND = 21`로 설정). `DialogueReflected` 1개 추가 시 22가 되어 dispatcher가 `DispatchV2Error::EventBudgetExceeded`로 실패.
+
+**완화**:
+- 결정 13 (아) — `dispatcher.rs`의 `MAX_EVENTS_PER_COMMAND` 상수 22로 인상 (단순)
+- 또는 `DialogueReflected`를 Inline phase로 이관 — cascade 깊이 변경 없이 분리. 단 Stage 1~2 spec과 어긋나므로 권장 안 함
+- Stage 5 bench에서 worst-case 이벤트 수 *재실측* — 21 외 다른 dispatch (TellInformation 등)도 22 도달하는지 확인. 안전마진 고려 시 24~25 권장 가능
+
+**잔여 위험**: 후속 phase에서 더 많은 follow-up 추가 시 같은 문제 반복. 위험 catalog에 "event budget" 항목 상시 모니터링 필요.
+
+### 11.8 시나리오 JSON `inner_compass` migration (Stage 0 Findings F4)
+
+**증상**: A-min으로 `Npc.inner_compass: Option<String>` 추가. 기존 시나리오 JSON ([data/scenarios/](data/scenarios/) · [data/treasure_island/](data/treasure_island/) · [data/presets/](data/presets/) 등)에는 `inner_compass` 키 부재. deserialize 실패 또는 *모든 NPC compass 미설정*.
+
+**완화**:
+- `serde(default)` + `Option<String>` — deserialize 시 키 부재 → `None`. **기존 시나리오 무영향** (compile + runtime 모두 호환).
+- 검증 시나리오 3종 (chitchat-passerby/daily-training/lin-chong-shanshenmiao)에는 명시적으로 inner_compass 추가 — Stage 4 narrative validation에서 Reflection prompt가 작동하는지 검증.
+- 후속: 모든 wuxia 시나리오에 inner_compass 점진 추가 — Phase 2 디자이너 작업 (별도 task).
+
+**잔여 위험**: chat feature 활성 + reflection 호출 + NPC `inner_compass = None` 시 prompt builder가 빈 라벨 → LLM이 캐릭터 톤 못 잡음. fallback: `Npc::name()`만 사용해도 chitchat 판정은 가능. 검증 시나리오에 inner_compass 명시로 회피.
+
 ---
 
 ## 변경 이력
@@ -1926,3 +2065,4 @@ Phase 1.5 task에서 Director 경로도 동등 reflection 거치게 통일.
 | 버전 | 일자 | 변경 |
 |---|---|---|
 | v0.1 | 2026-05-10 | 초안. relationships.md v0.7 §6 + 00-roadmap.md v0.2 Phase 1 정의 기반. 6 stage (Stage 0 Pre-flight Impact Analysis 포함) + 11개 핵심 결정 + 3 narrative validation 시나리오 + OCP 준수 (`ReflectionPort` trait + `ConversationBackedReflectionPort` 어댑터). |
+| v0.2 | 2026-05-10 | **Stage 0 Findings 박제** (10 sub-section F1~F10 — Tier B 7-가정 검증, spec 의사코드 보정 5건, 결정 (사)·(아) 추가 → 13개 결정, A-min `Npc.inner_compass` 선결정 (F4), 위험 §11.7 (event budget) + §11.8 (JSON migration) 추가, 의사코드 §2.4 / §2.5 보정 노트 (F6), F7 Director grep 필수, F8 추가 spot-read 5개, F9 Impact Map, F10 권장 작업 순서 6단계). 연쇄 수정: §4.1 수정 금지 표에서 `personality` 제외 / §9.2 `personality.rs` + `memory_repository.rs` + `dispatcher.rs` 행 추가 / §9.3 해당 항목 이동 표기. |
