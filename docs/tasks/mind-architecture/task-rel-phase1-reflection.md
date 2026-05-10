@@ -364,23 +364,118 @@ spec §2.3 `DefaultReflectionPromptBuilder.build()`가 호출. 현재 부재. `N
 
 #### F6. 의사코드 보정 (Stage 1~2 진입 전)
 
-spec 본문 의사코드 2곳 보정 필요:
+spec 본문 의사코드 3곳 보정 필요:
 - **§2.4 `ctx.add_event(...)` → `Ok(HandlerResult { follow_up_events: vec![...] })`** — UoW는 dirty checking. follow-up 이벤트는 HandlerResult 반환으로 전달 (BFS 큐잉).
 - **§2.5 `cfg!(feature = "chat")` → `#[cfg(feature = "chat")]`** — 런타임 bool이 아니라 컴파일 타임 어노테이션이어야 ReflectionService 타입 컴파일 제외 가능.
+- **§2.3 prompt builder의 `taboo`/`life_question` 처리** — F8.4가 발견한 갭. relationships.md §6.2 LLM 입력 명세는 **compass + taboo + life_question + 현재 PAD** 4종을 모두 요구. 그러나 Phase 1 A-min은 compass만 도메인에 추가 (F4). **Phase 1 prompt builder는 taboo/life_question을 None placeholder 또는 prompt에서 제외**. Phase 3c에서 `InnerCompass` struct 승격 시 자동으로 활성화. 현재 PAD는 turn_buffers의 `TurnSnapshot.pad_after`에서 회수 — `compute_significance`도 같은 데이터 사용하므로 추가 비용 0.
 
 #### F7. spec §10.11 Director 경로 — Phase 1에서도 grep 필수
 
 spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPayload::DialogueEndRequested.reflection` 필드 추가 시 **모든 호출자에 `reflection: None` 명시 필수** — 컴파일 에러 회피. Director는 `Command::EndDialogue` dispatch하므로 [src/application/director/](src/application/director/) 디렉토리 grep + `reflection: None` 추가 작업이 Stage 1 마지막 cleanup에 포함.
 
-#### F8. 추가 spot-read 권장 (구현 진입 전)
+#### F8. 추가 spot-read 결과 (2026-05-10 ✅ 모두 완료)
 
-본 검토는 Explore 에이전트 보고에 일부 의존. 구현 시작 전 직접 Read 권장:
-- [ ] `src/adapter/rig_chat.rs` 본문 (Tier B #1 직접 검증)
-- [ ] `Cargo.toml` chat feature 섹션 (async-trait 포함 여부, F1 #7 관련)
-- [ ] `src/application/director/` 디렉토리 (F7 grep 대상)
-- [ ] `docs/game-design/2-characters/relationships.md` §6 본문 — Phase 1 가드레일 5조건 정의
-- [ ] `dispatcher.rs`의 `MAX_EVENTS_PER_COMMAND` 상수 + 21 도달 worst-case 경로 (F3 (아) 결정 입력)
-- [ ] **`docs/game-design/2-characters/_schema.md` 본문** — 현재 정의된 NPC/Relationship/Scene schema와 *코드의 시나리오 JSON 로더*가 일치하는지. `00-roadmap.md` §6.5 _schema.md 추적 표의 `❓` 행 해소. inner_compass 정의 여부 + 4축/BondKind/type_history 정의 여부 catch.
+본 sub-section은 *원래* "구현 진입 전 권장" 체크리스트였으나, F11 baseline 측정 후 6개 spot-read 모두 완료. 결과 박제:
+
+##### F8.1 ✅ `src/adapter/rig_chat.rs` (Tier B #1 직접 검증)
+
+**구조**:
+```rust
+pub struct RigChatAdapter {
+    sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
+    // ...
+}
+
+struct ChatSession {
+    system_prompt: String,
+    rig_history: Vec<Message>,
+    dialogue_history: Vec<DialogueTurn>,
+    generation_config: Option<LlmModelInfo>,
+}
+```
+
+`start_session(&self, sid, ...)` / `send_message(&self, sid, ...)` / `end_session(&self, sid)` 모두 `&self` async + 내부 RwLock으로 동시성 보장.
+
+**평가**: ✅ Phase 1 어댑터 (`ConversationBackedReflectionPort<C: ConversationPort>`)가 같은 RigChatAdapter 인스턴스로 dialogue + reflection 세션 동시 보유 가능. spec §2.2의 패턴 그대로 작동.
+
+##### F8.2 ✅ `Cargo.toml` chat feature 섹션 (F1 #7 관련)
+
+```toml
+chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
+```
+
+- `async-trait` ✅ chat에 이미 포함 — Phase 1 `ReflectionPort` trait의 `#[async_trait]` 사용 OK
+- `uuid` ❌ chat 단독에서 *미가용* (embed/mind-studio feature gated, line 42). **결정**: reflection_sid는 `format!("reflection-{epoch_ms}-{counter}")` 또는 atomic counter 우회 (chat에 uuid 추가 안 함 — Phase 1 의존성 0건 유지 원칙)
+
+##### F8.3 ✅ `src/application/director/` 디렉토리 (F7 grep 대상)
+
+`Command::EndDialogue` literal 발생 위치 — Phase 1 Stage 1 마지막 cleanup에 `reflection: None` 추가 필수:
+
+| 파일:line | 컨텍스트 |
+|---|---|
+| [src/application/director/mod.rs:187](src/application/director/mod.rs:187) | `Director::end_scene` 메서드 — `tx.send(Command::EndDialogue { npc_id, partner_id, significance })` |
+| [tests/dispatch_v2_test.rs:494](tests/dispatch_v2_test.rs:494) | dispatch_v2 통합 테스트 |
+| [tests/memory_consolidation_test.rs:40](tests/memory_consolidation_test.rs:40) | Memory Step D consolidation 테스트 |
+| [tests/memory_relationship_cause_test.rs:98](tests/memory_relationship_cause_test.rs:98) | RelationshipChangeCause 테스트 |
+
+→ **총 4개 callsite**. 컴파일 회피는 `reflection: None` 한 줄 추가로 충분. 본격 reflection 통합은 Phase 1.5 (spec §10.11 그대로).
+
+##### F8.4 ✅ `relationships.md` v0.7 §6 본문 — 가드레일 5조건
+
+**§6.4 가드레일 정확 문구** (lines 816~839):
+```
+Outer Loop 진입:
+  significance >= 0.3
+  OR  declarative_events 비어 있지 않음
+  OR  external_events 비어 있지 않음
+  OR  temporal_signals 비어 있지 않음
+
+거꾸로: is_chitchat && significance < 0.3 → outer loop skip
+```
+
+spec 결정 8 ("significance >= 0.3 OR !is_chitchat OR ...")과 **본질 동등**, 단 표현 형식만 역(skip 조건) vs 양(진입 조건). 실제 분기 결과 동일.
+
+**§6.2 LLM 입력 명세 갭** (lines 648~651) — ⚠️ **신규 발견**:
+```
+LLM 입력:
+  - turn-level OCC 누적 리스트
+  - 대화 transcript
+  - NPC: compass / taboo / life_question / 현재 PAD       ← spec §2.3 누락
+  - 대상 NPC 정보 / 현재 BondKind / axes
+```
+
+spec §2.3 `DefaultReflectionPromptBuilder.build()`는 `compass_short_label()`만 호출. **§6.2 명세는 `taboo` + `life_question` + 현재 PAD도 LLM 입력으로 요구**. 그러나 Phase 1 A-min은 compass만 추가 (taboo/life_question은 Phase 3c 이연). → **Phase 1 prompt builder는 taboo/life_question을 None placeholder 또는 제외 처리**. spec §2.3 의사코드 보정 필요 (F12 신규 보정 항목 — 변경 이력 v0.5 참조).
+
+**§6.3 Engine significance 정의** (lines 675~707): 4 신호 + 가중치 (peak_occ 0.40 / pad_magnitude 0.30 / diversity 0.15 / beat_signal 0.15) — spec §1.1 코드 완전 일치 ✅.
+
+##### F8.5 ✅ `dispatcher.rs` `MAX_EVENTS_PER_COMMAND` 21 도달 worst-case (F3 (아) 결정 입력)
+
+```rust
+pub const MAX_CASCADE_DEPTH: u32 = 4;          // line 33
+pub const MAX_EVENTS_PER_COMMAND: usize = 21;  // line 36
+// ... line 530:
+if state.staging_buffer.len() >= MAX_EVENTS_PER_COMMAND {
+    return Err(DispatchV2Error::EventBudgetExceeded);
+}
+```
+
+worst-case 경로: `Command::EndDialogue` → `DialogueEndRequested(1) + RelationshipUpdated(2) + EmotionCleared(3) + SceneEnded(4) + (3 inline projection events)` = ~7. 다른 Command (TellInformation 청자 N개 fanout 등)이 더 길 수 있어 21 limit 안전 마진 큼. Phase 1 `DialogueReflected` 추가 시 8 → 22 limit으로 인상 (결정 (아))은 dispatcher.rs **한 줄** 변경 + 테스트 dependency 무 (`tests/dispatch_v2_test.rs:1054` 등은 `> 0` check만).
+
+##### F8.6 ✅ `_schema.md` 본문 — 갭 표 정확화
+
+00-roadmap.md §6.5의 ❓ 7행을 정확한 팩트로 치환 (별도 commit으로 roadmap 갱신):
+
+| 필드 | _schema.md 정의 | 코드 구현 | 갭 | Phase |
+|---|---|---|---|---|
+| `Npc.id`/`name`/`description`/`personality` (HEXACO 24) | ✅ Layer 1 (identity + temperament) | ✅ NpcJson + 24 facet 완전 | 없음 | 완료 |
+| `Npc.inner_compass` | ✅ **복합 객체** `{compass, taboo, life_question, taboo_crystallization}` | ❌ 부재 → Phase 1 A-min `Option<String>` (compass만) | 중 — Phase 1 partial | 1 (A-min) → 후속에서 `Option<InnerCompass>` 승격 forward-compat OK |
+| `Relationship` 4축 (trust/affinity/respect/wariness, ±100) | ✅ v0.6 명시 | ⚠️ 3축 (closeness/trust/power, ±1.0) — closeness ≠ affinity 의미론 다름 | 큼 | 2 |
+| `BondKind` 11 variants | ✅ v0.6 정의 | ❌ 부재 | 큼 | 2 |
+| `BondStatus` 5 / `Partnership` 4 / `type`/`type_history` | ✅ 정의 | ❌ 부재 | 큼 | 2 |
+| 행동 관련 | ⚠️ 분리 (`action_triggers.md` v0.1 이관) | ❌ 부재 | 큼 (별도 spec) | 3c |
+| `Scene` / `Focus` | ◯ _schema.md 범위 외 | ✅ 완전 구현 (scene.rs + SceneJson) | 없음 | 완료 |
+
+**Phase 1 A-min `Option<String>` forward-compat 평가**: ✅ — 현재 null로 시작 → 후속 phase에서 `Option<InnerCompass>` 객체로 승격 시 JSON serde 호환 유지. 마이그레이션 비용 낮음 (enum variant wrapping).
 
 #### F9. Impact Map
 
@@ -400,7 +495,7 @@ spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPaylo
 |---|---|---|
 | 0 | 워크트리 prep — 본 spec/KICKOFF/relationships.md를 작업 워크트리에 sync (`87c8b32` rebase 또는 cherry-pick) | 모든 reference doc 가용 |
 | 1 | `cargo test --workspace --features chat,embed,listener_perspective` baseline 박제 + 환경 명시 (llama-server 가동 여부) — **✅ 완료 (2026-05-10): 1033 passed / 0 failed / 6 ignored / 289s walltime. F11 참조** | 회귀 검증 base |
-| 2 | F8 추가 spot-read 5개 완료 + Findings에 결과 박제 (필요 시) | F1·F4·F7 보강 |
+| 2 | F8 추가 spot-read 6개 완료 + Findings에 결과 박제 — **✅ 완료 (2026-05-10): F8.1~F8.6 모두 ✅. 신규 발견 1건 (taboo/life_question prompt 처리) F6에 반영** | F1·F4·F7 보강 |
 | 3 | F3 결정 (사)·(아) Bekay 확정 — **✅ 완료 (2026-05-10): (사) DialogueOrchestrator 내부 turn_buffers / (아) MAX_EVENTS_PER_COMMAND 22로 인상** | spec §4.4 13 결정 fix |
 | 4 | **Stage 1 직전** — `Npc::inner_compass` + `compass_short_label()` 신설 (~30 LoC, **분리 commit**). 기존 NPC 생성 callsite는 `Option` 기본값으로 자동 호환 | A-min 인프라 완료 |
 | 5 | Stage 1~5 spec대로. Stage 1 마지막에 모든 dispatch 호출자 (Director 포함) `reflection: None` 추가 | Phase 1 완료 |
@@ -2118,3 +2213,4 @@ Phase 1.5 task에서 Director 경로도 동등 reflection 거치게 통일.
 | v0.2 | 2026-05-10 | **Stage 0 Findings 박제** (10 sub-section F1~F10 — Tier B 7-가정 검증, spec 의사코드 보정 5건, 결정 (사)·(아) 추가 → 13개 결정, A-min `Npc.inner_compass` 선결정 (F4), 위험 §11.7 (event budget) + §11.8 (JSON migration) 추가, 의사코드 §2.4 / §2.5 보정 노트 (F6), F7 Director grep 필수, F8 추가 spot-read 5개, F9 Impact Map, F10 권장 작업 순서 6단계). 연쇄 수정: §4.1 수정 금지 표에서 `personality` 제외 / §9.2 `personality.rs` + `memory_repository.rs` + `dispatcher.rs` 행 추가 / §9.3 해당 항목 이동 표기. |
 | v0.3 | 2026-05-10 | **결정 (사)·(아) Bekay 확정**: (사) turn_buffers는 DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). (아) `MAX_EVENTS_PER_COMMAND` 21 → 22로 상수 인상 (옵션 (a)). §4.4 결정 12·13 *보류 표기 → 확정 표기*. F3 본문도 같은 갱신. F10 §3 작업 ✅ 완료 표기. F8에 `_schema.md` spot-read 항목 추가 (00-roadmap.md §6.5 ❓ 행 해소 입력). **Phase 1 Stage 1 인계 100% 준비 완료**. |
 | v0.4 | 2026-05-10 | **F11 Baseline 측정 결과 박제** — 1033 passed / 0 failed / 6 ignored / 289s walltime (Run 2, junction 적용 후 통과). 환경 (Rust 1.94.0 / chat,embed,listener_perspective / llama-server gemma-4-E4B + bge-m3 ONNX). baseline 측정 중 발견한 환경 이슈 4건 문서화 (워크트리 cwd vs `../models` 하드코딩 → junction 회피, CRT mismatch → `cargo clean` + `CFLAGS=/MD`, PowerShell UTF-16 default, PowerShell `2>&1` ErrorRecord wrap). 로그 산출물 `baselines/cargo-test-2026-05-10-PASS.log` (91KB) + `baselines/README.md`. F10 §1 ✅ 완료 표기. |
+| v0.5 | 2026-05-10 | **F8 spot-read 6항목 모두 ✅ 박제** — F8.1 RigChatAdapter 다중 세션 (`Arc<RwLock<HashMap<String, ChatSession>>>` verified) / F8.2 Cargo.toml chat feature `dep:async-trait` 포함 (uuid는 미포함, reflection_sid는 epoch_ms+counter 우회) / F8.3 Director::end_scene callsite 4곳 catalog (Director mod.rs:187 + 테스트 3곳) / F8.4 relationships.md §6.4 가드레일 본문 vs spec 결정 8 — 본질 동등 (역형식 표현) / F8.5 dispatcher.rs MAX_EVENTS_PER_COMMAND=21 worst-case 7~8 → 22 인상 안전 마진 큼 / F8.6 _schema.md 갭 표 7행 정확화 (00-roadmap.md §6.5 ❓→팩트 별도 commit). **신규 발견 1건**: relationships.md §6.2 LLM 입력 명세가 **taboo/life_question/현재 PAD**도 요구. Phase 1 A-min은 compass만 추가하므로 prompt builder에서 taboo/life_question은 None placeholder 또는 제외 필요 — F6 의사코드 보정 항목 1건 신규 추가. F10 §2 ✅ 완료 표기. **Stage 1 인계 100% 준비 완료** (재확인). |

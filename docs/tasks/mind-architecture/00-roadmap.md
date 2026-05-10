@@ -355,19 +355,17 @@ pub struct EventMetadata {
 
 ### _schema.md 추적 (시나리오 JSON schema, *현재 SOR*)
 
-⚠️ **_schema.md ↔ 코드 schema 동기화 spot-check 미완료** — 본 추적 표는 *부분 추정*. Phase 1 Stage 0 Findings F8에 "_schema.md 본문 직접 read + 코드 schema와 갭 catch" 항목 추가 권장.
+✅ **_schema.md ↔ 코드 schema 동기화 spot-check 완료 (2026-05-10, Phase 1 Stage 0 Findings F8.6)** — 본 표 7행 모두 ❓ → 정확한 팩트로 치환.
 
-| 필드/섹션 | _schema.md 정의 | 코드 schema | 갭 | 동기화 phase |
+| 필드/섹션 | _schema.md v0.6 정의 | 코드 구현 상태 | 갭 분류 | 동기화 phase |
 |---|---|---|---|---|
-| `Npc.id` / `name` / `description` / `personality` | ❓ 추정 — 정의됨 | ✅ 4 필드 (Phase 1 F4 verified) | 없음 (추정) | 동기화 완료 |
-| `Npc.inner_compass` | ❓ 미확인 | ❌ 부재 | A-min Phase 1 추가 | **1 ★** |
-| `Relationship` 4 axes | ❓ 미확인 | 3축 (closeness/trust/power) | ❓ | 2 |
-| `BondKind` 필드 | ❓ 미확인 | ❌ 부재 | ❓ | 2 |
-| `BondStatus` / `Partnership` / `type` / `type_history` | ❓ 미확인 | ❌ 부재 | ❓ | 2 |
-| 행동 관련 필드 (선택) | ❓ 미확인 | ❌ 부재 | ❓ | 3c |
-| Scene / Beat / Focus | ❓ 미확인 | ✅ 코드 존재 | ❓ | 동기화 완료 (추정) |
-
-→ **`_schema.md` *어느 버전*인지·코드와 얼마나 어긋나 있는지 spot-check 필요**. Phase 1 진행 중 자연 발견 또는 별도 audit task.
+| `Npc.id` / `name` / `description` / `personality` (HEXACO 24) | ✅ Layer 1 정의 (identity + temperament) | ✅ NpcJson + 24 facet 완전 ([memory_repository.rs:72-126](../../../src/adapter/memory_repository.rs)) | 없음 | 완료 |
+| `Npc.inner_compass` (compass/taboo/life_question/taboo_crystallization 4-필드 nested) | ✅ Layer 2 복합 객체 | ❌ 부재 → Phase 1 A-min `Option<String>` (compass만, [personality.rs:335](../../../src/domain/personality.rs:335) 신설 예정) | 중 — Phase 1 partial. Forward-compat OK (null start → 후속 `Option<InnerCompass>` 승격 시 serde 호환) | **1 ★ (A-min)** → 3c (taboo/life_question 승격) |
+| `Relationship` 4축 (trust/affinity/respect/wariness, ±100) | ✅ v0.6 명시 | ⚠️ 3축 (closeness/trust/power, ±1.0) — closeness ≠ affinity 의미론 다름 | 큼 — 의미·범위 모두 재작성 | 2 |
+| `BondKind` 11 variants (지기 6 + Mentor + 원수 4) | ✅ v0.6 정의 (Companion·Guardian 포함) | ❌ 부재 | 큼 — enum 통째 신설 | 2 |
+| `BondStatus` 5 / `Partnership` 4 / `type` / `type_history` | ✅ 정의 (Active/Resolved/Deceased/Dormant/Reactivating · Spouse/Engaged/Lover/Separated · 자유 텍스트 + 누적 배열) | ❌ 부재 | 큼 — enum + 자유 텍스트 + history 배열 신설 | 2 |
+| 행동 관련 필드 (ActionKind / 5-dim feasibility) | ⚠️ _schema.md 범위 외 (분리 — `action_triggers.md` v0.1 이관, v0.6 신설 원칙 §0 "분류와 행동은 분리") | ❌ 부재 (`domain/action_trigger.rs` 미존재) | 큼 — 별도 spec 본위 | 3c |
+| `Scene` / `SceneFocus` / `FocusTrigger` | ◯ _schema.md 범위 외 (인물 schema만 다룸) | ✅ 완전 구현 ([scene.rs](../../../src/domain/emotion/scene.rs) + SceneJson [memory_repository.rs:217-227](../../../src/adapter/memory_repository.rs:217)) | 없음 | 완료 |
 
 ### 종합 — 디자인-코드 정합 진척
 
@@ -380,9 +378,11 @@ action_triggers.md   [▒▒▒▒▒▒▒▒▒▒]    0%
                        ↑
                        Phase 3c까지 코드 변경 0
 
-_schema.md           [██████▒▒▒▒]   ~60% 추정 (verified: id/name/description/personality)
-                       ↑
-                       Phase 1 inner_compass +1 필드, Phase 2에 4축+BondKind 등 큰 갱신
+_schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F8.6 spot-check 후 갱신)
+                       ↑                Layer 1 (HEXACO 24+identity) ✅ + Scene/Focus ✅ 완료
+                       Phase 1 inner_compass partial (+5%, A-min compass만)
+                       Phase 2 4축+BondKind+BondStatus+Partnership+type/type_history (+50%)
+                       Phase 3c inner_compass full (taboo/life_question 승격) + 행동 (별도 spec)
 ```
 
 ### 디자인 문서 진화 정책
@@ -433,3 +433,4 @@ _schema.md           [██████▒▒▒▒]   ~60% 추정 (verified: i
 | v0.1 | 2026-05-09 | 초안. relationships.md v0.7과 동반 신설. Phase 1/2/3a/3b/3c 정의 + Gap analysis + Concept-Code 매핑 + verification level 표기. |
 | v0.2 | 2026-05-10 | CLAUDE.md 갱신 반영: **MindService 폐기 정정** (v0.3.0 제거 — Director/CommandDispatcher/DialogueOrchestrator 단일화, §1·§2.3·§2.4 정정). **ports/ ISP 분할** (§2.2.5 신설, 7 모듈). **`agents/` → `policies/`** 리네임 반영 (§2.3, §6 매핑). **UnitOfWork 도입** 반영 (§2.3, §6 신설 행). **dto/ 7 도메인 분할** 반영 (§2.3). **Phase 1 §5 코드 경로 정확화**. |
 | v0.3 | 2026-05-10 | **§6.5 디자인 문서 추적 신설** — relationships.md / action_triggers.md / _schema.md 각 섹션이 어느 phase에서 코드 반영되는지 명시적 매핑. 종합 진척 그래프. 디자인 문서 진화 정책 (Phase 시작 시 freeze, 완료 시 표 갱신, 새 문서 추가 시 동시 추적 행 추가). §7에 갱신 규칙 6번 항목 추가. _schema.md ↔ 코드 schema 동기화 spot-check 필요 (추정 행 ❓ 표기). 디자이너(Bekay) 시점에서 *디자인이 언제 결실 맺는지* 추적 가능. |
+| v0.4 | 2026-05-10 | **§6.5 _schema.md 추적 표 ❓ 7행 → 정확한 팩트로 치환** (Phase 1 Stage 0 Findings F8.6 결과). _schema.md v0.6 vs 코드: Layer 1 (HEXACO+identity) ✅ 완료 / inner_compass ❌ → Phase 1 A-min `Option<String>` partial / 4축·BondKind·BondStatus·Partnership·type 모두 큼 갭 → Phase 2 / 행동 별도 spec → Phase 3c / Scene/Focus _schema.md 범위 외 + 코드 완료. 진척 그래프 보정 — _schema.md ~60% 추정 → ~30% verified (이전 추정 과대평가). |
