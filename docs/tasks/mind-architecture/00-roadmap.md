@@ -321,6 +321,85 @@ pub struct EventMetadata {
 | ActionTriggerEvaluator | action §5 | — | Phase 3c: `src/domain/action_trigger.rs` |
 | 추모 행동 emit | rel §4.5.5 | — | Phase 3c: ActionTriggerEvaluator의 한 분기 |
 
+## 6.5 디자인 문서 추적
+
+본 표는 *디자인 문서*의 각 섹션이 *어느 phase에서 코드에 반영되는지* 추적. 디자이너 시점에서 *작성한 디자인이 언제 결실 맺는지* 한눈에 보기 위함. 디자인 문서 진화 또는 phase 완료 시 본 표 갱신.
+
+### relationships.md 추적 (v0.7 기준)
+
+| 섹션 | 정의 | 반영 phase | 현재 % | 완료 마커 |
+|---|---|---|---|---|
+| §0 명제 | LLM↔Engine 분업 6 명제 | 1 + 0-pillars Pillar 6 격상 | 50% (00-pillars.md v0.2 반영) | Phase 1 완료 시 100% |
+| §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | 0% | Phase 2 |
+| §2 type / type_history | 자유 텍스트 + 이력 | 2 | 0% | Phase 2 |
+| §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | 0% | Phase 2 |
+| §3.5 BondStatus 5종 | Active/Resolved/Deceased/Dormant/Reactivating | 2 | 0% | Phase 2 |
+| §3.6 Partnership 4종 | Spouse/Engaged/Lover/Separated | 2 | 0% | Phase 2 |
+| §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1) + 3a (Ch2) + 3b (Ch3) | 0% | Phase 3b 완료 시 |
+| §4.5.5 추모 행동 | RecollectionAction 5종 | 3c | 0% | Phase 3c |
+| §5 LLM acting guide | ActingGuide 명세 | 부분 — PAD 기반 acting guide 코드 존재 | ~40% | Phase 2에서 풍부화 |
+| **§6 Scene Boundary Reflection** | **LLM↔Engine 분업·Reflection·is_chitchat 게이트·DialogueReflected** | **1 ★ 진행 중** | **0% → Phase 1 완료 시 100%** | Phase 1 완료 |
+| §7 미정의 영역 | 후속 작업 카탈로그 | - | - | - |
+
+### action_triggers.md 추적 (v0.1 기준)
+
+| 섹션 | 정의 | 반영 phase | 현재 % |
+|---|---|---|---|
+| §1 흐름도 + RelationshipUpdater 입력 | 트리거 흐름 정합 (v0.7 노트만 추가됨) | 3c | 0% |
+| §2 5-dim feasibility | physical / power / social / self / moral | 3c | 0% |
+| §3 비대칭 가중 | `positive^0.6 × qualifier^0.4` | 3c | 0% |
+| §4 moral_alignment 차단 | < 0.1이면 전체 0 (taboo) | 3c | 0% |
+| §5 29 ActionKind | SystemicResistance · RevengeQuest · HandleHeirloom 등 | 3c | 0% |
+
+→ **action_triggers.md 전체가 Phase 3c**. 그 전까지 코드 0%. Phase 3a/3b 출력 (BondKindEntered/NpcLearnedAbout 등) 모두 입력으로 받음.
+
+### _schema.md 추적 (시나리오 JSON schema, *현재 SOR*)
+
+⚠️ **_schema.md ↔ 코드 schema 동기화 spot-check 미완료** — 본 추적 표는 *부분 추정*. Phase 1 Stage 0 Findings F8에 "_schema.md 본문 직접 read + 코드 schema와 갭 catch" 항목 추가 권장.
+
+| 필드/섹션 | _schema.md 정의 | 코드 schema | 갭 | 동기화 phase |
+|---|---|---|---|---|
+| `Npc.id` / `name` / `description` / `personality` | ❓ 추정 — 정의됨 | ✅ 4 필드 (Phase 1 F4 verified) | 없음 (추정) | 동기화 완료 |
+| `Npc.inner_compass` | ❓ 미확인 | ❌ 부재 | A-min Phase 1 추가 | **1 ★** |
+| `Relationship` 4 axes | ❓ 미확인 | 3축 (closeness/trust/power) | ❓ | 2 |
+| `BondKind` 필드 | ❓ 미확인 | ❌ 부재 | ❓ | 2 |
+| `BondStatus` / `Partnership` / `type` / `type_history` | ❓ 미확인 | ❌ 부재 | ❓ | 2 |
+| 행동 관련 필드 (선택) | ❓ 미확인 | ❌ 부재 | ❓ | 3c |
+| Scene / Beat / Focus | ❓ 미확인 | ✅ 코드 존재 | ❓ | 동기화 완료 (추정) |
+
+→ **`_schema.md` *어느 버전*인지·코드와 얼마나 어긋나 있는지 spot-check 필요**. Phase 1 진행 중 자연 발견 또는 별도 audit task.
+
+### 종합 — 디자인-코드 정합 진척
+
+```
+relationships.md     [█▒▒▒▒▒▒▒▒▒]   ~5%   (PAD 기반 acting guide만 부분)
+                       ↑
+                       Phase 1 진행 중 — §6 Reflection 100% 예정 (~15%로 도약)
+
+action_triggers.md   [▒▒▒▒▒▒▒▒▒▒]    0%
+                       ↑
+                       Phase 3c까지 코드 변경 0
+
+_schema.md           [██████▒▒▒▒]   ~60% 추정 (verified: id/name/description/personality)
+                       ↑
+                       Phase 1 inner_compass +1 필드, Phase 2에 4축+BondKind 등 큰 갱신
+```
+
+### 디자인 문서 진화 정책
+
+**Phase 시작 시 입력 디자인 문서 freeze**:
+- 각 phase task spec §1.1에 *입력 디자인 문서 + 버전 (또는 commit hash)* 명시
+- 진행 중 phase는 *그 시점의 freeze된 버전*으로 작업
+- 디자인 문서 진화 (v0.7 → v0.8 등)는 *진행 중 phase에 영향 0* — 다음 phase 시작 시 최신 버전으로 freeze 갱신
+
+**Phase 완료 시 본 §6.5 표 갱신**:
+- 해당 섹션 % → 100% 또는 `완료 마커` 갱신
+- *디자인 문서 자체*가 진화했다면 해당 행도 *최신* 정의로 갱신
+
+**디자인 문서 추가 작성 시점**:
+- 새 디자인 영역 (예: `companions.md`, `reputation.md`)을 *작성*하면 *동시에* 본 §6.5에 추적 행 추가
+- 어느 phase에서 코드 반영할지 *작성 시점에* 결정 (또는 *미정*으로 명시)
+
 ## 7. 유지 정책
 
 이 문서를 갱신하는 시점:
@@ -329,6 +408,7 @@ pub struct EventMetadata {
 3. 코드의 큰 마이그레이션 완료 (Phase X "✅ 완료" 표시)
 4. Gap analysis 표의 *현재* 컬럼이 코드 변화로 정확하지 않게 됐을 때
 5. §2의 verification level이 변화했을 때 (◯/△ → ✅ 승격)
+6. §6.5 디자인 문서 추적 — Phase 완료 또는 디자인 문서 진화 시 % 또는 완료 마커 갱신
 
 이 문서가 *대체하지 않는* 것:
 - design docs (game-design/) — *무엇*을 정의
@@ -352,3 +432,4 @@ pub struct EventMetadata {
 |---|---|---|
 | v0.1 | 2026-05-09 | 초안. relationships.md v0.7과 동반 신설. Phase 1/2/3a/3b/3c 정의 + Gap analysis + Concept-Code 매핑 + verification level 표기. |
 | v0.2 | 2026-05-10 | CLAUDE.md 갱신 반영: **MindService 폐기 정정** (v0.3.0 제거 — Director/CommandDispatcher/DialogueOrchestrator 단일화, §1·§2.3·§2.4 정정). **ports/ ISP 분할** (§2.2.5 신설, 7 모듈). **`agents/` → `policies/`** 리네임 반영 (§2.3, §6 매핑). **UnitOfWork 도입** 반영 (§2.3, §6 신설 행). **dto/ 7 도메인 분할** 반영 (§2.3). **Phase 1 §5 코드 경로 정확화**. |
+| v0.3 | 2026-05-10 | **§6.5 디자인 문서 추적 신설** — relationships.md / action_triggers.md / _schema.md 각 섹션이 어느 phase에서 코드 반영되는지 명시적 매핑. 종합 진척 그래프. 디자인 문서 진화 정책 (Phase 시작 시 freeze, 완료 시 표 갱신, 새 문서 추가 시 동시 추적 행 추가). §7에 갱신 규칙 6번 항목 추가. _schema.md ↔ 코드 schema 동기화 spot-check 필요 (추정 행 ❓ 표기). 디자이너(Bekay) 시점에서 *디자인이 언제 결실 맺는지* 추적 가능. |

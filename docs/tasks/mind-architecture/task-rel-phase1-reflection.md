@@ -187,8 +187,8 @@ Phase 1에서는 *백엔드 응답에 reflection 필드만* 포함. Frontend는 
 9. **Phase 1 placeholder** — declarative_events / partnership_event는 항상 *empty / None*. ReflectionLlmOutput 스키마에 슬롯은 있음, 사용은 Phase 2.
 10. **동기 실행** — Phase 1은 `end_session().await`이 reflection 완료까지 블록. Async 변형 (Director Spawner 활용)은 미래 phase.
 11. **JSON 파싱 실패 fallback** — invalid JSON or LLM timeout 시 fallback ReflectionResult. is_chitchat=false (보수적: outer loop 진입), significance=engine 값, declarative 비어있음. 게임 진행 막히지 않음.
-12. **(사) turn_buffers 소유 위치** — DialogueOrchestrator 내부 (Stage 0 Findings F3, *Bekay 확정 보류*). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection.
-13. **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 21 → 22로 상수 인상 (Stage 0 Findings F3 권장). 미인상 시 `EventBudgetExceeded`로 EndDialogue dispatch 실패. §11.7 위험 참조.
+12. **(사) turn_buffers 소유 위치** — DialogueOrchestrator 내부 (Stage 0 Findings F3, **Bekay 확정 2026-05-10**). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection.
+13. **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 21 → 22로 상수 인상 (Stage 0 Findings F3 옵션 (a), **Bekay 확정 2026-05-10**). 미인상 시 `EventBudgetExceeded`로 EndDialogue dispatch 실패. §11.7 위험 참조.
 
 **선결정 (Stage 0 Findings F4)** — (바) `compass_short_label()` 신설 전략: **A-min 채택** — `Npc.inner_compass: Option<String>` + `compass_short_label() -> Option<&str>` (~30 LoC, [src/domain/personality.rs](src/domain/personality.rs)). taboo/life_question은 Phase 3c 승격.
 
@@ -332,8 +332,8 @@ dir /B tests\dialogue_*.rs
 
 기존 결정 (가)~(마) 5개 + 본 검토 신규 2개 (= 총 13개, 단 (바)는 F4로 선결정):
 
-- **(사) turn_buffers 소유 위치** — DialogueOrchestrator vs Mind Studio AppState. *권장*: DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection. **결정 보류 (Stage 1 진입 전 Bekay 확정)**.
-- **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 현재 21 (worst-case). `DialogueReflected` 1개 추가 → 22가 됨. 옵션: (a) 상수 22로 인상 (가장 단순) (b) 21 유지 + DialogueReflected를 Inline phase로 이관 (cascade 깊이 감소). *권장*: **(a)** — 상수 인상 (테스트 회귀 0).
+- **(사) turn_buffers 소유 위치** — DialogueOrchestrator vs Mind Studio AppState. **확정 (Bekay 2026-05-10)**: DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). domain_sync는 별도 turn_buffers 미가짐 → Mind Studio가 DialogueOrchestrator 인스턴스를 통해서만 reflection.
+- **(아) `MAX_EVENTS_PER_COMMAND` 처리** — 현재 21 (worst-case). `DialogueReflected` 1개 추가 → 22가 됨. 옵션: (a) 상수 22로 인상 (가장 단순) (b) 21 유지 + DialogueReflected를 Inline phase로 이관 (cascade 깊이 감소). **확정 (Bekay 2026-05-10)**: **(a) 상수 22로 인상** — 테스트 회귀 0, dispatcher.rs 한 줄 변경.
 
 #### F4. ❗ A-min 결정 (사용자 확정 2026-05-10) — `Npc::compass_short_label()` 신설
 
@@ -380,6 +380,7 @@ spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPaylo
 - [ ] `src/application/director/` 디렉토리 (F7 grep 대상)
 - [ ] `docs/game-design/2-characters/relationships.md` §6 본문 — Phase 1 가드레일 5조건 정의
 - [ ] `dispatcher.rs`의 `MAX_EVENTS_PER_COMMAND` 상수 + 21 도달 worst-case 경로 (F3 (아) 결정 입력)
+- [ ] **`docs/game-design/2-characters/_schema.md` 본문** — 현재 정의된 NPC/Relationship/Scene schema와 *코드의 시나리오 JSON 로더*가 일치하는지. `00-roadmap.md` §6.5 _schema.md 추적 표의 `❓` 행 해소. inner_compass 정의 여부 + 4축/BondKind/type_history 정의 여부 catch.
 
 #### F9. Impact Map
 
@@ -400,7 +401,7 @@ spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPaylo
 | 0 | 워크트리 prep — 본 spec/KICKOFF/relationships.md를 작업 워크트리에 sync (`87c8b32` rebase 또는 cherry-pick) | 모든 reference doc 가용 |
 | 1 | `cargo test --workspace --features chat,embed,listener_perspective` baseline 박제 + 환경 명시 (llama-server 가동 여부) | 회귀 검증 base |
 | 2 | F8 추가 spot-read 5개 완료 + Findings에 결과 박제 (필요 시) | F1·F4·F7 보강 |
-| 3 | F3 결정 (사)·(아) Bekay 확정 | spec §4.4 13 결정 fix |
+| 3 | F3 결정 (사)·(아) Bekay 확정 — **✅ 완료 (2026-05-10): (사) DialogueOrchestrator 내부 turn_buffers / (아) MAX_EVENTS_PER_COMMAND 22로 인상** | spec §4.4 13 결정 fix |
 | 4 | **Stage 1 직전** — `Npc::inner_compass` + `compass_short_label()` 신설 (~30 LoC, **분리 commit**). 기존 NPC 생성 callsite는 `Option` 기본값으로 자동 호환 | A-min 인프라 완료 |
 | 5 | Stage 1~5 spec대로. Stage 1 마지막에 모든 dispatch 호출자 (Director 포함) `reflection: None` 추가 | Phase 1 완료 |
 | 6 | (신규) Stage 6 — `docs/changes/` changelog + `mind-architecture/00-roadmap.md` Phase 1 완료 표기 + checkpoint report | Phase 1 archive |
@@ -2066,3 +2067,4 @@ Phase 1.5 task에서 Director 경로도 동등 reflection 거치게 통일.
 |---|---|---|
 | v0.1 | 2026-05-10 | 초안. relationships.md v0.7 §6 + 00-roadmap.md v0.2 Phase 1 정의 기반. 6 stage (Stage 0 Pre-flight Impact Analysis 포함) + 11개 핵심 결정 + 3 narrative validation 시나리오 + OCP 준수 (`ReflectionPort` trait + `ConversationBackedReflectionPort` 어댑터). |
 | v0.2 | 2026-05-10 | **Stage 0 Findings 박제** (10 sub-section F1~F10 — Tier B 7-가정 검증, spec 의사코드 보정 5건, 결정 (사)·(아) 추가 → 13개 결정, A-min `Npc.inner_compass` 선결정 (F4), 위험 §11.7 (event budget) + §11.8 (JSON migration) 추가, 의사코드 §2.4 / §2.5 보정 노트 (F6), F7 Director grep 필수, F8 추가 spot-read 5개, F9 Impact Map, F10 권장 작업 순서 6단계). 연쇄 수정: §4.1 수정 금지 표에서 `personality` 제외 / §9.2 `personality.rs` + `memory_repository.rs` + `dispatcher.rs` 행 추가 / §9.3 해당 항목 이동 표기. |
+| v0.3 | 2026-05-10 | **결정 (사)·(아) Bekay 확정**: (사) turn_buffers는 DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). (아) `MAX_EVENTS_PER_COMMAND` 21 → 22로 상수 인상 (옵션 (a)). §4.4 결정 12·13 *보류 표기 → 확정 표기*. F3 본문도 같은 갱신. F10 §3 작업 ✅ 완료 표기. F8에 `_schema.md` spot-read 항목 추가 (00-roadmap.md §6.5 ❓ 행 해소 입력). **Phase 1 Stage 1 인계 100% 준비 완료**. |
