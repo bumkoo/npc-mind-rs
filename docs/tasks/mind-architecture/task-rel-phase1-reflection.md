@@ -399,12 +399,61 @@ spec §10.11은 Director.end_scene을 Phase 1.5로 미룸. 그러나 `EventPaylo
 | 순서 | 작업 | 산출물 |
 |---|---|---|
 | 0 | 워크트리 prep — 본 spec/KICKOFF/relationships.md를 작업 워크트리에 sync (`87c8b32` rebase 또는 cherry-pick) | 모든 reference doc 가용 |
-| 1 | `cargo test --workspace --features chat,embed,listener_perspective` baseline 박제 + 환경 명시 (llama-server 가동 여부) | 회귀 검증 base |
+| 1 | `cargo test --workspace --features chat,embed,listener_perspective` baseline 박제 + 환경 명시 (llama-server 가동 여부) — **✅ 완료 (2026-05-10): 1033 passed / 0 failed / 6 ignored / 289s walltime. F11 참조** | 회귀 검증 base |
 | 2 | F8 추가 spot-read 5개 완료 + Findings에 결과 박제 (필요 시) | F1·F4·F7 보강 |
 | 3 | F3 결정 (사)·(아) Bekay 확정 — **✅ 완료 (2026-05-10): (사) DialogueOrchestrator 내부 turn_buffers / (아) MAX_EVENTS_PER_COMMAND 22로 인상** | spec §4.4 13 결정 fix |
 | 4 | **Stage 1 직전** — `Npc::inner_compass` + `compass_short_label()` 신설 (~30 LoC, **분리 commit**). 기존 NPC 생성 callsite는 `Option` 기본값으로 자동 호환 | A-min 인프라 완료 |
 | 5 | Stage 1~5 spec대로. Stage 1 마지막에 모든 dispatch 호출자 (Director 포함) `reflection: None` 추가 | Phase 1 완료 |
 | 6 | (신규) Stage 6 — `docs/changes/` changelog + `mind-architecture/00-roadmap.md` Phase 1 완료 표기 + checkpoint report | Phase 1 archive |
+
+#### F11. Baseline 측정 결과 (2026-05-10)
+
+> **목적**: F10 §1 작업 — Phase 1 작업 *전*의 cargo test 통과 카운트 + 시간을 박제. Stage 5 Phase 1 완료 시 회귀 비교용. F1·F4·F7·F11이 모두 ✅ 되면 Stage 1 진입 100% 준비 완료.
+
+**환경**:
+- **OS**: Windows 11 Home (10.0.26200)
+- **Rust**: stable 1.94.0 / cargo 1.94.0 (x86_64-pc-windows-msvc)
+- **Features**: `chat,embed,listener_perspective`
+- **CRT**: `CFLAGS=/MD CXXFLAGS=/MD` (Windows ort 호환, CLAUDE.md 빌드 주의사항 §1)
+- **Locale**: `NPC_MIND_ANCHOR_LANG=ko`
+- **LLM 서버**: llama-server on `127.0.0.1:8081`, model `gemma-4-E4B-it-Q4_K_M.gguf` (7.5B params, 4.96GB) — *baseline 시점 가동 중*
+- **Embed 모델**: `bge-m3` ONNX at `C:\Users\bumko\projects\models\bge-m3` (`model_quantized.onnx` ~570MB INT8 + `tokenizer.json` ~17MB)
+- **Worktree commit**: `44bd753`
+- **빌드 사전 처리**: `cargo clean` (이전 빌드 산출물의 CRT mismatch 회피, 5GB / 5767 files 삭제 후 재빌드)
+
+**측정** (Run 2 — junction 적용 후 통과, 2026-05-10T22:52:54 ~ T22:57:43):
+
+| 메트릭 | 값 |
+|---|---|
+| **통과 (passed)** | **1033** |
+| 실패 (failed) | 0 |
+| 무시 (ignored) | 6 |
+| 전체 walltime (Run 2 only) | **289.18 s ≈ 4분 49초** |
+| 첫 빌드 walltime (Run 1 + 2 합산) | ≈ 11분 (Run 1: 6분 30초 빌드+실행, Run 2: 4분 49초 실행+일부 재컴) |
+| Test target 수 | 61 (lib unit + 60 integration/bench) |
+
+**시간 분포 (>5s 테스트, total 289s 중 ~250s)**:
+- `padmocha_bench` 등 PAD bench: 6~31s 각각 (총 ~150s)
+- `dialogue_orchestrator_*` chat 통합: 21~41s 각각 (총 ~120s)
+- 나머지 도메인 단위 테스트: <0.5s 각각 (총 ~10s)
+
+**로그**: [docs/tasks/mind-architecture/baselines/cargo-test-2026-05-10-PASS.log](baselines/cargo-test-2026-05-10-PASS.log) (UTF-8, 91KB) + [README.md](baselines/README.md)
+
+**baseline 측정 중 발견한 환경 이슈** (Phase 1 진입 전 *문서화 필수*):
+
+1. **워크트리 cwd vs `../models/bge-m3` 하드코딩** — `tests/embed_test.rs:25` 등이 *프로젝트 루트 기준* `"../models/bge-m3/..."` 상대 경로 사용. 워크트리 (`.claude/worktrees/<name>/`)에서는 `../models`가 `.claude/worktrees/models`를 가리켜 토크나이저 로드 실패. **회피**: `mklink /J .claude\worktrees\models C:\Users\bumko\projects\models` junction 생성 (1회). **장기 fix 권장**: `NPC_MIND_MODEL_DIR` 환경변수를 우선시하도록 테스트 코드 갱신 (Phase 1 범위 외, 후속 task).
+2. **CRT mismatch (`MSVCP140.dll` vs `libcpmt.lib`)** — `embed` feature 활성화 시 ort 정적 링크가 다른 CRT로 빌드된 산출물과 충돌 (`error LNK2005`). **회피**: `cargo clean` + `CFLAGS=/MD CXXFLAGS=/MD` 셸 환경변수 (CLAUDE.md 빌드 주의사항 §1 그대로). 환경변수 미설정 시 동일 에러 재발 — embed 빌드 전 *항상 명시* 필요.
+3. **PowerShell `Out-File` 기본 인코딩 UTF-16 LE** — log 파일을 grep으로 파싱 시 매칭 0건. **회피**: `-Encoding utf8` 명시 또는 `iconv -f UTF-16LE -t UTF-8` 후처리. CLAUDE.md PowerShell 노트 §3 그대로.
+4. **PowerShell `2>&1` ErrorRecord wrap** — cargo가 `warning:`을 stderr로 출력하면 PowerShell이 NativeCommandError로 wrap 후 `$LASTEXITCODE = 101` 반환 (cargo 자체는 exit 0). 본 baseline의 exit 101은 **false positive** — 통과 카운트는 정확. CLAUDE.md PowerShell 노트 §3 그대로.
+
+**용도**:
+- Phase 1 Stage 5 (Bench) 완료 시 같은 환경에서 재실행 → 회귀 0 검증 (target: ≥1033 passed, +Phase 1 신규 ≥10건)
+- LLM 의존 dialogue 통합 테스트 시간 (~120s) 분리 측정 권장 (Phase 1 LLM 호출 1회 추가 영향 측정)
+
+**다음 단계** (F10 §2~§4):
+- F8 5개 spot-read (`rig_chat.rs` · `Cargo.toml` chat features · `director/` · `relationships.md §6` · `dispatcher.rs MAX_EVENTS_PER_COMMAND` · `_schema.md`)
+- F4 A-min 분리 commit (Stage 1 직전, ~30 LoC)
+- Stage 1~5 spec대로 진입
 
 ---
 
@@ -2068,3 +2117,4 @@ Phase 1.5 task에서 Director 경로도 동등 reflection 거치게 통일.
 | v0.1 | 2026-05-10 | 초안. relationships.md v0.7 §6 + 00-roadmap.md v0.2 Phase 1 정의 기반. 6 stage (Stage 0 Pre-flight Impact Analysis 포함) + 11개 핵심 결정 + 3 narrative validation 시나리오 + OCP 준수 (`ReflectionPort` trait + `ConversationBackedReflectionPort` 어댑터). |
 | v0.2 | 2026-05-10 | **Stage 0 Findings 박제** (10 sub-section F1~F10 — Tier B 7-가정 검증, spec 의사코드 보정 5건, 결정 (사)·(아) 추가 → 13개 결정, A-min `Npc.inner_compass` 선결정 (F4), 위험 §11.7 (event budget) + §11.8 (JSON migration) 추가, 의사코드 §2.4 / §2.5 보정 노트 (F6), F7 Director grep 필수, F8 추가 spot-read 5개, F9 Impact Map, F10 권장 작업 순서 6단계). 연쇄 수정: §4.1 수정 금지 표에서 `personality` 제외 / §9.2 `personality.rs` + `memory_repository.rs` + `dispatcher.rs` 행 추가 / §9.3 해당 항목 이동 표기. |
 | v0.3 | 2026-05-10 | **결정 (사)·(아) Bekay 확정**: (사) turn_buffers는 DialogueOrchestrator 내부 (`HashMap<String, Vec<TurnSnapshot>>`, `&mut self` 일관성). (아) `MAX_EVENTS_PER_COMMAND` 21 → 22로 상수 인상 (옵션 (a)). §4.4 결정 12·13 *보류 표기 → 확정 표기*. F3 본문도 같은 갱신. F10 §3 작업 ✅ 완료 표기. F8에 `_schema.md` spot-read 항목 추가 (00-roadmap.md §6.5 ❓ 행 해소 입력). **Phase 1 Stage 1 인계 100% 준비 완료**. |
+| v0.4 | 2026-05-10 | **F11 Baseline 측정 결과 박제** — 1033 passed / 0 failed / 6 ignored / 289s walltime (Run 2, junction 적용 후 통과). 환경 (Rust 1.94.0 / chat,embed,listener_perspective / llama-server gemma-4-E4B + bge-m3 ONNX). baseline 측정 중 발견한 환경 이슈 4건 문서화 (워크트리 cwd vs `../models` 하드코딩 → junction 회피, CRT mismatch → `cargo clean` + `CFLAGS=/MD`, PowerShell UTF-16 default, PowerShell `2>&1` ErrorRecord wrap). 로그 산출물 `baselines/cargo-test-2026-05-10-PASS.log` (91KB) + `baselines/README.md`. F10 §1 ✅ 완료 표기. |
