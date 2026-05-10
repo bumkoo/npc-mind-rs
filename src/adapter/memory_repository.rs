@@ -123,12 +123,17 @@ struct NpcJson {
     creativity: f32,
     #[serde(default)]
     unconventionality: f32,
+    /// Phase 1 Mind Architecture A-min — 캐릭터 가치 한 줄.
+    /// 기존 시나리오 JSON에 키 부재 시 `None` (forward-compat).
+    /// _schema.md Layer 2 §inner_compass.compass와 직접 매핑.
+    #[serde(default)]
+    inner_compass: Option<String>,
 }
 
 impl NpcJson {
     fn to_npc(&self) -> Npc {
         let s = Score::clamped;
-        NpcBuilder::new(&self.id, &self.name)
+        let mut builder = NpcBuilder::new(&self.id, &self.name)
             .description(&self.description)
             .honesty_humility(|h| {
                 h.sincerity = s(self.sincerity);
@@ -165,8 +170,11 @@ impl NpcJson {
                 o.inquisitiveness = s(self.inquisitiveness);
                 o.creativity = s(self.creativity);
                 o.unconventionality = s(self.unconventionality);
-            })
-            .build()
+            });
+        if let Some(compass) = self.inner_compass.as_ref() {
+            builder = builder.with_inner_compass(compass);
+        }
+        builder.build()
     }
 }
 

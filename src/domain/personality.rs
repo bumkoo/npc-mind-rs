@@ -331,12 +331,20 @@ fn avg4(a: Score, b: Score, c: Score, d: Score) -> Score {
 /// NPC 엔티티 — 이름, 설명, 성격 프로필을 가진다
 ///
 /// 생성 후 필드 직접 변경 불가 — NpcBuilder 또는 Npc::new()를 통해 생성한다.
+///
+/// `inner_compass`는 Phase 1 Mind Architecture A-min 도입 — 캐릭터의 *움직이게 하는*
+/// 가치 한 줄 (예: "협지대자 위국위민"). Reflection prompt builder에서
+/// `compass_short_label()`로 회수해 LLM에 NPC 컨텍스트로 주입한다.
+/// taboo / life_question은 Phase 3c (`InnerCompass` struct 승격) 시 추가 예정.
+/// 디자인 참조: `docs/game-design/2-characters/_schema.md` Layer 2 §inner_compass.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Npc {
     id: String,
     name: String,
     description: String,
     personality: HexacoProfile,
+    #[serde(default)]
+    inner_compass: Option<String>,
 }
 
 impl Npc {
@@ -351,6 +359,7 @@ impl Npc {
             name: name.into(),
             description: description.into(),
             personality,
+            inner_compass: None,
         }
     }
 
@@ -365,6 +374,17 @@ impl Npc {
     }
     pub fn personality(&self) -> &HexacoProfile {
         &self.personality
+    }
+
+    /// 캐릭터의 *움직이게 하는* 가치 한 줄. 미설정 시 None.
+    pub fn inner_compass(&self) -> Option<&str> {
+        self.inner_compass.as_deref()
+    }
+
+    /// Reflection prompt builder용 짧은 라벨. Phase 1 = `inner_compass()`와 동일
+    /// (cut 없음). 후속 phase에서 첫 N자 cut 또는 `short_form` 필드로 분리 가능.
+    pub fn compass_short_label(&self) -> Option<&str> {
+        self.inner_compass()
     }
 
     /// 성격 지표를 기반으로 LLM 생성 파라미터를 도출한다 (Gemma 3 12B 최적화)
@@ -418,6 +438,7 @@ pub struct NpcBuilder {
     name: String,
     description: String,
     profile: HexacoProfile,
+    inner_compass: Option<String>,
 }
 
 impl NpcBuilder {
@@ -427,11 +448,19 @@ impl NpcBuilder {
             name: name.into(),
             description: String::new(),
             profile: HexacoProfile::neutral(),
+            inner_compass: None,
         }
     }
 
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = desc.into();
+        self
+    }
+
+    /// Phase 1 Mind Architecture A-min: 캐릭터의 가치 한 줄.
+    /// 미설정 시 `Npc::compass_short_label()` → None (Reflection prompt에서 제외).
+    pub fn with_inner_compass(mut self, compass: impl Into<String>) -> Self {
+        self.inner_compass = Some(compass.into());
         self
     }
 
@@ -471,6 +500,7 @@ impl NpcBuilder {
             name: self.name,
             description: self.description,
             personality: self.profile,
+            inner_compass: self.inner_compass,
         }
     }
 }
@@ -766,5 +796,64 @@ mod tests {
     fn finalize_weight_clamps_to_provided_range() {
         assert_eq!(finalize_weight(1.0, 5.0, CLAMP_STANDARD), CLAMP_STANDARD.1);
         assert_eq!(finalize_weight(0.0, -5.0, CLAMP_OPTIONAL), CLAMP_OPTIONAL.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 1 Mind Architecture A-min — inner_compass + compass_short_label
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn npc_new_defaults_inner_compass_to_none() {
+        let npc = Npc::new("a", "Alice", "desc", HexacoProfile::neutral());
+        assert_eq!(npc.inner_compass(), None);
+        assert_eq!(npc.compass_short_label(), None);
+    }
+
+    #[test]
+    fn npc_builder_with_inner_compass_sets_compass() {
+        let npc = NpcBuilder::new("lin", "임충")
+            .with_inner_compass("협지대자 위국위민")
+            .build();
+        assert_eq!(npc.inner_compass(), Some("협지대자 위국위민"));
+        assert_eq!(npc.compass_short_label(), Some("협지대자 위국위민"));
+    }
+
+    #[test]
+    fn npc_compass_short_label_is_alias_for_inner_compass_in_phase1() {
+        // Phase 1: cut 없음. 후속 phase에서 첫 N자 cut 또는 short_form 분리 가능.
+        let npc = NpcBuilder::new("g", "곽정")
+            .with_inner_compass("매우 길고 긴 가치 한 줄로 prompt token 부풀릴 수 있는 케이스")
+            .build();
+        assert_eq!(npc.inner_compass(), npc.compass_short_label());
+    }
+
+    #[test]
+    fn npc_inner_compass_serde_roundtrip_preserves_value() {
+        let npc = NpcBuilder::new("y", "수련")
+            .with_inner_compass("공성명수신퇴")
+            .build();
+        let json = serde_json::to_string(&npc).unwrap();
+        let back: Npc = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.inner_compass(), Some("공성명수신퇴"));
+    }
+
+    #[test]
+    fn npc_legacy_json_without_inner_compass_field_deserializes_as_none() {
+        // forward-compat: 기존 시나리오 JSON (inner_compass 키 부재)도 호환
+        let legacy_json = r#"{
+            "id": "old",
+            "name": "Legacy",
+            "description": "before A-min",
+            "personality": {
+                "honesty_humility": {"sincerity": 0.0, "fairness": 0.0, "greed_avoidance": 0.0, "modesty": 0.0},
+                "emotionality": {"fearfulness": 0.0, "anxiety": 0.0, "dependence": 0.0, "sentimentality": 0.0},
+                "extraversion": {"social_self_esteem": 0.0, "social_boldness": 0.0, "sociability": 0.0, "liveliness": 0.0},
+                "agreeableness": {"forgiveness": 0.0, "gentleness": 0.0, "flexibility": 0.0, "patience": 0.0},
+                "conscientiousness": {"organization": 0.0, "diligence": 0.0, "perfectionism": 0.0, "prudence": 0.0},
+                "openness": {"aesthetic_appreciation": 0.0, "inquisitiveness": 0.0, "creativity": 0.0, "unconventionality": 0.0}
+            }
+        }"#;
+        let npc: Npc = serde_json::from_str(legacy_json).expect("legacy JSON 호환 deserialize");
+        assert_eq!(npc.inner_compass(), None);
     }
 }
