@@ -444,10 +444,13 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         let dialogue_history = self.chat.end_session(session_id).await?;
 
         let after_dialogue = if let Some(sig) = significance {
+            // Phase 1: ReflectionService 부착은 Stage 2에서. 현재는 reflection=None.
+            // RelationshipPolicy의 게이트는 None일 때 기존 무조건 동작 fallback.
             let cmd = Command::EndDialogue {
                 npc_id: meta.npc_id.clone(),
                 partner_id: meta.partner_id.clone(),
                 significance: Some(sig),
+                reflection: None,
             };
             let output = self.dispatcher.dispatch_v2(cmd).await?;
             Some(self.build_end_dialogue_from_v2(&output)?)

@@ -99,6 +99,7 @@ async fn end_dialogue_creates_relationship_memory_with_cause_unspecified() {
             npc_id: "alice".into(),
             partner_id: "bob".into(),
             significance: Some(0.8),
+            reflection: None,
         })
         .await
         .expect("end");

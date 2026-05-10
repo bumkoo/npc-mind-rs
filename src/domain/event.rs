@@ -9,6 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use super::aggregate::AggregateKey;
 use super::emotion::{Scene, Situation};
 use super::memory::{MemoryLayer, MemoryScope, MemorySource, MemoryType, Provenance};
+use super::reflection::ReflectionResult;
 use super::rumor::{ReachPolicy, RumorOrigin};
 use super::scene_id::SceneId;
 
@@ -74,6 +75,12 @@ pub enum EventKind {
     /// 세계 오버레이 사건 발생 — 메모리 레이어에 `MemoryEntry(scope=World)` +
     /// 기존 Canonical supersede를 트리거 (Step D).
     WorldEventOccurred,
+
+    // ─── Reflection (Phase 1 Mind Architecture, relationships.md v0.7 §6) ────
+    /// Scene 종료 시 LLM Reflection 결과 박제 (chitchat 케이스 포함 항상 발행).
+    /// `RelationshipPolicy.handle_dialogue_end`가 첫 follow-up으로 emit하고,
+    /// memory_projector / audit tools가 구독한다.
+    DialogueReflected,
 }
 
 /// 청자 역할 — `InformationTold` 이벤트에 실림 (B5).
@@ -232,12 +239,20 @@ pub enum EventPayload {
         significance: Option<f32>,
     },
 
-    /// B4.1: EndDialogue 커맨드 → RelationshipPolicy 진입 (3 follow-ups: RelationshipUpdated
-    /// + EmotionCleared + SceneEnded). v1 `RelationshipPolicy::handle_end_dialogue` 등가.
+    /// B4.1: EndDialogue 커맨드 → RelationshipPolicy 진입 (Phase 1 Mind Architecture부터
+    /// 4 follow-ups: DialogueReflected ★신규 + (조건부) RelationshipUpdated + EmotionCleared
+    /// + SceneEnded). v1 `RelationshipPolicy::handle_end_dialogue` 등가.
+    ///
+    /// `reflection` 필드: chat feature 활성 + ReflectionService 거치면 `Some(...)` (게이트
+    /// 평가 → 잡담은 outer loop skip). chat 비활성 또는 호환 caller는 `None` (기존 무조건
+    /// 동작 — RelationshipUpdated 항상 발행). 본 필드는 chat feature 무관 순수 도메인
+    /// 타입이라 모든 빌드에서 컴파일 가능. 자세한 게이트 명세는 `relationships.md` v0.7 §6.4.
     DialogueEndRequested {
         npc_id: String,
         partner_id: String,
         significance: Option<f32>,
+        #[serde(default)]
+        reflection: Option<ReflectionResult>,
     },
 
     /// B4.1: StartScene 커맨드 → ScenePolicy 진입
@@ -327,6 +342,18 @@ pub enum EventPayload {
     /// 감정 상태 초기화
     EmotionCleared {
         npc_id: String,
+    },
+
+    /// Phase 1 Mind Architecture (relationships.md v0.7 §6) — Reflection 결과 박제.
+    ///
+    /// `RelationshipPolicy.handle_dialogue_end`가 outer loop skip 케이스에서도 *항상*
+    /// 발행 (chitchat 박제 + memory_projector summary 흡수 + audit/calibration tools).
+    /// Aggregate는 `Npc(npc_id)` — 관계 갱신이 아니라 NPC의 서사 평가 기록.
+    DialogueReflected {
+        npc_id: String,
+        partner_id: String,
+        scene_id: SceneId,
+        result: ReflectionResult,
     },
 
     // ─────────────────────────────────────────────────────────────────────
@@ -561,6 +588,7 @@ impl DomainEvent {
             EventPayload::InformationTold { .. } => "InformationTold",
             EventPayload::ApplyWorldEventRequested { .. } => "ApplyWorldEventRequested",
             EventPayload::WorldEventOccurred { .. } => "WorldEventOccurred",
+            EventPayload::DialogueReflected { .. } => "DialogueReflected",
         }
     }
 
@@ -625,7 +653,8 @@ impl DomainEvent {
             | RumorDistorted
             | RumorFaded
             | InformationTold
-            | WorldEventOccurred => false,
+            | WorldEventOccurred
+            | DialogueReflected => false,
         }
     }
 
@@ -662,6 +691,7 @@ impl DomainEvent {
             EventPayload::InformationTold { .. } => EventKind::InformationTold,
             EventPayload::ApplyWorldEventRequested { .. } => EventKind::ApplyWorldEventRequested,
             EventPayload::WorldEventOccurred { .. } => EventKind::WorldEventOccurred,
+            EventPayload::DialogueReflected { .. } => EventKind::DialogueReflected,
         }
     }
 
@@ -708,7 +738,8 @@ impl DomainEvent {
             | EventPayload::GuideRequested { npc_id, .. }
             | EventPayload::GuideGenerated { npc_id, .. }
             | EventPayload::DialogueTurnCompleted { npc_id, .. }
-            | EventPayload::EmotionCleared { npc_id } => AggregateKey::Npc(npc_id.clone()),
+            | EventPayload::EmotionCleared { npc_id }
+            | EventPayload::DialogueReflected { npc_id, .. } => AggregateKey::Npc(npc_id.clone()),
             EventPayload::StimulusApplied(p) => AggregateKey::Npc(p.npc_id.clone()),
 
             // Memory 컨텍스트 — `Memory(entry_id)`.

@@ -495,6 +495,7 @@ async fn v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state() {
             npc_id: "mu_baek".into(),
             partner_id: "gyo_ryong".into(),
             significance: Some(0.9),
+            reflection: None,
         })
         .await
         .expect("must succeed");

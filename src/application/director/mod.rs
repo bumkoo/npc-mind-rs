@@ -184,10 +184,13 @@ impl<R: MindRepository + Send + Sync + 'static> Director<R> {
                 .ok_or_else(|| DirectorError::SceneNotActive(scene_id.clone()))?
         };
 
+        // Phase 1: Director 경로의 Reflection 통합은 spec §10.11 (Phase 1.5)로 이연.
+        // 컴파일 회피용 `reflection: None` — RelationshipPolicy는 기존 무조건 동작 fallback.
         tx.send(Command::EndDialogue {
             npc_id: scene_id.npc_id.clone(),
             partner_id: scene_id.partner_id.clone(),
             significance,
+            reflection: None,
         })
         .await
         .map_err(|_| DirectorError::SceneChannelClosed(scene_id.clone()))?;

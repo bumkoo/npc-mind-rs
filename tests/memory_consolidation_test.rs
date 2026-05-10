@@ -41,6 +41,7 @@ async fn scene_ended_consolidates_layer_a_to_summary() {
             npc_id: "alice".into(),
             partner_id: "bob".into(),
             significance: Some(0.5),
+            reflection: None,
         })
         .await
         .expect("end dialogue");

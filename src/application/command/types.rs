@@ -1,6 +1,7 @@
 //! Command / CommandResult — CQRS Write Side 타입 정의
 
 use crate::domain::aggregate::AggregateKey;
+use crate::domain::reflection::ReflectionResult;
 
 use super::super::dto::*;
 
@@ -35,10 +36,17 @@ pub enum Command {
         significance: Option<f32>,
     },
     /// 대화 종료: 관계 갱신 + 감정 초기화 + Scene 정리
+    ///
+    /// `reflection` (Phase 1 Mind Architecture, relationships.md v0.7 §6) — chat feature
+    /// 활성 + ReflectionService 거치면 `Some(...)`. RelationshipPolicy가 게이트 평가
+    /// (잡담 skip / 의미 있는 사건 진입). chat 비활성 또는 호환 caller는 `None` (기존
+    /// 무조건 동작). `ReflectionResult`는 chat feature 무관 순수 도메인 타입이라
+    /// 모든 빌드에서 컴파일 가능 (Stage 0 Findings F2 #1 결정).
     EndDialogue {
         npc_id: String,
         partner_id: String,
         significance: Option<f32>,
+        reflection: Option<ReflectionResult>,
     },
     /// Scene 시작: Focus 옵션 등록 + 초기 평가
     StartScene {

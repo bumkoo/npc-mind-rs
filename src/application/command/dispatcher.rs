@@ -312,6 +312,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                 npc_id,
                 partner_id,
                 significance,
+                reflection,
             } => Ok(DomainEvent::new(
                 0,
                 npc_id.clone(),
@@ -320,6 +321,7 @@ impl<R: MindRepository> CommandDispatcher<R> {
                     npc_id: npc_id.clone(),
                     partner_id: partner_id.clone(),
                     significance,
+                    reflection,
                 },
             )),
             Command::TellInformation(req) => {

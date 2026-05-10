@@ -9,6 +9,7 @@ pub mod pad;
 pub mod pad_anchors;
 pub mod pad_table;
 pub mod personality;
+pub mod reflection;
 pub mod relationship;
 pub mod tuning;
 pub mod world;

@@ -60,6 +60,7 @@ impl EventHandler for RelationshipPolicy {
                 npc_id,
                 partner_id,
                 significance,
+                reflection: _,
             } => self.handle_dialogue_end(npc_id, partner_id, *significance, ctx),
 
             EventPayload::RelationshipUpdateRequested {
@@ -267,6 +268,7 @@ mod handler_v2_tests {
                 npc_id: npc_id.to_string(),
                 partner_id: partner_id.to_string(),
                 significance,
+                reflection: None,
             },
         )
     }
