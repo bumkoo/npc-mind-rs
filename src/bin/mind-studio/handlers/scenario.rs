@@ -41,7 +41,10 @@ pub async fn after_dialogue(
     State(state): State<AppState>,
     Json(req): Json<AfterDialogueRequest>,
 ) -> Result<Json<AfterDialogueResponse>, AppError> {
-    let response = StudioService::perform_after_dialogue(&state, req).await?;
+    // Phase 1.5: REST /api/after-dialogue 경로는 session_id를 보유하지 않으므로
+    // reflection 미실행 (legacy 경로). chat 종료 흐름은 perform_chat_end가 session_id
+    // 와 함께 호출하므로 reflection이 자동 실행된다.
+    let response = StudioService::perform_after_dialogue(&state, req, None).await?;
     Ok(Json(response))
 }
 

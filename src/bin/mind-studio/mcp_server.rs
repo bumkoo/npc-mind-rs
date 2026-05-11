@@ -751,7 +751,8 @@ impl MindMcpService {
             }
             "after_dialogue" => {
                 let req: AfterDialogueRequest = serde_json::from_value(arguments["req"].clone()).map_err(|e| e.to_string())?;
-                let resp = StudioService::perform_after_dialogue(&self.state, req).await.map_err(|e: AppError| e.to_string())?;
+                // MCP 경로도 session_id 미보유 — legacy 경로.
+                let resp = StudioService::perform_after_dialogue(&self.state, req, None).await.map_err(|e: AppError| e.to_string())?;
                 Ok(serde_json::to_value(resp).map_err(|e| e.to_string())?)
             }
             "generate_guide" => {

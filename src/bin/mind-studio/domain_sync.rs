@@ -170,21 +170,21 @@ pub async fn dispatch_stimulus(
 
 /// `Command::EndDialogue` dispatch — 관계 갱신 + 감정 clear + Scene clear.
 ///
-/// Phase 1 Mind Architecture: Mind Studio domain_sync 경로는 turn_buffers 미보유 →
-/// `reflection: None`으로만 dispatch (legacy 동작 — RelationshipPolicy의 None 분기로
-/// 기존 무조건 RelationshipUpdated 발행). DialogueOrchestrator 경로(/api/v2/* /
-/// 추후 chat 통합 패스)와 *서로 다른 동작*. spec §3.2 결정 (사) 그대로
-/// (Phase 1.5 frontend 통합 시 일원화 검토).
+/// Phase 1.5 Mind Architecture: `reflection` 인자는 caller가 `state.reflection_service`로
+/// 미리 산출해 전달. `None`이면 legacy 동작 (RelationshipPolicy의 None 분기로 기존
+/// 무조건 RelationshipUpdated 발행). `Some(_)`이면 chitchat 게이트가 outer loop 진입을
+/// 판단 — chitchat 시 RelationshipUpdated 미발행, axes 보존.
 pub async fn dispatch_end_dialogue(
     state: &AppState,
     inner: &mut StateInner,
     req: npc_mind::application::dto::AfterDialogueRequest,
+    reflection: Option<npc_mind::domain::reflection::ReflectionResult>,
 ) -> Result<AfterDialogueResponse, AppError> {
     let cmd = Command::EndDialogue {
         npc_id: req.npc_id.clone(),
         partner_id: req.partner_id.clone(),
         significance: req.significance,
-        reflection: None,
+        reflection,
     };
     let output = state.shared_dispatcher.dispatch_v2(cmd).await?;
 

@@ -16,6 +16,10 @@ use npc_mind::application::command::{
     EmotionProjectionHandler, RelationshipProjectionHandler, SceneProjectionHandler,
 };
 use npc_mind::application::director::{Director, Spawner};
+#[cfg(feature = "chat")]
+use npc_mind::application::reflection_service::ReflectionRunner;
+#[cfg(feature = "chat")]
+use npc_mind::domain::reflection::TurnSnapshot;
 use npc_mind::application::event_bus::EventBus;
 use npc_mind::application::event_store::InMemoryEventStore;
 use npc_mind::application::projection::{
@@ -65,6 +69,14 @@ pub struct AppState {
     /// llama-server 모니터링 (health, slots, metrics)
     #[cfg(feature = "chat")]
     pub llm_monitor: Option<Arc<dyn npc_mind::ports::InferenceServerMonitor>>,
+    /// Phase 1.5 Mind Architecture (`relationships.md` v0.7 §6) — Scene Boundary
+    /// Reflection runner. chat feature 활성 + main.rs에서 부착 시에만 Some.
+    ///
+    /// 부착되면 `perform_chat_end`(또는 `perform_after_dialogue`)가 turn buffer를
+    /// 회수하여 `service.reflect()` 호출 → `Command::EndDialogue { reflection }`로
+    /// dispatch. 미부착이면 reflection=None → legacy 호환 (기존 무조건 RelationshipUpdated).
+    #[cfg(feature = "chat")]
+    pub reflection_service: Option<Arc<dyn ReflectionRunner>>,
     /// MCP 서버 인스턴스 (정적 타입)
     pub mcp_server: Option<Arc<crate::mcp_server::MindMcpService>>,
     /// chat feature 비활성 시 컴파일 호환용
@@ -296,6 +308,8 @@ impl AppState {
             llm_detector: None,
             #[cfg(feature = "chat")]
             llm_monitor: None,
+            #[cfg(feature = "chat")]
+            reflection_service: None,
             mcp_server: None,
             director_v2,
             shared_dispatcher,
@@ -388,6 +402,17 @@ impl AppState {
     #[cfg(feature = "chat")]
     pub fn with_llm_monitor(mut self, monitor: Arc<dyn npc_mind::ports::InferenceServerMonitor>) -> Self {
         self.llm_monitor = Some(monitor);
+        self
+    }
+
+    /// Phase 1.5 — ReflectionService 부착 (chat feature).
+    ///
+    /// 부착 후 `perform_chat_end` 또는 `perform_after_dialogue` 경로가 turn buffer를
+    /// 회수해 `service.reflect()`를 호출하고 결과를 `Command::EndDialogue { reflection }`로
+    /// dispatch. 미부착 시 `reflection: None` → 기존 무조건 RelationshipUpdated 동작.
+    #[cfg(feature = "chat")]
+    pub fn with_reflection(mut self, service: Arc<dyn ReflectionRunner>) -> Self {
+        self.reflection_service = Some(service);
         self
     }
 
@@ -527,6 +552,18 @@ pub struct StateInner {
     /// Beat 전환 시 0으로 리셋된다.
     #[serde(skip)]
     pub script_cursor: usize,
+    /// Phase 1.5 Mind Architecture: 세션별 TurnSnapshot 누적 버퍼.
+    ///
+    /// `reflection_service` 부착 시에만 채워진다. `process_chat_turn_result`가
+    /// 각 chat 턴마다 푸시, `perform_chat_end`가 회수하여 `service.reflect()`에 전달.
+    /// `#[serde(skip)]`로 직렬화 제외 (런타임 전용).
+    ///
+    /// DialogueOrchestrator의 `turn_buffers`와 동일한 책임이지만 Mind Studio는
+    /// DialogueOrchestrator를 사용하지 않고 ad-hoc 경로(state.chat + domain_sync)를
+    /// 직접 호출하므로 본 필드가 별도 필요. spec §3.2 결정 (사) 그대로.
+    #[cfg(feature = "chat")]
+    #[serde(skip)]
+    pub turn_buffers: HashMap<String, Vec<TurnSnapshot>>,
 }
 
 /// 턴별 기록 — 장면 설정, 감정 결과, 프롬프트를 JSON으로 보존
