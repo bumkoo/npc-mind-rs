@@ -102,16 +102,28 @@ impl StudioService {
         Ok(response)
     }
 
-    /// 대화 종료 후 관계 갱신 로직 (B5.2 2/3: v2 dispatch_v2 경유)
+    /// 대화 종료 후 관계 갱신 로직 (B5.2 2/3: v2 dispatch_v2 경유).
+    ///
+    /// Phase 1.5: `session_id`가 주어지고 reflection_service가 부착되어 있으면 turn_buffers
+    /// 를 회수해 `reflect()` 호출 후 `reflection: Some(_)`으로 dispatch. session_id가 None
+    /// 이거나 reflection_service 미부착이면 legacy 경로 (`reflection: None`).
+    /// reflection이 발생하면 SSE `DialogueReflected`도 함께 발행.
     pub async fn perform_after_dialogue(
         state: &AppState,
         req: AfterDialogueRequest,
+        session_id: Option<&str>,
     ) -> Result<AfterDialogueResponse, AppError> {
+        // 1. Reflection 산출 (chat feature + reflection_service 부착 + turn_buffers 보유 시).
+        let reflection = Self::run_reflection_for_session(state, &req, session_id).await;
+
+        let reflected = reflection.is_some();
+
         let response = {
             let mut inner = state.inner.write().await;
 
             let response =
-                crate::domain_sync::dispatch_end_dialogue(state, &mut inner, req.clone()).await?;
+                crate::domain_sync::dispatch_end_dialogue(state, &mut inner, req.clone(), reflection)
+                    .await?;
 
             // 턴 기록 통합 저장
             Self::record_turn(
@@ -125,8 +137,52 @@ impl StudioService {
             response
         };
         state.emit(StateEvent::AfterDialogue);
+        if reflected {
+            state.emit(StateEvent::DialogueReflected);
+        }
         state.emit(StateEvent::HistoryChanged);
         Ok(response)
+    }
+
+    /// Phase 1.5: turn_buffers + reflection_service가 모두 있으면 reflect 실행.
+    ///
+    /// 조건 미충족 (chat 비활성 / reflection_service 미부착 / session_id None /
+    /// turn_buffer 비어있음 / NPC lookup 실패) 시 `None` 반환 → legacy 경로.
+    /// 본 메서드는 *항상* turn_buffer를 제거 (orphan 방지) — reflection 실행 여부와 무관.
+    async fn run_reflection_for_session(
+        _state: &AppState,
+        _req: &AfterDialogueRequest,
+        _session_id: Option<&str>,
+    ) -> Option<npc_mind::domain::reflection::ReflectionResult> {
+        #[cfg(feature = "chat")]
+        {
+            let sid = _session_id?;
+            let service = _state.reflection_service.clone()?;
+
+            // turn_buffer 회수 — write lock 짧게.
+            let turns = {
+                let mut inner = _state.inner.write().await;
+                inner.turn_buffers.remove(sid).unwrap_or_default()
+            };
+            if turns.is_empty() {
+                return None;
+            }
+
+            // NPC lookup — repository_guard scope 짧게 (LLM 호출 전 unlock).
+            let (npc, partner) = {
+                use npc_mind::ports::NpcWorld;
+                let guard = _state.shared_dispatcher.repository_guard();
+                let n = guard.get_npc(&_req.npc_id)?;
+                let p = guard.get_npc(&_req.partner_id)?;
+                (n, p)
+            };
+
+            Some(service.reflect(sid, &turns, &npc, &partner).await)
+        }
+        #[cfg(not(feature = "chat"))]
+        {
+            None
+        }
     }
 
     /// 시나리오 파일 목록 스캔
@@ -487,6 +543,47 @@ impl StudioService {
             (None, false)
         };
 
+        // Phase 1.5 Mind Architecture (DialogueOrchestrator turn() ⑦ mirror):
+        // Reflection 부착 시에만 TurnSnapshot 누적. 미부착 시 메모리 leaky bucket 회피.
+        // 부착 여부는 state.reflection_service로 1회 검사.
+        if state.reflection_service.is_some() {
+            // turn 대표 PAD: stimulus 적용된 PAD (없으면 neutral).
+            // compute_significance.pad_trajectory는 turn 사이 delta만 보므로
+            // before/after 모두 같은 값으로 두어 무방.
+            let pad = stim_resp
+                .as_ref()
+                .and_then(|r| r.input_pad.as_ref())
+                .map(|p| npc_mind::domain::pad::Pad::new(p.pleasure, p.arousal, p.dominance))
+                .unwrap_or_else(npc_mind::domain::pad::Pad::neutral);
+
+            // 현재 NPC의 활성 감정 pair 회수.
+            let occ_emotions: Vec<(npc_mind::domain::emotion::EmotionType, f32)> = inner
+                .emotions
+                .get(&req.npc_id)
+                .map(|state| {
+                    state
+                        .iter_active()
+                        .map(|(ty, intensity, _)| (ty, intensity))
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let buffer = inner
+                .turn_buffers
+                .entry(req.session_id.clone())
+                .or_default();
+            let turn_index = (buffer.len() as u32) + 1;
+            buffer.push(npc_mind::domain::reflection::TurnSnapshot {
+                user_utterance: req.utterance.clone(),
+                npc_response: npc_response.clone(),
+                occ_emotions,
+                pad_before: pad,
+                pad_after: pad,
+                beat_changed: changed,
+                turn_index,
+            });
+        }
+
         // 스크립트 커서 자동 전진: 발화가 현재 test_script의 커서 대사와 일치하면 전진
         {
             let cursor = inner.script_cursor;
@@ -560,9 +657,21 @@ impl StudioService {
     ) -> Result<ChatEndResponse, AppError> {
         let chat_port = state.chat.as_ref().ok_or_else(|| AppError::NotImplemented("chat feature가 비활성입니다.".into()))?;
         let dialogue_history = chat_port.end_session(&req.session_id).await?;
+        // Phase 1.5: chat end 경로는 session_id를 알고 있으므로 reflection 활성화.
+        // after_req가 있으면 그 npc/partner를 우선, 없으면 reflection 미실행.
+        // 주의: turn_buffer는 perform_after_dialogue 안에서 reflection_service 부착 시
+        // 회수된다. after_req가 None이면 buffer가 *남아있게* 됨 — Mind Studio가 같은
+        // session_id를 재사용할 가능성이 있으므로 명시적으로 clear.
         let after_dialogue = if let Some(after_req) = req.after_dialogue {
-            Self::perform_after_dialogue(state, after_req).await.ok()
+            Self::perform_after_dialogue(state, after_req, Some(&req.session_id))
+                .await
+                .ok()
         } else {
+            // after_dialogue 미요청 → reflection도 미실행이지만 turn_buffer 누수 방지를
+            // 위해 명시적으로 제거. 다음 chat 세션이 같은 session_id로 시작할 때 stale
+            // TurnSnapshot이 섞여 들어가는 것을 막는다.
+            let mut inner = state.inner.write().await;
+            inner.turn_buffers.remove(&req.session_id);
             None
         };
         state.emit(StateEvent::ChatEnded);

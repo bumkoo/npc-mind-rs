@@ -72,6 +72,38 @@ async fn main() {
         state = state.with_llm_info(arc_adapter.clone());
         state = state.with_llm_detector(arc_adapter.clone());
         state = state.with_llm_monitor(arc_adapter);
+
+        // Phase 1.5 Mind Architecture (relationships.md v0.7 §6) — Reflection 어댑터.
+        //
+        // dialogue 세션과 *별도 instance*로 RigChatAdapter를 한 번 더 생성.
+        // 같은 모델·같은 LLM 서버를 가리키지만 KV 캐시·세션 풀이 분리되어
+        // dialogue turn과 reflection 분석이 서로의 ChatSession을 깨지 않는다.
+        // (`tests/phase1_real_llm_test.rs`가 같은 패턴으로 검증된 구성.)
+        //
+        // 부착 실패해도 Mind Studio는 정상 동작 — reflection 미부착 → legacy 경로.
+        let reflection_adapter = Arc::new(
+            npc_mind::adapter::rig_chat::RigChatAdapter::new(&chat_url, "pending"),
+        );
+        let reflection_port = Arc::new(
+            npc_mind::adapter::reflection_via_chat::ConversationBackedReflectionPort::new(
+                reflection_adapter,
+            ),
+        );
+        let reflection_builder: Arc<dyn npc_mind::application::reflection_service::ReflectionPromptBuilder> =
+            Arc::new(npc_mind::application::reflection_service::DefaultReflectionPromptBuilder);
+        let reflection_service =
+            npc_mind::application::reflection_service::ReflectionService::new(
+                reflection_port,
+                reflection_builder,
+            );
+        state = state.with_reflection(
+            Arc::new(reflection_service)
+                as Arc<dyn npc_mind::application::reflection_service::ReflectionRunner>,
+        );
+        tracing::info!(
+            "Reflection 어댑터 초기화 완료 (Phase 1.5 — separate session pool, same url={})",
+            chat_url
+        );
     }
 
     // Phase 0 Lore RAG: SQLite 인덱스가 있으면 부착 (embed feature 한정).

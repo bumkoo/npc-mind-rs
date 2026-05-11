@@ -19,7 +19,7 @@ function resetAllStores() {
   })
   useResultStore.setState({
     result: null, traceHistory: [], resultTab: 'emotions', testReport: '',
-    stimulusUtterance: '', llmModelInfo: null,
+    stimulusUtterance: '', llmModelInfo: null, lastAfterDialogue: null,
   })
   useChatStore.getState().reset()
   useSceneStore.setState({
@@ -198,6 +198,32 @@ describe('useResultStore', () => {
     expect(useResultStore.getState().stimulusUtterance).toBe('안녕하세요')
     useResultStore.getState().setLlmModelInfo({ id: 'test-model' })
     expect(useResultStore.getState().llmModelInfo?.id).toBe('test-model')
+  })
+
+  // Phase 1.5 — lastAfterDialogue (ReflectionView 데이터 출처)
+  it('lastAfterDialogue 박제 + null clear', () => {
+    expect(useResultStore.getState().lastAfterDialogue).toBeNull()
+
+    useResultStore.getState().setLastAfterDialogue({
+      before: { closeness: 0.0, trust: 0.0, power: 0.0 },
+      after: { closeness: 0.0, trust: 0.0, power: 0.0 },
+      reflection: {
+        is_chitchat: true,
+        summary: '지나가는 인사',
+        significance_score: 0.05,
+        turn_count: 2,
+        llm_reasoning: 'mock chitchat',
+      },
+    })
+
+    const a = useResultStore.getState().lastAfterDialogue
+    expect(a?.reflection?.is_chitchat).toBe(true)
+    expect(a?.reflection?.significance_score).toBeCloseTo(0.05)
+    // chitchat → axes 보존
+    expect(a?.before.closeness).toBe(a?.after.closeness)
+
+    useResultStore.getState().setLastAfterDialogue(null)
+    expect(useResultStore.getState().lastAfterDialogue).toBeNull()
   })
 })
 

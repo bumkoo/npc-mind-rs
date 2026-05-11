@@ -187,6 +187,28 @@ export interface TurnHistory {
 // --- Trace ---
 export type TraceEntry = string | { label: string; trace: string[] }
 
+// --- Reflection (Phase 1.5 — relationships.md v0.7 §6) ---
+//
+// AfterDialogueResponse.reflection으로 백엔드에서 도착. chitchat 시에도 박제
+// (axes 변화 0이지만 reflection 자체는 Some). Phase 2 Channel 1 활성 시
+// declarative_events / partnership_event 채워질 예정.
+export interface ReflectionResult {
+  is_chitchat: boolean
+  summary: string
+  significance_score: number
+  declarative_events?: unknown[]
+  partnership_event?: unknown | null
+  turn_count?: number
+  llm_reasoning?: string | null
+}
+
+// AfterDialogueResponse — /api/after-dialogue 응답.
+export interface AfterDialogueResponse {
+  before: { closeness: number; trust: number; power: number }
+  after: { closeness: number; trust: number; power: number }
+  reflection?: ReflectionResult | null
+}
+
 // --- LLM Model Info ---
 export interface LlmModelInfo {
   id?: string

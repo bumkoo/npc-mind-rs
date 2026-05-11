@@ -213,6 +213,13 @@ export function useStateSync(refresh: () => Promise<void>) {
       es.addEventListener('chat_turn_completed', () => fetchHistory())
       es.addEventListener('chat_ended', () => fetchRelsAndHistory())
 
+      // Phase 1.5 — DialogueReflected SSE. 백엔드는 *알림만* 발행 (실제 reflection
+      // 데이터는 chat/end / after-dialogue 응답에 직접 들어옴). 이 핸들러는 다른 클라이언트
+      // (예: MCP가 트리거한 after_dialogue)가 reflection을 만들었을 때 본 UI가 즉시 인지
+      // 하도록 history+rels 재동기화. 본 클라이언트가 직접 발급한 경우 chat/end 응답에서
+      // 이미 setLastAfterDialogue가 호출됐으므로 ReflectionView는 최신.
+      es.addEventListener('dialogue_reflected', () => fetchRelsAndHistory())
+
       es.addEventListener('history_changed', () => fetchHistory())
 
       // Step E2 — Memory / Rumor SSE

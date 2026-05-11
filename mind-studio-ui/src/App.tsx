@@ -88,6 +88,7 @@ export default function App() {
   const setTestReport = useResultStore((s) => s.setTestReport)
   const setStimulusUtterance = useResultStore((s) => s.setStimulusUtterance)
   const setLlmModelInfo = useResultStore((s) => s.setLlmModelInfo)
+  const setLastAfterDialogue = useResultStore((s) => s.setLastAfterDialogue)
 
   const setChatMode = useChatStore((s) => s.setChatMode)
   const setChatSessionId = useChatStore((s) => s.setChatSessionId)
@@ -296,6 +297,7 @@ export default function App() {
               setChatMode, setChatSessionId, setChatMessages,
               setChatScenarioTurns, setChatScenarioIdx, setSelectedMsgIdx,
               setChatEnded, updateResult, setResultTab, refresh,
+              setLastAfterDialogue,
             )}
           />
         ) : resultViewActive ? (

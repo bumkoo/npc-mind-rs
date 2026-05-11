@@ -1,5 +1,5 @@
 import { api } from '../api/client'
-import type { AppraiseResult, ChatMessage, SceneInfo, SaveDirInfo, ToastFn, TraceEntry, ScenarioTurn, LlmModelInfo } from '../types'
+import type { AppraiseResult, ChatMessage, SceneInfo, SaveDirInfo, ToastFn, TraceEntry, ScenarioTurn, LlmModelInfo, AfterDialogueResponse } from '../types'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Situation = any
@@ -77,6 +77,7 @@ export async function handleAfterDialogue(
   toast: ToastFn,
   updateResult: (updater: (prev: AppraiseResult | null) => AppraiseResult | null) => void,
   refresh: () => Promise<void>,
+  setLastAfterDialogue?: (r: AfterDialogueResponse | null) => void,
 ) {
   if (!npcId || !partnerId) return toast('NPC와 대화 상대를 선택하세요', 'error')
   try {
@@ -86,8 +87,11 @@ export async function handleAfterDialogue(
       body: JSON.stringify({ npc_id: npcId, partner_id: partnerId, significance: sig }),
     })
     if (!res.ok) { toast('오류: ' + (await res.text()), 'error'); return }
-    const data = await res.json()
+    const data: AfterDialogueResponse = await res.json()
     updateResult(() => ({ afterDialogue: true, npc_id: npcId, partner_id: partnerId, ...data }))
+    // Phase 1.5 — ReflectionView 갱신 (REST 경로는 reflection 미부착 → null이지만
+    // before/after axes 갱신 자체를 박제하므로 동일 store 사용).
+    setLastAfterDialogue?.(data)
     refresh()
   } catch (e) { toast('요청 실패: ' + e, 'error') }
 }
@@ -326,6 +330,7 @@ export async function handleEndChat(
   updateResult: (fn: (prev: AppraiseResult | null) => AppraiseResult | null) => void,
   setResultTab: (tab: string) => void,
   refresh: () => Promise<void>,
+  setLastAfterDialogue?: (r: AfterDialogueResponse | null) => void,
 ) {
   if (!chatSessionId) { setChatMode(false); return }
   try {
@@ -349,9 +354,28 @@ export async function handleEndChat(
     if (res.ok) {
       const data = await res.json()
       if (data.after_dialogue) {
-        updateResult(() => ({ afterDialogue: true, npc_id: npcId, partner_id: partnerId, ...data.after_dialogue }))
+        const after: AfterDialogueResponse = data.after_dialogue
+        updateResult(() => ({ afterDialogue: true, npc_id: npcId, partner_id: partnerId, ...after }))
+        // Phase 1.5 — reflection을 ReflectionView로 박제. chitchat 시에도 store에 들어감
+        // (refl.is_some이지만 axes 변화 0). 결과 탭은 사용자가 '반추' 탭으로 직접 이동.
+        setLastAfterDialogue?.(after)
+        if (after.reflection) {
+          const refl = after.reflection
+          const band = refl.is_chitchat
+            ? '잡담'
+            : refl.significance_score >= 0.7
+              ? '높음'
+              : refl.significance_score >= 0.3
+                ? '중간'
+                : '낮음'
+          toast(
+            `대화 종료 — Reflection [${band}] significance ${refl.significance_score.toFixed(2)} (반추 탭에서 확인)`,
+            'success',
+          )
+        } else {
+          toast('대화 종료 — 관계 갱신 완료 (reflection 미부착)', 'success')
+        }
         setResultTab('emotions')
-        toast('대화 종료 — 관계 갱신 완료', 'success')
       } else {
         setResultTab('emotions')
         toast('대화 종료', 'success')
