@@ -214,8 +214,11 @@ impl<P: ReflectionPort + 'static> ReflectionService<P> {
             }
         };
 
-        // (4) JSON 파싱.
-        let parsed: ReflectionLlmOutput = match serde_json::from_str(&raw_text) {
+        // (4) JSON 파싱 — LLM이 markdown fence (```json...```) 또는
+        // prose prefix를 추가하는 경우가 잦으므로 robust 파싱: fence/prefix 제거 후 시도.
+        // spec §11.1 위험에 대한 mitigation.
+        let cleaned = strip_json_envelope(&raw_text);
+        let parsed: ReflectionLlmOutput = match serde_json::from_str(cleaned) {
             Ok(p) => p,
             Err(e) => {
                 let preview: String = raw_text.chars().take(120).collect();
@@ -227,13 +230,14 @@ impl<P: ReflectionPort + 'static> ReflectionService<P> {
             }
         };
 
-        // (5) 합성.
+        // (5) 합성. Phase 1 결정 9 — declarative_events / partnership_event는
+        // *항상 빈/None*. LLM 출력은 무시 (Phase 2에서 활성화).
         ReflectionResult {
             is_chitchat: parsed.is_chitchat,
             summary: parsed.summary,
             significance_score: significance,
-            declarative_events: parsed.declarative_events.unwrap_or_default(),
-            partnership_event: parsed.partnership_event,
+            declarative_events: vec![],
+            partnership_event: None,
             turn_count: turns.len(),
             llm_reasoning: parsed.reasoning,
         }
@@ -255,17 +259,62 @@ impl<P: ReflectionPort + 'static> ReflectionService<P> {
     }
 }
 
-/// LLM 응답 JSON 스키마 (placeholder 필드 포함).
-/// Phase 2 Channel 1 활성 시 declarative_events 비어있지 않게 됨.
+/// LLM 응답에서 raw JSON 부분만 추출 (markdown fence 또는 prose prefix 제거).
+/// 흔한 LLM 행동 패턴 대응 — spec §11.1 robust 파싱.
+///
+/// 처리:
+/// - ` ```json ... ``` ` 또는 ` ``` ... ``` ` fence 제거
+/// - 첫 `{` ~ 마지막 `}` 추출 (prose prefix/suffix 무시)
+/// - 둘 다 실패 시 원본 trim 반환 (serde_json이 정확한 에러 반환 가능)
+#[cfg(feature = "chat")]
+fn strip_json_envelope(raw: &str) -> &str {
+    let trimmed = raw.trim();
+
+    // 1. fenced code block 처리: ```json\n{...}\n``` 또는 ```\n{...}\n```
+    if let Some(rest) = trimmed.strip_prefix("```json").or_else(|| trimmed.strip_prefix("```")) {
+        if let Some(end) = rest.rfind("```") {
+            let inner = rest[..end].trim();
+            // 안에서 다시 객체 추출 시도
+            if let (Some(start), Some(close)) = (inner.find('{'), inner.rfind('}')) {
+                if start <= close {
+                    return &inner[start..=close];
+                }
+            }
+            return inner;
+        }
+    }
+
+    // 2. fence 없는 경우: 첫 { ~ 마지막 } 추출
+    if let (Some(start), Some(close)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        if start <= close {
+            return &trimmed[start..=close];
+        }
+    }
+
+    // 3. fallback: trim만
+    trimmed
+}
+
+/// LLM 응답 JSON 스키마.
+///
+/// Phase 1 결정 9 — declarative_events / partnership_event는 *항상* 빈/None이어야
+/// 한다 (Phase 2 Channel 1 활성 시 schema 정의). 따라서 LLM이 무엇을 반환하든
+/// `serde(default)`로 *무시* — placeholder 필드를 `serde_json::Value`로 받아
+/// 후처리에서 버린다 (LLM이 string array, 객체 등 임의 형태 반환해도 parse 실패 안 함).
+/// Phase 2에서 정식 schema로 교체.
 #[cfg(feature = "chat")]
 #[derive(Debug, Deserialize)]
 struct ReflectionLlmOutput {
     is_chitchat: bool,
     summary: String,
+    /// Phase 1: 무시. LLM이 어떤 형태로 보내든 parse 실패 막음.
     #[serde(default)]
-    declarative_events: Option<Vec<DeclarativeEventPlaceholder>>,
+    #[allow(dead_code)]
+    declarative_events: Option<serde_json::Value>,
+    /// Phase 1: 무시.
     #[serde(default)]
-    partnership_event: Option<PartnershipEventPlaceholder>,
+    #[allow(dead_code)]
+    partnership_event: Option<serde_json::Value>,
     #[serde(default)]
     reasoning: Option<String>,
 }
@@ -410,6 +459,63 @@ mod tests {
                 .map(|s| s.contains("Timeout"))
                 .unwrap_or(false)
         );
+    }
+
+    // ---- strip_json_envelope unit tests (spec §11.1 robust 파싱) ----
+
+    #[test]
+    fn strip_json_envelope_plain_json_passthrough() {
+        let raw = r#"{"is_chitchat": true, "summary": "test"}"#;
+        assert_eq!(strip_json_envelope(raw), raw);
+    }
+
+    #[test]
+    fn strip_json_envelope_markdown_fence_json() {
+        let raw = "```json\n{\"is_chitchat\": false, \"summary\": \"중요\"}\n```";
+        let cleaned = strip_json_envelope(raw);
+        assert!(cleaned.starts_with('{'));
+        assert!(cleaned.ends_with('}'));
+        let parsed: serde_json::Value = serde_json::from_str(cleaned).unwrap();
+        assert_eq!(parsed["is_chitchat"], false);
+    }
+
+    #[test]
+    fn strip_json_envelope_markdown_fence_bare() {
+        let raw = "```\n{\"is_chitchat\": true}\n```";
+        let cleaned = strip_json_envelope(raw);
+        let parsed: serde_json::Value = serde_json::from_str(cleaned).unwrap();
+        assert_eq!(parsed["is_chitchat"], true);
+    }
+
+    #[test]
+    fn strip_json_envelope_prose_prefix() {
+        let raw = "좋습니다, 다음과 같이 분석합니다: {\"is_chitchat\": true, \"summary\": \"인사\"} 끝.";
+        let cleaned = strip_json_envelope(raw);
+        let parsed: serde_json::Value = serde_json::from_str(cleaned).unwrap();
+        assert_eq!(parsed["is_chitchat"], true);
+    }
+
+    #[test]
+    fn strip_json_envelope_no_json_returns_trimmed() {
+        let raw = "  totally not json  ";
+        assert_eq!(strip_json_envelope(raw), "totally not json");
+    }
+
+    #[tokio::test]
+    async fn reflect_handles_markdown_fence_response() {
+        // LLM이 ```json fence로 응답한 경우 — robust 파싱이 정상 동작.
+        let port = Arc::new(MockReflectionPort::ok(
+            "```json\n{\"is_chitchat\": true, \"summary\": \"잡담\"}\n```",
+        ));
+        let svc = ReflectionService::new(
+            port,
+            Arc::new(DefaultReflectionPromptBuilder) as Arc<dyn ReflectionPromptBuilder>,
+        );
+        let result = svc
+            .reflect("sid-fence", &dummy_turns(), &npc("a", "Alice"), &npc("b", "Bob"))
+            .await;
+        assert!(result.is_chitchat);
+        assert_eq!(result.summary, "잡담");
     }
 
     #[tokio::test]
