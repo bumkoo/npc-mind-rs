@@ -46,7 +46,7 @@ pub async fn seed(
         .ok_or_else(|| AppError::Internal("RumorSeeded 이벤트 부재".into()))?;
 
     drop(inner);
-    state.emit(StateEvent::RumorSeeded);
+    // Phase 1.6 — `RumorSeeded` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
 
     Ok(Json(SeedResponse { rumor_id }))
 }
@@ -86,7 +86,10 @@ pub async fn spread(
         .ok_or_else(|| AppError::Internal("RumorSpread 이벤트 부재".into()))?;
 
     drop(inner);
-    state.emit(StateEvent::RumorSpread);
+    // Phase 1.6 — `RumorSpread` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
+    // `MemoryCreated`는 `MemoryEntryCreated` 도메인 이벤트가 *현재* EventBus에
+    // 미발행이라(Step F 대기) manual emit 유지 — 본 발행 지점은 RumorDistributionHandler가
+    // store에 직접 삽입한 listener entries를 알리기 위함.
     if spread_count > 0 {
         state.emit(StateEvent::MemoryCreated);
     }

@@ -1,7 +1,10 @@
 //! 실시간 상태 변경 이벤트 — broadcast 채널을 통해 SSE 클라이언트에 전달
 
 /// 상태 변경 이벤트 종류
-#[derive(Clone, Debug)]
+///
+/// `PartialEq`/`Eq`는 Phase 1.6 `event_bridge::map_event` 단위 테스트가 매핑 결정론을
+/// 검증하기 위해 필요. variant들은 모두 unit-like(payload 없음)라 derive 가능.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StateEvent {
     // 엔티티 CRUD
     NpcChanged,

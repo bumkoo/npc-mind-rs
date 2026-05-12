@@ -12,6 +12,7 @@ use tower_http::services::ServeDir;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
+mod event_bridge;
 mod events;
 mod handlers;
 mod mcp_server;
@@ -205,6 +206,25 @@ async fn main() {
     // MCP 서버 초기화 (chat이 설정된 state를 clone)
     let mcp_server = mcp_server::create_mcp_server(state.clone());
     state = state.with_mcp(mcp_server);
+
+    // Phase 1.6 — EventBus → SSE Bridge 시작.
+    //
+    // shared_dispatcher의 EventBus를 구독해 도메인 이벤트를 `StateEvent` SSE로
+    // 자동 변환·재방출. 이로써 studio_service / domain_sync / handlers에 산재한
+    // manual `state.emit(StateEvent::XXX)` 호출이 *도메인 사실에서 도출 가능한 9개*
+    // 만큼 제거됨. UI-only 이벤트 (HistoryChanged 등)는 그대로 유지.
+    //
+    // 보너스: Director 경로(`/api/v2/scenes/*`)도 *shared_dispatcher 사용 시*
+    // 자동 SSE 발행. 현재 director_v2는 별도 dispatcher라 본 bridge가 보지 못함 —
+    // 향후 통합 작업 후보.
+    {
+        use std::sync::Arc;
+        let bridge = Arc::new(event_bridge::EventBridge::new(state.event_tx.clone()));
+        let bus = state.shared_dispatcher.event_bus().clone();
+        let event_store = state.shared_dispatcher.event_store().clone();
+        tokio::spawn(bridge.run(bus, event_store));
+        tracing::info!("EventBus → SSE Bridge 시작");
+    }
 
     // 2. 라우터 빌드
     let app = build_api_router(state);

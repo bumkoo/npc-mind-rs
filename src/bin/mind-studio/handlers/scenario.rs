@@ -117,7 +117,7 @@ pub async fn scene(
         }
         response
     };
-    state.emit(StateEvent::SceneStarted);
+    // Phase 1.6 — `SceneStarted` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
     state.emit(StateEvent::HistoryChanged);
     Ok(Json(response))
 }
@@ -160,7 +160,7 @@ pub async fn guide(
         let fmt = state.formatter.read().await;
         result.format(&**fmt)
     };
-    state.emit(StateEvent::GuideGenerated);
+    // Phase 1.6 — `GuideGenerated` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
     Ok(Json(response))
 }
 

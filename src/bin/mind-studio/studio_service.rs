@@ -63,7 +63,8 @@ impl StudioService {
             inner.scenario_modified = true;
             response
         };
-        state.emit(StateEvent::Appraised);
+        // Phase 1.6 — `Appraised` SSE는 `event_bridge`가 `EmotionAppraised` 도메인
+        // 이벤트에서 자동 발행. manual emit 제거 (중복 방지).
         state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
@@ -97,7 +98,8 @@ impl StudioService {
             Self::record_turn(&mut inner, &label, "stimulus", &req, &response, None);
             response
         };
-        state.emit(StateEvent::StimulusApplied);
+        // Phase 1.6 — `StimulusApplied` SSE는 `event_bridge`가 `StimulusApplied` 도메인
+        // 이벤트에서 자동 발행. manual emit 제거.
         state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
@@ -136,10 +138,9 @@ impl StudioService {
             );
             response
         };
-        state.emit(StateEvent::AfterDialogue);
-        if reflected {
-            state.emit(StateEvent::DialogueReflected);
-        }
+        // Phase 1.6 — `AfterDialogue` (from `SceneEnded`) + `DialogueReflected` SSE는
+        // `event_bridge`가 도메인 이벤트에서 자동 발행. manual emit 제거.
+        let _ = reflected;  // 이전 분기 변수는 더 이상 SSE 발행에 사용 안 함
         state.emit(StateEvent::HistoryChanged);
         Ok(response)
     }
@@ -632,7 +633,8 @@ impl StudioService {
         );
 
         drop(inner);
-        state.emit(StateEvent::ChatTurnCompleted);
+        // Phase 1.6 — `ChatTurnCompleted` SSE는 `event_bridge`가 `DialogueTurnCompleted`
+        // (speaker="assistant") 도메인 이벤트에서 자동 발행. manual emit 제거.
         state.emit(StateEvent::HistoryChanged);
         Ok((stim_resp, changed))
     }
