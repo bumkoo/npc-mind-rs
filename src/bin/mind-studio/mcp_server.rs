@@ -770,7 +770,7 @@ impl MindMcpService {
                     let fmt = self.state.formatter.read().await;
                     result.format(&**fmt)
                 };
-                self.state.emit(StateEvent::GuideGenerated);
+                // Phase 1.6 — `GuideGenerated` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
                 Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
             }
             "get_history" => {
@@ -897,7 +897,7 @@ impl MindMcpService {
                     let fmt = self.state.formatter.read().await;
                     result.format(&**fmt)
                 };
-                self.state.emit(StateEvent::SceneStarted);
+                // Phase 1.6 — `SceneStarted` SSE는 event_bridge가 도메인 이벤트에서 자동 발행.
                 self.state.emit(StateEvent::HistoryChanged);
                 Ok(serde_json::to_value(response).map_err(|e| e.to_string())?)
             }

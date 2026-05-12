@@ -3421,6 +3421,44 @@ mod phase1_5_reflection_tests {
         .expect("seed appraise OK");
     }
 
+    /// Phase 1.6 — EventBus → SSE bridge를 spawn해서 도메인 이벤트가 StateEvent로
+    /// 자동 변환되도록 준비. dispatch_v2가 발행한 `DialogueReflected`/`SceneEnded` 등이
+    /// state.event_tx로 흘러가게 함.
+    ///
+    /// **중요**: `tokio::spawn`은 task를 *스케줄*만 함 — 첫 poll은 다음 await 지점에서.
+    /// `subscribe_with_lag()`도 future가 polled될 때 수행되므로, spawn 후 즉시 dispatch
+    /// 하면 broadcast subscriber가 아직 없는 상태라 이벤트 누락 가능. 따라서 spawn 후
+    /// 100ms 정도 sleep해서 bridge task가 *실제로 subscribe* 완료한 다음 dispatch.
+    async fn spawn_event_bridge(state: &AppState) {
+        use crate::event_bridge::EventBridge;
+        use std::sync::Arc;
+        let bridge = Arc::new(EventBridge::new(state.event_tx.clone()));
+        let bus = state.shared_dispatcher.event_bus().clone();
+        let event_store = state.shared_dispatcher.event_store().clone();
+        tokio::spawn(bridge.run(bus, event_store));
+        // bridge task가 subscribe까지 진입하도록 1회 yield + sleep.
+        tokio::task::yield_now().await;
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    /// bridge가 발행한 SSE를 channel에서 다 꺼낼 때까지 짧게 yield.
+    /// dispatch_v2 직후 broadcast publish는 동기지만 bridge task는 별 thread/task이므로
+    /// 한 번 yield해줘야 bridge가 broadcast를 받아 state.event_tx로 재방출.
+    async fn drain_sse_events(
+        rx: &mut tokio::sync::broadcast::Receiver<crate::events::StateEvent>,
+    ) -> Vec<crate::events::StateEvent> {
+        // bridge task에게 시간 주기 — 100ms x 5회 시도.
+        let mut received = Vec::new();
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            while let Ok(ev) = rx.try_recv() {
+                received.push(ev);
+            }
+        }
+        received
+    }
+
     /// 테스트용 NPC를 repo에 직접 등록 + relationship 시드.
     /// `StateInner.npcs`를 거치지 않고 shared repo에 직접 넣기 위해 inner.npcs도 채운다.
     async fn seed_two_npcs(state: &AppState) {
@@ -3523,6 +3561,9 @@ mod phase1_5_reflection_tests {
         let mock = Arc::new(MockReflectionRunner::chitchat());
         let state = state.with_reflection(mock.clone() as Arc<dyn ReflectionRunner>);
 
+        // Phase 1.6 — SSE bridge spawn (DialogueReflected/SceneEnded 도메인 이벤트 → StateEvent)
+        spawn_event_bridge(&state).await;
+
         seed_two_npcs(&state).await;
         seed_turn_buffer(&state, "sid-chitchat", 2).await;
 
@@ -3551,19 +3592,18 @@ mod phase1_5_reflection_tests {
         assert_eq!(resp.before.trust, resp.after.trust, "trust 보존");
         assert_eq!(resp.before.power, resp.after.power, "power 보존");
 
-        // SSE: AfterDialogue + DialogueReflected + HistoryChanged 3개 emit.
-        let mut saw_reflected = false;
-        let mut saw_after = false;
-        // try_recv를 반복 — broadcast가 즉시 들어와 있을 것.
-        while let Ok(ev) = rx.try_recv() {
-            match ev {
-                StateEvent::DialogueReflected => saw_reflected = true,
-                StateEvent::AfterDialogue => saw_after = true,
-                _ => {}
-            }
-        }
-        assert!(saw_after, "AfterDialogue SSE 발행");
-        assert!(saw_reflected, "DialogueReflected SSE 발행 (reflection.is_some)");
+        // Phase 1.6 — SSE는 bridge가 도메인 이벤트(`SceneEnded`/`DialogueReflected`)에서
+        // 자동 발행. bridge task에 yield해서 broadcast 처리 시간을 확보.
+        let received = drain_sse_events(&mut rx).await;
+        let saw_after = received.iter().any(|e| matches!(e, StateEvent::AfterDialogue));
+        let saw_reflected = received
+            .iter()
+            .any(|e| matches!(e, StateEvent::DialogueReflected));
+        assert!(saw_after, "AfterDialogue SSE 발행 (received: {received:?})");
+        assert!(
+            saw_reflected,
+            "DialogueReflected SSE 발행 (received: {received:?})"
+        );
 
         // turn_buffer가 회수되어 비어있어야 함 (orphan 방지)
         let inner = state.inner.read().await;
@@ -3579,6 +3619,8 @@ mod phase1_5_reflection_tests {
         let state = AppState::new(AppraisalCollector::new(), None::<SpyAnalyzer>);
         let mock = Arc::new(MockReflectionRunner::significant());
         let state = state.with_reflection(mock.clone() as Arc<dyn ReflectionRunner>);
+
+        spawn_event_bridge(&state).await;
 
         seed_two_npcs_with_emotion(&state).await;
         seed_turn_buffer(&state, "sid-sig", 3).await;
@@ -3605,13 +3647,14 @@ mod phase1_5_reflection_tests {
         // before/after는 같지 않을 수 있음 (관계 갱신). 적어도 reflection은 채워져야.
         assert!((refl.significance_score - 0.85).abs() < 1e-3 || refl.significance_score >= 0.0);
 
-        let mut saw_reflected = false;
-        while let Ok(ev) = rx.try_recv() {
-            if let StateEvent::DialogueReflected = ev {
-                saw_reflected = true;
-            }
-        }
-        assert!(saw_reflected, "DialogueReflected SSE 발행");
+        let received = drain_sse_events(&mut rx).await;
+        let saw_reflected = received
+            .iter()
+            .any(|e| matches!(e, StateEvent::DialogueReflected));
+        assert!(
+            saw_reflected,
+            "DialogueReflected SSE 발행 (received: {received:?})"
+        );
     }
 
     /// (3) ReflectionService 미부착 → legacy 경로 (reflection: None, axes 갱신).
@@ -3619,6 +3662,8 @@ mod phase1_5_reflection_tests {
     async fn no_reflection_attached_is_legacy_path() {
         let state = AppState::new(AppraisalCollector::new(), None::<SpyAnalyzer>);
         // with_reflection 호출 안 함 — ReflectionService 미부착.
+
+        spawn_event_bridge(&state).await;
 
         seed_two_npcs_with_emotion(&state).await;
         // turn_buffer를 채워도 reflection_service 없으므로 처리되지 않아야 함.
@@ -3640,19 +3685,77 @@ mod phase1_5_reflection_tests {
 
         assert!(resp.reflection.is_none(), "reflection 미부착 → None");
 
-        // DialogueReflected SSE는 발행되지 않아야 함.
-        let mut saw_reflected = false;
-        while let Ok(ev) = rx.try_recv() {
-            if let StateEvent::DialogueReflected = ev {
-                saw_reflected = true;
-            }
-        }
-        assert!(!saw_reflected, "reflection 없으면 DialogueReflected SSE 없음");
+        // DialogueReflected SSE는 발행되지 않아야 함. legacy 경로에서는 도메인 이벤트
+        // `DialogueReflected`도 발행되지 않으므로 bridge도 emit 안 함.
+        let received = drain_sse_events(&mut rx).await;
+        let saw_reflected = received
+            .iter()
+            .any(|e| matches!(e, StateEvent::DialogueReflected));
+        assert!(
+            !saw_reflected,
+            "reflection 없으면 DialogueReflected SSE 없음 (received: {received:?})"
+        );
 
         // turn_buffer는 reflection_service 미부착이라 회수되지 않음 — Mind Studio가
         // 같은 session_id로 chat을 재사용할 때 처리되어야 하지만 본 테스트는 단일
         // perform_after_dialogue만 호출하므로 buffer가 남아있을 수 있음.
         // (perform_chat_end 경로에서 명시적 clear됨 — 본 테스트는 그 경로 미테스트.)
+    }
+
+    /// (5) Phase 1.6 — bridge가 dispatch_v2의 도메인 이벤트를 SSE로 자동 변환하는지.
+    ///
+    /// Phase 1.5 reflection 테스트들은 *상위 흐름*에서 SSE 검증. 본 테스트는
+    /// *dispatch_v2 직접 호출 → 도메인 이벤트 → bridge → StateEvent*의 *최소 경로*를
+    /// 따로 검증. Director 경로 SSE bug fix 효과도 본 테스트가 보장.
+    #[tokio::test]
+    async fn dispatch_v2_appraise_triggers_sse_appraised_via_bridge() {
+        use npc_mind::application::command::Command;
+        use npc_mind::application::dto::{ActionInput, EventInput, SituationInput};
+
+        let state = AppState::new(AppraisalCollector::new(), None::<SpyAnalyzer>);
+        spawn_event_bridge(&state).await;
+        seed_two_npcs(&state).await;
+
+        let mut rx = state.event_tx.subscribe();
+
+        // dispatch_v2 직접 호출 — handler 경유 안 함. manual state.emit() 0회.
+        let _ = state
+            .shared_dispatcher
+            .dispatch_v2(Command::Appraise {
+                npc_id: "mu_baek".into(),
+                partner_id: "gyo_ryong".into(),
+                situation: Some(Box::new(SituationInput {
+                    description: "테스트 상황".into(),
+                    event: Some(EventInput {
+                        description: "마주침".into(),
+                        desirability_for_self: -0.2,
+                        other: None,
+                        prospect: None,
+                    }),
+                    action: Some(ActionInput {
+                        description: "도발".into(),
+                        agent_id: Some("gyo_ryong".into()),
+                        praiseworthiness: -0.3,
+                    }),
+                    object: None,
+                })),
+            })
+            .await
+            .expect("dispatch_v2 OK");
+
+        let received = drain_sse_events(&mut rx).await;
+        let saw_appraised = received.iter().any(|e| matches!(e, StateEvent::Appraised));
+        let saw_guide = received
+            .iter()
+            .any(|e| matches!(e, StateEvent::GuideGenerated));
+        assert!(
+            saw_appraised,
+            "Appraised SSE 자동 발행 — bridge가 EmotionAppraised 도메인 이벤트 변환 (received: {received:?})"
+        );
+        assert!(
+            saw_guide,
+            "GuideGenerated SSE 자동 발행 (received: {received:?})"
+        );
     }
 
     /// (4) chat 종료 흐름 — perform_chat_end가 turn_buffer를 명시 clear.
