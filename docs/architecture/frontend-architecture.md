@@ -256,6 +256,7 @@ App
 │       ├── MemoryView (E2: NPC 모드 / E3.1: Topic 모드 토글 → TopicHistoryView)
 │       ├── RumorView (E2 표시 + E3.1: SeedForm / SpreadForm)
 │       ├── ScenarioSeedsView (E3.3: 조회 전용 4 섹션 카드)
+│       ├── ReflectionView (Phase 1.5 — '반추' 탭: chitchat/significant 라벨 + significance band + summary + reasoning + axes Δ)
 │       └── ModelInfoView
 ├── NpcModal / RelModal / ObjModal (조건부)
 └── ToastContainer (고정 위치)

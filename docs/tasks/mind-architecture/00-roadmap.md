@@ -18,7 +18,7 @@
 
 **왜 이 문서가 필요한가**: relationships.md v0.7은 *목표 아키텍처*(4축 + BondKind + Channel 1/2/3 + ActionTrigger)를 정의. 코드는 *부분 구현*(3축 Relationship + DialogueOrchestrator/dispatch_v2 + RelationshipPolicy 무조건 follow-up). 누군가 docs만 읽으면 더 많이 구현된 것으로 오해. 이 문서가 그 갭을 명시.
 
-## 2. 현재 상태 (2026-05-09 spot-check 기준)
+## 2. 현재 상태 (2026-05-12 Phase 1/1.5/1.6 완료 후)
 
 ### 2.1 검증 수준 표기
 
@@ -35,10 +35,11 @@
 | 모듈 | 상태 | 검증 |
 |---|---|---|
 | `relationship.rs` | 3축 Value Object (closeness/trust/power, ±1.0, Score 타입) | ✅ 1~120줄 |
-| `event.rs` | DomainEvent + EventMetadata + 30 EventKind + RelationshipChangeCause 5 variants | ✅ 1~300줄 |
+| `event.rs` | DomainEvent + EventMetadata + 31 EventKind (Phase 1: +`DialogueReflected`) + RelationshipChangeCause 5 variants + `DialogueEndRequested.reflection` 필드 | ✅ 1~300줄 |
 | `emotion/` | AppraisalEngine 모듈화 (Event/Action/Object/Compound 서브) | ◯ |
 | `pad.rs`, `pad_anchors.rs`, `pad_table.rs` | StimulusEngine 기반 | △ |
-| `personality.rs` | HEXACO 24 facet, Score 타입 | △ |
+| `personality.rs` | HEXACO 24 facet, Score 타입. **Phase 1 (A-min)**: `Npc.inner_compass: Option<String>` 필드 + `compass_short_label()` 메서드 | ✅ Phase 1 A-min 부분 |
+| **`reflection.rs`** | **Phase 1 신규**: `TurnSnapshot` + `compute_significance(turns) -> f32` (4 신호 가중, 8.36µs/call) + `ReflectionResult` + `DeclarativeEventPlaceholder` + `PartnershipEventPlaceholder` | ✅ Phase 1 |
 | `listener_perspective/` | Phase 7 마이그레이션, feature flag `listener_perspective` | △ (userMemories 인용) |
 
 ### 2.2.5 Ports Layer (`src/ports/`)
@@ -54,6 +55,7 @@ ISP 기반 모듈 분할 (이전 단일 `ports.rs`):
 | `analysis.rs` | `UtteranceAnalyzer` | ◯ |
 | `chat.rs` [chat] | `ConversationPort` + `ChatResponse` + `InferenceTimings` + `LlmModelInfo` + `ConversationError(Timeout 포함)` | ◯ |
 | `monitoring.rs` [chat] | `InferenceServerMonitor` + `ServerHealth` + `InferenceSlotInfo` + `ServerMetrics` (이전 Llama* → Inference* 일반화) | ◯ |
+| **`reflection.rs`** [chat] | **Phase 1 신규**: `ReflectionPort` trait + `ReflectionPrompt` + `ReflectionError` | ✅ Phase 1 |
 
 ### 2.3 Application Layer (`src/application/`)
 
@@ -61,17 +63,40 @@ ISP 기반 모듈 분할 (이전 단일 `ports.rs`):
 
 | 모듈 | 상태 | 검증 |
 |---|---|---|
-| `command/dispatcher.rs` (`CommandDispatcher<R>`) | dispatch_v2 단일 진입점. `with_default_handlers` / `with_memory` / `with_memory_full` / `with_world_overlay` / `with_scene_consolidation` / `with_rumor` 빌더 | ◯ |
+| `command/dispatcher.rs` (`CommandDispatcher<R>`) | dispatch_v2 단일 진입점. `with_default_handlers` / `with_memory` / `with_memory_full` / `with_world_overlay` / `with_scene_consolidation` / `with_rumor` 빌더. **Phase 1: `MAX_EVENTS_PER_COMMAND` 21 → 22** | ◯ |
 | `command/uow.rs` (`UnitOfWork`) | Transactional BFS 변경 누적 → 일괄 commit. `HandlerShared`는 *출력 호환용 쉐이프*로 변경 | ◯ |
-| `command/policies/` (8 핸들러) | `emotion`/`stimulus`/`guide`/`relationship`/`scene`/`information`/`rumor`/`world_overlay` (이전 `agents/` → `policies/` 리네임) | ◯ |
+| `command/types.rs` | `Command::EndDialogue.reflection: Option<ReflectionResult>` 필드 (Phase 1 추가) | ✅ Phase 1 |
+| `command/policies/` (8 핸들러) | `emotion`/`stimulus`/`guide`/`relationship`/`scene`/`information`/`rumor`/`world_overlay` (이전 `agents/` → `policies/` 리네임). **Phase 1: `RelationshipPolicy.handle_dialogue_end` 게이트 + 4 follow-up + `outer_loop_entry()` helper** | ✅ Phase 1 (RelationshipPolicy) |
 | `command/{telling_ingestion,rumor_distribution,world_overlay,scene_consolidation,relationship_memory}_handler.rs` | Inline 핸들러 5종 — Step C/D 메모리 흡수 | ◯ |
-| `dialogue_orchestrator.rs` (`DialogueOrchestrator<R, C>`) [chat] | LLM 다턴 오케스트레이터. `start_session`/`turn`/`end_session`. `BeatTransitioned` 발생 시 `update_system_prompt` | ◯ |
-| `director/` (`Director<R>`) | 다중 Scene facade. `start_scene`/`dispatch_to`/`end_scene`/`active_scenes` | ◯ |
+| **`reflection_service.rs`** [chat] | **Phase 1 신규**: `ReflectionRunner` trait (dyn-compatible) + `ReflectionService<P: ReflectionPort>` + `ReflectionPromptBuilder` trait + `DefaultReflectionPromptBuilder` + `strip_json_envelope` helper (markdown fence) | ✅ Phase 1 |
+| `dialogue_orchestrator.rs` (`DialogueOrchestrator<R, C>`) [chat] | LLM 다턴 오케스트레이터. `start_session`/`turn`/`end_session`. `BeatTransitioned` 발생 시 `update_system_prompt`. **Phase 1: `with_reflection(svc)` + `turn_buffers: HashMap<SessionId, Vec<TurnSnapshot>>` + `run_reflection()` helper** | ✅ Phase 1 |
+| `director/` (`Director<R>`) | 다중 Scene facade. `start_scene`/`dispatch_to`/`end_scene`/`active_scenes`. **Phase 1 미통합** — `Director::end_scene` 경로의 Reflection 부착 미구현 (별도 작업) | △ Reflection 미통합 |
 | `event_bus.rs` | tokio broadcast, futures::Stream 노출, lag 처리 | ✅ 1~80줄 |
 | `event_store.rs` | 이벤트 영속화 (commit staging buffer) | △ |
 | `memory_projector.rs` | EventBus 구독 기억 인덱싱 [embed] | ◯ |
-| `dto/` (7 도메인 모듈) | `emotion`/`guide`/`information`/`relationship`/`rumor`/`scene`/`world` 분할 | ◯ |
+| `dto/` (7 도메인 모듈) | `emotion`/`guide`/`information`/`relationship`/`rumor`/`scene`/`world` 분할. **Phase 1: `AfterDialogueResponse.reflection: Option<ReflectionResult>` 필드 추가** | ✅ Phase 1 |
+| `adapter/reflection_via_chat.rs` [chat] | **Phase 1 신규**: `ConversationBackedReflectionPort<C>` — 같은 LLM 서버에 *별도 세션*, KV 캐시 분리 | ✅ Phase 1 |
 | `error.rs` (`MindServiceError`) | 5 variants: NpcNotFound · RelationshipNotFound · InvalidSituation · EmotionStateNotFound · LocaleError | ◯ |
+
+### 2.3.5 Mind Studio 통합 상태 (Phase 1.5/1.6 결과)
+
+Phase 1 본체의 reflection 게이트는 *DialogueOrchestrator 경로*에 박혀 있어 Mind Studio
+(`state.chat + domain_sync` ad-hoc) 경로에서는 미동작 → Phase 1.5에서 *mirror*. Phase 1.6에서
+manual SSE emit을 EventBus 구독으로 일원화.
+
+| 영역 | 상태 | 검증 |
+|---|---|---|
+| `AppState.reflection_service: Option<Arc<dyn ReflectionRunner>>` + `with_reflection()` | ✅ Phase 1.5 | [`state.rs`](../../../src/bin/mind-studio/state.rs) |
+| `StateInner.turn_buffers: HashMap<String, Vec<TurnSnapshot>>` (chat-gated, serde skip) | ✅ Phase 1.5 | 동일 |
+| `main.rs` 부팅 시 별도 RigChatAdapter → ConversationBackedReflectionPort → ReflectionService 자동 부착 | ✅ Phase 1.5 | [`main.rs`](../../../src/bin/mind-studio/main.rs) |
+| `StudioService::process_chat_turn_result` 매 turn TurnSnapshot 누적 (DialogueOrchestrator.turn() ⑦ mirror) | ✅ Phase 1.5 | [`studio_service.rs`](../../../src/bin/mind-studio/studio_service.rs) |
+| `StudioService::perform_after_dialogue(state, req, session_id)` + `run_reflection_for_session` | ✅ Phase 1.5 | 동일 |
+| `domain_sync::dispatch_end_dialogue(state, inner, req, reflection)` 시그니처 확장 | ✅ Phase 1.5 | [`domain_sync.rs`](../../../src/bin/mind-studio/domain_sync.rs) |
+| Frontend ReflectionView + '반추' 탭 + `useResultStore.lastAfterDialogue` | ✅ Phase 1.5 | [`ReflectionView.tsx`](../../../mind-studio-ui/src/components/result/ReflectionView.tsx) |
+| `event_bridge.rs` (EventBus → SSE 자동 매핑 9개 도메인 이벤트) | ✅ Phase 1.6 | [`event_bridge.rs`](../../../src/bin/mind-studio/event_bridge.rs) |
+| manual `state.emit()` 도메인 사실 11곳 제거 (UI-only emit만 잔존) | ✅ Phase 1.6 | studio_service · mcp_server · handlers/scenario · handlers/rumor |
+| Director 경로 (`/api/v2/scenes/*`) SSE 자동 발행 | ⚠️ shared_dispatcher 경유 시만 동작 — `director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 | 향후 통합 작업 후보 |
+| `Director.end_scene` Reflection 통합 | ❌ 미구현 (디자인 결정 필요 — SceneTask turn_buffer 위치) | 별도 작업 |
 
 ### 2.4 Inner/Outer 골격 — 부분 구현됨 (★)
 
@@ -82,15 +107,20 @@ CLAUDE.md 기준 (v0.3.0 후), Inner/Outer 두 흐름은 다음 컴포넌트들�
 - 처리 결과 events에 `BeatTransitioned` 포함 시 → `ConversationPort::update_system_prompt` 호출
 - `ConversationPort::send_message` → 다음 turn
 
-**Outer Loop 진입점** — `DialogueOrchestrator.end_session`:
-- (significance 있으면) `Command::EndDialogue.dispatch_v2().await`
-- 도메인 안에서 `RelationshipPolicy`가 `DialogueEndRequested` 수신 → 3 follow-ups (`RelationshipUpdated` + `EmotionCleared` + `SceneEnded`) 일괄 발행
-- 현재: 무조건 작동. 잡담도 axes 변화.
-- 목표 (Phase 1): Reflection 단계 추가 → is_chitchat / significance 게이트 통과 시만 RelationshipUpdated 발행 (EmotionCleared/SceneEnded는 항상)
+**Outer Loop 진입점** — `DialogueOrchestrator.end_session` (✅ Phase 1 완료):
+- (reflection 있으면 또는 significance 있으면) `Command::EndDialogue.dispatch_v2().await`
+- 도메인 안에서 `RelationshipPolicy`가 `DialogueEndRequested` 수신 → **4 follow-ups** 발행:
+  1. `DialogueReflected` (항상, chitchat skip 케이스에도 박제)
+  2. `RelationshipUpdated` (`outer_loop_entry()` 게이트 통과 시만 — chitchat은 skip)
+  3. `EmotionCleared` (항상)
+  4. `SceneEnded` (항상)
+- chitchat (significance < 0.3 ∧ is_chitchat=true): **3 이벤트** (RelationshipUpdated skip)
+- significant: **4 이벤트** 그대로
+- legacy (reflection=None, significance=Some): **3 이벤트** (기존 무조건 동작 — RelationshipUpdated 발행, DialogueReflected 미발행)
 
-→ Phase 1의 핵심 작업이 정확히 이 *gate 추가*. 아키텍처 자체(Director/CommandDispatcher/DialogueOrchestrator)는 그대로 유지.
+→ Phase 1의 *gate 추가*는 완료. 아키텍처 자체(Director/CommandDispatcher/DialogueOrchestrator)는 그대로 유지. Phase 2에서 *declarative_events 분기*가 동일 게이트 위에 얹힘.
 
-### 2.5 EventKind 인벤토리 (✅ 직접 verified)
+### 2.5 EventKind 인벤토리 (✅ 직접 verified, Phase 1 후 갱신)
 
 ```
 Mind:           AppraiseRequested, EmotionAppraised,
@@ -98,7 +128,8 @@ Mind:           AppraiseRequested, EmotionAppraised,
                 BeatTransitioned, EmotionCleared
 Scene:          SceneStartRequested, SceneStarted, SceneEnded
 Relationship:   RelationshipUpdateRequested, RelationshipUpdated
-Dialogue:       DialogueEndRequested, DialogueTurnCompleted
+Dialogue:       DialogueEndRequested, DialogueTurnCompleted,
+                DialogueReflected ★ Phase 1 신규
 Guide:          GuideRequested, GuideGenerated
 Memory:         MemoryEntryCreated, MemoryEntrySuperseded,
                 MemoryEntryConsolidated
@@ -108,7 +139,8 @@ World:          ApplyWorldEventRequested, WorldEventOccurred,
                 TellInformationRequested, InformationTold
 ```
 
-`DialogueReflected` 등 Phase 1 신규 EventKind는 미정의.
+총 30 → **31 EventKind** (`DialogueReflected` 추가). `EventPayload::DialogueEndRequested`에
+`reflection: Option<ReflectionResult>` 필드 추가됨.
 
 ### 2.6 EventMetadata 현재 상태 (✅ 직접 verified)
 
@@ -175,7 +207,7 @@ pub struct EventMetadata {
 
 ## 5. Phase 정의
 
-### Phase 1 (v0.7) — Reflection + Significance + Chitchat Gate
+### Phase 1 (v0.7) — Reflection + Significance + Chitchat Gate ✅ 완료 (2026-05-11)
 
 **비포함**: 4축 마이그레이션, BondKind, ActionTrigger, Channel 2/3.
 
@@ -199,6 +231,44 @@ pub struct EventMetadata {
 **산출물 spec**: [`task-rel-phase1-reflection.md`](task-rel-phase1-reflection.md) (v0.1 작성됨, 2026-05-10).
 
 **완료 조건**: 위 4 게이트 통과 + Phase 1 checkpoint report.
+
+**완료 결과**: 18 commits (`87c8b32` → `fb22400`). 1095 회귀 + Phase 1.5/1.6 ~12 신규 테스트.
+상세 — [`phase1-checkpoint-report.md`](phase1-checkpoint-report.md). 핵심:
+- `Npc.inner_compass: Option<String>` (A-min)
+- `domain/reflection.rs` (TurnSnapshot · compute_significance · ReflectionResult)
+- `EventKind::DialogueReflected` + `Command::EndDialogue.reflection`
+- `ports/reflection.rs` (OCP) + `adapter/reflection_via_chat.rs` + `application/reflection_service.rs`
+- `RelationshipPolicy.handle_dialogue_end` 게이트 + 4 follow-up
+- `DialogueOrchestrator.with_reflection() + turn_buffers`
+- chitchat 18% latency 절감 + calibration 3 밴드 정확 (0.000/0.461/0.980)
+
+### Phase 1.5 (Mind Studio 통합) ✅ 완료 (2026-05-12)
+
+Phase 1의 reflection 게이트는 *DialogueOrchestrator 경로*에 박혀 있었음. Mind Studio는
+DialogueOrchestrator를 *사용하지 않고* `state.chat + domain_sync` ad-hoc 패턴이라
+reflection 미동작 상태. Phase 1.5에서 같은 로직을 Mind Studio 경로에 *mirror*.
+
+**산출물** (commits `5cf8fb5` + `9b35e99`):
+- **Backend**: `AppState.reflection_service` + `with_reflection()` + `StateInner.turn_buffers` + `StudioService::run_reflection_for_session` + `domain_sync::dispatch_end_dialogue(reflection)` 시그니처 확장 + 4 통합 테스트 (Mock ReflectionRunner)
+- **Frontend**: `ReflectionView.tsx` 신규 + ResultPanel '반추' 탭 + Zustand `lastAfterDialogue` + `handleEndChat` 박제 + toast band + `useStateSync.dialogue_reflected` 핸들러
+- **회귀**: backend 64+478 / frontend 100 vitest
+
+**trade-off** (CLAUDE.md 미반영, 본 문서에만 명시): DialogueOrchestrator와 Mind Studio가
+*동일 reflection 로직을 두 군데*에 보유 → drift 위험. Mind Studio가 외부 노출되거나 drift
+누적 시 cutover 검토.
+
+### Phase 1.6 (EventBus → SSE Bridge) ✅ 완료 (2026-05-12)
+
+Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/api/v2/scenes/*`
+(Director 경로)가 manual emit 미경유로 SSE silent bug. EventBus 구독 bridge로 일원화.
+
+**산출물** (commit `fb22400`):
+- `src/bin/mind-studio/event_bridge.rs` 신설 (~250 LoC, `MemoryProjector` 패턴 mirror — subscribe_with_lag + Lagged replay)
+- `map_event(&DomainEvent) -> Vec<StateEvent>` 결정론 매핑 9개 (`EmotionAppraised`/`StimulusApplied`/`GuideGenerated`/`SceneStarted`/`SceneEnded→AfterDialogue`/`DialogueTurnCompleted(speaker=assistant)→ChatTurnCompleted`/`DialogueReflected`/`MemoryEntry{Created,Superseded,Consolidated}`/`Rumor{Seeded,Spread}`)
+- `main.rs`에서 `tokio::spawn(bridge.run(...))` 부팅 시 1회
+- manual `state.emit()` 11곳 제거 (studio_service 5 + mcp_server 2 + handlers/scenario 2 + handlers/rumor 2). UI-only emit (HistoryChanged/SituationChanged/CRUD 등) *유지*.
+- **보너스**: `/api/v2/scenes/*` Director 경로도 자동 SSE 발행 (단 `director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 — shared_dispatcher 통합은 별도 작업)
+- 7 단위 + 1 통합 신규
 
 ### Phase 2 (v0.8) — 4-axis + BondKind + Channel 1
 
@@ -329,7 +399,7 @@ pub struct EventMetadata {
 
 | 섹션 | 정의 | 반영 phase | 현재 % | 완료 마커 |
 |---|---|---|---|---|
-| §0 명제 | LLM↔Engine 분업 6 명제 | 1 + 0-pillars Pillar 6 격상 | 50% (00-pillars.md v0.2 반영) | Phase 1 완료 시 100% |
+| §0 명제 | LLM↔Engine 분업 6 명제 | 1 + 0-pillars Pillar 6 격상 | **100%** ✅ Phase 1 완료 | Phase 1 완료 |
 | §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | 0% | Phase 2 |
 | §2 type / type_history | 자유 텍스트 + 이력 | 2 | 0% | Phase 2 |
 | §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | 0% | Phase 2 |
@@ -338,7 +408,7 @@ pub struct EventMetadata {
 | §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1) + 3a (Ch2) + 3b (Ch3) | 0% | Phase 3b 완료 시 |
 | §4.5.5 추모 행동 | RecollectionAction 5종 | 3c | 0% | Phase 3c |
 | §5 LLM acting guide | ActingGuide 명세 | 부분 — PAD 기반 acting guide 코드 존재 | ~40% | Phase 2에서 풍부화 |
-| **§6 Scene Boundary Reflection** | **LLM↔Engine 분업·Reflection·is_chitchat 게이트·DialogueReflected** | **1 ★ 진행 중** | **0% → Phase 1 완료 시 100%** | Phase 1 완료 |
+| **§6 Scene Boundary Reflection** | **LLM↔Engine 분업·Reflection·is_chitchat 게이트·DialogueReflected** | **1 + 1.5 + 1.6 ✅ 완료** | **100%** | Phase 1/1.5/1.6 완료 (2026-05-11~12) |
 | §7 미정의 영역 | 후속 작업 카탈로그 | - | - | - |
 
 ### action_triggers.md 추적 (v0.1 기준)
@@ -370,9 +440,11 @@ pub struct EventMetadata {
 ### 종합 — 디자인-코드 정합 진척
 
 ```
-relationships.md     [█▒▒▒▒▒▒▒▒▒]   ~5%   (PAD 기반 acting guide만 부분)
+relationships.md     [██▒▒▒▒▒▒▒▒]   ~15%  (PAD acting guide 부분 + §0 명제 100% + §6 Reflection 100%)
                        ↑
-                       Phase 1 진행 중 — §6 Reflection 100% 예정 (~15%로 도약)
+                       Phase 1/1.5/1.6 ✅ 완료 (2026-05-11~12)
+                       다음 도약: Phase 2 — §1 4축 + §3 BondKind/BondStatus/Partnership + §6.4 Channel 1
+                                (+50%로 도약 예정, 누적 ~65%)
 
 action_triggers.md   [▒▒▒▒▒▒▒▒▒▒]    0%
                        ↑
@@ -380,7 +452,7 @@ action_triggers.md   [▒▒▒▒▒▒▒▒▒▒]    0%
 
 _schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F8.6 spot-check 후 갱신)
                        ↑                Layer 1 (HEXACO 24+identity) ✅ + Scene/Focus ✅ 완료
-                       Phase 1 inner_compass partial (+5%, A-min compass만)
+                       Phase 1 inner_compass partial (+5%, A-min compass만) ✅
                        Phase 2 4축+BondKind+BondStatus+Partnership+type/type_history (+50%)
                        Phase 3c inner_compass full (taboo/life_question 승격) + 행동 (별도 spec)
 ```

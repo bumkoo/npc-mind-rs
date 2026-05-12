@@ -1,10 +1,12 @@
 # Phase 1 Mind Architecture — API 변경 안내
 
-> Phase 1 (`relationships.md` v0.7 §6 Scene Boundary Reflection) 완료에 따른
-> *외부 사용자(라이브러리 임베더, 자체 어댑터/테스트 작성자)*가 알아야 할 변경 모음.
+> Phase 1 (`relationships.md` v0.7 §6 Scene Boundary Reflection) + Phase 1.5 (Mind
+> Studio 통합) + Phase 1.6 (EventBus→SSE bridge) 완료에 따른 *외부 사용자(라이브러리
+> 임베더, 자체 어댑터/테스트 작성자, Mind Studio 임베드 사용자)*가 알아야 할 변경 모음.
 >
-> 0.x 버전 — breaking change 허용. 본 문서는 Phase 1 commit `87c8b32` ~ `433f64c`
+> 0.x 버전 — breaking change 허용. 본 문서는 Phase 1 commit `87c8b32` ~ `fb22400`
 > 사이의 누적 변화 요약. 상세 spec: [`docs/tasks/mind-architecture/task-rel-phase1-reflection.md`](../tasks/mind-architecture/task-rel-phase1-reflection.md).
+> 체크포인트: [`docs/tasks/mind-architecture/phase1-checkpoint-report.md`](../tasks/mind-architecture/phase1-checkpoint-report.md).
 
 ## 1. Breaking changes
 
@@ -184,10 +186,156 @@ mklink /J .claude\worktrees\models C:\Users\bumko\projects\models
 → engine 부분 비용은 *무시 가능*. dialogue 종료 시 사용자 체감 latency는 reflection
 LLM 호출 (~수초)이 dominant. Phase 1 alpha tester에 *수 초 대기* 사전 공지 권장.
 
-## 5. 디자인 문서 변경
+## 5. Phase 1.5 (Mind Studio 통합) — 2026-05-12
+
+Phase 1 본체의 reflection 게이트는 *DialogueOrchestrator 경로*에 박혀 있었음. Mind Studio는
+DialogueOrchestrator를 *사용하지 않고* `state.chat + domain_sync` ad-hoc 패턴이라 reflection
+미동작 → Phase 1.5에서 *mirror*.
+
+### 5.1 `AppState` 신규 필드 + 빌더 (chat feature gated)
+
+```rust
+pub struct AppState {
+    // ...
+    #[cfg(feature = "chat")]
+    pub reflection_service: Option<Arc<dyn ReflectionRunner>>,
+}
+
+impl AppState {
+    #[cfg(feature = "chat")]
+    pub fn with_reflection(mut self, svc: Arc<dyn ReflectionRunner>) -> Self { ... }
+}
+```
+
+main.rs에서 별도 `RigChatAdapter` 인스턴스 → `ConversationBackedReflectionPort` →
+`DefaultReflectionPromptBuilder` → `ReflectionService` 합성 자동 부착. 부착 실패해도
+Mind Studio 정상 동작 (legacy 경로).
+
+### 5.2 `StateInner.turn_buffers` 신규
+
+```rust
+pub struct StateInner {
+    // ...
+    #[cfg(feature = "chat")]
+    #[serde(skip)]
+    pub turn_buffers: HashMap<String, Vec<TurnSnapshot>>,
+}
+```
+
+`process_chat_turn_result`에서 매 chat turn마다 push, `perform_chat_end`/`perform_after_dialogue`에서 회수. `#[serde(skip)]`이라 시나리오 JSON 영향 없음.
+
+### 5.3 `StudioService::perform_after_dialogue` 시그니처 변경
+
+```rust
+// 이전
+pub async fn perform_after_dialogue(state: &AppState, req: AfterDialogueRequest)
+    -> Result<AfterDialogueResponse, AppError>;
+
+// 이후
+pub async fn perform_after_dialogue(
+    state: &AppState,
+    req: AfterDialogueRequest,
+    session_id: Option<&str>,  // ★ Phase 1.5
+) -> Result<AfterDialogueResponse, AppError>;
+```
+
+session_id가 Some이고 reflection_service + turn_buffer 둘 다 있으면 `reflect()` 호출 →
+`Command::EndDialogue.reflection`으로 전달. None이면 legacy.
+
+REST `/api/after-dialogue` 핸들러와 MCP `after_dialogue` 도구는 *session_id 미보유*라
+`None` 전달 (legacy). chat 종료 흐름(`perform_chat_end`)은 session_id 전달 → reflection 활성.
+
+### 5.4 `domain_sync::dispatch_end_dialogue` 시그니처 변경
+
+```rust
+// 이전
+pub async fn dispatch_end_dialogue(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: AfterDialogueRequest,
+) -> Result<AfterDialogueResponse, AppError>;
+
+// 이후
+pub async fn dispatch_end_dialogue(
+    state: &AppState,
+    inner: &mut StateInner,
+    req: AfterDialogueRequest,
+    reflection: Option<ReflectionResult>,  // ★ Phase 1.5
+) -> Result<AfterDialogueResponse, AppError>;
+```
+
+caller가 산출해 전달 — domain_sync는 단순 dispatch 책임만.
+
+### 5.5 Frontend (`mind-studio-ui/`)
+
+- `ReflectionResult` / `AfterDialogueResponse` TypeScript types (`types/index.ts`)
+- `useResultStore.lastAfterDialogue: AfterDialogueResponse | null` + `setLastAfterDialogue` setter
+- `ReflectionView.tsx` 신규 — chitchat/significant 라벨 + significance band + summary + reasoning + axes Δ
+- ResultPanel '반추' 탭 (시드 ↔ LLM Model 사이)
+- `handleEndChat`: `/api/chat/end` 응답의 `after_dialogue`를 store에 박제 + reflection.is_some 시 toast band + score 노출
+- `useStateSync`: `dialogue_reflected` SSE 핸들러
+
+## 6. Phase 1.6 (EventBus → SSE Bridge) — 2026-05-12
+
+Mind Studio의 도메인 관련 SSE 발행을 EventBus 구독으로 일원화. manual `state.emit()` 11곳 제거.
+
+### 6.1 `event_bridge.rs` 신규 모듈
+
+`src/bin/mind-studio/event_bridge.rs` (~250 LoC). `MemoryProjector` 패턴 mirror —
+`subscribe_with_lag` + Lagged 시 `EventStore::get_events_after_id` replay.
+
+**자동 매핑 9개** (`map_event(&DomainEvent) -> Vec<StateEvent>`):
+| Domain Event | → SSE StateEvent |
+|---|---|
+| `EmotionAppraised` | `Appraised` |
+| `StimulusApplied` | `StimulusApplied` |
+| `GuideGenerated` | `GuideGenerated` |
+| `SceneStarted` | `SceneStarted` |
+| `SceneEnded` | `AfterDialogue` |
+| `DialogueTurnCompleted` (speaker="assistant") | `ChatTurnCompleted` |
+| `DialogueReflected` | `DialogueReflected` |
+| `MemoryEntry{Created,Superseded,Consolidated}` | `Memory{Created,Superseded,Consolidated}` |
+| `Rumor{Seeded,Spread}` | `Rumor{Seeded,Spread}` |
+
+매핑되지 않는 도메인 이벤트(예: `RelationshipUpdated`, `BeatTransitioned`)는 *의도적으로* SSE 미발행.
+
+### 6.2 `main.rs` 부팅 시 spawn
+
+```rust
+let bridge = Arc::new(event_bridge::EventBridge::new(state.event_tx.clone()));
+let bus = state.shared_dispatcher.event_bus().clone();
+let event_store = state.shared_dispatcher.event_store().clone();
+tokio::spawn(bridge.run(bus, event_store));
+```
+
+### 6.3 Manual `state.emit()` 11개 제거 (도메인 사실에서 도출 가능한 SSE)
+
+- `studio_service.rs`: `Appraised`/`StimulusApplied`/`AfterDialogue`/`DialogueReflected`/`ChatTurnCompleted`
+- `mcp_server.rs`: `GuideGenerated`/`SceneStarted`
+- `handlers/scenario.rs`: `SceneStarted`/`GuideGenerated`
+- `handlers/rumor.rs`: `RumorSeeded`/`RumorSpread`
+
+### 6.4 Manual `state.emit()` 유지 (UI lifecycle)
+
+- `HistoryChanged` — TurnRecord push 알림 (도메인 무관)
+- `SituationChanged`/`TestReportChanged`/`SceneInfoChanged` — UI 필드
+- `ScenarioLoaded`/`ScenarioSaved`/`ResultLoaded` — 시나리오 라이프사이클
+- `NpcChanged`/`RelationshipChanged`/`ObjectChanged` — CRUD
+- `ChatStarted`/`ChatEnded` — chat 세션 (도메인 이벤트 없음)
+- `MemoryCreated/Superseded` (handlers/memory.rs · world.rs · rumor.rs spread_count>0): Memory 이벤트가 *현재* EventBus 미발행이라(Step F 대기) manual emit이 유일한 SSE 출처
+
+### 6.5 `StateEvent`에 `PartialEq`/`Eq` derive
+
+`event_bridge::map_event` 단위 테스트가 매핑 결정론을 검증하기 위해 필요.
+
+### 6.6 Director 경로 silent bug 부수 fix
+
+`/api/v2/scenes/*`(Director 경로)는 dispatch_v2를 직접 호출하면서 manual `state.emit()`을 *전혀 거치지 않아* SSE가 안 날아갔던 silent bug. Bridge가 shared_dispatcher의 EventBus를 구독하므로 *Director 경로도 자동 SSE 발행*. **단** 현재 `AppState.director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 — shared_dispatcher 통합은 별도 작업.
+
+## 7. 디자인 문서 변경
 
 - `docs/game-design/2-characters/relationships.md` v0.7 §6 — Reflection 설계 (변경 없음, 본 phase의 입력 디자인)
 - `docs/game-design/2-characters/_schema.md` — `inner_compass.compass`만 코드 반영 (Layer 2의 4-필드 nested struct는 Phase 3c 승격 예정)
-- `docs/tasks/mind-architecture/00-roadmap.md` v0.5 — Phase 1 ✅ 완료 표기 + §6.5 디자인 문서 추적 갱신
-- `docs/tasks/mind-architecture/phase1-checkpoint-report.md` — Stage 0~5 종합 체크포인트
+- `docs/tasks/mind-architecture/00-roadmap.md` — Phase 1/1.5/1.6 ✅ 완료 표기 + §6.5 디자인 문서 추적 갱신
+- `docs/tasks/mind-architecture/phase1-checkpoint-report.md` v0.2 — Phase 1 본체 + 1.5 + 1.6 종합 + §7 *Phase 2 진입 전 알아야 할 현재 구현 상태* 신설
 - `docs/tasks/mind-architecture/task-rel-phase1-reflection.md` v0.12 — Phase 1 spec 종결 (Stage 0 Findings 포함)
