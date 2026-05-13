@@ -382,13 +382,14 @@ Phase 2 회귀 검증의 기준점. Phase 1 종결 시점 (2026-05-11 baseline) 
 
 ### D1 — cargo test 통과 카운트
 
-| 항목 | Phase 1 종결 시점 | 출처 |
+| 항목 | 시점 / 수치 | 출처 |
 |---|---|---|
-| `cargo test --all-features --workspace` | **1095 passed**, 0 failed | `phase1-checkpoint-report.md:35-36, 308` |
+| Phase 1 종결 baseline | **1095 passed**, 0 failed (2026-05-11) | `phase1-checkpoint-report.md:35-36, 308` |
+| **Stage 1 진입 직전 재측정** | **1220 passed**, 3 skipped, 0 failed (2026-05-14) | `baselines/cargo-test-2026-05-14-PASS.log` — Phase 1.5/1.6 + 후속 누적 +125 |
 | `cargo check --all-features` | ✅ | 동일 |
 | `cargo build --features chat` | ✅ | 동일 |
 
-**게이트**: Phase 2 마이그레이션 완료 후 *동일 카운트 ± 신규 테스트 수* 통과. 회귀 0건.
+**게이트**: Phase 2 마이그레이션 완료 후 *Stage 1 진입 시점 1220 + 신규 테스트 수* 통과. 회귀 0건.
 
 ### D2 — `dispatch_v2(EndDialogue)` latency
 
@@ -445,23 +446,781 @@ Phase 1 6 stage 패턴 따라 분할. 직선 의존 (Stage N → Stage N+1). 각
 
 ### Stage 1 — Type 신설 + Domain 재작성
 
-**범위**:
-- `AxisScore(f32)` + `WarinessScore(f32)` 신설 (B-D1/D2) — `src/domain/relationship/axis.rs` 또는 `relationship.rs` 내부 모듈
-- `BondKind` 11 variants enum (`SwornBrothers`/`MasterDisciple`/`Soulmate`/`LoyalRetainer`/`Companion`/`Guardian`/`Mentor`/`BloodEnemy`/`ArchRival`/`Betrayer`/`Oppressor`)
-- `BondStatus` 5 variants enum (`Active`/`Resolved`/`Deceased`/`Dormant`/`Reactivating`) + `accepts_live_input()` helper
-- `Partnership` 4 variants enum (`Spouse`/`Engaged`/`Lover`/`Separated`)
+**범위 (상위 골격)**:
+- `AxisScore(f32)` + `WarinessScore(f32)` 신설 (B-D1/D2)
+- `BondKind` 11 variants / `BondStatus` 5 variants + `accepts_live_input()` / `Partnership` 4 variants enum
 - `Relationship` 본체 재작성: 4축 + bond_kind + bond_status + partnership + type + type_history (B-D4: `power` 폐기)
-- `RelationshipBuilder` 4축 API (`.trust(AxisScore)` / `.affinity(AxisScore)` / `.respect(AxisScore)` / `.wariness(WarinessScore)`)
+- `RelationshipBuilder` 4축 API
 - `Relationship::neutral()` 시그니처 보존 (16곳 자동 흡수)
-- 단위 테스트: clamp 범위, 양극 점착, BondStatus 차단 등
+- 단위 테스트
 
-**게이트**:
+**위험**: 작음~중. 도메인 모듈 분할 + 4축 도입. 16곳 자동 흡수가 인터페이스 면적 보존.
+
+세부 항목 1.1~1.9:
+
+#### 1.1 — 디렉토리 구조
+
+**결정**: (a) 모듈 분할 채택.
+
+```
+src/domain/relationship/
+  mod.rs                # Relationship aggregate (현 relationship.rs 본체 이관) + RelationshipBuilder + neutral
+  axis.rs               # AxisScore + WarinessScore + AxisKind + AxisDelta
+  bond.rs               # BondKind + BondStatus + accepts_live_input()
+  partnership.rs        # Partnership
+```
+
+**비포함** (의도적):
+- `RelationshipChangeCause` enum은 `src/domain/event.rs`에 *현재 위치 유지* (A3 검증: variant 의미가 *이벤트 분류*에 가까움, Relationship aggregate 내부 X)
+- OCC → 4축 매핑 (`base_delta` / `hexaco_modifier` / `update_axes_from_emotion`)은 **Stage 2 — `src/domain/relationship/mapping.rs` 신설** 위치 예약
+
+**이관 패턴**:
+- 기존 `src/domain/relationship.rs` (~700줄) → 디렉토리로 분할
+- 기존 사용처 import 경로 `use crate::domain::relationship::Relationship;` 그대로 유지 (mod.rs가 re-export)
+- `pub use axis::{AxisScore, WarinessScore, AxisKind, AxisDelta};` 등 mod.rs에서 re-export
+
+**작업 순서**: 1.1 디렉토리 생성 → 1.2~1.5 새 타입 정의 → 1.6 본체 이관/재작성 → 1.7~1.8 → 1.9 테스트
+
+**게이트**: `cargo check` 통과 (디렉토리 분할 후 컴파일 안전).
+
+---
+
+#### 1.2 — `AxisScore` + `WarinessScore`
+
+**목적**: 4축 점수의 *불변식 강제* (범위 + wariness 음수 컴파일 시점 차단) + 4축 산술 연산 인프라.
+
+**위치**: `src/domain/relationship/axis.rs` (신규)
+
+**시그니처**:
+
+```rust
+//! 관계 4축 점수 타입과 산술 연산.
+//! - AxisScore: trust/affinity/respect ±100
+//! - WarinessScore: wariness 0..=100 (음수 의미 없음, 별 타입으로 컴파일 시점 차단)
+
+use serde::{Deserialize, Serialize};
+
+/// 음양 가능 축의 점수 (trust / affinity / respect).
+///
+/// 범위: -100.0 ~ +100.0
+/// 내부: f32 (B-D2 — base_delta × intensity × HEXACO 곱셈 정밀도 유지)
+/// JSON: 정수 round 출력 (디자이너 친화)
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct AxisScore(f32);
+
+impl AxisScore {
+    pub const MIN: f32 = -100.0;
+    pub const MAX: f32 = 100.0;
+    pub const NEUTRAL: AxisScore = AxisScore(0.0);
+
+    /// 입력을 ±100으로 clamp.
+    pub fn new(value: f32) -> Self {
+        Self(value.clamp(Self::MIN, Self::MAX))
+    }
+
+    pub fn value(&self) -> f32 { self.0 }
+
+    /// delta를 더하고 clamp한 새 값.
+    pub fn add(self, delta: f32) -> Self {
+        Self::new(self.0 + delta)
+    }
+}
+
+impl Default for AxisScore {
+    fn default() -> Self { Self::NEUTRAL }
+}
+
+/// 경계심 축 점수 (wariness 전용).
+///
+/// 범위: 0.0 ~ +100.0
+/// 별 타입이므로 *컴파일 시점*에 AxisScore와 혼동 차단.
+/// `WarinessScore::new(-50.0)` 호출은 runtime에 0.0으로 clamp.
+#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+pub struct WarinessScore(f32);
+
+impl WarinessScore {
+    pub const MIN: f32 = 0.0;
+    pub const MAX: f32 = 100.0;
+    pub const NEUTRAL: WarinessScore = WarinessScore(0.0);
+
+    pub fn new(value: f32) -> Self {
+        Self(value.clamp(Self::MIN, Self::MAX))
+    }
+
+    pub fn value(&self) -> f32 { self.0 }
+
+    pub fn add(self, delta: f32) -> Self {
+        Self::new(self.0 + delta)
+    }
+}
+
+impl Default for WarinessScore {
+    fn default() -> Self { Self::NEUTRAL }
+}
+
+/// 4축이 *동시에* 받는 변동.
+/// base_delta 표 + HEXACO 곱셈 결과 (Stage 2 정의/사용).
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct AxisDelta {
+    pub trust:    f32,
+    pub affinity: f32,
+    pub respect:  f32,
+    pub wariness: f32,
+}
+
+impl AxisDelta {
+    /// 스칼라 곱 (intensity × HEXACO modifier 등).
+    pub fn scaled_by(self, factor: f32) -> Self {
+        Self {
+            trust:    self.trust    * factor,
+            affinity: self.affinity * factor,
+            respect:  self.respect  * factor,
+            wariness: self.wariness * factor,
+        }
+    }
+}
+
+/// 두 AxisDelta 성분별 합산 (Stage 2 — 복합 감정의 base_delta 합산에 사용).
+/// 예: `Anger.base_delta() + Hate.base_delta() + Reproach.base_delta()`
+impl std::ops::Add for AxisDelta {
+    type Output = AxisDelta;
+    fn add(self, other: AxisDelta) -> AxisDelta {
+        AxisDelta {
+            trust:    self.trust    + other.trust,
+            affinity: self.affinity + other.affinity,
+            respect:  self.respect  + other.respect,
+            wariness: self.wariness + other.wariness,
+        }
+    }
+}
+
+/// 축 식별자 (base_delta 표 lookup에 사용, Stage 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AxisKind {
+    Trust, Affinity, Respect, Wariness,
+}
+```
+
+**설계 의도 5개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 2 타입 분리 (`AxisScore` / `WarinessScore`) | *컴파일 시점*에 wariness 음수 차단. `let w: WarinessScore = AxisScore::new(50.0);` → 컴파일 에러 (B-D1) |
+| ② | `NEUTRAL` const + `impl Default` 명시 | `Relationship::neutral()`의 기본값. derive Default는 *우연히* 0.0과 일치하지만 *명시 impl*로 의도 박음. 1.8 자동 흡수 도움 |
+| ③ | `add(self, delta: f32)` 메서드로만 변동 | 외부에서 `score.value() + 50.0` 같이 raw f32 산술하면 clamp 안 됨 — `add()` 강제로 *자동 clamp* |
+| ④ | `AxisDelta` 별 타입 + `Add` trait | 4축이 *한꺼번에 받는 변동*. Stage 2의 복합 감정 합산 (`Anger + Hate + Reproach`)에 사용. `scaled_by()`로 intensity/HEXACO 곱 |
+| ⑤ | `AxisKind` enum | Stage 2 `base_delta` 표 lookup 및 `update_axes_from_emotion`의 축별 분기에 사용. `Eq + Hash` 박혀 HashMap 키로 사용 가능 |
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[clamp 범위]
+- AxisScore::new(150.0).value()       == 100.0  (양 cap)
+- AxisScore::new(-200.0).value()      == -100.0 (음 cap)
+- AxisScore::new(50.0).value()        == 50.0   (정상)
+- WarinessScore::new(-50.0).value()   == 0.0    ★ 핵심 (음수 floor)
+- WarinessScore::new(150.0).value()   == 100.0
+- WarinessScore::new(50.0).value()    == 50.0
+
+[add() 자동 clamp]
+- AxisScore::new(50.0).add(60.0).value()       == 100.0  (양 cap)
+- AxisScore::new(-50.0).add(-60.0).value()     == -100.0 (음 cap)
+- WarinessScore::new(80.0).add(50.0).value()   == 100.0
+- WarinessScore::new(30.0).add(-50.0).value()  == 0.0
+
+[NEUTRAL + Default]
+- AxisScore::NEUTRAL.value()     == 0.0
+- WarinessScore::NEUTRAL.value() == 0.0
+- AxisScore::default()           == AxisScore::NEUTRAL
+- WarinessScore::default()       == WarinessScore::NEUTRAL
+
+[AxisDelta scaled_by]
+- AxisDelta { trust: 20.0, affinity: 10.0, respect: 0.0, wariness: -10.0 }
+    .scaled_by(0.5)
+  == AxisDelta { trust: 10.0, affinity: 5.0, respect: 0.0, wariness: -5.0 }
+
+[AxisDelta Add — Stage 2 복합 감정 합산 패턴]
+- Anger의 base_delta + Hate의 base_delta = (trust -35, affinity -35, respect -5, wariness +40)
+  (Stage 2의 base_delta 표가 박혀야 정확한 케이스 — 1.2는 산술 동작만 검증)
+- AxisDelta { trust: 10.0, ... } + AxisDelta { trust: 5.0, ... }
+  의 trust == 15.0
+
+[serde round-trip]
+- AxisScore::new(75.0) → serde_json::to_string → "75.0" → from_str → AxisScore::new(75.0)
+- WarinessScore::new(50.0) 동일
+```
+
+**컴파일 차단 검증** (Rust 컴파일러 자동, 명시 unit test 없음):
+```rust
+// 이 코드는 컴파일 에러:
+// let w: WarinessScore = AxisScore::new(50.0);
+// → expected struct `WarinessScore`, found struct `AxisScore`
+```
+
+**비포함**:
+- `Add<f32>` for AxisScore (raw delta 더하기) — `add()` 메서드로 충분, trait 중복
+- `Add<AxisScore>` for AxisScore — *AxisScore + AxisScore* 시맨틱 없음 (의심 1 결론)
+- `Hash` for AxisScore/WarinessScore — f32 NaN 때문 불가
+
+#### 1.3 — `BondKind`
+
+**목적**: 관계의 *정서·기능적 분류* 11종. axes 변화 → 임계 도달/이탈로 *Channel 2 Temporal (Phase 3a)*에서 자동 진입/이탈. Phase 2는 *enum 정의 + 영역 헬퍼*만.
+
+**위치**: `src/domain/relationship/bond.rs` (신규, BondStatus와 같은 파일)
+
+**시그니처**:
+
+```rust
+//! BondKind / BondStatus — 관계의 정서·기능 분류 + 활동 상태.
+//! relationships.md v0.7 §3.1 (BondKind 11) + §3.5 (BondStatus 5)
+
+use serde::{Deserialize, Serialize};
+
+/// 관계의 정서·기능적 분류 (relationships.md v0.7 §3.1).
+///
+/// 11 variants 4 영역:
+/// - 지기·동반 (양극 임계): 6종 — SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer, Companion, Guardian
+/// - 멘토 (중간극 임계): 1종 — Mentor
+/// - 원수 (음극 임계): 4종 — BloodEnemy, ArchRival, Betrayer, Oppressor
+///
+/// Phase 2는 *enum 정의 + 영역 헬퍼*까지.
+/// 자동 진입/이탈 (시간 게이트 + 임계값)은 Phase 3a (Channel 2 Temporal).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BondKind {
+    // 지기·동반 — 양극 임계 (6종)
+    SwornBrothers,    // 의형제·동지형
+    MasterDisciple,   // 사부-제자형 (무술 비전 전수)
+    Soulmate,         // 영혼의 동반자형
+    LoyalRetainer,    // 가신·은인형
+    Companion,        // 평생의 우인 (v0.6 신설)
+    Guardian,         // 부모-자녀형 (v0.6 신설)
+
+    // 멘토 — 중간극 임계
+    Mentor,           // 인생 선배·후배
+
+    // 원수 — 음극 임계 (4종)
+    BloodEnemy,       // 혈적
+    ArchRival,        // 숙적
+    Betrayer,         // 배신자
+    Oppressor,        // 압제자
+}
+
+impl BondKind {
+    /// 지기 4종 (SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer).
+    /// 중국어 *지기(知己)* — 깊은 정신적 동지/지음.
+    pub fn is_zhiji(&self) -> bool {
+        matches!(self,
+            Self::SwornBrothers | Self::MasterDisciple
+            | Self::Soulmate | Self::LoyalRetainer
+        )
+    }
+
+    /// 평생의 우인 (Companion).
+    pub fn is_companion_class(&self) -> bool {
+        matches!(self, Self::Companion)
+    }
+
+    /// 부모-자녀형 (Guardian).
+    pub fn is_guardian(&self) -> bool {
+        matches!(self, Self::Guardian)
+    }
+
+    /// 인생 선배·후배 (Mentor).
+    pub fn is_mentor(&self) -> bool {
+        matches!(self, Self::Mentor)
+    }
+
+    /// 원수 4종 (BloodEnemy, ArchRival, Betrayer, Oppressor).
+    pub fn is_enemy(&self) -> bool {
+        matches!(self,
+            Self::BloodEnemy | Self::ArchRival
+            | Self::Betrayer | Self::Oppressor
+        )
+    }
+}
+```
+
+**설계 의도 4개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 11 variants 그대로 (v0.7 §3.1 명시) | 디자이너 친숙 — 무협 원전의 *관계 카탈로그*. 추가 신설은 Phase 3+에서. |
+| ② | 영역 헬퍼 5개 (v0.7 §3.1 그대로) | B-D10 마이그레이션 baseline 룰에서 *영역별 분기* 시 사용. `is_zhiji`는 *지기(知己)* 무협 도메인 용어 보존 (npc-mind-rs 정체성). |
+| ③ | `is_positive_pole`/`is_negative_pole` *비포함* | YAGNI — Phase 2에서 사용 빈도 낮음. Phase 3a Channel 2 Temporal 진입 시 필요해지면 추가. |
+| ④ | `#[serde(rename_all = "snake_case")]` | JSON 직렬화: `"sworn_brothers"`, `"blood_enemy"` 등. 디자이너 시나리오 JSON 친화. |
+
+**`Display` impl 비포함**: 도메인 enum은 *순수*. presentation layer (`presentation/locale.rs`)가 ko/en 라벨 박음 — 현재 `PowerLevel` 패턴 유지. 국제화 미래 보존. Stage 4 또는 6에서 박음.
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[영역 헬퍼 — 분류 정합]
+- BondKind::SwornBrothers.is_zhiji()      == true
+- BondKind::MasterDisciple.is_zhiji()     == true
+- BondKind::Soulmate.is_zhiji()           == true
+- BondKind::LoyalRetainer.is_zhiji()      == true
+- BondKind::Companion.is_zhiji()          == false
+- BondKind::Guardian.is_zhiji()           == false
+- BondKind::Mentor.is_zhiji()             == false
+- BondKind::BloodEnemy.is_zhiji()         == false
+
+[Companion / Guardian / Mentor]
+- BondKind::Companion.is_companion_class() == true
+- BondKind::Guardian.is_guardian()         == true
+- BondKind::Mentor.is_mentor()             == true
+- BondKind::SwornBrothers.is_companion_class() == false  (지기와 평생의 우인 구별)
+
+[원수]
+- BondKind::BloodEnemy.is_enemy()  == true
+- BondKind::ArchRival.is_enemy()   == true
+- BondKind::Betrayer.is_enemy()    == true
+- BondKind::Oppressor.is_enemy()   == true
+- BondKind::Mentor.is_enemy()      == false
+
+[영역 상호 배타성 검증 — 11 variants 모두 정확히 1개 영역에 속함]
+- 11 variants 각각: is_zhiji + is_companion_class + is_guardian + is_mentor + is_enemy 의 합이 정확히 1
+
+[serde round-trip]
+- BondKind::SwornBrothers → "sworn_brothers" → SwornBrothers
+- BondKind::BloodEnemy   → "blood_enemy"    → BloodEnemy
+- BondKind::MasterDisciple → "master_disciple" → MasterDisciple
+- BondKind::LoyalRetainer  → "loyal_retainer"  → LoyalRetainer
+```
+
+**비포함**:
+- `Display` impl — presentation layer (Stage 4 또는 6)
+- `is_positive_pole` / `is_negative_pole` — Phase 3a에서 필요 시 추가
+- 시간 게이트 / 임계값 — Phase 3a Channel 2 Temporal
+- BondKind 진입 조건 함수 — Phase 3a
+
+#### 1.4 — `BondStatus` + `accepts_live_input()`
+
+**목적**: 관계의 *활동 상태*. base_delta 차단의 *핵심 게이트* — Stage 2 `update_axes_from_emotion`이 이 헬퍼로 *입력 거부* 결정.
+
+**위치**: `src/domain/relationship/bond.rs` (1.3과 같은 파일)
+
+**시그니처**:
+
+```rust
+use crate::domain::event::EventId;
+use serde::{Deserialize, Serialize};
+
+/// 관계의 활동 상태 (relationships.md v0.7 §3.5).
+///
+/// - Active: 정상 활성. axes 자동 변동.
+/// - Resolved { reason }: terminal — 화해/매듭 등으로 *완결*. axes freeze.
+/// - Deceased: terminal — 대상 사망. axes freeze.
+/// - Dormant: 휴면 (오랜 미접촉). axes freeze. 트리거로 Reactivating 전이 가능.
+/// - Reactivating { trigger }: 복귀 중 (transient state). axes 받기 시작 — *연속적 회복*.
+///   Active와의 차이: 복귀 trigger 박힘 + Phase 3a 시간 게이트 대상 (Active 자동 전이).
+///
+/// 전이 룰은 Phase 3a (Channel 2 Temporal). Phase 2는 enum + `accepts_live_input()`까지.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BondStatus {
+    Active,
+    Resolved { reason: String },
+    Deceased,
+    Dormant,
+    Reactivating { trigger: EventId },
+}
+
+impl Default for BondStatus {
+    fn default() -> Self { BondStatus::Active }
+}
+
+impl BondStatus {
+    /// 4축 자동 변동을 받는지 (Stage 2 base_delta 차단의 핵심 헬퍼).
+    /// v0.7 §4.1:
+    ///   `if !rel.bond_status.accepts_live_input() { return; }`
+    ///
+    /// - Active: true (정상 활성)
+    /// - Reactivating: true ★ (복귀 시작 = axes 다시 받기. Reactivating state의 존재 의미)
+    /// - Dormant: false (휴면)
+    /// - Resolved: false (terminal freeze)
+    /// - Deceased: false (terminal freeze)
+    pub fn accepts_live_input(&self) -> bool {
+        matches!(self, BondStatus::Active | BondStatus::Reactivating { .. })
+    }
+}
+```
+
+**설계 의도 5개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 5 variants 그대로 (v0.7 §3.5 명시) | 2 variants는 payload 포함: `Resolved { reason }` / `Reactivating { trigger }`. terminal/transient state 표현. |
+| ② | `#[serde(tag = "kind", rename_all = "snake_case")]` | RelationshipChangeCause 패턴 (event.rs:137) — JSON: `{ "kind": "resolved", "reason": "..." }`. payload variants 자연 직렬화. |
+| ③ | `Default = Active` 명시 | 마이그레이션 시 기존 시나리오 페어가 모두 default Active로 박힘. Relationship Aggregate Default 자동 흡수. |
+| ④ | **`Reactivating.accepts_live_input() == true`** ★ | 연속적 회복 시맨틱 — 재회 첫 순간부터 정서가 다시 움직임. Reactivating의 *존재 의미*를 살림 (false였다면 Dormant와 동일 동작 — state 분리 이유 사라짐). |
+| ⑤ | `Copy` 비포함 | variants에 `String`/`EventId` 포함 — Copy 불가. `Clone`만. |
+
+**`accepts_live_input` 결정 매트릭스**:
+
+| 상태 | 의미 | `accepts_live_input` |
+|---|---|---|
+| Active | 정상 활성 | **true** |
+| Reactivating { trigger } | 복귀 시작 (transient) | **true** ★ |
+| Dormant | 휴면 (미접촉) | false |
+| Resolved { reason } | 완결 (화해/매듭) | false (terminal) |
+| Deceased | 대상 사망 | false (terminal) |
+
+**추가 헬퍼 비포함** (YAGNI):
+- `is_terminal()` (Resolved + Deceased) — Phase 3a Channel 2 Temporal에서 필요해지면 추가
+- `is_dormant()` — `matches!` 로 충분
+- 전이 함수 (`reactivate(trigger)` 등) — Phase 3a (시간 게이트 + 트리거 룰)
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[accepts_live_input — 핵심 게이트]
+- BondStatus::Active.accepts_live_input()                               == true
+- BondStatus::Reactivating { trigger: EventId(...) }.accepts_live_input() == true  ★
+- BondStatus::Dormant.accepts_live_input()                              == false
+- BondStatus::Resolved { reason: "사화".into() }.accepts_live_input()    == false
+- BondStatus::Deceased.accepts_live_input()                             == false
+
+[Default]
+- BondStatus::default() == BondStatus::Active
+
+[serde round-trip]
+- Active → {"kind": "active"} → Active
+- Resolved { reason: "사화" } → {"kind": "resolved", "reason": "사화"} → Resolved { reason: "사화" }
+- Deceased → {"kind": "deceased"} → Deceased
+- Dormant → {"kind": "dormant"} → Dormant
+- Reactivating { trigger: EventId("evt_001") } → {"kind": "reactivating", "trigger": "evt_001"} → Reactivating
+```
+
+**비포함**:
+- 전이 함수 / 트리거 룰 — Phase 3a Channel 2 Temporal
+- `Eq` / `Hash` — String 때문에 신중, Phase 2 사용처 없음 (필요해지면 추가)
+- `is_terminal` 등 추가 헬퍼 — YAGNI
+
+#### 1.5 — `Partnership`
+
+**목적**: 관계의 *형식적 동반 상태*. BondKind와 *완전 직교* — 정략결혼 = trust 0 + Spouse 가능. axes와 직접 연동 X. 변화 동력은 *공식 사건* (Phase 2.5 declarative_events `PartnershipChange` 후보).
+
+**위치**: `src/domain/relationship/partnership.rs` (신규)
+
+**시그니처**:
+
+```rust
+//! Partnership — 관계의 형식적 동반 상태.
+//! relationships.md v0.7 §3.6
+
+use serde::{Deserialize, Serialize};
+
+/// 형식적 동반 상태 (relationships.md v0.7 §3.6).
+///
+/// - Spouse: 배우자 (혼인 관계)
+/// - Engaged: 약혼 (결혼 약속)
+/// - Lover: 연인 (비공식 정서적 관계)
+/// - Separated: 별거 (Spouse/Engaged/Lover에서의 결별 상태)
+///
+/// BondKind와 *완전 직교*. axes와 *직접 연동 X*.
+/// 정략결혼 = trust 0 + Spouse 가능.
+/// 변화 동력은 *공식 사건* — Phase 2.5 declarative_events `PartnershipChange`.
+///
+/// `Relationship.partnership: Option<Partnership>` 패턴으로 사용 (None = 형식 관계 없음).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Partnership {
+    Spouse,
+    Engaged,
+    Lover,
+    Separated,
+}
+```
+
+**설계 의도 4개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 4 variants payload 없음 | 단순 *형식 라벨*. 결혼 사유, 별거 이유 등은 *type 자유 텍스트* 또는 `RelationshipChangeCause`에 박힘. |
+| ② | `Copy` 가능 | payload 없으므로 BondKind처럼 Copy. |
+| ③ | `Eq + Hash` | payload 없으므로 자연. HashMap 키로 사용 가능. |
+| ④ | `Default` impl *없음* | `Option<Partnership>`으로 처리 (`Relationship.partnership: Option<Partnership>`, None = 형식 관계 없음). Default가 *어느 variant*인지 의미 모호하므로 명시적 Option이 자연. |
+
+**`Display` impl 비포함**: BondKind와 동일 — presentation layer에서 ko/en 라벨.
+
+**추가 헬퍼 비포함** (YAGNI):
+- `is_committed()` (Spouse + Engaged + Lover) — Phase 2.5 declarative_events 검증 시 필요해지면 추가
+- `is_separated()` — `matches!`로 충분
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[variants 정합]
+- Partnership::Spouse, Engaged, Lover, Separated — 4종 모두 정의됨
+
+[serde round-trip]
+- Spouse    → "spouse"    → Spouse
+- Engaged   → "engaged"   → Engaged
+- Lover     → "lover"     → Lover
+- Separated → "separated" → Separated
+
+[Copy + Eq + Hash 동작]
+- let a = Partnership::Spouse; let b = a;     // Copy OK
+- a == b                                       // Eq OK
+- HashSet::from([Spouse, Engaged])             // Hash OK
+```
+
+**비포함**:
+- 전이 함수 (`Spouse → Separated` 등) — Phase 2.5 declarative_events `PartnershipChange`
+- `Display` impl — presentation layer
+- `is_committed` 등 추가 헬퍼 — YAGNI
+
+#### 1.6 — `Relationship` 본체 재작성
+
+**목적**: 1.2~1.5에서 박은 *모든 타입*을 통합. 4축 + BondKind + BondStatus + Partnership + type. `power` 제거 (B-D4). 기존 인터페이스 (`neutral`, `modifiers`) 보존하여 16곳 자동 흡수.
+
+**위치**: `src/domain/relationship/mod.rs` (디렉토리 분할 후 본체)
+
+**시그니처**:
+
+```rust
+//! Relationship Aggregate — 4축 + BondKind + BondStatus + Partnership + type 통합.
+
+use crate::domain::event::{EventId, RelationshipChangeCause};
+use crate::domain::npc::NpcId;
+use serde::{Deserialize, Serialize};
+
+pub use axis::{AxisScore, WarinessScore, AxisDelta, AxisKind};
+pub use bond::{BondKind, BondStatus};
+pub use partnership::Partnership;
+
+mod axis;
+mod bond;
+mod partnership;
+
+/// 관계 본체 (relationships.md v0.7).
+///
+/// 4축 + bond_kind + bond_status + partnership + type + type_history.
+/// `power` 폐기 (B-D4) — 위계 정보는 `type_text` 자유 텍스트로 흡수.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Relationship {
+    owner: NpcId,
+    target: NpcId,
+
+    // 4축 (B-D1: 별 타입)
+    trust:    AxisScore,
+    affinity: AxisScore,
+    respect:  AxisScore,
+    wariness: WarinessScore,
+
+    // 분류 + 상태 (1.3~1.5)
+    bond_kind:   Option<BondKind>,            // None = 미분류
+    #[serde(default)]
+    bond_status: BondStatus,                   // default = Active
+    partnership: Option<Partnership>,          // None = 형식 관계 없음
+
+    // 자유 텍스트 (B-D4: power 흡수)
+    #[serde(rename = "type")]
+    type_text:   String,                       // 예: "조정 위계: 교두→태위, 부하 관계"
+    #[serde(default)]
+    type_history: Vec<TypeChange>,
+}
+
+/// type 변경 이력 element (v0.7 §2).
+///
+/// 시간/원인 추적은 *RelationshipUpdated event log*에서 별도.
+/// type_history는 *서사 흐름*에 집중 (의심 1 결정: 3 필드 단순 구조).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TypeChange {
+    pub from_type: String,
+    pub to_type:   String,
+    pub note:      String,    // 변경 맥락 (예: "의형제 결연 사건")
+}
+
+impl Relationship {
+    /// 새 관계 생성 (시나리오 JSON 진입점에서 호출).
+    pub fn new(
+        owner: NpcId, target: NpcId,
+        trust: AxisScore, affinity: AxisScore,
+        respect: AxisScore, wariness: WarinessScore,
+    ) -> Self {
+        Self {
+            owner, target,
+            trust, affinity, respect, wariness,
+            bond_kind: None,
+            bond_status: BondStatus::Active,
+            partnership: None,
+            type_text: String::new(),
+            type_history: Vec::new(),
+        }
+    }
+
+    /// 중립 관계 — 모든 4축 0, 그 외 default.
+    /// **시그니처 보존** (1.8 자동 흡수 16곳).
+    pub fn neutral(owner: NpcId, target: NpcId) -> Self {
+        Self::new(
+            owner, target,
+            AxisScore::NEUTRAL, AxisScore::NEUTRAL,
+            AxisScore::NEUTRAL, WarinessScore::NEUTRAL,
+        )
+    }
+
+    // ── Getters ─────
+    pub fn owner(&self)        -> &NpcId           { &self.owner }
+    pub fn target(&self)       -> &NpcId           { &self.target }
+    pub fn trust(&self)        -> AxisScore        { self.trust }
+    pub fn affinity(&self)     -> AxisScore        { self.affinity }
+    pub fn respect(&self)      -> AxisScore        { self.respect }
+    pub fn wariness(&self)     -> WarinessScore    { self.wariness }
+    pub fn bond_kind(&self)    -> Option<BondKind> { self.bond_kind }
+    pub fn bond_status(&self)  -> &BondStatus      { &self.bond_status }
+    pub fn partnership(&self)  -> Option<Partnership> { self.partnership }
+    pub fn type_text(&self)    -> &str             { &self.type_text }
+    pub fn type_history(&self) -> &[TypeChange]    { &self.type_history }
+
+    /// 4축 일괄 변동 (Stage 2 `update_axes_from_emotion`에서 호출).
+    /// BondStatus 차단은 호출 측 (Stage 2)에서 처리.
+    /// 캡슐화 보존 — Relationship이 자기 상태 변경 책임 (의심 2 결정).
+    pub fn apply_delta(&mut self, delta: &AxisDelta) {
+        self.trust    = self.trust.add(delta.trust);
+        self.affinity = self.affinity.add(delta.affinity);
+        self.respect  = self.respect.add(delta.respect);
+        self.wariness = self.wariness.add(delta.wariness);
+    }
+
+    /// 감정 평가 컨텍스트 modifier (A2의 5곳 사용처).
+    /// 의미 보존 + 이름 변경 (의심 3 결정: closeness_* → affinity_*).
+    /// Phase 2.3에서 정밀화 (respect_modifier 신설 등 검증).
+    pub fn modifiers(&self) -> RelationshipModifiers {
+        let a = self.affinity.value() / 100.0;   // -1.0..1.0 정규화 (5곳 사용처 호환)
+        let t = self.trust.value() / 100.0;
+        RelationshipModifiers {
+            affinity_modifier: a,
+            affinity_squared:  a.powi(2),
+            affinity_abs:      a.abs(),
+            trust_modifier:    t,
+        }
+    }
+}
+
+/// 감정 평가 컨텍스트의 modifier (5곳 사용처: emotion/stimulus/scene policy, situation_service, memory_repository).
+///
+/// **Phase 2 변경**: `closeness_*` → `affinity_*` 이름 변경 (의심 3 결정 — closeness 폐기 정합).
+/// Stage 2에서 5곳 사용처 이름 갱신.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct RelationshipModifiers {
+    pub affinity_modifier: f32,
+    pub affinity_squared:  f32,
+    pub affinity_abs:      f32,
+    pub trust_modifier:    f32,
+}
+```
+
+**설계 의도 8개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 4축 별 타입 사용 (`AxisScore` ×3 + `WarinessScore`) | 1.2 결정. wariness 음수 컴파일 시점 차단. |
+| ② | `bond_kind: Option<BondKind>` | None = 미분류 (대부분 시나리오 페어 default). 1.3 헬퍼로 영역 분기. |
+| ③ | `#[serde(default)] bond_status: BondStatus` (Active) | 1.4 결정. 마이그레이션 시 기존 시나리오 자동 Active. |
+| ④ | `partnership: Option<Partnership>` | 1.5 결정. None = 형식 관계 없음. |
+| ⑤ | `type_text: String` + `#[serde(rename = "type")]` | `type`은 Rust 예약어 — 필드명은 `type_text`, JSON 키는 `type`. B-D4 power 흡수. |
+| ⑥ | `type_history: Vec<TypeChange>` 단순 3 필드 | 의심 1 결정. from/to/note만. 시간/원인 추적은 별 시스템. |
+| ⑦ | `apply_delta(&mut self, delta)` | 의심 2 결정. 캡슐화 보존. Stage 2 함수가 호출. |
+| ⑧ | `RelationshipModifiers` 이름 변경 (`closeness_*` → `affinity_*`) | 의심 3 결정. 5곳 사용처 Stage 2에서 함께 갱신. closeness 폐기 정합. |
+
+**`neutral()` 시그니처 보존** (1.8 자동 흡수 핵심):
+
+```rust
+// 현재: Relationship::neutral(owner, target) -> Relationship
+// Phase 2: Relationship::neutral(owner, target) -> Relationship  ← 동일
+```
+
+→ 16곳 호출 변경 0. (1.8에서 grep 검증)
+
+**기존 메서드 폐기**:
+- `Relationship::after_dialogue` — Stage 2 `update_axes_from_emotion`으로 이관 (Stage 3에서 `relationship_policy.rs` 사용처 갱신)
+- `Relationship::with_updated_closeness` — Stage 2의 base_delta + apply_delta 패턴으로 흡수
+- `Relationship::closeness()` / `power()` 메서드 — 완전 제거
+- `Relationship::with_power` — 완전 제거 (호출처 0건, A2 발견)
+
+**기존 메서드 보존**:
+- `new` / `neutral` / `owner` / `target` / `trust` / `modifiers` — 시그니처/시맨틱 보존 (단 `modifiers()` 반환 타입 필드 이름만 변경)
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[new + getter]
+- let r = Relationship::new(npc_a, npc_b, AxisScore::new(50), AxisScore::new(40),
+                            AxisScore::new(30), WarinessScore::new(20));
+  r.trust().value()    == 50.0
+  r.affinity().value() == 40.0
+  r.respect().value()  == 30.0
+  r.wariness().value() == 20.0
+  r.bond_kind()        == None
+  r.bond_status()      == &BondStatus::Active   (default)
+  r.partnership()      == None
+  r.type_text()        == ""
+  r.type_history()     == &[]
+
+[neutral - 시그니처 보존]
+- Relationship::neutral(npc_a, npc_b) 
+  → 4축 모두 0, bond_kind None, status Active, partnership None, type "", history []
+
+[apply_delta - 4축 일괄 변동]
+- let mut r = Relationship::neutral(a, b);  // 모두 0
+  r.apply_delta(&AxisDelta { trust: 20.0, affinity: 10.0, respect: 5.0, wariness: 15.0 });
+  r.trust().value()    == 20.0
+  r.affinity().value() == 10.0
+  r.respect().value()  == 5.0
+  r.wariness().value() == 15.0
+
+[apply_delta clamp 동작]
+- let mut r = Relationship::new(a, b, AxisScore::new(90), AxisScore::NEUTRAL, AxisScore::NEUTRAL, WarinessScore::new(5));
+  r.apply_delta(&AxisDelta { trust: 30.0, affinity: 0.0, respect: 0.0, wariness: -20.0 });
+  r.trust().value()    == 100.0  (cap)
+  r.wariness().value() == 0.0    (floor)
+
+[modifiers - 이름 변경 + 정규화]
+- let r = Relationship::new(a, b, AxisScore::new(50), AxisScore::new(80), 
+                            AxisScore::NEUTRAL, WarinessScore::NEUTRAL);
+  let m = r.modifiers();
+  m.affinity_modifier == 0.8     (80 / 100)
+  m.affinity_squared  == 0.64
+  m.affinity_abs      == 0.8
+  m.trust_modifier    == 0.5
+
+[serde round-trip]
+- Relationship → JSON → Relationship (모든 필드 보존, type 필드는 JSON 키 "type")
+- bond_status 누락된 JSON → default Active 자동 적용
+- type_history 누락된 JSON → default [] 자동 적용
+
+[TypeChange]
+- TypeChange { from_type: "조정 동료".into(), to_type: "처단 대상".into(), note: "산신묘 사건".into() }
+  → serde round-trip OK
+```
+
+**비포함**:
+- `Relationship::after_dialogue` — Stage 2/3에서 처리 (재작성 또는 폐기)
+- `bond_status` 전이 함수 — Phase 3a Channel 2 Temporal
+- `partnership` 전이 함수 — Phase 2.5 declarative_events `PartnershipChange`
+- type_history 자동 append 핸들러 — Phase 2.5 declarative_events `TypeChanged`
+- `Display` impl — presentation layer
+- 5곳 modifier 사용처 갱신 — Stage 2 (`closeness_*` → `affinity_*` 이름 변경)
+- `with_power` 메서드 — 완전 제거 (호출처 0건)
+
+#### 1.7 — `RelationshipBuilder` 4축 API (TBD)
+
+#### 1.8 — `Relationship::neutral()` 16곳 자동 흡수 검증 (TBD)
+
+#### 1.9 — Stage 1 단위 테스트 (TBD)
+
+---
+
+**Stage 1 종합 게이트** (1.1~1.9 모두 통과 시):
 1. `cargo check --all-features` 통과
 2. `Relationship::neutral()` 호출 16곳 자동 흡수 (변경 0)
 3. `WarinessScore::new(-50.0)` 컴파일 차단 확인 (불변식 강제)
 4. 단위 테스트 통과
+5. Stage 1 baseline `baselines/cargo-test-2026-05-14-PASS.log` 1220 tests 통과 유지
 
-**산출 commit**: `phase2-stage1-domain.md` 회고 +  `baselines/cargo-test-2026-MM-DD-PASS.log` (Stage 1 진입 직전 재측정)
+**산출 commit**: `phase2-stage1-domain.md` 회고
 
 ---
 
