@@ -2263,6 +2263,22 @@ mod memory_endpoints {
         let (app, state) = seeded_app();
         seed_two_npcs(&app).await;
 
+        // Phase 1.6 — RumorSeeded/Spread SSE는 이제 event_bridge가 도메인 이벤트에서
+        // 자동 발행 (manual `state.emit()` 제거됨). 본 테스트가 SSE 도착을 검증하므로
+        // bridge를 spawn하고 broadcast subscriber로 등록될 시간 확보.
+        // (MemoryCreated는 Memory 이벤트가 EventBus 미발행이라 handlers/rumor.rs의
+        // manual emit이 유일 출처 — 변경 없음.)
+        {
+            use crate::event_bridge::EventBridge;
+            use std::sync::Arc;
+            let bridge = Arc::new(EventBridge::new(state.event_tx.clone()));
+            let bus = state.shared_dispatcher.event_bus().clone();
+            let event_store = state.shared_dispatcher.event_store().clone();
+            tokio::spawn(bridge.run(bus, event_store));
+            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+
         let mut rx = state.event_tx.subscribe();
 
         let seed_req = serde_json::json!({
@@ -2309,15 +2325,21 @@ mod memory_endpoints {
         assert_eq!(body["recipient_count"], 2);
 
         // SSE — RumorSeeded + RumorSpread + MemoryCreated 방출됐는지.
+        // Phase 1.6: RumorSeeded/Spread는 bridge가 발행 (별 task) → yield+sleep로
+        // 도착 시간 확보. MemoryCreated는 manual emit (handlers/rumor.rs)이라 즉시 도착.
         let mut saw_seed = false;
         let mut saw_spread = false;
         let mut saw_memory = false;
-        while let Ok(ev) = rx.try_recv() {
-            match ev {
-                StateEvent::RumorSeeded => saw_seed = true,
-                StateEvent::RumorSpread => saw_spread = true,
-                StateEvent::MemoryCreated => saw_memory = true,
-                _ => {}
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            while let Ok(ev) = rx.try_recv() {
+                match ev {
+                    StateEvent::RumorSeeded => saw_seed = true,
+                    StateEvent::RumorSpread => saw_spread = true,
+                    StateEvent::MemoryCreated => saw_memory = true,
+                    _ => {}
+                }
             }
         }
         assert!(saw_seed && saw_spread && saw_memory, "SSE 방출 누락: seed={} spread={} memory={}", saw_seed, saw_spread, saw_memory);
