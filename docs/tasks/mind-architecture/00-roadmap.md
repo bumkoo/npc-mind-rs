@@ -270,26 +270,82 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 - **보너스**: `/api/v2/scenes/*` Director 경로도 자동 SSE 발행 (단 `director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 — shared_dispatcher 통합은 별도 작업)
 - 7 단위 + 1 통합 신규
 
-### Phase 2 (v0.8) — 4-axis + BondKind + Channel 1
+### Phase 2 (v0.8) — 4-axis + BondKind + type 도메인 마이그레이션
+
+**범위 변경 (2026-05-13)**: 본래 roadmap의 Phase 2 (4-axis + BondKind + Channel 1)를 **얇은 phase 3개로 분할**:
+- **Phase 2** ← 도메인 마이그레이션 only (본 phase)
+- **Phase 2.3** ← appraise 정비 (신설, Stage 0 §3.6 시뮬레이션 검증 결과)
+- **Phase 2.5** ← Channel 1 + axis_modulation (LLM 통합)
+
+분할 근거: Phase 1 → 1.5 → 1.6 패턴 정합. 각 phase = 단일 책임. 회귀 위험 분산.
 
 **포함**:
-- 도메인: `Relationship` 재작성 (4축 ±100), BondKind/BondStatus/Partnership/type/type_history enum 및 함수
-- Application: Channel 1 처리 (declarative_events emit, 사회적 일관성 검증 5 카테고리 A~E, 적용 모드 4-tier)
-- 마이그레이션: 기존 3축 → 4축 변환 룰 (예: closeness → affinity, trust 그대로 + 음수 의미 추가)
-- 시나리오 JSON schema 갱신 (`_schema.md` v0.7)
-- 검증 인물 시나리오 갱신 (임충/수련/연청/노년기 수련 등)
+- 도메인: `Relationship` 재작성 (4축 trust/affinity/respect/wariness ±100), BondKind 11종/BondStatus 5종/Partnership 4종 enum, `type: String` + `type_history` 자유 텍스트 필드
+- `power` 폐기 (B-D4 확정), `type` 자유 텍스트로 위계 정보 흡수
+- OCC → 4축 자동 갱신 함수 (v0.7 §4.1~4.3 그대로: base_delta 48셀 + HEXACO 보정자 + BondStatus 차단 + clamp). T1 (대화 끝 batch) 시점.
+- 마이그레이션: 기존 3축 → 4축 변환 룰 (trust 자동, closeness → affinity 반자동, respect/wariness 수동, power → type 흡수)
+- 시나리오 JSON schema 갱신 (`_schema.md` v0.7) — Relationship 필드 한정
+- 검증 인물 시나리오 ~45 페어 데이터 마이그레이션 (디자이너 손 작업 ~225 값)
 
-**위험**: 큼. 도메인 모델 재작성. 기존 OCC → axes 매핑 함수 모두 재작성. 테스트 대량 갱신.
+**위험**: 큼. 도메인 모델 재작성. 1095+ tests 중 ~100 호출 회귀 갱신. 시나리오 데이터 마이그레이션 디자이너 손 작업.
 
 **검증 게이트**:
-1. compile + 기존 테스트 (마이그레이션 변환 후) + 신규 unit + 일관성 테스트
-2. Bench 회귀 측정
-3. Narrative cases:
+1. compile + 기존 테스트 (마이그레이션 변환 후 통과) + 신규 unit
+2. Bench 회귀 측정 (`dispatch_v2(EndDialogue)` Phase 1 baseline 24/35/29µs 유지)
+3. base_delta 48셀 시나리오 검증 (S1~S4 + 신규 케이스): 방향성 정합 확인 (정량 미세조정은 Phase 2.3)
+
+**산출물 spec**: `task-rel-phase2-domain-migration.md` (Stage 0 진행 중).
+
+### Phase 2.3 — appraise 정비 (★ 신설 2026-05-13)
+
+**배경**: Phase 2 Stage 0 §3.6 시뮬레이션 검증 (S1~S4)에서 발견된 *appraise 입력 의존성* 문제. appraise는 디자이너 박은 Beat focus 완전성에 의존 — ActionFocus 누락 시 Admiration/Reproach 자동 생성 0. *상식적 추론* 자동화 안 됨.
+
+**포함**:
+- 시뮬레이션 시나리오 set 공식화 (`data/scenarios/appraise-validation/` 신설 — S1~S4 + 신규 ~15 케이스)
+- 각 케이스 ground truth (기대 OCC list + intensity + 기대 4축 변화) 명시
+- 누락 OCC 검증/경고 (I1): EventFocus desirability 강한데 ActionFocus 없음 → 경고 등 정적 룰. LLM 호출 0.
+- Compound 감정 식별 확장 (현재 4개 → 추가 후보 검증: HappyFor+Admiration / Pity+Reproach 등 시뮬레이션 검증 후 채택)
+- `RelationshipModifiers` 정밀화 (4축 환경에서 누락 modifier 검증, 예: `respect_modifier` 신설 여부)
+- HEXACO 보정자 정량 미세조정 (v0.7 §4.3 6 보정 룰)
+- base_delta 48셀 시나리오 기반 정량 미세조정
+
+**의존**: Phase 2 종결 (4축 도메인 안정 후)
+
+**위험**: 중. appraise 변경이 *base_delta 결과*도 흔들 수 있음 (Phase 2 통로 A 회귀). 무한 튜닝 위험 — 게이트 명확 정의 필요.
+
+**검증 게이트**:
+1. compile + 기존 테스트
+2. 공식 시나리오 set 회귀 (S1~S4 + 신규 케이스 모두 ground truth와 ±N 이내)
+3. Bench 회귀 측정
+
+**산출물 spec**: `task-rel-phase2.3-appraise-tuning.md` (Phase 2 종결 후 작성).
+
+### Phase 2.5 (v0.8.5) — Channel 1 Declarative + axis_modulation
+
+**범위 변경 (2026-05-13)**: 본래 Phase 2의 Channel 1 부분이 본 phase로 *분리*. axis_modulation도 함께.
+
+**포함**:
+- Channel 1 Declarative 활성화: `declarative_events` / `partnership_event` placeholder (Phase 2에서 enum/필드 정의됨)에 LLM emit + 엔진 검증 + 적용 흐름 신설
+- 사회적 일관성 검증 5 카테고리 (A~E)
+- 4-tier 적용 모드
+- **★ axis_modulation 3지선다**: Reflection LLM 출력 schema에 `axis_modulation` 필드 신설 (low/default/high → ±5/0/+5). 추가 LLM 호출 0 (기존 reflection 호출 활용). 엔진 산출 baseline + LLM 미세조정.
+- 새 cause variant (B-D7): `DeclarativeBondFormation` / `PartnershipChange` / `BondStatusChange` 등 — Phase 2.5 시점에 명명 확정
+- declarative_events 상한 N (B-D11)
+
+**의존**: Phase 2 (도메인 enum/필드 정의 + RelationshipUpdater 안정), Phase 2.3 권장 (appraise 안정된 baseline 위에서 LLM modulation 적용)
+
+**위험**: 큼. LLM 출력 schema 확장. 사회적 일관성 검증 디자인. 정략혼 등 *맥락 의존 reject* 룰 디자인.
+
+**검증 게이트**:
+1. compile + 기존 테스트 + 신규
+2. Narrative cases:
    - 임충-노지심 야저림 의형제 결연 (Channel 1 Declarative + bond_kind: SwornBrothers)
    - 곽정-황용 결혼식 (Channel 1 Declarative + partnership: Spouse, 연애결혼)
    - 와호장룡 옥교룡 정략혼 도주 (Channel 1 emit → 사회적 일관성 검증 D reject — 양방향 동의 위반)
+   - 산신묘 큰 도약 (Phase 2 점진 -49 trust + Phase 2.5 declarative_events 큰 도약 -35 = 시나리오 박힌 -30~-50 도달)
+3. axis_modulation 결정론 검증 (같은 reflection prompt → 안정적 출력)
 
-**산출물 spec**: `task-rel-phase2-fouraxis-bondkind.md`.
+**산출물 spec**: `task-rel-phase2.5-channel1.md` (Phase 2.3 종결 후 작성).
 
 ### Phase 3a (v0.9) — Channel 2 Temporal
 
@@ -506,3 +562,5 @@ _schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F
 | v0.2 | 2026-05-10 | CLAUDE.md 갱신 반영: **MindService 폐기 정정** (v0.3.0 제거 — Director/CommandDispatcher/DialogueOrchestrator 단일화, §1·§2.3·§2.4 정정). **ports/ ISP 분할** (§2.2.5 신설, 7 모듈). **`agents/` → `policies/`** 리네임 반영 (§2.3, §6 매핑). **UnitOfWork 도입** 반영 (§2.3, §6 신설 행). **dto/ 7 도메인 분할** 반영 (§2.3). **Phase 1 §5 코드 경로 정확화**. |
 | v0.3 | 2026-05-10 | **§6.5 디자인 문서 추적 신설** — relationships.md / action_triggers.md / _schema.md 각 섹션이 어느 phase에서 코드 반영되는지 명시적 매핑. 종합 진척 그래프. 디자인 문서 진화 정책 (Phase 시작 시 freeze, 완료 시 표 갱신, 새 문서 추가 시 동시 추적 행 추가). §7에 갱신 규칙 6번 항목 추가. _schema.md ↔ 코드 schema 동기화 spot-check 필요 (추정 행 ❓ 표기). 디자이너(Bekay) 시점에서 *디자인이 언제 결실 맺는지* 추적 가능. |
 | v0.4 | 2026-05-10 | **§6.5 _schema.md 추적 표 ❓ 7행 → 정확한 팩트로 치환** (Phase 1 Stage 0 Findings F8.6 결과). _schema.md v0.6 vs 코드: Layer 1 (HEXACO+identity) ✅ 완료 / inner_compass ❌ → Phase 1 A-min `Option<String>` partial / 4축·BondKind·BondStatus·Partnership·type 모두 큼 갭 → Phase 2 / 행동 별도 spec → Phase 3c / Scene/Focus _schema.md 범위 외 + 코드 완료. 진척 그래프 보정 — _schema.md ~60% 추정 → ~30% verified (이전 추정 과대평가). |
+| v0.5 | 2026-05-11 | Phase 1.5 / 1.6 완료 반영. §2 Mind Studio 통합 표 신설. §5 Phase 1/1.5/1.6 ✅ 표기. §6.5 §0+§6 100% 갱신. EventKind 31개 / domain/reflection.rs / ports/reflection.rs / reflection_service.rs / adapter/reflection_via_chat.rs / event_bridge.rs 추가. |
+| v0.6 | 2026-05-13 | **Phase 2 범위 변경 — 얇은 phase 3개로 분할**: Phase 2 (도메인 마이그레이션 only) / Phase 2.3 (appraise 정비 ★ 신설) / Phase 2.5 (Channel 1 + axis_modulation). Phase 2 Stage 0 §3.6 시뮬레이션 검증 (S1~S4)의 *appraise 입력 의존성* 발견이 Phase 2.3 신설 근거. Phase 2 본문 갱신 (power 폐기 / type 흡수 / OCC → 4축 자동 갱신 T1 시점 / B-D6/D12/D13/D14 결정 박힘). Phase 2.5 본문 갱신 (axis_modulation 3지선다). 산출물 spec 파일명 변경 `task-rel-phase2-fouraxis-bondkind.md` → `task-rel-phase2-domain-migration.md`. |
