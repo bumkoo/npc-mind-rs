@@ -15,7 +15,7 @@ use npc_mind::domain::emotion::{
     ActionFocus, EmotionState, EmotionType, EventFocus, RelationshipModifiers, Situation,
 };
 use npc_mind::domain::personality::*;
-use npc_mind::domain::relationship::Relationship;
+use npc_mind::domain::relationship::{AxisScore, Relationship, WarinessScore};
 use std::sync::{Arc, Mutex};
 
 /// MockRepository는 InMemoryRepository의 별칭입니다 (기존 테스트 호환).
@@ -23,6 +23,23 @@ pub type MockRepository = InMemoryRepository;
 
 pub fn score(v: f32) -> Score {
     Score::new(v, "").unwrap()
+}
+
+/// Phase 2 Stage 1 헬퍼 — ±1.0 정규화 값을 ±100 `AxisScore`로 변환.
+/// 기존 `s(0.9)` 패턴이 `.closeness/.trust(...)`에 박혀 있던 *±1.0 의미*를 보존하면서
+/// 4축 빌더에 자연스럽게 박힌다 (예: `.affinity(axis(0.9))`).
+pub fn axis(v: f32) -> AxisScore {
+    AxisScore::new(v * 100.0)
+}
+
+/// Phase 2 Stage 1 헬퍼 — ±100 절대값을 `AxisScore`로 직접 변환.
+pub fn axis_pct(v: f32) -> AxisScore {
+    AxisScore::new(v)
+}
+
+/// Phase 2 Stage 1 헬퍼 — ±1.0 정규화 값을 0..=100 `WarinessScore`로 변환.
+pub fn wariness(v: f32) -> WarinessScore {
+    WarinessScore::new(v * 100.0)
 }
 
 // ---------------------------------------------------------------------------

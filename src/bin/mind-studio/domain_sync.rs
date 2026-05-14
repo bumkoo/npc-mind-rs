@@ -60,14 +60,16 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
         .collect();
     for (key, owner, target) in existing_keys {
         if let Some(rel) = repo.get_relationship(&owner, &target) {
+            // Stage 1 4축 → UI 3축 매핑: affinity / 100 → closeness, trust / 100 → trust.
+            // power는 폐기 (B-D4) — Stage 3에서 UI 필드 정리.
             inner.relationships.insert(
                 key,
                 RelationshipData {
                     owner_id: owner,
                     target_id: target,
-                    closeness: rel.closeness().value(),
-                    trust: rel.trust().value(),
-                    power: rel.power().value(),
+                    closeness: rel.affinity().value() / 100.0,
+                    trust: rel.trust().value() / 100.0,
+                    power: 0.0,
                 },
             );
         }

@@ -791,13 +791,17 @@ impl NpcProfile {
 }
 
 impl RelationshipData {
-    /// Relationship 도메인 객체로 변환
+    /// Relationship 도메인 객체로 변환.
+    ///
+    /// Stage 1 4축 swap: `closeness × 100 → affinity`, `trust × 100 → trust`.
+    /// `power`는 폐기 (B-D4) — Stage 3에서 UI 필드 자체 정리 예정.
     pub fn to_relationship(&self) -> Relationship {
-        let s = |v: f32| Score::clamped(v);
+        use npc_mind::domain::relationship::{AxisScore, WarinessScore};
         RelationshipBuilder::new(&self.owner_id, &self.target_id)
-            .closeness(s(self.closeness))
-            .trust(s(self.trust))
-            .power(s(self.power))
+            .trust(AxisScore::new(self.trust * 100.0))
+            .affinity(AxisScore::new(self.closeness * 100.0))
+            .respect(AxisScore::NEUTRAL)
+            .wariness(WarinessScore::NEUTRAL)
             .build()
     }
 }

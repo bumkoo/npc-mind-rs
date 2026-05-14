@@ -310,9 +310,12 @@ impl RelationshipSnapshot {
         };
         Self {
             target_name: name,
-            closeness_level: RelationshipLevel::from_score(rel.closeness().value()),
-            trust_level: RelationshipLevel::from_score(rel.trust().value()),
-            power_level: PowerLevel::from_score(rel.power().value()),
+            // Stage 1: closeness_level은 affinity 값으로 매핑 (시맨틱 보존).
+            // ±100 → ±1.0 정규화하여 기존 임계값 (level_*_threshold) 호환.
+            // power_level은 0.0 fallback (B-D4 폐기, Stage 3에서 type_text 라벨로 교체 검토).
+            closeness_level: RelationshipLevel::from_score(rel.affinity().value() / 100.0),
+            trust_level: RelationshipLevel::from_score(rel.trust().value() / 100.0),
+            power_level: PowerLevel::from_score(0.0),
         }
     }
 }

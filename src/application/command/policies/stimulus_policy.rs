@@ -66,9 +66,13 @@ impl StimulusPolicy {
             HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
         })?;
 
-        // Beat 전환용 임시 관계 갱신(modifiers 계산용 — 실제 저장은 RelationshipPolicy)
+        // Beat 전환용 임시 관계 갱신 (modifiers 계산용 — 실제 저장은 RelationshipPolicy).
+        // Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op (관계 modifier 보존).
+        // TODO(Stage 2): update_axes_from_emotion(&mut beat_rel, stimulated, sig, hexaco).
         let tuning = profile();
-        let beat_rel = relationship.after_dialogue(stimulated, tuning.beat_default_significance);
+        let _ = tuning.beat_default_significance;
+        let _ = stimulated;
+        let beat_rel = relationship.clone();
         let new_state = self.appraiser.appraise(
             npc.personality(),
             &situation,
@@ -254,7 +258,7 @@ mod handler_v2_tests {
     };
     use crate::domain::event::{DomainEvent, EventKind, EventPayload};
     use crate::domain::personality::NpcBuilder;
-    use crate::domain::relationship::Relationship;
+    use crate::domain::relationship::{AxisScore, Relationship, WarinessScore};
 
     fn positive_event_focus() -> EventFocus {
         EventFocus {
@@ -473,9 +477,10 @@ mod handler_v2_tests {
         let rel = Relationship::new(
             "alice",
             "bob",
-            Score::new(-0.8, "").unwrap(),
-            Score::neutral(),
-            Score::neutral(),
+            AxisScore::NEUTRAL,
+            AxisScore::new(-80.0),
+            AxisScore::NEUTRAL,
+            WarinessScore::NEUTRAL,
         );
 
         let scene = Scene::new(

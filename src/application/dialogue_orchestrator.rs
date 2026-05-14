@@ -833,9 +833,11 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             repo.get_relationship(&npc_id, &partner_id)
                 .or_else(|| repo.get_relationship(&partner_id, &npc_id))
                 .map(|r| RelationshipValues {
-                    closeness: r.closeness().value(),
+                    // Stage 1: closeness 자리에 affinity 매핑 (시맨틱 보존).
+                    // power 자리는 0.0 fallback (Stage 3 DTO 4축 확장 대기).
+                    closeness: r.affinity().value(),
                     trust: r.trust().value(),
-                    power: r.power().value(),
+                    power: 0.0,
                 })
                 .unwrap_or(RelationshipValues {
                     closeness: 0.0,

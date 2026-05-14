@@ -196,13 +196,15 @@ async fn confidence_is_scaled_by_trust() {
     repo.add_npc(make_npc("pupil"));
 
     // 신뢰도 0.6 설정 → normalized trust = (0.6 + 1) / 2 = 0.8
-    use npc_mind::domain::personality::Score;
+    // Stage 1 4축 swap: trust ±100, 그 외 NEUTRAL.
+    use npc_mind::domain::relationship::{AxisScore, WarinessScore};
     let rel = Relationship::new(
         "pupil",
         "sage",
-        Score::neutral(),
-        Score::new(0.6, "").unwrap(),
-        Score::neutral(),
+        AxisScore::new(60.0),   // trust
+        AxisScore::NEUTRAL,     // affinity (구 closeness)
+        AxisScore::NEUTRAL,     // respect
+        WarinessScore::NEUTRAL,
     );
     repo.add_relationship(rel);
 

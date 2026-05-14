@@ -178,6 +178,12 @@ impl NpcJson {
     }
 }
 
+/// 시나리오 JSON 진입점 — v0.6 (3축) 호환 deserializer.
+///
+/// Stage 1: 컴파일 통과만. 자동 산술 변환 (`closeness × 100 → affinity`, `trust × 100 → trust`)
+/// 적용. `power`는 폐기 (B-D4) — 필드는 받아두지만 도메인 변환 시 무시.
+/// Stage 4 마이그레이션 도구가 시나리오 JSON 자체를 v0.7 (4축) 스키마로 변환할 때까지
+/// 본 deserializer가 *임시 자동 변환*을 담당.
 #[derive(Deserialize)]
 struct RelationshipJson {
     owner_id: String,
@@ -187,15 +193,19 @@ struct RelationshipJson {
     #[serde(default)]
     trust: f32,
     #[serde(default)]
+    #[allow(dead_code)]
     power: f32,
 }
 
 impl RelationshipJson {
     fn to_relationship(&self) -> Relationship {
+        use crate::domain::relationship::{AxisScore, WarinessScore};
+        // v0.6 (±1.0) → v0.7 (±100) 자동 산술 변환 (B-D3 baseline)
         RelationshipBuilder::new(&self.owner_id, &self.target_id)
-            .closeness(Score::clamped(self.closeness))
-            .trust(Score::clamped(self.trust))
-            .power(Score::clamped(self.power))
+            .trust(AxisScore::new(self.trust * 100.0))
+            .affinity(AxisScore::new(self.closeness * 100.0))
+            .respect(AxisScore::NEUTRAL)
+            .wariness(WarinessScore::NEUTRAL)
             .build()
     }
 }

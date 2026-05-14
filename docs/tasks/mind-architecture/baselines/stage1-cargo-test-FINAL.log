@@ -1,0 +1,1451 @@
+   Compiling npc-mind v0.1.0 (C:\Users\bumko\projects\npc-mind-rs\.claude\worktrees\funny-wozniak-e7ce1d)
+warning: unused imports: `DeclarativeEventPlaceholder` and `PartnershipEventPlaceholder`
+  --> src\application\reflection_service.rs:30:5
+   |
+30 |     DeclarativeEventPlaceholder, PartnershipEventPlaceholder, ReflectionResult, TurnSnapshot,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (lib) generated 1 warning (run `cargo fix --lib -p npc-mind` to apply 1 suggestion)
+warning: unused import: `score as s`
+ --> tests\emotion_test.rs:7:73
+  |
+7 | use common::{TestContext, axis, find_emotion, has_emotion, neutral_rel, score as s, 배신_상황};
+  |                                                                         ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "emotion_test") generated 1 warning (run `cargo fix --test "emotion_test" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (lib test) generated 1 warning (1 duplicate)
+warning: unused import: `EventPayload`
+  --> tests\memory_world_overlay_test.rs:16:42
+   |
+16 | use npc_mind::domain::event::{EventKind, EventPayload};
+   |                                          ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `HexacoProfile`
+  --> tests\phase1_real_llm_test.rs:46:37
+   |
+46 | use npc_mind::domain::personality::{HexacoProfile, NpcBuilder};
+   |                                     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `Deserialize`
+ --> src\bin\mind-studio\handlers\scenario.rs:5:13
+  |
+5 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `with_converter` is never used
+   --> src\bin\mind-studio\state.rs:421:12
+    |
+193 | impl AppState {
+    | ------------- method in this implementation
+...
+421 |     pub fn with_converter(mut self, converter: Arc<dyn ListenerPerspectiveConverter>) -> Self {
+    |            ^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "memory_world_overlay_test") generated 1 warning (run `cargo fix --test "memory_world_overlay_test" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (test "phase1_real_llm_test") generated 1 warning (run `cargo fix --test "phase1_real_llm_test" -p npc-mind` to apply 1 suggestion)
+warning: unused import: `score as s`
+ --> tests\guide_test.rs:7:51
+  |
+7 | use common::{axis, make_교룡, make_무백, neutral_rel, score as s, 배신_상황_with_desc};
+  |                                                       ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `DynamicHandlerContext`
+  --> tests\memory_relationship_cause_test.rs:16:19
+   |
+16 |     DeliveryMode, DynamicHandlerContext, EventHandler, EventHandlerContext,
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ListenerRole`
+  --> tests\memory_telling_test.rs:18:45
+   |
+18 | use npc_mind::domain::event::{EventPayload, ListenerRole};
+   |                                             ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `RumorStore`
+  --> tests\memory_telling_test.rs:22:36
+   |
+22 | use npc_mind::ports::{MemoryStore, RumorStore};
+   |                                    ^^^^^^^^^^
+
+warning: unused import: `SeedRumorRequest`
+  --> tests\memory_telling_test.rs:24:37
+   |
+24 |     EventStore, InMemoryRepository, SeedRumorRequest, TellInformationRequest,
+   |                                     ^^^^^^^^^^^^^^^^
+
+warning: `npc-mind` (test "guide_test") generated 1 warning (run `cargo fix --test "guide_test" -p npc-mind` to apply 1 suggestion)
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:147:25
+    |
+147 |     let entries = store.get_recent("pupil", 1).unwrap();
+    |                         ^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:182:25
+    |
+182 |     let entries = store.get_recent("final_listener", 1).unwrap();
+    |                         ^^^^^^^^^^
+
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:231:25
+    |
+231 |     let entries = store.get_recent("pupil", 1).unwrap();
+    |                         ^^^^^^^^^^
+
+warning: `npc-mind` (bin "npc-mind-studio") generated 2 warnings (run `cargo fix --bin "npc-mind-studio" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (test "memory_relationship_cause_test") generated 1 warning
+warning: `npc-mind` (test "memory_telling_test") generated 6 warnings (run `cargo fix --test "memory_telling_test" -p npc-mind` to apply 3 suggestions)
+warning: unused import: `NpcBuilder`
+    --> src\bin\mind-studio\handler_tests.rs:3344:46
+     |
+3344 |     use npc_mind::domain::personality::{Npc, NpcBuilder};
+     |                                              ^^^^^^^^^^
+
+warning: unused import: `NpcWorld`
+  --> tests\phase1_bench_test.rs:23:37
+   |
+23 | use npc_mind::ports::{EmotionStore, NpcWorld};
+   |                                     ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "phase1_bench_test") generated 1 warning (run `cargo fix --test "phase1_bench_test" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (bin "npc-mind-studio" test) generated 2 warnings (1 duplicate) (run `cargo fix --bin "npc-mind-studio" -p npc-mind --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 48.66s
+     Running unittests src\lib.rs (target\debug\deps\npc_mind-e7f9a98d4a23f6d8.exe)
+
+running 511 tests
+test application::command::handler_v2::test_support::shared_state_destructive_signals_work ... ok
+test application::command::policies::emotion_policy::handler_v2_tests::ignores_unrelated_event_kind ... ok
+test application::command::policies::emotion_policy::handler_v2_tests::missing_npc_returns_precondition_error ... ok
+test application::command::policies::emotion_policy::handler_v2_tests::appraise_request_emits_emotion_appraised_and_populates_shared ... ok
+test application::command::policies::guide_policy::handler_v2_tests::stimulus_applied_event_also_triggers_guide ... ok
+test application::command::policies::guide_policy::handler_v2_tests::emotion_appraised_event_generates_guide_and_populates_shared ... ok
+test application::command::policies::information_policy::tests::duplicates_in_listeners_and_overhearers_are_deduped_direct_wins ... ok
+test application::command::policies::guide_policy::handler_v2_tests::missing_shared_emotion_state_returns_precondition_error ... ok
+test application::command::policies::information_policy::tests::emits_one_information_told_per_listener_with_direct_role ... ok
+test application::command::policies::information_policy::tests::empty_listeners_and_overhearers_emit_no_follow_ups ... ok
+test application::command::policies::information_policy::tests::ignores_unrelated_event_kind ... ok
+test application::command::policies::information_policy::tests::origin_chain_in_is_passed_through_untouched ... ok
+test application::command::policies::information_policy::tests::overhearers_get_overhearer_role ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::beat_transitioned_uses_active_scene_for_partner_id ... ok
+test application::command::policies::information_policy::tests::information_told_aggregate_key_is_listener ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::chitchat_skips_outer_loop_emits_only_reflected_clear_scene ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::declarative_event_forces_outer_loop_even_when_chitchat_and_low_significance ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::dialogue_end_emits_three_follow_ups_and_sets_clear_signals ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::legacy_caller_no_reflection_uses_legacy_significance_branch ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::missing_relationship_returns_precondition_error_when_outer_loop_enters ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::outer_loop_entry_unit_truth_table ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::scene_ended_no_longer_in_interest_produces_no_follow_ups ... ok
+test application::command::policies::relationship_policy::handler_v2_tests::significant_reflection_enters_outer_loop_emits_four_follow_ups ... ok
+test application::command::policies::rumor_policy::tests::seed_forecast_has_both_topic_and_seed ... ok
+test application::command::policies::rumor_policy::tests::seed_orphan_requires_seed_content ... ok
+test application::command::policies::rumor_policy::tests::seed_orphan_with_seed_content_succeeds ... ok
+test application::command::policies::rumor_policy::tests::seed_with_topic_creates_canonical_linked_rumor ... ok
+test application::command::policies::rumor_policy::tests::spread_appends_hop_and_emits_rumor_spread ... ok
+test application::command::policies::rumor_policy::tests::spread_dedupes_recipients ... ok
+test application::command::policies::rumor_policy::tests::spread_twice_monotonic_hop_index ... ok
+test application::command::policies::rumor_policy::tests::spread_unknown_rumor_returns_invalid_input ... ok
+test application::command::policies::scene_policy::handler_v2_tests::missing_npc_returns_precondition_error ... ok
+test application::command::policies::rumor_policy::tests::successive_seeds_get_distinct_rumor_ids ... ok
+test application::command::policies::scene_policy::handler_v2_tests::scene_start_with_initial_focus_emits_scene_started_and_emotion_appraised ... ok
+test application::command::policies::scene_policy::handler_v2_tests::scene_start_without_initial_focus_only_emits_scene_started ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::beat_transition_appraisal_respects_relationship_modifiers ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::missing_emotion_state_returns_precondition_error ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::multi_scene_isolation_test ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::npc_not_found_returns_error ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::relationship_not_found_returns_error ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::stimulus_with_triggered_scene_emits_stimulus_and_beat_transitioned ... ok
+test application::command::policies::stimulus_policy::handler_v2_tests::stimulus_without_scene_emits_single_stimulus_applied ... ok
+test application::command::policies::world_overlay_policy::tests::emits_world_event_occurred_with_same_payload ... ok
+test application::command::policies::world_overlay_policy::tests::ignores_unrelated_event_kind ... ok
+test application::command::projection_handlers::tests::beat_transitioned_updates_focus_id ... ok
+test application::command::projection_handlers::tests::emotion_appraised_event_updates_projection ... ok
+test application::command::projection_handlers::tests::emotion_cleared_removes_projection_entries ... ok
+test application::command::projection_handlers::tests::relationship_updated_stores_after_values ... ok
+test application::command::projection_handlers::tests::repeated_relationship_updates_overwrite ... ok
+test application::command::projection_handlers::tests::scene_started_sets_active_focus ... ok
+test application::command::projection_handlers::tests::stimulus_applied_updates_mood_after ... ok
+test application::command::projection_handlers::tests::scene_ended_clears_active ... ok
+test application::command::relationship_memory_handler::tests::rumor_cause_sets_rumor_source_and_chain_marker ... ok
+test application::command::relationship_memory_handler::tests::scene_interaction_cause_creates_experienced_entry ... ok
+test application::command::relationship_memory_handler::tests::information_told_cause_branches_on_chain_length ... ok
+test application::command::relationship_memory_handler::tests::small_deltas_below_threshold_are_skipped ... ok
+test application::command::rumor_distribution_handler::tests::confidence_decays_geometrically_with_hop_index ... ok
+test application::command::rumor_distribution_handler::tests::content_resolution_falls_back_to_seed_when_no_canonical ... ok
+test application::command::relationship_memory_handler::tests::unspecified_cause_uses_generic_content ... ok
+test application::command::relationship_memory_handler::tests::world_event_overlay_cause_sets_topic ... ok
+test application::command::rumor_distribution_handler::tests::content_resolution_uses_distortion_when_content_version_set ... ok
+test application::command::rumor_distribution_handler::tests::content_resolution_uses_canonical_when_available ... ok
+test application::command::rumor_distribution_handler::tests::ignores_unrelated_event_kind ... ok
+test application::command::rumor_distribution_handler::tests::spread_creates_personal_rumor_entry_per_recipient ... ok
+test application::command::scene_consolidation_handler::tests::no_layer_a_means_no_summary_created ... ok
+test application::command::scene_consolidation_handler::tests::one_sided_layer_a_creates_only_that_npcs_summary ... ok
+test application::command::scene_consolidation_handler::tests::per_participant_summary_splits_layer_a_by_owner ... ok
+test application::command::scene_consolidation_handler::tests::relationship_change_entries_are_not_consolidated ... ok
+test application::command::scene_consolidation_handler::tests::self_scene_deduplicates_participant ... ok
+test application::command::telling_ingestion_handler::tests::chain_length_one_classifies_as_heard ... ok
+test application::command::telling_ingestion_handler::tests::chain_length_two_plus_classifies_as_rumor ... ok
+test application::command::telling_ingestion_handler::tests::confidence_applies_trust_multiplier ... ok
+test application::command::telling_ingestion_handler::tests::entry_scope_is_personal_listener ... ok
+test application::command::telling_ingestion_handler::tests::ignores_unrelated_event_kind ... ok
+test application::command::telling_ingestion_handler::tests::missing_relationship_falls_back_to_neutral_trust ... ok
+test application::command::world_overlay_handler::tests::creates_canonical_entry_with_world_scope_and_seeded_provenance ... ok
+test application::command::world_overlay_handler::tests::non_canonical_entries_on_same_topic_are_preserved ... ok
+test application::command::world_overlay_handler::tests::supersedes_previous_same_topic_entry ... ok
+test application::command::world_overlay_handler::tests::topic_none_does_not_supersede ... ok
+test application::director::spawner::tests::closure_implements_spawner ... ok
+test application::reflection_service::tests::strip_json_envelope_markdown_fence_bare ... ok
+test application::reflection_service::tests::reflect_significance_score_uses_engine_value_not_llm ... ok
+test application::reflection_service::tests::strip_json_envelope_markdown_fence_json ... ok
+test application::reflection_service::tests::reflect_invalid_json_returns_fallback_with_reason ... ok
+test application::reflection_service::tests::reflect_returns_significant_event_when_llm_says_so ... ok
+test application::reflection_service::tests::reflect_handles_markdown_fence_response ... ok
+test application::reflection_service::tests::reflect_returns_chitchat_when_llm_says_so ... ok
+test application::reflection_service::tests::reflect_timeout_returns_fallback_with_timeout_reason ... ok
+test application::reflection_service::tests::strip_json_envelope_no_json_returns_trimmed ... ok
+test application::reflection_service::tests::strip_json_envelope_plain_json_passthrough ... ok
+test application::reflection_service::tests::strip_json_envelope_prose_prefix ... ok
+test application::scenario_seeds::tests::empty_scenario_seeds_serializes_without_fields ... ok
+test application::scenario_seeds::tests::memory_entry_seed_fallback_id_when_missing ... ok
+test application::scenario_seeds::tests::rumor_seed_default_origin_is_seeded ... ok
+test application::scenario_seeds::tests::rumor_seed_orphan_requires_content ... ok
+test application::scenario_seeds::tests::rumor_seed_orphan_with_content ... ok
+test application::scenario_seeds::tests::rumor_seed_with_topic_only_builds_canonical_reference ... ok
+test application::scenario_seeds::tests::scenario_seeds_parse_empty_sections ... ok
+test application::scenario_seeds::tests::scenario_seeds_parse_ignores_unrelated_fields ... ok
+test application::scenario_seeds::tests::world_knowledge_seed_builds_canonical_entry ... ok
+test application::scenario_seeds::tests::scenario_seeds_parse_mixed ... ok
+test domain::aggregate::tests::different_variants_never_equal ... ok
+test domain::aggregate::tests::display_format_is_stable ... ok
+test domain::aggregate::tests::hashable_for_use_as_map_key ... ok
+test domain::aggregate::tests::memory_rumor_world_variants_format_and_hint ... ok
+test domain::aggregate::tests::npc_id_hint_returns_correct_field ... ok
+test domain::aggregate::tests::scene_key_equality_respects_both_ids ... ok
+test domain::emotion::types::tests::test_emotion_state_overall_valence ... ok
+test domain::emotion::types::tests::test_emotion_state_snapshot_uses_as_str ... ok
+test domain::emotion::types::tests::test_emotion_type_as_str ... ok
+test domain::emotion::types::tests::test_emotion_type_from_str ... ok
+test domain::event::tests::aggregate_key_routes_emotion_like_to_npc ... ok
+test domain::event::tests::aggregate_key_routes_information_events_correctly ... ok
+test domain::event::tests::aggregate_key_routes_memory_events_to_memory ... ok
+test domain::event::tests::aggregate_key_routes_relationship_to_relationship ... ok
+test domain::event::tests::aggregate_key_routes_rumor_events_to_rumor ... ok
+test domain::event::tests::aggregate_key_routes_scene_lifecycle_to_scene ... ok
+test domain::event::tests::aggregate_key_routes_seed_request_by_pending_id ... ok
+test domain::event::tests::default_metadata_has_no_parent_and_zero_depth ... ok
+test domain::event::tests::empty_metadata_json_deserializes ... ok
+test domain::event::tests::is_command_intent_false_for_emotion_appraised ... ok
+test domain::event::tests::is_command_intent_false_for_emotion_cleared ... ok
+test domain::event::tests::is_command_intent_true_for_appraise_requested ... ok
+test domain::event::tests::kind_matches_payload_type_for_all_variants ... ok
+test domain::event::tests::legacy_metadata_json_deserializes_with_defaults ... ok
+test domain::event::tests::new_domain_event_inherits_default_metadata ... ok
+test domain::listener_perspective::classifier::tests::cosine_sim_identical ... ok
+test domain::listener_perspective::classifier::tests::cosine_sim_opposite ... ok
+test domain::listener_perspective::classifier::tests::cosine_sim_orthogonal ... ok
+test domain::listener_perspective::classifier::tests::cosine_sim_zero_vector ... ok
+test domain::listener_perspective::classifier::tests::sorted_similarities_desc_sorts_correctly ... ok
+test domain::listener_perspective::classifier::tests::top_k_mean_empty ... ok
+test domain::listener_perspective::classifier::tests::top_k_mean_k_exceeds_len ... ok
+test domain::listener_perspective::classifier::tests::top_k_mean_normal ... ok
+test domain::listener_perspective::magnitude_classifier::tests::pick_top_tie_breaks_lowest_intensity ... ok
+test domain::listener_perspective::magnitude_classifier::tests::scores_method_returns_all_three ... ok
+test domain::listener_perspective::magnitude_coef::tests::bin_boundaries ... ok
+test domain::listener_perspective::magnitude_classifier::tests::predicts_normal_when_closer_to_normal_protos ... ok
+test domain::listener_perspective::magnitude_classifier::tests::predicts_strong_when_closer_to_strong_protos ... ok
+test domain::listener_perspective::magnitude_classifier::tests::predicts_weak_when_closer_to_weak_protos ... ok
+test domain::listener_perspective::magnitude_coef::tests::custom_coef_table_overrides ... ok
+test domain::listener_perspective::magnitude_coef::tests::default_coefs_match_design_doc ... ok
+test domain::listener_perspective::prefilter::tests::from_toml_rejects_bad_regex ... ok
+test domain::listener_perspective::prefilter::tests::from_toml_rejects_invalid_sign ... ok
+test domain::listener_perspective::prototype::tests::load_valid_prototypes ... ok
+test domain::listener_perspective::prototype::tests::rejects_empty_items ... ok
+test domain::listener_perspective::prototype::tests::rejects_group_mismatch ... ok
+test domain::listener_perspective::converter::tests::custom_coef_table_overrides_default ... ok
+test domain::listener_perspective::converter::tests::classifier_path_uses_speaker_p ... ok
+test domain::listener_perspective::converter::tests::prefilter_hit_uses_category_values ... ok
+test domain::listener_perspective::prototype::tests::rejects_malformed_toml ... ok
+test domain::listener_perspective::sign_classifier::tests::confidence_threshold ... ok
+test domain::listener_perspective::prototype::tests::texts_extraction ... ok
+test domain::listener_perspective::sign_classifier::tests::predicts_invert_when_closer_to_invert ... ok
+test domain::listener_perspective::sign_classifier::tests::predicts_keep_when_closer_to_keep ... ok
+test domain::listener_perspective::types::tests::magnitude_from_str_invalid ... ok
+test domain::listener_perspective::sign_classifier::tests::tie_breaks_to_keep ... ok
+test domain::listener_perspective::types::tests::magnitude_from_str_valid ... ok
+test domain::listener_perspective::types::tests::sign_as_f32 ... ok
+test domain::listener_perspective::types::tests::sign_from_str_invalid ... ok
+test domain::listener_perspective::types::tests::sign_from_str_valid ... ok
+test domain::memory::ranker::tests::ranker_filter_different_topics_not_dropped ... ok
+test domain::memory::ranker::tests::ranker_filter_source_priority_drops_lower_within_same_topic ... ok
+test domain::memory::ranker::tests::ranker_final_score_emotion_proximity_adds_bonus ... ok
+test domain::memory::ranker::tests::ranker_recall_count_boosts_retention ... ok
+test domain::memory::ranker::tests::ranker_rank_orders_and_limits ... ok
+test domain::memory::ranker::tests::ranker_retention_canonical_is_one ... ok
+test domain::memory::ranker::tests::ranker_retention_decay_at_tau_is_about_e_inverse ... ok
+test domain::memory::tests::memory_entry_personal_helper_backward_compat ... ok
+test domain::memory::tests::memory_scope_is_accessible_to_faction_by_membership_or_acquired ... ok
+test domain::memory::tests::memory_scope_is_accessible_to_family_mirrors_faction_semantics ... ok
+test domain::memory::tests::memory_scope_is_accessible_to_personal_and_relationship ... ok
+test domain::memory::tests::memory_scope_is_accessible_to_world_always_allowed ... ok
+test domain::memory::tests::memory_scope_owner_projection ... ok
+test domain::memory::tests::memory_scope_partition_key_format ... ok
+test domain::memory::tests::memory_scope_relationship_symmetry ... ok
+test domain::memory::tests::memory_source_from_origin_chain ... ok
+test domain::memory::tests::memory_type_initial_layer ... ok
+test domain::memory::tests::memory_source_priority_ordering ... ok
+test domain::memory::tests::memory_type_serde_alias_dialogue_to_dialogue_turn ... ok
+test domain::memory::tests::provenance_is_canonical ... ok
+test domain::pad::analyze_with_embedding_tests::empty_embedding_returns_neutral_and_none ... ok
+test domain::pad::analyze_with_embedding_tests::analyze_matches_analyze_with_embedding_pad ... ok
+test domain::pad::analyze_with_embedding_tests::returned_embedding_equals_input_for_to_pad ... ok
+test domain::personality::tests::avg4_clamps_to_max_when_all_inputs_max ... ok
+test domain::personality::tests::avg4_returns_arithmetic_mean_for_mixed_values ... ok
+test domain::personality::tests::appealingness_weight_neutral_profile_returns_base_self ... ok
+test domain::personality::tests::desirability_self_weight_uses_different_branches_by_sign ... ok
+test domain::personality::tests::empathy_weight_neutral_profile_returns_base ... ok
+test domain::personality::tests::finalize_weight_clamps_to_provided_range ... ok
+test domain::listener_perspective::prefilter::tests::classify_hits_sarcasm_interjection ... ok
+test domain::personality::tests::hostility_weight_zero_for_high_honesty ... ok
+test domain::listener_perspective::prefilter::tests::from_toml_parses_categories ... ok
+test domain::listener_perspective::prefilter::tests::classify_misses_plain_greeting ... ok
+test domain::personality::tests::npc_builder_with_inner_compass_sets_compass ... ok
+test domain::listener_perspective::prefilter::tests::classify_hits_counterfactual_gratitude ... ok
+test domain::personality::tests::npc_compass_short_label_is_alias_for_inner_compass_in_phase1 ... ok
+test domain::personality::tests::npc_inner_compass_serde_roundtrip_preserves_value ... ok
+test domain::personality::tests::npc_legacy_json_without_inner_compass_field_deserializes_as_none ... ok
+test domain::personality::tests::npc_new_defaults_inner_compass_to_none ... ok
+test domain::personality::tests::praiseworthiness_weight_branches_differ_by_self_and_sign ... ok
+test domain::personality::tests::praiseworthiness_weight_other_branch_uses_gentleness ... ok
+test domain::personality::tests::score_clamped_caps_value_above_max ... ok
+test domain::personality::tests::score_clamped_caps_value_below_min ... ok
+test domain::personality::tests::score_deserialize_rejects_above_max ... ok
+test domain::personality::tests::score_deserialize_accepts_boundary_values ... ok
+test domain::reflection::tests::compute_significance_clamps_to_one ... ok
+test domain::personality::tests::score_modifier_floor_at_zero_when_negative_combined ... ok
+test domain::reflection::tests::compute_significance_beat_signal_binary ... ok
+test domain::reflection::tests::compute_significance_high_peak_dominates ... ok
+test domain::reflection::tests::compute_significance_empty_returns_zero ... ok
+test domain::personality::tests::stimulus_absorb_rate_subtracts_patience_for_negative_pleasure ... ok
+test domain::reflection::tests::compute_significance_occ_diversity_capped_at_five_distinct ... ok
+test domain::reflection::tests::reflection_result_deserialize_minimal_fields_uses_defaults ... ok
+test domain::personality::tests::score_deserialize_rejects_below_min ... ok
+test domain::reflection::tests::reflection_result_serde_roundtrip_preserves_all_fields ... ok
+test domain::reflection::tests::compute_significance_pad_trajectory_accumulates ... ok
+test domain::relationship::axis::tests::axis_delta_add_sums_componentwise ... ok
+test domain::relationship::axis::tests::axis_delta_scaled_by_factor ... ok
+test domain::relationship::axis::tests::axis_score_add_clamps_high ... ok
+test domain::relationship::axis::tests::axis_score_add_clamps_low ... ok
+test domain::relationship::axis::tests::axis_score_clamps_at_lower_bound ... ok
+test domain::relationship::axis::tests::axis_score_clamps_at_upper_bound ... ok
+test domain::relationship::axis::tests::axis_score_normal_value_preserved ... ok
+test domain::relationship::axis::tests::axis_score_serde_round_trip ... ok
+test domain::relationship::axis::tests::default_equals_neutral ... ok
+test domain::relationship::axis::tests::neutral_consts_are_zero ... ok
+test domain::relationship::axis::tests::wariness_add_clamps_high ... ok
+test domain::relationship::axis::tests::wariness_add_clamps_low ... ok
+test domain::relationship::axis::tests::wariness_score_caps_at_hundred ... ok
+test domain::relationship::axis::tests::wariness_score_floors_at_zero ... ok
+test domain::relationship::axis::tests::wariness_score_serde_round_trip ... ok
+test domain::relationship::bond::tests::active_and_reactivating_accept_live_input ... ok
+test domain::relationship::bond::tests::bond_kind_serde_round_trip_all ... ok
+test domain::relationship::bond::tests::bond_kind_serde_snake_case ... ok
+test domain::relationship::bond::tests::bond_status_serde_active ... ok
+test domain::relationship::bond::tests::bond_status_serde_reactivating_with_event_id ... ok
+test domain::relationship::bond::tests::bond_status_serde_resolved_with_payload ... ok
+test domain::relationship::bond::tests::companion_guardian_mentor_classifiers ... ok
+test domain::relationship::bond::tests::default_is_active ... ok
+test domain::relationship::bond::tests::dormant_resolved_deceased_block_live_input ... ok
+test domain::relationship::bond::tests::each_variant_belongs_to_exactly_one_region ... ok
+test domain::relationship::bond::tests::enemy_classifies_four_variants ... ok
+test domain::relationship::bond::tests::zhiji_classifies_four_variants ... ok
+test domain::relationship::partnership::tests::copy_and_eq_work ... ok
+test domain::relationship::partnership::tests::hash_in_set ... ok
+test domain::relationship::partnership::tests::serde_round_trip_all_variants ... ok
+test domain::relationship::partnership::tests::serde_snake_case_labels ... ok
+test domain::relationship::tests::apply_delta_clamps_at_bounds ... ok
+test domain::relationship::tests::apply_delta_updates_all_4_axes ... ok
+test domain::relationship::tests::builder_bond_kind_wraps_in_some ... ok
+test domain::relationship::tests::builder_chain_4_axes ... ok
+test domain::relationship::tests::builder_full_chain_all_fields ... ok
+test domain::relationship::tests::builder_partial_setters_apply_defaults ... ok
+test domain::relationship::tests::builder_partnership_wraps_in_some ... ok
+test domain::relationship::tests::builder_type_text_and_history ... ok
+test domain::relationship::tests::modifiers_uses_affinity_input_with_preserved_field_names ... ok
+test domain::relationship::tests::neutral_modifiers_all_unit ... ok
+test domain::relationship::tests::neutral_signature_preserved_and_zero_axes ... ok
+test domain::relationship::tests::new_initializes_4_axes_and_defaults ... ok
+test domain::relationship::tests::relationship_serde_defaults_missing_fields ... ok
+test domain::relationship::tests::relationship_serde_round_trip_with_type_key ... ok
+test domain::relationship::tests::type_change_serde_round_trip ... ok
+test domain::rumor::tests::add_distortion_rejects_duplicate_id ... ok
+test domain::rumor::tests::add_distortion_rejects_missing_parent_and_self_parent ... ok
+test domain::rumor::tests::add_hop_enforces_monotonic_index ... ok
+test domain::rumor::tests::add_hop_rejects_unknown_content_version ... ok
+test domain::rumor::tests::forecast_rumor_has_both_topic_and_seed ... ok
+test domain::rumor::tests::from_parts_accepts_valid_topological_order ... ok
+test domain::rumor::tests::from_parts_detects_three_node_cycle ... ok
+test domain::rumor::tests::from_parts_detects_two_node_cycle ... ok
+test domain::rumor::tests::from_parts_rejects_unknown_content_version ... ok
+test domain::rumor::tests::from_parts_validates_hop_monotonicity ... ok
+test domain::rumor::tests::from_parts_validates_orphan_requires_seed ... ok
+test domain::rumor::tests::new_rumor_has_topic_no_seed_and_active ... ok
+test domain::rumor::tests::orphan_rumor_has_no_topic_but_has_seed ... ok
+test domain::rumor::tests::status_transitions_active_to_fading_to_faded ... ok
+test domain::rumor::tests::status_transitions_allow_active_to_faded_directly ... ok
+test domain::rumor::tests::serde_roundtrip_preserves_status_and_origin_tag ... ok
+test domain::rumor::tests::status_transitions_reject_backward_and_same ... ok
+test domain::scene_id::tests::composite_key_is_order_sensitive ... ok
+test domain::scene_id::tests::display_shows_npc_partner_arrow ... ok
+test domain::scene_id::tests::from_scene_extracts_ids ... ok
+test domain::scene_id::tests::hashable_for_hashmap_key ... ok
+test domain::scene_id::tests::new_builds_from_string_like ... ok
+test domain::tuning::tests::day_ms_is_one_day_in_milliseconds ... ok
+test domain::tuning::tests::default_profile_passes_validate ... ok
+test domain::tuning::tests::level_thresholds_centered_around_zero ... ok
+test domain::tuning::tests::mood_emotion_trait_thresholds_in_unit_range ... ok
+test domain::tuning::tests::source_weights_in_unit_range ... ok
+test domain::tuning::tests::validate_catches_invalid_stimulus_rate ... ok
+test domain::tuning::tests::validate_catches_inverted_levels ... ok
+test domain::tuning::tests::validate_catches_negative_recall_boost ... ok
+test domain::tuning::tests::validate_catches_negative_significance_scale ... ok
+test domain::tuning::tests::validate_catches_pad_dead_zone_above_scale ... ok
+test domain::tuning::tests::validate_catches_top_p_above_one ... ok
+test domain::tuning::tests::validate_catches_zero_recency_tau ... ok
+test domain::world::atlas::tests::adjacent_to_filters_to_atlas_boundary ... ok
+test domain::world::atlas::tests::adjacent_to_returns_empty_when_place_missing_from_repo ... ok
+test domain::world::atlas::tests::adjacent_to_returns_empty_when_place_not_in_atlas ... ok
+test domain::world::atlas::tests::atlas_extent_default_is_schematic ... ok
+test domain::world::atlas::tests::atlas_extent_serde_skip_when_units_none ... ok
+test domain::world::atlas::tests::atlas_new_sets_defaults ... ok
+test domain::world::atlas::tests::era_helpers_extract_from_extras ... ok
+test domain::world::atlas::tests::atlas_full_serde_roundtrip ... ok
+test domain::world::atlas::tests::places_in_returns_in_reference_order ... ok
+test domain::world::atlas::tests::places_in_skips_missing_silently ... ok
+test domain::world::atlas::tests::settlements_and_geographies_filter_by_layer ... ok
+test domain::world::era::tests::contains_year_exclusive_end ... ok
+test domain::world::era::tests::contains_year_inclusive_start ... ok
+test domain::world::era::tests::contains_year_outside_range ... ok
+test domain::world::era::tests::contains_year_undefined_boundary_returns_false ... ok
+test domain::world::era::tests::duration_years_computes_difference ... ok
+test domain::world::era::tests::duration_years_none_when_end_before_start ... ok
+test domain::world::era::tests::duration_years_none_when_undefined ... ok
+test domain::world::era::tests::era_id_from_str_and_string ... ok
+test domain::world::era::tests::era_id_serde_transparent ... ok
+test domain::world::era::tests::era_new_sets_defaults ... ok
+test domain::world::era::tests::era_temporal_serde_skip_when_none ... ok
+test domain::world::era::tests::era_temporal_serializes_negative_years ... ok
+test domain::world::era::tests::five_canonical_eras_boundary_consistency ... ok
+test domain::world::era::tests::key_events_preserves_input_order ... ok
+test domain::world::era::tests::full_serde_roundtrip_preserves_all_fields ... ok
+test domain::world::era::tests::key_events_skip_empty_serde ... ok
+test domain::world::event::tests::category_default_is_historical ... ok
+test domain::world::event::tests::category_from_str_loose ... ok
+test domain::world::event::tests::category_serde_lowercase ... ok
+test domain::world::event::tests::era_id_skipped_when_none ... ok
+test domain::world::event::tests::era_id_text_preserved_for_phase5b ... ok
+test domain::world::event::tests::event_category_legendary_serde ... ok
+test domain::world::event::tests::event_new_sets_defaults ... ok
+test domain::world::event::tests::event_temporal_serde_skip_when_none ... ok
+test domain::world::event::tests::event_temporal_year_relative_serializes_negative ... ok
+test domain::world::event::tests::involvement_helpers ... ok
+test domain::world::event::tests::full_serde_roundtrip_preserves_all_fields ... ok
+test domain::world::event::tests::participants_refs_default_is_empty ... ok
+test domain::world::event::tests::participants_refs_missing_field_default_is_empty_vec ... ok
+test domain::world::event::tests::participants_refs_skip_empty_arrays ... ok
+test domain::world::event::tests::related_events_skip_empty ... ok
+test domain::world::event::tests::year_relative_accessor ... ok
+test domain::world::group::tests::alignment_extracts_from_extras ... ok
+test domain::world::group::tests::cycle_detection_clean_chain_returns_empty ... ok
+test domain::world::group::tests::cycle_detection_dangling_parent_is_not_cycle ... ok
+test domain::world::group::tests::cycle_detection_finds_self_loop ... ok
+test domain::world::group::tests::cycle_detection_finds_three_node_cycle ... ok
+test domain::world::group::tests::cycle_detection_finds_two_disjoint_cycles ... ok
+test domain::world::group::tests::cycle_detection_finds_two_node_cycle ... ok
+test domain::world::group::tests::cycle_detection_tail_cycle_excludes_prefix ... ok
+test domain::world::group::tests::group_new_sets_defaults ... ok
+test domain::world::group::tests::group_full_serde_roundtrip ... ok
+test domain::world::group::tests::group_status_from_str_loose ... ok
+test domain::world::group::tests::temporal_serde_roundtrip ... ok
+test domain::world::person::tests::hexaco_six_neutral_all_zero ... ok
+test domain::world::person::tests::hexaco_six_out_of_range_deserialize_fails ... ok
+test domain::world::person::tests::hexaco_six_serde_roundtrip ... ok
+test domain::world::person::tests::is_mind_eligible_only_active_or_player ... ok
+test domain::world::person::tests::person_new_sets_defaults ... ok
+test domain::world::person::tests::person_full_serde_roundtrip ... ok
+test domain::world::person::tests::person_status_from_str_loose ... ok
+test domain::world::person::tests::person_temporal_serde_skips_missing_fields ... ok
+test domain::world::place::tests::controlling_group_extracts_from_extras ... ok
+test domain::world::place::tests::cycle_detection_clean_chain_returns_empty ... ok
+test domain::world::place::tests::cycle_detection_finds_self_loop ... ok
+test domain::world::place::tests::cycle_detection_dangling_parent_is_not_cycle ... ok
+test domain::world::place::tests::cycle_detection_finds_two_node_cycle ... ok
+test domain::world::place::tests::cycle_detection_three_node_cycle_canonical ... ok
+test domain::world::place::tests::place_layer_from_str_loose ... ok
+test domain::world::place::tests::place_full_serde_roundtrip ... ok
+test domain::world::place::tests::place_layer_serde_lowercase ... ok
+test domain::world::place::tests::place_new_sets_defaults ... ok
+test domain::world::place::tests::spatial_full_roundtrip ... ok
+test domain::world::place::tests::spatial_serde_skip_when_empty ... ok
+test domain::world::timeline::tests::causal_chain_bfs_within_timeline_boundary ... ok
+test domain::world::timeline::tests::causal_chain_bidirectional_traversal_no_revisit ... ok
+test domain::world::timeline::tests::causal_chain_ignores_events_outside_timeline ... ok
+test domain::world::timeline::tests::causal_chain_seed_outside_timeline_returns_empty ... ok
+test domain::world::timeline::tests::eras_in_returns_in_reference_order ... ok
+test domain::world::timeline::tests::eras_in_skips_missing_silently ... ok
+test domain::world::timeline::tests::events_during_returns_empty_for_era_outside_timeline ... ok
+test domain::world::timeline::tests::events_during_returns_only_specified_era_events ... ok
+test domain::world::timeline::tests::events_in_dedupes_event_appearing_in_multiple_eras ... ok
+test domain::world::timeline::tests::events_in_flattens_era_key_events_in_era_order ... ok
+test domain::world::timeline::tests::references_skip_empty_serde ... ok
+test domain::world::timeline::tests::timeline_filter_default ... ok
+test domain::world::timeline::tests::timeline_id_serde_transparent ... ok
+test domain::world::timeline::tests::timeline_full_serde_roundtrip ... ok
+test domain::world::timeline::tests::timeline_new_sets_defaults ... ok
+test lore::ingest::tests::chunk_config_per_language ... ok
+test lore::ingest::tests::chunks_respect_chapter_boundaries ... ok
+test lore::ingest::tests::edition_offsets_increment_across_chapters ... ok
+test lore::corpus::tests::find_corpus_returns_metadata ... ok
+test lore::corpus::tests::iter_editions_visits_all ... ok
+test lore::ingest::tests::noise_filter_skips_toc_and_short_chunks ... ok
+test lore::corpus::tests::manifest_parses ... ok
+test presentation::memory_formatter::tests::framer_no_locale_loaded_falls_back_to_raw_content ... ok
+test worldbuilding::markdown::atlas::tests::ascii_diagram_with_inner_hash_lines_not_split_into_h2 ... ok
+test worldbuilding::markdown::atlas::tests::ascii_diagram_preserved_byte_exact ... ok
+test worldbuilding::markdown::atlas::tests::empty_extent_yields_default_schematic ... ok
+test worldbuilding::markdown::atlas::tests::empty_references_yields_empty_vec ... ok
+test worldbuilding::markdown::atlas::tests::era_id_text_preserved_for_phase5 ... ok
+test worldbuilding::markdown::atlas::tests::missing_required_id_errs ... ok
+test worldbuilding::markdown::atlas::tests::missing_required_kind_errs ... ok
+test worldbuilding::markdown::atlas::tests::missing_required_name_errs ... ok
+test worldbuilding::markdown::atlas::tests::null_extent_yields_default ... ok
+test worldbuilding::markdown::atlas::tests::references_preserve_input_order ... ok
+test worldbuilding::markdown::atlas::tests::parse_neutral_atlas_full_roundtrip ... ok
+test worldbuilding::markdown::era::tests::aliases_with_non_string_remains_permissive ... ok
+test presentation::memory_formatter::tests::framer_block_assembles_header_entries_footer ... ok
+test worldbuilding::markdown::era::tests::body_sections_parsed ... ok
+test presentation::memory_formatter::tests::framer_experienced_ko_label ... ok
+test presentation::memory_formatter::tests::framer_block_empty_returns_empty ... ok
+test worldbuilding::markdown::era::tests::empty_key_events_yields_empty ... ok
+test worldbuilding::markdown::era::tests::empty_temporal_yields_default ... ok
+test presentation::memory_formatter::tests::framer_source_variants_ko ... ok
+test presentation::memory_formatter::tests::framer_source_variants_en ... ok
+test worldbuilding::markdown::era::tests::extras_map_preserved ... ok
+test presentation::memory_formatter::tests::framer_unknown_locale_falls_back_to_default ... ok
+test worldbuilding::markdown::era::tests::key_events_non_sequence_errs ... ok
+test worldbuilding::markdown::era::tests::key_events_preserves_input_order ... ok
+test worldbuilding::markdown::era::tests::key_events_with_non_string_item_errs ... ok
+test worldbuilding::markdown::era::tests::missing_required_kind_errs ... ok
+test worldbuilding::markdown::era::tests::missing_required_id_errs ... ok
+test worldbuilding::markdown::era::tests::missing_required_name_errs ... ok
+test worldbuilding::markdown::era::tests::negative_year_relative_parses ... ok
+test worldbuilding::markdown::era::tests::null_key_events_yields_empty ... ok
+test worldbuilding::markdown::era::tests::null_temporal_yields_default ... ok
+test worldbuilding::markdown::event::tests::aliases_with_non_string_remains_permissive ... ok
+test worldbuilding::markdown::event::tests::body_sections_parsed_in_order_independent_btreemap ... ok
+test worldbuilding::markdown::event::tests::empty_temporal_yields_default ... ok
+test worldbuilding::markdown::event::tests::empty_participants_yields_empty ... ok
+test worldbuilding::markdown::era::tests::parse_wuxia_era_preserves_korean ... ok
+test worldbuilding::markdown::event::tests::era_id_empty_string_yields_none ... ok
+test worldbuilding::markdown::event::tests::era_id_null_yields_none ... ok
+test worldbuilding::markdown::era::tests::parse_neutral_era_full_roundtrip ... ok
+test worldbuilding::markdown::event::tests::era_id_text_preserved ... ok
+test worldbuilding::markdown::event::tests::extras_map_preserved ... ok
+test worldbuilding::markdown::event::tests::missing_category_defaults_to_historical ... ok
+test worldbuilding::markdown::event::tests::missing_required_id_errs ... ok
+test worldbuilding::markdown::event::tests::missing_required_kind_errs ... ok
+test worldbuilding::markdown::event::tests::known_categories_parse_correctly ... ok
+test worldbuilding::markdown::event::tests::missing_required_name_errs ... ok
+test worldbuilding::markdown::event::tests::negative_year_relative_parses ... ok
+test worldbuilding::markdown::event::tests::null_participants_yields_empty ... ok
+test worldbuilding::markdown::event::tests::null_temporal_yields_default ... ok
+test worldbuilding::markdown::event::tests::participants_groups_with_mapping_item_errs ... ok
+test worldbuilding::markdown::event::tests::participants_null_remains_empty ... ok
+test worldbuilding::markdown::event::tests::participants_partial_categories ... ok
+test worldbuilding::markdown::event::tests::participants_people_with_non_string_item_errs ... ok
+test worldbuilding::markdown::event::tests::parse_neutral_event_full_roundtrip ... ok
+test worldbuilding::markdown::event::tests::participants_places_non_sequence_errs ... ok
+test worldbuilding::markdown::event::tests::parse_wuxia_event_preserves_korean ... ok
+test worldbuilding::markdown::event::tests::participants_preserves_input_order ... ok
+test worldbuilding::markdown::event::tests::related_events_empty_when_omitted ... ok
+test worldbuilding::markdown::event::tests::related_events_null_remains_empty ... ok
+test worldbuilding::markdown::event::tests::related_events_with_non_string_errs ... ok
+test worldbuilding::markdown::event::tests::related_events_yields_event_ids ... ok
+test worldbuilding::markdown::event::tests::tags_with_non_string_remains_permissive ... ok
+test worldbuilding::markdown::event::tests::unknown_category_errs ... ok
+test worldbuilding::markdown::event::tests::zero_year_relative_parses ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_empty_body_yields_empty_sections ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_extracts_yaml_and_body ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_handles_crlf ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_invalid_yaml_errs ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_missing_fence_errs ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_frontmatter_unterminated_errs ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_h2_sections_duplicate_title_keeps_last ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_h2_sections_collects_in_order ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_h2_sections_handles_tilde_fence ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_h2_sections_ignores_h1 ... ok
+test worldbuilding::markdown::frontmatter::tests::parse_h2_sections_ignores_hash_inside_fenced_code_block ... ok
+test worldbuilding::markdown::group::tests::invalid_status_errs ... ok
+test worldbuilding::markdown::group::tests::missing_required_field_errs ... ok
+test worldbuilding::markdown::group::tests::parent_group_parses_as_groupid ... ok
+test worldbuilding::markdown::group::tests::rival_and_allied_arrays_become_groupids ... ok
+test worldbuilding::markdown::person::tests::affiliation_parses_as_groupids ... ok
+test worldbuilding::markdown::person::tests::empty_affiliation_yields_empty_vec ... ok
+test worldbuilding::markdown::group::tests::parse_neutral_fixture_full_roundtrip ... ok
+test worldbuilding::markdown::person::tests::hexaco_out_of_range_errs ... ok
+test worldbuilding::markdown::person::tests::historical_kind_parses ... ok
+test worldbuilding::markdown::person::tests::invalid_hexaco_type_errs ... ok
+test worldbuilding::markdown::person::tests::invalid_status_errs ... ok
+test worldbuilding::markdown::person::tests::missing_hexaco_yields_neutral ... ok
+test worldbuilding::markdown::person::tests::missing_required_field_errs ... ok
+test worldbuilding::markdown::person::tests::partial_hexaco_uses_neutral_for_missing_dim ... ok
+test worldbuilding::markdown::place::tests::empty_spatial_yields_default ... ok
+test worldbuilding::markdown::place::tests::invalid_layer_errs ... ok
+test worldbuilding::markdown::place::tests::missing_required_id_errs ... ok
+test worldbuilding::markdown::place::tests::missing_required_layer_errs ... ok
+test worldbuilding::markdown::person::tests::parse_neutral_fixture_full_roundtrip ... ok
+test worldbuilding::markdown::place::tests::null_spatial_yields_default ... ok
+test worldbuilding::markdown::place::tests::parent_place_parses_as_placeid ... ok
+test worldbuilding::markdown::place::tests::parse_settlement_fixture_full_roundtrip ... ok
+test worldbuilding::markdown::place::tests::sect_kind_with_controlling_group_extras ... ok
+test worldbuilding::markdown::timeline::tests::aliases_with_non_string_remains_permissive ... ok
+test worldbuilding::markdown::timeline::tests::empty_references_yields_empty ... ok
+test worldbuilding::markdown::place::tests::parse_geography_fixture_full_roundtrip ... ok
+test worldbuilding::markdown::timeline::tests::missing_required_id_errs ... ok
+test worldbuilding::markdown::timeline::tests::missing_required_kind_errs ... ok
+test worldbuilding::markdown::timeline::tests::missing_required_name_errs ... ok
+test worldbuilding::markdown::timeline::tests::null_references_yields_empty ... ok
+test worldbuilding::markdown::timeline::tests::references_non_sequence_errs ... ok
+test worldbuilding::markdown::timeline::tests::parse_neutral_timeline_full_roundtrip ... ok
+test worldbuilding::markdown::timeline::tests::references_preserves_input_order ... ok
+test worldbuilding::markdown::timeline::tests::parse_wuxia_timeline_preserves_korean ... ok
+test worldbuilding::mind_sync::tests::active_person_converts_to_npc ... ok
+test worldbuilding::markdown::timeline::tests::references_with_non_string_item_errs ... ok
+test worldbuilding::mind_sync::tests::derive_llm_parameters_uses_hexaco ... ok
+test worldbuilding::mind_sync::tests::historical_kind_returns_none ... ok
+test worldbuilding::mind_sync::tests::legendary_kind_returns_none ... ok
+test worldbuilding::mind_sync::tests::neutral_hexaco_converts_to_neutral_profile ... ok
+test worldbuilding::mind_sync::tests::player_kind_converts ... ok
+
+test result: ok. 511 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running unittests src\bin\mind-studio\main.rs (target\debug\deps\npc_mind_studio-fcad183320d6cacf.exe)
+
+running 72 tests
+test event_bridge::tests::dialogue_turn_user_does_not_emit ... ok
+test event_bridge::tests::dialogue_reflected_emits ... ok
+test event_bridge::tests::dialogue_turn_assistant_emits_chat_turn_completed ... ok
+test event_bridge::tests::maps_appraised ... ok
+test event_bridge::tests::maps_scene_ended_to_after_dialogue ... ok
+test event_bridge::tests::consume_stream_emits_state_events_in_order ... ok
+test event_bridge::tests::lagged_triggers_replay_from_event_store ... ok
+test handler_tests::broadcast_npc_changed_on_create ... ok
+test handler_tests::broadcast_test_report_changed_on_put ... ok
+test handler_tests::analyze_utterance_without_embed_returns_not_implemented ... ok
+test handler_tests::appraise_npc_not_found ... ok
+test handler_tests::broadcast_situation_changed_on_put ... ok
+test handler_tests::broadcast_npc_changed_on_delete ... ok
+test handler_tests::appraise_success ... ok
+test handler_tests::full_pipeline_appraise_stimulus_after_dialogue ... ok
+test handler_tests::llm_health_모니터_없으면_501 ... ok
+test handler_tests::llm_slots_모니터_없으면_501 ... ok
+test handler_tests::llm_metrics_모니터_없으면_501 ... ok
+test handler_tests::llm_status_모니터_없으면_501 ... ok
+test handler_tests::mcp_tool_call_logic ... ok
+test handler_tests::load_scenario_clears_turn_history_and_sets_loaded_path ... ok
+test handler_tests::load_result_returns_turn_history ... ok
+test handler_tests::loaded_path_not_changed_on_result_save ... ok
+test handler_tests::loaded_path_updated_on_scenario_save ... ok
+test handler_tests::no_receivers_does_not_panic ... ok
+test handler_tests::llm_status_mock_서버_통합 ... ok
+test handler_tests::mcp_endpoints_reachable ... ok
+test handler_tests::phase1_5_reflection_tests::chat_end_clears_turn_buffer_even_without_after_dialogue ... ok
+test handler_tests::object_crud_lifecycle ... ok
+test handler_tests::npc_crud_lifecycle ... ok
+test handler_tests::projection_drift::emotion_projection_empty_before_any_command ... ok
+test handler_tests::projection_drift::appstate_projection_handle_shares_arc_with_dispatcher ... ok
+test handler_tests::projection_drift::emotion_projection_matches_appraise_response ... ok
+test handler_tests::full_state_machine_workflow ... ok
+test handler_tests::projection_drift::relationship_projection_reflects_after_dialogue ... ok
+test handler_tests::projection_drift::scene_projection_clears_after_dialogue_end ... ok
+test handler_tests::projection_drift::scene_projection_reflects_scene_start ... ok
+test handler_tests::relationship_crud_lifecycle ... ok
+test handler_tests::projection_drift::trace_endpoint_returns_causal_tree ... ok
+test handler_tests::projection_drift::trace_endpoint_returns_correlation_bundle ... ok
+test handler_tests::scenario_meta_empty_initially ... ok
+test handler_tests::save_type_result_includes_turn_history ... ok
+test handler_tests::scenario_modified_reset_after_scenario_save ... ok
+test handler_tests::scenario_modified_set_after_npc_crud ... ok
+test handler_tests::save_type_scenario_excludes_turn_history ... ok
+test handler_tests::scenario_modified_set_after_object_crud ... ok
+test handler_tests::scenario_modified_set_after_put_situation ... ok
+test handler_tests::scenario_modified_set_after_npc_delete ... ok
+test handler_tests::scenario_modified_set_after_object_delete ... ok
+test handler_tests::scenario_modified_set_after_relationship_crud ... ok
+test handler_tests::scene_info_empty_initially ... ok
+test handler_tests::scenario_modified_set_after_relationship_delete ... ok
+test handler_tests::situation_panel_round_trip ... ok
+test handler_tests::stimulus_without_appraise_returns_bad_request ... ok
+test handler_tests::test_studio_analysis_pipeline_integrity ... ok
+test handler_tests::test_report_round_trip ... ok
+test handler_tests::test_report_persistence_across_save_load ... ok
+test handler_tests::v2_dispatch_to_inactive_scene_returns_not_found ... ok
+test handler_tests::v2_dispatch_scene_mismatch_returns_bad_request ... ok
+test handler_tests::v2_empty_director_lists_no_active_scenes ... ok
+test handler_tests::v2_end_scene_removes_from_active_list ... ok
+test handler_tests::v2_seed_npcs_and_start_scene_returns_scene_id ... ok
+test studio_service::tests::resolve_pad_converter_failure_falls_back ... ok
+test studio_service::tests::resolve_pad_pad_hint_short_circuits_conversion ... ok
+test handler_tests::v2_start_scene_duplicate_returns_conflict ... ok
+test studio_service::tests::resolve_pad_with_converter_and_embedding_inverts ... ok
+test studio_service::tests::resolve_pad_without_converter_returns_speaker_pad ... ok
+test handler_tests::v2_dispatch_appraise_to_active_scene_emits_events ... ok
+test handler_tests::phase1_5_reflection_tests::significant_reflection_updates_axes_and_emits_sse ... ok
+test handler_tests::phase1_5_reflection_tests::chitchat_reflection_preserves_axes_and_emits_sse ... ok
+test handler_tests::phase1_5_reflection_tests::dispatch_v2_appraise_triggers_sse_appraised_via_bridge ... ok
+test handler_tests::phase1_5_reflection_tests::no_reflection_attached_is_legacy_path ... ok
+
+test result: ok. 72 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+
+     Running tests\anchor_source_test.rs (target\debug\deps\anchor_source_test-b005181dd0ded180.exe)
+
+running 7 tests
+test json_앵커_파싱 ... ok
+test toml_캐시_없으면_none ... ok
+test 빌트인_레지스트리_ko_존재 ... ok
+test 빌트인_레지스트리_미지원_언어_none ... ok
+test toml_빌트인_앵커_파싱 ... ok
+test toml_앵커_텍스트_내용_확인 ... ok
+test toml_캐시_라운드트립 ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\conversation_stream_test.rs (target\debug\deps\conversation_stream_test-9149ac52ae1b37ee.exe)
+
+running 3 tests
+test stream_terminates_after_final ... ok
+test stream_propagates_errors ... ok
+test stream_yields_tokens_then_final ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dialogue_converter_integration.rs (target\debug\deps\dialogue_converter_integration-494fdd6155fd1110.exe)
+
+running 6 tests
+test no_converter_falls_through_to_speaker_pad ... ok
+test pad_hint_skips_conversion_due_to_missing_embedding ... ok
+test converter_with_analyzer_embedding_produces_listener_pad ... ok
+test converter_failure_falls_back_to_speaker_pad ... ok
+test no_analyzer_and_no_pad_hint_skips_stimulus_dispatch ... ok
+test dialogue_with_real_embedded_converter_prefilter_path ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dialogue_flow_test.rs (target\debug\deps\dialogue_flow_test-fa10f86ea71547e7.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dialogue_no_lp_passthrough.rs (target\debug\deps\dialogue_no_lp_passthrough-0b0b970f74c9b987.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\dialogue_orchestrator_test.rs (target\debug\deps\dialogue_orchestrator_test-3d06e220c8c2c56b.exe)
+
+running 9 tests
+test end_session_on_unknown_session_fails ... ok
+test turn_on_unknown_session_fails ... ok
+test end_session_without_significance_skips_dispatch ... ok
+test start_session_emits_emotion_appraised_and_starts_llm ... ok
+test turn_emits_events_in_correct_order ... ok
+test dialogue_turn_events_are_published_to_event_bus ... ok
+test end_session_with_significance_dispatches_end_dialogue ... ok
+test beat_transition_calls_update_system_prompt ... ok
+test turn_without_pad_skips_stimulus_dispatch ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\directive_test.rs (target\debug\deps\directive_test-80310d0cd83e9461.exe)
+
+running 36 tests
+test anger_dominant_성실한_성격이면_suppressed_cold ... ok
+test anger_비판적_성격이면_hostile_aggressive ... ok
+test anger_dominant_충동적_성격이면_rough_aggressive ... ok
+test anger_성실하면_strategic_response ... ok
+test anger_관용적_성격이면_suppressed_discomfort ... ok
+test anger_중간_성실성이면_express_and_observe ... ok
+test anger이면_no_friendliness ... ok
+test anger_충동적이면_immediate_confrontation ... ok
+test enum_decide_unit_tests::test_attitude_decide_logic ... ok
+test enum_decide_unit_tests::test_behavioral_tendency_decide_logic ... ok
+test enum_decide_unit_tests::test_restriction_evaluate_all_logic ... ok
+test enum_decide_unit_tests::test_tone_decide_logic ... ok
+test fear_dominant_대담한_성격이면_vigilant_calm ... ok
+test fear_dominant_정서적_성격이면_tense_anxious ... ok
+test fear_대담하면_brave_confrontation ... ok
+test fear_정서적이면_seek_safety ... ok
+test fear이면_guarded_defensive ... ok
+test fear이면_no_bravado ... ok
+test joy_dominant이면_bright_lively ... ok
+test pride_dominant_교활한_성격이면_proud_arrogant ... ok
+test pride_dominant_정직한_성격이면_quiet_confidence ... ok
+test reproach이면_judgmental ... ok
+test shame_dominant이면_shrinking_small ... ok
+test shame이면_avoid_or_deflect ... ok
+test shame이면_no_self_justification ... ok
+test 감정_없으면_mood_기반_tone ... ok
+test 교활한_성격은_거짓말_허용 ... ok
+test 긍정_mood이면_active_cooperation ... ok
+test 긍정_mood이면_friendly_open ... ok
+test 나머지_감정_tone_매핑 ... ok
+test 부정_mood이면_defensive_closed ... ok
+test 부정_mood이면_no_humor ... ok
+test 빈_감정은_제한사항_최소 ... ok
+test 정직한_성격이면_no_lying ... ok
+test 중립이면_neutral_observant ... ok
+test 중립이면_observe_and_respond ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\director_test.rs (target\debug\deps\director_test-61a3685afac48377.exe)
+
+running 14 tests
+test end_scene_removes_from_active_list ... ok
+test director_new_has_no_active_scenes ... ok
+test dispatch_to_inactive_scene_returns_error ... ok
+test dispatch_to_rejects_command_targeting_different_scene ... ok
+test end_scene_on_unknown_scene_returns_error ... ok
+test concurrent_start_scene_with_same_id_elects_single_winner ... ok
+test beat_transition_in_scene_a_updates_scene_a_relationship_not_scene_b ... ok
+test ending_one_scene_leaves_other_active ... ok
+test start_scene_registers_scene_and_emits_lifecycle_events ... ok
+test start_scene_rejects_duplicate_activation ... ok
+test scene_task_terminates_after_end_scene_and_allows_restart ... ok
+test two_scenes_coexist_and_events_are_aggregate_separated ... ok
+test dispatch_to_routes_to_correct_scene ... ok
+test repository_holds_both_scenes_by_id ... ok
+
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+
+     Running tests\dispatch_v2_test.rs (target\debug\deps\dispatch_v2_test-cdab238971593143.exe)
+
+running 31 tests
+test error_paths::max_events_per_command_constant_is_positive ... ok
+test error_paths::v2_apply_world_event_significance_clamped_above_one ... ok
+test dispatch_v2_attaches_correlation_id_to_all_events ... ok
+test distinct_dispatch_calls_get_distinct_correlation_ids ... ok
+test error_paths::v2_correlation_id_increments_per_dispatch_call ... ok
+test child_depth_is_parent_plus_one ... ok
+test cascade_depth_increases_along_follow_up_chain ... ok
+test error_paths::v2_handler_failed_does_not_commit_to_event_store ... ok
+test error_paths::v2_handler_failed_propagates_handler_name ... ok
+test error_paths::v2_event_budget_exceeded_returns_typed_error ... ok
+test error_paths::v2_invalid_situation_apply_world_event_blank_fact ... ok
+test error_paths::v2_invalid_situation_apply_world_event_empty_world_id ... ok
+test error_paths::v2_invalid_situation_appraise_without_situation_or_active_scene ... ok
+test error_paths::v2_invalid_situation_seed_rumor_no_topic_no_seed_content ... ok
+test print_causal_tree_for_stimulus ... ignored
+test event_store_returns_event_by_id ... ok
+test v2_end_dialogue_emits_three_follow_ups_and_clears_repo_state ... ignored, Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 RelationshipUpdated 발행하되 값 변화 0 (after_dialogue 폐기, Stage 2 placeholder)
+test concurrent_dispatch_calls_get_distinct_correlation_ids ... ok
+test event_store_returns_correct_correlation_bundle ... ok
+test parent_event_id_forms_valid_tree ... ok
+test v2_appraise_emits_request_appraised_guide_sequence ... ok
+test v2_appraise_persists_events_to_event_store ... ok
+test v2_beat_transition_persists_new_active_focus_to_repo ... ok
+test v2_generate_guide_emits_requested_and_generated ... ok
+test v2_max_cascade_depth_is_enforced ... ok
+test v2_start_scene_with_initial_focus_cascades_to_emotion_and_guide ... ok
+test v2_stimulus_without_beat_emits_request_applied_guide ... ok
+test v2_update_relationship_emits_requested_and_updated ... ok
+test v2_stimulus_with_beat_trigger_cascades_to_relationship_update ... ok
+test with_default_handlers_registers_expected_counts ... ok
+test error_paths::v2_handler_failed_does_not_publish_to_event_bus ... ok
+
+test result: ok. 29 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests\embed_test.rs (target\debug\deps\embed_test-c9a892c5efb5a63c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\emotion_test.rs (target\debug\deps\emotion_test-833731423a06a26c.exe)
+
+running 52 tests
+test fear_confirmed_시_fears_confirmed와_distress_동시_생성 ... ok
+test hope_fulfilled와_타인_action_결합_시_gratitude_생성 ... ok
+test fear_unrealized_시_relief만_생성_distress_없음 ... ok
+test hope_unfulfilled_시_disappointment만_생성_joy_없음 ... ok
+test hope_fulfilled_시_satisfaction과_joy_동시_생성 ... ok
+test merge_새_감정만_있으면_그대로_추가 ... ok
+test merge_이전_감정_threshold_미만은_소멸 ... ok
+test merge_같은_감정은_max_유지_context도_max쪽 ... ok
+test merge_이전_감정_threshold_이상은_유지 ... ok
+test trigger_above_조건_충족 ... ok
+test trigger_absent_조건_충족 ... ok
+test trigger_and_조건_모두_충족 ... ok
+test trigger_and_조건_하나_미충족 ... ok
+test trigger_below_조건_미충족 ... ok
+test trigger_below_조건_충족 ... ok
+test trigger_initial은_항상_false ... ok
+test trigger_or_조건_하나만_충족 ... ok
+test 가까운_사이의_좋은_일에_더_기뻐함 ... ok
+test 감정_significant_필터링 ... ok
+test 감정_상태_dominant_감정 ... ok
+test 감정_상태_전체_valence ... ok
+test 라이벌_승진_교룡은_시기 ... ok
+test 라이벌_승진_무백은_대리기쁨 ... ok
+test 배신_교룡은_폭발적_분노 ... ok
+test 배신_무백은_절제된_분노 ... ok
+test 배신_수련은_억눌린_고통 ... ok
+test 불신하던_사람의_도움에_약한_감사 ... ok
+test 불신하던_사람의_배신에_약한_분노 ... ok
+test 불신하던_사람의_의로운_행동에_약한_감탄 ... ok
+test 신뢰하던_사람의_도움에_더_강한_감사 ... ok
+test 신뢰하던_사람의_배신에_더_강한_분노 ... ok
+test 신뢰하던_사람의_의로운_행동에_더_강한_감탄 ... ok
+test 신뢰하던_사람의_배신에_더_강한_비난 ... ok
+test 신뢰하던_상대의_배신이_더_강한_분노 ... ok
+test 원수의_불행에_교룡은_더_강하게_쾌재 ... ok
+test 원수의_행운에_무백은_기뻐하되_약하게 ... ok
+test 자기_compound_gratification은_closeness에_무관 ... ok
+test 자기_compound_remorse는_closeness에_무관 ... ok
+test 의형제의_배신이_남의_배신보다_분노가_큼 ... ok
+test 자기_행동_pride는_closeness에_무관 ... ok
+test 자기_행동_shame은_closeness에_무관 ... ok
+test 적_대군_무백은_담담한_두려움 ... ok
+test 적_대군_소호는_두려움_없이_행동 ... ok
+test 적대관계의_좋은일에_교룡은_더_강한_시기 ... ok
+test 중립_관계는_closeness_방향_영향_없음 ... ok
+test 친구의_불행에_수련은_더_강하게_동정 ... ok
+test 친구의_행운에_교룡은_시기하되_약하게 ... ok
+test 타인_compound_anger는_closeness에_증폭 ... ok
+test 타인_compound_gratitude는_closeness에_증폭 ... ok
+test 타인_행동_admiration은_closeness에_증폭 ... ok
+test 타인_행동_reproach는_closeness에_증폭 ... ok
+test 해독약_실패_실망_강도_비교 ... ok
+
+test result: ok. 52 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\event_bus_test.rs (target\debug\deps\event_bus_test-f4690f86bb5a6bf4.exe)
+
+running 11 tests
+test default_capacity_constant_is_positive ... ok
+test bus_is_clone_and_shares_sender ... ok
+test new_and_with_capacity_create_distinct_buses ... ok
+test receiver_count_tracks_active_subscribers ... ok
+test publish_without_subscribers_does_not_panic_or_error ... ok
+test multiple_subscribers_each_receive_all_events ... ok
+test subscribe_default_filters_out_lag_errors ... ok
+test subscribe_delivers_events_to_single_consumer ... ok
+test with_capacity_zero_panics_in_debug - should panic ... ok
+test subscribe_with_lag_reports_dropped_events ... ok
+test slow_subscriber_does_not_block_fast_one ... ok
+
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+
+     Running tests\event_store_test.rs (target\debug\deps\event_store_test-cae56b8c4d4da038.exe)
+
+running 5 tests
+test get_events_after_id_beyond_latest_returns_empty ... ok
+test get_events_after_id_crosses_aggregates ... ok
+test get_events_after_id_is_exclusive ... ok
+test get_events_after_id_returns_cloned_data ... ok
+test get_events_after_id_zero_returns_all ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\guide_test.rs (target\debug\deps\guide_test-eccf810571c4e57b.exe)
+
+running 15 tests
+test power_05는_high ... ok
+test power_07은_very_high ... ok
+test power_0은_neutral ... ok
+test power_minus03은_low ... ok
+test power_minus07은_very_low ... ok
+test 같은_상황_무백과_교룡_어조가_다름 ... ok
+test 교룡_성격_스냅샷_교활_비판적 ... ok
+test 무백_성격_스냅샷_정직_관용 ... ok
+test 관계_포함_가이드_프롬프트에_관계_섹션 ... ok
+test 가이드_프롬프트_구조_검증 ... ok
+test 관계_없으면_json에_관계_없음 ... ok
+test 가이드_json_출력 ... ok
+test 관계_포함_json에_관계_데이터 ... ok
+test 배신_무백_가이드_절제된_분노 ... ok
+test 배신_교룡_가이드_폭발적_분노 ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\listener_perspective_integration_bench.rs (target\debug\deps\listener_perspective_integration_bench-0acc6fee1bef8140.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\llama_timings_test.rs (target\debug\deps\llama_timings_test-055ee5a2c760fd1f.exe)
+
+running 10 tests
+test chat_response_timings_없는_json_역직렬화 ... ok
+test chat_response_timings_없을_때_skip ... ok
+test chat_response_timings_있을_때 ... ok
+test llama_timings_역직렬화 ... ok
+test llama_timings_직렬화_왕복 ... ok
+test openai_응답에서_timings_none ... ok
+test llama_서버_응답에서_timings_캡처 ... ok
+test 연속_요청시_timings_갱신 ... ok
+test sse_스트림에서_timings_캡처 ... ok
+test sse_스트림_timings_없으면_none_유지 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+
+     Running tests\llm_monitor_test.rs (target\debug\deps\llm_monitor_test-f010ff45f89df678.exe)
+
+running 19 tests
+test health_역직렬화_ok ... ok
+test health_역직렬화_loading ... ok
+test health_직렬화_왕복 ... ok
+test metrics_parse_전체_필드 ... ok
+test metrics_parse_주석_라인_무시 ... ok
+test metrics_parse_빈_텍스트 ... ok
+test metrics_parse_raw_보존 ... ok
+test metrics_parse_부분_메트릭 ... ok
+test slot_extra_필드_보존 ... ok
+test slot_역직렬화_idle ... ok
+test slot_역직렬화_processing ... ok
+test slot_최소_필드만_있어도_역직렬화 ... ok
+test with_client_생성자_동작 ... ok
+test monitor_slots_조회 ... ok
+test monitor_health_ok ... ok
+test monitor_metrics_조회 ... ok
+test monitor_서버_미지원_엔드포인트_에러 ... ok
+test monitor_base_url_v1_제거_확인 ... ok
+test monitor_서버_미접속_에러 ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.04s
+
+     Running tests\magnitude_bench.rs (target\debug\deps\magnitude_bench-0dca521e57ba42b3.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\magnitude_classifier_bench.rs (target\debug\deps\magnitude_classifier_bench-ef20a1829c0985b3.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_consolidation_test.rs (target\debug\deps\memory_consolidation_test-f4ec311a0d70aed7.exe)
+
+running 1 test
+test scene_ended_consolidates_layer_a_to_summary ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_injection_test.rs (target\debug\deps\memory_injection_test-238da7a631f6e055.exe)
+
+running 3 tests
+test injection_without_store_is_noop ... ok
+test injection_prepends_memory_block_in_start_session ... ok
+test injection_reapplied_on_beat_transition ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\memory_projector_test.rs (target\debug\deps\memory_projector_test-bf988d8a516caad2.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_relationship_cause_test.rs (target\debug\deps\memory_relationship_cause_test-9b6954f05bcc0132.exe)
+
+running 7 tests
+test information_told_cause_len1_produces_heard_memory ... ok
+test rumor_cause_sets_rumor_source_and_chain_marker ... ok
+test information_told_cause_len2_produces_rumor_memory ... ok
+test scene_interaction_cause_produces_experienced_memory ... ok
+test world_event_overlay_cause_sets_topic_and_experienced_source ... ok
+test beat_transition_cascades_to_relationship_memory_with_scene_interaction_cause ... ok
+test end_dialogue_creates_relationship_memory_with_cause_unspecified ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_telling_test.rs (target\debug\deps\memory_telling_test-00b8d37a8ceb104e.exe)
+
+running 6 tests
+test telling_ingestion_adds_one_hop_for_direct_listener ... ok
+test tell_information_deduplicates_listeners_and_overhearers ... ok
+test tell_information_requested_emits_one_information_told_per_listener ... ok
+test telling_ingestion_adds_two_hops_for_overhearer ... ok
+test confidence_is_scaled_by_trust ... ok
+test budget_exhaustion_test_21_listeners_succeeds_but_22_fails ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_test.rs (target\debug\deps\memory_test-6703b37c181f6573.exe)
+
+running 7 tests
+test dialogue_turn_completed_event_works ... ok
+test get_recent_sorted_by_time ... ok
+test in_memory_store_index_and_count ... ok
+test keyword_search_filters_by_content ... ok
+test meaning_search_with_mock_embeddings ... ok
+test npc_id_filter_isolates_memories ... ok
+test memory_entry_serialization ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\memory_world_overlay_test.rs (target\debug\deps\memory_world_overlay_test-b7a0d1d99c75bd86.exe)
+
+running 6 tests
+test apply_world_event_fails_with_invalid_input ... ok
+test world_overlay_without_topic_succeeds_but_does_not_supersede ... ok
+test world_overlay_supersedes_existing_canonical_entry ... ok
+test world_overlay_does_not_supersede_personal_heard_entry ... ok
+test world_overlay_creates_canonical_entry_and_emits_occurred ... ok
+test world_overlay_records_requested_event_with_cascade_0 ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\orchestrator_error_propagation_test.rs (target\debug\deps\orchestrator_error_propagation_test-b0f46cceac766f1a.exe)
+
+running 3 tests
+test orchestrator_propagates_handler_error_from_dispatcher ... ok
+test orchestrator_propagates_conversation_timeout ... ok
+test orchestrator_propagates_analyzer_error ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_anchor_count_bench.rs (target\debug\deps\pad_anchor_count_bench-01a7c1c26f6d01a6.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_benchmark_test.rs (target\debug\deps\pad_benchmark_test-7030301bbabdd2b3.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_colbert_bench.rs (target\debug\deps\pad_colbert_bench-0598253423dcad75.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_gemini_bench.rs (target\debug\deps\pad_gemini_bench-d7c7b24246aafe47.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_individual_scores.rs (target\debug\deps\pad_individual_scores-3877b87a46c2dd18.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\pad_test.rs (target\debug\deps\pad_test-d7b41465d2da9096.exe)
+
+running 24 tests
+test anger는_불쾌_고각성_지배적 ... ok
+test anger와_fear는_dominance로_구분됨 ... ok
+test d_격차가_클수록_효과가_강함 ... ok
+test d_스케일러는_방향을_바꾸지_않음 ... ok
+test d_격차가_0이면_스케일러_1 ... ok
+test neutral_pad ... ok
+test fear는_불쾌_고각성_복종적 ... ok
+test pad_생성 ... ok
+test shame은_불쾌_저각성_복종적 ... ok
+test 감사_자극은_gratitude와_공명 ... ok
+test 같은_방향이면_양수_내적 ... ok
+test 같은_사과도_복종적이면_anger에_더_효과적 ... ok
+test 긍정_감정은_pleasure_양수 ... ok
+test 도발_자극은_anger와_공명하고_joy와_반발 ... ok
+test 반대_방향이면_음수_내적 ... ok
+test 부정_감정은_pleasure_음수 ... ok
+test 비난_자극은_shame을_증폭_d격차로_더_강하게 ... ok
+test 사과_자극은_anger를_감소시킴 ... ok
+test 위로_자극은_fear를_감소_보호자일수록_효과적 ... ok
+test 위로_자극은_shame을_감소 ... ok
+test 위협_자극은_fear를_증폭_강자일수록_효과적 ... ok
+test 위협_자극은_fear와_anger_모두_공명하되_fear가_더_강함 ... ok
+test 자극이_강할수록_내적_절대값이_큼 ... ok
+test 중립과의_내적은_0 ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\personality_test.rs (target\debug\deps\personality_test-907077798e3f477d.exe)
+
+running 18 tests
+test neutral_프로필_모든_차원_0 ... ok
+test score_경계값_허용 ... ok
+test score_범위_초과시_에러 ... ok
+test npc_json_직렬화_역직렬화 ... ok
+test score_강도 ... ok
+test test_derive_llm_parameters ... ok
+test test_appraisal_weights_consistency ... ok
+test score_유효_범위_내_생성 ... ok
+test score_음수_생성 ... ok
+test test_empathy_and_hostility_weights ... ok
+test test_score_effect_calculation ... ok
+test 같은_상황_다른_성격_다른_해석_가능성 ... ok
+test 교룡_반항적_여검객 ... ok
+test 무백_정직한_검객 ... ok
+test 사인_성격_대비 ... ok
+test 성격_modifier_선형_패턴 ... ok
+test 소호_자유로운_낭인 ... ok
+test 수련_절제의_여검객 ... ok
+
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase1_bench_test.rs (target\debug\deps\phase1_bench_test-b35ff01c13bb1b28.exe)
+
+running 6 tests
+test bench_narrative_calibration_chitchat_low_band ... ok
+test bench_compute_significance_empty_short_long_scaling ... ok
+test bench_narrative_calibration_daily_mid_band ... ok
+test bench_narrative_calibration_shanshenmiao_high_band ... ok
+test bench_dispatch_v2_end_dialogue_chitchat_vs_significant ... ok
+test bench_compute_significance_single_call_under_microsecond_avg ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running tests\phase1_chitchat_test.rs (target\debug\deps\phase1_chitchat_test-1a64036f73efdae2.exe)
+
+running 1 test
+test chitchat_skips_outer_loop_emits_three_events_and_preserves_axes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase1_daily_training_test.rs (target\debug\deps\phase1_daily_training_test-79968735f84a405e.exe)
+
+running 1 test
+test daily_training_enters_outer_loop_emits_four_events_and_updates_axes ... ignored, Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 no-op (이벤트 발행은 OK, 값 변화 0)
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase1_real_llm_test.rs (target\debug\deps\phase1_real_llm_test-077260baff52e8c7.exe)
+
+running 1 test
+test phase1_real_llm_three_band_calibration ... ignored, requires running llama-server (set NPC_MIND_CHAT_URL); use --ignored to run
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\phase1_shanshenmiao_test.rs (target\debug\deps\phase1_shanshenmiao_test-4f3f9b8384e6709d.exe)
+
+running 1 test
+test shanshenmiao_high_band_emits_four_events_and_reverses_axes_strongly ... ignored, Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 axes 갱신 no-op
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\prefilter_unit.rs (target\debug\deps\prefilter_unit-56945d5e42ddbae5.exe)
+
+running 10 tests
+test counterfactual_gratitude_positive ... ok
+test sarcasm_interjection_negative ... ok
+test priority_order_follows_category_order ... ok
+test sarcasm_interjection_positive ... ok
+test counterfactual_gratitude_negative ... ok
+test negation_praise_negative ... ok
+test prefilter_로드_성공_카테고리_4개 ... ok
+test negation_praise_positive ... ok
+test wuxia_criticism_negative ... ok
+test wuxia_criticism_positive ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests\relationship_test.rs (target\debug\deps\relationship_test-ffd0a8f3b3187a37.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\rig_chat_timeout_test.rs (target\debug\deps\rig_chat_timeout_test-8fa96521e553c11d.exe)
+
+running 2 tests
+test test_rig_chat_send_message_timeout ... ok
+test test_rig_chat_stream_timeout ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.51s
+
+     Running tests\rumor_canonical_resolution_test.rs (target\debug\deps\rumor_canonical_resolution_test-262cb4ae04161308.exe)
+
+running 4 tests
+test orphan_rumor_resolves_to_seed_content ... ok
+test rumor_with_topic_and_canonical_resolves_to_canonical_content ... ok
+test forecast_rumor_with_topic_but_no_canonical_uses_seed_content ... ok
+test canonical_seeded_after_first_spread_affects_subsequent_hops ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\rumor_spread_test.rs (target\debug\deps\rumor_spread_test-514420c6ed16edb1.exe)
+
+running 9 tests
+test seed_orphan_without_content_fails_with_invalid_situation ... ok
+test spread_unknown_rumor_fails ... ok
+test seed_rumor_is_stored_under_rumor_id_aggregate ... ok
+test seed_rumor_persists_aggregate_and_emits_rumor_seeded ... ok
+test successive_seeds_produce_distinct_rumor_ids_in_same_dispatcher ... ok
+test spread_emits_rumor_spread_and_creates_recipient_memories ... ok
+test spread_dedupes_repeated_recipients ... ok
+test successive_spreads_increment_hop_and_decay_confidence ... ok
+test deep_hop_confidence_floors_at_min ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\scene_test.rs (target\debug\deps\scene_test-1e78670448b05f41.exe)
+
+running 6 tests
+test test_reset_to_initial_focus_clears_stale_state ... ok
+test test_scene_check_trigger ... ok
+test test_reset_to_initial_focus_no_initial ... ok
+test test_scene_initial_focus ... ok
+test test_scene_trigger_complex_conditions ... ok
+test test_scene_check_trigger_excludes_active_focus ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sign_classifier_bench.rs (target\debug\deps\sign_classifier_bench-d609b102a818dd70.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sparse_spike.rs (target\debug\deps\sparse_spike-11f34eded88602ec.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\sqlite_memory_test.rs (target\debug\deps\sqlite_memory_test-c6bbd98021effe7a.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\stimulus_test.rs (target\debug\deps\stimulus_test-defa6a3a6a47d30f.exe)
+
+running 10 tests
+test intensity_1에서도_최소_관성으로_변동 ... ok
+test 긍정_자극이_joy를_증폭 ... ok
+test 도발_자극이_anger를_증폭 ... ok
+test 반대_자극_반복이면_감정_소멸 ... ok
+test 부정_자극_반복이면_분노_계속_증폭 ... ok
+test 사과_자극이_anger를_감소 ... ok
+test 강한_감정은_약한_감정보다_변동_작음 ... ok
+test 교룡이_무백보다_부정_자극에_더_크게_반응 ... ok
+test 자극으로_새_감정이_생기지_않음 ... ok
+test 중립_자극은_감정_변동_없음 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_e2e.rs (target\debug\deps\world_chilguk_chunchu_e2e-a9c7632b67707349.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_followup_mid_era_events.rs (target\debug\deps\world_chilguk_chunchu_followup_mid_era_events-a1015029fb74afb2.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_person_e2e.rs (target\debug\deps\world_chilguk_chunchu_person_e2e-64f01fe92dfecdfe.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_persons_batch_e2e.rs (target\debug\deps\world_chilguk_chunchu_persons_batch_e2e-a0f9002077ab5e94.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_phase3_checkpoint1.rs (target\debug\deps\world_chilguk_chunchu_phase3_checkpoint1-f3e800ebef190a96.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_phase3_checkpoint2.rs (target\debug\deps\world_chilguk_chunchu_phase3_checkpoint2-167d95ee895835d4.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_phase4_checkpoint1.rs (target\debug\deps\world_chilguk_chunchu_phase4_checkpoint1-b71b43cc7288e18d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_phase4_checkpoint2.rs (target\debug\deps\world_chilguk_chunchu_phase4_checkpoint2-1a2d97f5e99a7f71.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_phase5c_e2e.rs (target\debug\deps\world_chilguk_chunchu_phase5c_e2e-487ffa90dc2ed831.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_chilguk_chunchu_player_e2e.rs (target\debug\deps\world_chilguk_chunchu_player_e2e-7fcb5b979c802c1f.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_load_fk_negative.rs (target\debug\deps\world_load_fk_negative-d01d8903ad46d511.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_load_fk_negative_era.rs (target\debug\deps\world_load_fk_negative_era-28b5fd370b1f505d.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_load_fk_negative_event.rs (target\debug\deps\world_load_fk_negative_event-e09bb260ab5cb25f.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\world_load_fk_negative_timeline.rs (target\debug\deps\world_load_fk_negative_timeline-3e466136ba386a8c.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

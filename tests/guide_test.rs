@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{make_교룡, make_무백, neutral_rel, score as s, 배신_상황_with_desc};
+use common::{axis, make_교룡, make_무백, neutral_rel, score as s, 배신_상황_with_desc};
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::guide::*;
 use npc_mind::domain::relationship::RelationshipBuilder;
@@ -229,9 +229,9 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
 
     let brother = RelationshipBuilder::new("mu_baek", "gyo_ryong")
-        .closeness(s(0.9))
-        .trust(s(0.8))
-        .power(s(0.0))
+        .affinity(axis(0.9))
+        .trust(axis(0.8))
+        .respect(axis(0.0))
         .build();
 
     let state = AppraisalEngine.appraise(li.personality(), &situation, &brother.modifiers());
@@ -255,9 +255,9 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
 fn 관계_포함_json에_관계_데이터() {
     let yu = make_교룡();
     let enemy = RelationshipBuilder::new("gyo_ryong", "enemy")
-        .closeness(s(-0.7))
-        .trust(s(-0.8))
-        .power(s(0.0))
+        .affinity(axis(-0.7))
+        .trust(axis(-0.8))
+        .respect(axis(0.0))
         .build();
 
     let situation = 배신_상황_with_desc("동료 무사가 적에게 아군의 위치를 밀고했다");
