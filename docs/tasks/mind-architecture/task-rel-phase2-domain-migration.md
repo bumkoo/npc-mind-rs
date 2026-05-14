@@ -444,7 +444,7 @@ Stage 1 시작 첫 작업: 위 수치 *재측정*하여 `baselines/cargo-test-20
 
 Phase 1 6 stage 패턴 따라 분할. 직선 의존 (Stage N → Stage N+1). 각 stage 종결 시 grep 게이트 + 통과 카운트 검증.
 
-### Stage 1 — Type 신설 + Domain 재작성
+### Stage 1 — Type 신설 + Domain 재작성 (✅ spec frozen 2026-05-14)
 
 **범위 (상위 골격)**:
 - `AxisScore(f32)` + `WarinessScore(f32)` 신설 (B-D1/D2)
@@ -1205,11 +1205,351 @@ pub struct RelationshipModifiers {
 - 5곳 modifier 사용처 갱신 — Stage 2 (`closeness_*` → `affinity_*` 이름 변경)
 - `with_power` 메서드 — 완전 제거 (호출처 0건)
 
-#### 1.7 — `RelationshipBuilder` 4축 API (TBD)
+#### 1.7 — `RelationshipBuilder` 4축 API
 
-#### 1.8 — `Relationship::neutral()` 16곳 자동 흡수 검증 (TBD)
+**목적**: 시나리오 JSON 파싱 + Mind Studio CRUD에서 사용하는 *fluent builder*. 4축으로 변경, 새 필드 (bond_kind/bond_status/partnership/type) 옵션 setter 추가.
 
-#### 1.9 — Stage 1 단위 테스트 (TBD)
+**위치**: `src/domain/relationship/mod.rs` (1.6 `Relationship`과 같은 파일)
+
+**시그니처**:
+
+```rust
+//! RelationshipBuilder — fluent API.
+//! 사용처:
+//! - `adapter/memory_repository.rs:195` (시나리오 JSON 파싱)
+//! - `bin/mind-studio/state.rs:797` (UI CRUD)
+//! - 단위 테스트 ~100 호출
+
+#[derive(Debug, Clone)]
+pub struct RelationshipBuilder {
+    owner: NpcId,
+    target: NpcId,
+
+    // 4축 default = NEUTRAL
+    trust:    AxisScore,
+    affinity: AxisScore,
+    respect:  AxisScore,
+    wariness: WarinessScore,
+
+    // 새 필드 default
+    bond_kind:    Option<BondKind>,
+    bond_status:  BondStatus,
+    partnership:  Option<Partnership>,
+    type_text:    String,
+    type_history: Vec<TypeChange>,
+}
+
+impl RelationshipBuilder {
+    /// 새 builder. 모든 4축 NEUTRAL, 새 필드 default (BondStatus::Active 외 None/빈).
+    pub fn new(owner_id: impl Into<String>, target_id: impl Into<String>) -> Self {
+        Self {
+            owner:  NpcId::new(owner_id.into()),
+            target: NpcId::new(target_id.into()),
+            trust:    AxisScore::NEUTRAL,
+            affinity: AxisScore::NEUTRAL,
+            respect:  AxisScore::NEUTRAL,
+            wariness: WarinessScore::NEUTRAL,
+            bond_kind:    None,
+            bond_status:  BondStatus::Active,
+            partnership:  None,
+            type_text:    String::new(),
+            type_history: Vec::new(),
+        }
+    }
+
+    // ── 4축 setter ─────
+    pub fn trust(mut self, value: AxisScore) -> Self {
+        self.trust = value;
+        self
+    }
+    pub fn affinity(mut self, value: AxisScore) -> Self {
+        self.affinity = value;
+        self
+    }
+    pub fn respect(mut self, value: AxisScore) -> Self {
+        self.respect = value;
+        self
+    }
+    pub fn wariness(mut self, value: WarinessScore) -> Self {
+        self.wariness = value;
+        self
+    }
+
+    // ── 새 필드 setter ─────
+    /// bond_kind setter — 의심 1 결정 (A): setter 안에서 Some 래핑.
+    /// None은 *setter 미호출*로 표현.
+    pub fn bond_kind(mut self, value: BondKind) -> Self {
+        self.bond_kind = Some(value);
+        self
+    }
+    pub fn bond_status(mut self, value: BondStatus) -> Self {
+        self.bond_status = value;
+        self
+    }
+    /// partnership setter — 동일 패턴 (Option 래핑).
+    pub fn partnership(mut self, value: Partnership) -> Self {
+        self.partnership = Some(value);
+        self
+    }
+    pub fn type_text(mut self, value: impl Into<String>) -> Self {
+        self.type_text = value.into();
+        self
+    }
+    /// type_history setter — 의심 2 결정 (X): 전체 교체.
+    /// append는 Phase 2.5 declarative_events `TypeChanged` 핸들러에서 별도.
+    pub fn type_history(mut self, value: Vec<TypeChange>) -> Self {
+        self.type_history = value;
+        self
+    }
+
+    /// 빌드 — Relationship 인스턴스 생성.
+    /// 같은 모듈이므로 private 필드 직접 packing 가능.
+    pub fn build(self) -> Relationship {
+        Relationship {
+            owner:        self.owner,
+            target:       self.target,
+            trust:        self.trust,
+            affinity:     self.affinity,
+            respect:      self.respect,
+            wariness:     self.wariness,
+            bond_kind:    self.bond_kind,
+            bond_status:  self.bond_status,
+            partnership:  self.partnership,
+            type_text:    self.type_text,
+            type_history: self.type_history,
+        }
+    }
+}
+```
+
+**설계 의도 5개**:
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | 4축 setter (4개) — 기존 `.closeness()` / `.power()` 제거 + `.affinity()`/`.respect()`/`.wariness()` 신설 | 시나리오 JSON + Mind Studio CRUD 변경 면적. Stage 4 마이그레이션 도구가 자동 변환. |
+| ② | `bond_kind(BondKind)` setter — Option 래핑 setter 내부 (의심 1 결정 A) | 디자이너 친화 — `.bond_kind(BondKind::SwornBrothers)` 직관. None은 setter 미호출로 표현. |
+| ③ | `partnership(Partnership)` 동일 패턴 | None 처리 동일. |
+| ④ | `type_text` setter는 `impl Into<String>` | `.type_text("의형제")` literal 자연. `String::from()` 호출 불필요. |
+| ⑤ | `type_history(Vec<TypeChange>)` 전체 교체 setter (의심 2 결정 X) | 디자이너가 시나리오 JSON에 *전체 history*를 박는 패턴. append는 Phase 2.5에서 자동. |
+
+**`.build()` 직접 필드 packing**:
+- 현재: `Relationship::new(self.owner_id, ...)` 호출 → 내부에서 다시 packing
+- Phase 2: *직접 필드 채움* — `mod.rs` 같은 모듈이므로 *private 필드 접근 가능*
+- 이러면 Builder는 *모든 필드 직접 제어* (bond_kind/type 등 `Relationship::new` 시그니처에 없는 필드 박기 가능)
+
+**기존 호출처 영향**:
+
+| 위치 | 변경 |
+|---|---|
+| `adapter/memory_repository.rs:195` | `.closeness(s).trust(s).power(s)` → `.trust(s).affinity(s).respect(s).wariness(s)` + 새 필드 setter — Stage 4 마이그레이션 도구가 자동 변환 |
+| `bin/mind-studio/state.rs:797` | UI에서 관계 수동 생성 — Stage 3에서 Mind Studio frontend와 함께 갱신 |
+| 테스트 ~100 호출 | `.closeness(s).trust(s).power(s)` 패턴 — Stage 4 자동 마이그레이션 스크립트로 변환 |
+
+**단위 테스트 케이스** (1.9에서 구현):
+
+```
+[기본 사용 — 4축 setter]
+- RelationshipBuilder::new("a", "b")
+    .trust(AxisScore::new(50.0))
+    .affinity(AxisScore::new(40.0))
+    .respect(AxisScore::new(30.0))
+    .wariness(WarinessScore::new(20.0))
+    .build()
+  → 4축 모두 정확 + bond_kind None + status Active + type_text "" + type_history []
+
+[partial 사용 — 일부 setter만]
+- RelationshipBuilder::new("a", "b").trust(AxisScore::new(50.0)).build()
+  → trust 50, 나머지 axes NEUTRAL, 새 필드 default
+
+[bond_kind setter — Option 래핑]
+- RelationshipBuilder::new("a", "b")
+    .bond_kind(BondKind::SwornBrothers)
+    .build()
+  → bond_kind == Some(SwornBrothers)
+
+[partnership setter]
+- RelationshipBuilder::new("a", "b")
+    .partnership(Partnership::Spouse)
+    .build()
+  → partnership == Some(Spouse)
+
+[type_text + Into<String>]
+- RelationshipBuilder::new("a", "b").type_text("의형제").build()
+  → type_text == "의형제"
+
+[type_history 전체 교체]
+- let history = vec![TypeChange { from_type: "동료".into(), to_type: "원수".into(), note: "산신묘".into() }];
+  RelationshipBuilder::new("a", "b").type_history(history.clone()).build()
+  → type_history == history
+
+[Builder fluent chain — 모든 필드]
+- RelationshipBuilder::new("a", "b")
+    .trust(AxisScore::new(50.0))
+    .affinity(AxisScore::new(60.0))
+    .respect(AxisScore::new(40.0))
+    .wariness(WarinessScore::new(10.0))
+    .bond_kind(BondKind::SwornBrothers)
+    .bond_status(BondStatus::Active)
+    .partnership(Partnership::Lover)
+    .type_text("의형제이자 연인")
+    .build()
+  → 모든 필드 정확
+```
+
+**비포함**:
+- `bond_kind_none()` / `partnership_none()` 명시 setter — 미호출이 None이므로 불필요
+- `with_type_change(change)` append 메서드 — Phase 2.5에서 `TypeChanged` 핸들러 자체
+- 단순 wrapper 메서드 — YAGNI
+
+#### 1.8 — `Relationship::neutral()` 자동 흡수 검증
+
+**목적**: Stage 1 도메인 재작성 후 `Relationship::neutral(owner, target) -> Relationship` 시그니처가 *그대로 보존*되므로 22곳 호출처 *변경 0* — grep으로 검증.
+
+##### 호출처 22 위치 (파일별 집계)
+
+| 파일 | 호출 수 | 비고 |
+|---|---|---|
+| `domain/relationship.rs` | 3 | 자체 단위 테스트 — Phase 2에서 *새 단위 테스트로 교체* (1.9) |
+| `application/command/telling_ingestion_handler.rs` | 3 | 테스트 + production |
+| `application/command/policies/emotion_policy.rs` | 1 | 단위 테스트 |
+| `application/command/policies/guide_policy.rs` | 2 | 단위 테스트 |
+| `application/command/policies/relationship_policy.rs` | 6 | 단위 테스트 |
+| `application/command/policies/scene_policy.rs` | 2 | 단위 테스트 |
+| `application/command/policies/stimulus_policy.rs` | 5 | 단위 테스트 |
+| **합계** | **22** | |
+
+→ `domain/relationship.rs:324~377` 3개는 Phase 2에서 자체 테스트 교체. 나머지 **19곳**은 *시그니처 보존만으로 자동 흡수*.
+
+##### 자동 흡수 조건
+
+| 조건 | 만족 |
+|---|---|
+| ① `Relationship::neutral(impl Into<String>, impl Into<String>) -> Relationship` 시그니처 보존 | ✅ (1.6 박힘) |
+| ② 반환 타입 `Relationship` 보존 | ✅ |
+| ③ 호출 후 *3축 메서드 (.closeness/.power) 호출 없음* | 22곳 검증 필요 |
+
+조건 ③은 *후속 코드 검사*가 필요. **개별 검사 대신 cargo check로 일괄 검증** — 컴파일 에러가 *3축 후속 호출 위치*를 *자동 식별*.
+
+##### 별도 변경 면적 (1.8 비포함, Stage 2/3에서)
+
+**3축 사용 후속 호출 카탈로그**:
+
+| 패턴 | 위치 수 | 처리 stage |
+|---|---|---|
+| `.closeness()` / `.power()` 호출 | **14** | Stage 3 — 모두 제거 (필드 자체 폐기) |
+| `with_updated_closeness` 메서드 + 호출 | 4 (정의 1 + 호출 3) | Stage 2 — `update_axes_from_emotion`으로 이관 |
+| `Relationship::after_dialogue` 메서드 + 호출 | 4 (정의 1 + 호출 3) | Stage 2/3 — 이관 + 폐기 |
+| `with_power` 메서드 + 호출 | 1 (정의만, 호출 0) | Stage 1.6에서 *완전 제거* (A2 발견) |
+
+**위치 상세**:
+- `.closeness()`/`.power()`: `dialogue_orchestrator.rs:836,838`, `relationship_policy.rs:136,138,141,143,217,219,222,224`, `domain_sync.rs:68,70`, `guide/snapshot.rs:313,315`
+- `with_updated_closeness` 호출: `domain/relationship.rs:191` 내부 1회
+- `Relationship::after_dialogue` 호출: `relationship_policy.rs:134,215`, `stimulus_policy.rs:71`
+
+##### ⚠️ 명칭 충돌 노트 (Stage 2/3 진입 전 알아둘 것)
+
+`after_dialogue` 명칭이 **두 개념**에 쓰여 있음:
+
+1. **`Relationship::after_dialogue` 메서드 (도메인)** — Phase 2 폐기 대상. 호출 3곳.
+2. **`after_dialogue` 필드/엔드포인트 (Mind Studio + DTO)** — *대화 후 처리 전체 흐름*. **Phase 2 변경 무관**.
+
+Stage 2/3에서 (1)만 이관/폐기, (2)는 그대로 유지. 50+ 위치의 (2)는 *Phase 2 면적 아님*.
+
+##### 검증 명령 (Stage 1 종결 시 실행)
+
+```powershell
+# (1) Relationship::neutral 호출 수 확인 — 22 유지
+(Get-ChildItem -Path "src" -Recurse -Filter "*.rs" |
+  Select-String -Pattern "Relationship::neutral").Count    # → 22
+
+# (2) cargo check — 컴파일 에러 위치가 *후속 axes 호출 위치* 식별
+cargo check --all-features 2>&1 | Tee-Object -FilePath "baselines\stage1-cargo-check.log"
+
+# (3) 자동 흡수 검증: 22곳 중 컴파일 에러 위치가 *3축 사용 후속 호출*과만 일치하는지 확인
+# (예상: relationship_policy/stimulus_policy의 .closeness/.power/.after_dialogue 위치만)
+```
+
+##### 비포함
+
+- 3축 후속 호출 갱신 — Stage 2 (`modifiers()` `closeness_*` → `affinity_*` 이름 변경) + Stage 3 (`relationship_policy.rs` 재작성, `dialogue_orchestrator.rs` 4축 DTO, `domain_sync.rs` 4축 DTO, `guide/snapshot.rs` 4축 표시)
+- `Relationship::after_dialogue` 메서드 이관 — Stage 2 (`update_axes_from_emotion`으로 대체)
+- Mind Studio `perform_after_dialogue` 등 50+ 위치 — Phase 2 면적 외 (명칭 충돌만, 의미 별)
+
+##### Stage 1.8 종결 게이트
+
+1. `Relationship::neutral` 호출 22곳 grep 결과 보존 (`baselines/stage1-neutral-callsites.log`)
+2. `cargo check` 컴파일 에러 위치가 *예상 3축 사용 위치* (14 + 3 = 17 + 도메인 3 = ~20)와 일치
+3. 22곳 중 *예상 외 컴파일 에러* 0건 (시그니처 보존 실패 0)
+
+#### 1.9 — Stage 1 단위 테스트
+
+**목적**: 1.2~1.8에서 박은 *불변식 + 변환 + 시그니처 보존*을 단위 테스트로 검증. Stage 1 종결 게이트.
+
+##### 테스트 위치 — *모듈 내부 패턴* (현재 코드 일관)
+
+```
+src/domain/relationship/
+  mod.rs           # Relationship + RelationshipBuilder + TypeChange tests
+    └── #[cfg(test)] mod tests { ... }
+  axis.rs          # AxisScore + WarinessScore + AxisDelta tests
+    └── #[cfg(test)] mod tests { ... }
+  bond.rs          # BondKind + BondStatus tests
+    └── #[cfg(test)] mod tests { ... }
+  partnership.rs   # Partnership tests
+    └── #[cfg(test)] mod tests { ... }
+```
+
+근거: 현재 `domain/relationship.rs:323~` 위치에 `#[cfg(test)] mod tests` 박힌 패턴. Phase 1 일관.
+
+##### 파일별 테스트 카운트 (추정)
+
+| 파일 | 케이스 영역 | 추정 카운트 |
+|---|---|---|
+| `axis.rs` | clamp 6 + add 4 + Default/NEUTRAL 4 + AxisDelta scaled_by 2 + AxisDelta Add 2 + serde 2 | **~12** (묶음) |
+| `bond.rs` | BondKind 영역 헬퍼 6 + 상호 배타성 1 + serde 2 / BondStatus accepts_live_input 5 + Default 1 + serde 5 | **~10** |
+| `partnership.rs` | variants 1 + serde 4 + Copy/Eq/Hash 3 | **~4** |
+| `mod.rs` | Relationship new/neutral 2 + apply_delta 2 + modifiers 1 + serde 3 + TypeChange 1 + Builder chain 7 | **~12** |
+| **합계** | | **~38** |
+
+→ Stage 1 신규 단위 테스트 **~38개**. baseline 1220 → Stage 1 종결 시 ~1258 (단순 합).
+
+(실제 카운트는 Stage 1 구현 시 정확 — *baseline log* 박힘. 위 38은 *최소 기준*.)
+
+##### 1.8 자동 흡수 19곳의 기존 테스트 보존
+
+- `policies/*_test.rs` 22곳 중 19곳 (`domain/relationship.rs` 3곳 제외)은 *기존 테스트 그대로*. *시그니처 보존*만으로 통과.
+- 컴파일 에러가 *3축 후속 호출 위치*만 식별 → Stage 2/3에서 갱신.
+
+##### Stage 1 종결 게이트 (1.1~1.9 모두 통과 시)
+
+| # | 게이트 | 검증 |
+|---|---|---|
+| 1 | `cargo check --all-features` 통과 | 1.2~1.7 타입 컴파일 |
+| 2 | **`Relationship::neutral()` 호출 22곳 *예상 외 컴파일 에러 0*** | 1.8 자동 흡수 검증 |
+| 3 | `WarinessScore::new(-50.0)` 컴파일 차단 검증 | 1.2 ⑤ — Rust 컴파일러 자동 |
+| 4 | `cargo test --all-features --workspace` 통과 | Stage 1 신규 ~38개 + 기존 1220 = ~1258 |
+| 5 | Baseline log 박제 — `baselines/stage1-cargo-test-2026-MM-DD-PASS.log` | Stage 2 진입 직전 |
+
+##### Stage 1 산출 commit + 회고
+
+```
+commit: phase2-stage1-domain.md 회고
+파일: docs/tasks/mind-architecture/phase2-stage1-domain.md
+내용:
+- Stage 1 1.1~1.9 작업 내역
+- 최종 테스트 카운트 (예: 1258)
+- 자동 흡수 19곳 확인
+- Stage 2 진입 전제 (모듈 분할 완료, 4축 타입 안정)
+- 발견 사항 (있다면)
+```
+
+##### 비포함
+
+- 통합 테스트 (cross-module) — Stage 5 narrative 시뮬레이션
+- `update_axes_from_emotion` 적용 후 4축 변동 검증 — Stage 2/5
+- `RelationshipUpdatedPayload` 6→8 schema 검증 — Stage 3
+- 시나리오 JSON 마이그레이션 검증 — Stage 4/5
+- Mind Studio frontend 4축 표시 검증 — Stage 3
 
 ---
 
@@ -1379,3 +1719,4 @@ pub struct RelationshipModifiers {
 | 0.8 | 2026-05-13 | **★ B 카테고리 Phase 2 본체 12개 결정 완료**. B-D9 (session_*_result.json 폐기) 확정 — Phase 2 후 일괄 재생성. B-D7/B-D11은 Phase 2.5 시점 결정. §4 헤더 종결 표기. |
 | 0.9 | 2026-05-13 | **★ §6 Baseline (D 카테고리) 작성**. Phase 1 종결 시점 baseline 인용: 1095 tests passed / dispatch_v2 latency 24/35/29µs / narrative 3밴드 0.000/0.461/0.980 / compute_significance 8.36µs / EventKind 31개. D1~D6 항목. Stage 1 진입 직전 재측정 작업 명시. |
 | 1.0 | 2026-05-13 | **★ Stage 0 종결**. §7 Stages 작성 — 6 stage 분할 (Stage 1 Type/Domain → Stage 2 Mapping → Stage 3 Updater → Stage 4 Migration → Stage 5 Narrative → Stage 6 Bench/Handoff). 각 stage 범위·게이트·산출 commit 명시. Phase 2 본체 spec 작성 완료, Stage 1 진입 준비. |
+| 1.1 | 2026-05-14 | **★ Stage 1 spec 작성 완료 (freeze)**. 1.1 디렉토리 구조 (모듈 분할 채택), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + 영역 헬퍼 5개 (is_zhiji 무협 도메인 용어 보존), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating → true), 1.5 Partnership 4 variants, 1.6 Relationship 본체 재작성 (4축 + bond_* + partnership + type/type_history, power 폐기, apply_delta 메서드, modifiers closeness_* → affinity_*), 1.7 RelationshipBuilder 4축 fluent API, 1.8 neutral() 자동 흡수 검증 (22곳 호출, 19곳 변경 0 예상), 1.9 단위 테스트 (~38 신규, 모듈 내부 패턴). Claude Code에 코딩 인계. |
