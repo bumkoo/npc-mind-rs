@@ -136,16 +136,18 @@ impl RelationshipPolicy {
         // 임시 no-op — 값은 보존하되 RelationshipUpdated 이벤트는 그대로 발행 (downstream 호환).
         // TODO(Stage 2): base_delta 표 + HEXACO 보정자 적용 후 apply_delta.
         let updated = relationship.clone();
-        // Stage 1: closeness 자리에 affinity 값 매핑 (시맨틱 보존, B-D3 자동 변환 정합).
-        // power 자리는 0.0 (Stage 3 schema 6→8 전 임시 fallback, B-D4 폐기).
+        // Stage 1 ±1.0 contract 보존 — payload schema가 ±1.0이고 downstream
+        // (memory_projector RELATIONSHIP_CHANGE_THRESHOLD=0.05, relationship_memory_handler
+        // dominant_delta, frontend toFixed 등)이 ±1.0 가정. 4축 ±100 값을 ÷100으로 정규화.
+        // Stage 3에서 payload 6→8 + scale 명시 시 정리. power는 0.0 (B-D4 폐기).
         let (bc, bt, bp) = (
-            relationship.affinity().value(),
-            relationship.trust().value(),
+            relationship.affinity().value() / 100.0,
+            relationship.trust().value() / 100.0,
             0.0_f32,
         );
         let (ac, at, ap) = (
-            updated.affinity().value(),
-            updated.trust().value(),
+            updated.affinity().value() / 100.0,
+            updated.trust().value() / 100.0,
             0.0_f32,
         );
         ctx.save_relationship(updated);
@@ -222,14 +224,15 @@ impl RelationshipPolicy {
             // Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op.
             // TODO(Stage 2): base_delta + HEXACO + apply_delta.
             let updated = relationship.clone();
+            // Stage 1 ±1.0 contract 보존 — affinity/trust를 ÷100으로 정규화 (위 cause 분기와 동일).
             let (bc, bt, bp) = (
-                relationship.affinity().value(),
-                relationship.trust().value(),
+                relationship.affinity().value() / 100.0,
+                relationship.trust().value() / 100.0,
                 0.0_f32,
             );
             let (ac, at, ap) = (
-                updated.affinity().value(),
-                updated.trust().value(),
+                updated.affinity().value() / 100.0,
+                updated.trust().value() / 100.0,
                 0.0_f32,
             );
             ctx.save_relationship(updated);

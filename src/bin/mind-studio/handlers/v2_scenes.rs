@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use npc_mind::application::command::types::Command;
 use npc_mind::application::dto::{SceneFocusInput, SituationInput};
 use npc_mind::domain::personality::Npc;
-use npc_mind::domain::relationship::Relationship;
 use npc_mind::domain::scene_id::SceneId;
 use npc_mind::ports::NpcWorld;
 
@@ -234,11 +233,46 @@ pub async fn upsert_npc_v2(
     StatusCode::OK
 }
 
-/// POST /api/v2/relationships — Director 내부 Repository에 관계 등록
+/// v0.6 (3축) 호환 입력 — Phase 2 Stage 1 마이그레이션 자리.
+///
+/// `Relationship` 본체로 직접 `Json<Relationship>` 받으면 v0.6 클라이언트의
+/// `{closeness, trust, power}` payload가 silent drop (closeness/power) + scale
+/// 미스매치 (trust ±1.0 → AxisScore ±100 misread)로 corruption. Stage 4
+/// 마이그레이션 도구까지 자동 산술 변환으로 호환 유지.
+///
+/// `deny_unknown_fields`로 신규 4축 필드 (`affinity`/`respect`/`wariness`)는
+/// 본 경로에 박지 못하게 한다 — 호환은 *v0.6 → v0.7 자동 변환*에만 책임.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RelationshipUpsertV0_6 {
+    owner_id: String,
+    target_id: String,
+    #[serde(default)]
+    closeness: f32,
+    #[serde(default)]
+    trust: f32,
+    #[serde(default)]
+    #[allow(dead_code)]
+    power: f32,
+}
+
+/// POST /api/v2/relationships — Director 내부 Repository에 관계 등록.
+///
+/// v0.6 (3축) shape을 받아 *자동 산술 변환*으로 v0.7 (4축) Relationship으로 박는다.
+/// `memory_repository.rs::RelationshipJson::to_relationship`와 동일 패턴.
 pub async fn upsert_relationship_v2(
     State(state): State<AppState>,
-    Json(rel): Json<Relationship>,
+    Json(input): Json<RelationshipUpsertV0_6>,
 ) -> StatusCode {
+    use npc_mind::domain::relationship::{
+        AxisScore, RelationshipBuilder, WarinessScore,
+    };
+    let rel = RelationshipBuilder::new(&input.owner_id, &input.target_id)
+        .trust(AxisScore::new(input.trust * 100.0))
+        .affinity(AxisScore::new(input.closeness * 100.0))
+        .respect(AxisScore::NEUTRAL)
+        .wariness(WarinessScore::NEUTRAL)
+        .build();
     let owner = rel.owner_id().to_string();
     let target = rel.target_id().to_string();
     state

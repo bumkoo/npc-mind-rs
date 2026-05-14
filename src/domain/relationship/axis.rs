@@ -15,8 +15,19 @@ use serde::{Deserialize, Serialize};
 /// 범위: -100.0 ~ +100.0
 /// 내부: f32 (base_delta × intensity × HEXACO 곱셈 정밀도 유지)
 /// JSON: 정수 round 출력은 *Stage 3 payload schema*에서 결정 (Stage 1은 f32 그대로)
+///
+/// `#[serde(try_from = "f32")]`로 deserialize 경로도 `::new()` clamp를 거치게 한다.
+/// 기본 derive는 newtype-transparent라 raw f32가 그대로 박혀 invariant가 깨진다.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(try_from = "f32")]
 pub struct AxisScore(f32);
+
+impl TryFrom<f32> for AxisScore {
+    type Error = std::convert::Infallible;
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        Ok(Self::new(value))
+    }
+}
 
 impl AxisScore {
     pub const MIN: f32 = -100.0;
@@ -49,8 +60,18 @@ impl Default for AxisScore {
 /// 범위: 0.0 ~ +100.0
 /// 별 타입이므로 *컴파일 시점*에 `AxisScore`와 혼동 차단.
 /// `WarinessScore::new(-50.0)`은 runtime에 0.0으로 floor.
+///
+/// `#[serde(try_from = "f32")]`로 deserialize도 0.0 floor 적용 (음수 invariant 유지).
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[serde(try_from = "f32")]
 pub struct WarinessScore(f32);
+
+impl TryFrom<f32> for WarinessScore {
+    type Error = std::convert::Infallible;
+    fn try_from(value: f32) -> Result<Self, Self::Error> {
+        Ok(Self::new(value))
+    }
+}
 
 impl WarinessScore {
     pub const MIN: f32 = 0.0;
@@ -233,5 +254,23 @@ mod tests {
         let json = serde_json::to_string(&s).unwrap();
         let back: WarinessScore = serde_json::from_str(&json).unwrap();
         assert_eq!(back.value(), 50.0);
+    }
+
+    /// ★ deserialize 경로도 ::new() clamp를 거쳐야 한다 (try_from invariant).
+    /// 이전에는 newtype-transparent derive로 raw f32가 박혀 invariant가 깨졌다.
+    #[test]
+    fn axis_score_deserialize_clamps_out_of_range() {
+        let high: AxisScore = serde_json::from_str("250.0").unwrap();
+        assert_eq!(high.value(), 100.0);
+        let low: AxisScore = serde_json::from_str("-250.0").unwrap();
+        assert_eq!(low.value(), -100.0);
+    }
+
+    #[test]
+    fn wariness_score_deserialize_floors_negative() {
+        let neg: WarinessScore = serde_json::from_str("-50.0").unwrap();
+        assert_eq!(neg.value(), 0.0);
+        let high: WarinessScore = serde_json::from_str("250.0").unwrap();
+        assert_eq!(high.value(), 100.0);
     }
 }
