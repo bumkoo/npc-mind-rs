@@ -1,0 +1,122 @@
+warning: unused imports: `DeclarativeEventPlaceholder` and `PartnershipEventPlaceholder`
+  --> src\application\reflection_service.rs:30:5
+   |
+30 |     DeclarativeEventPlaceholder, PartnershipEventPlaceholder, ReflectionResult, TurnSnapshot,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (lib) generated 1 warning (run `cargo fix --lib -p npc-mind` to apply 1 suggestion)
+    Checking npc-mind v0.1.0 (C:\Users\bumko\projects\npc-mind-rs\.claude\worktrees\funny-wozniak-e7ce1d)
+warning: unused import: `score as s`
+ --> tests\guide_test.rs:7:51
+  |
+7 | use common::{axis, make_교룡, make_무백, neutral_rel, score as s, 배신_상황_with_desc};
+  |                                                       ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "guide_test") generated 1 warning (run `cargo fix --test "guide_test" -p npc-mind` to apply 1 suggestion)
+warning: unused import: `EventPayload`
+  --> tests\memory_world_overlay_test.rs:16:42
+   |
+16 | use npc_mind::domain::event::{EventKind, EventPayload};
+   |                                          ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "memory_world_overlay_test") generated 1 warning (run `cargo fix --test "memory_world_overlay_test" -p npc-mind` to apply 1 suggestion)
+warning: unused import: `NpcWorld`
+  --> tests\phase1_bench_test.rs:23:37
+   |
+23 | use npc_mind::ports::{EmotionStore, NpcWorld};
+   |                                     ^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `score as s`
+ --> tests\emotion_test.rs:7:73
+  |
+7 | use common::{TestContext, axis, find_emotion, has_emotion, neutral_rel, score as s, 배신_상황};
+  |                                                                         ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "phase1_bench_test") generated 1 warning (run `cargo fix --test "phase1_bench_test" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (test "emotion_test") generated 1 warning (run `cargo fix --test "emotion_test" -p npc-mind` to apply 1 suggestion)
+warning: unused import: `DynamicHandlerContext`
+  --> tests\memory_relationship_cause_test.rs:16:19
+   |
+16 |     DeliveryMode, DynamicHandlerContext, EventHandler, EventHandlerContext,
+   |                   ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "memory_relationship_cause_test") generated 1 warning
+warning: unused import: `HexacoProfile`
+  --> tests\phase1_real_llm_test.rs:46:37
+   |
+46 | use npc_mind::domain::personality::{HexacoProfile, NpcBuilder};
+   |                                     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (test "phase1_real_llm_test") generated 1 warning (run `cargo fix --test "phase1_real_llm_test" -p npc-mind` to apply 1 suggestion)
+warning: `npc-mind` (lib test) generated 1 warning (1 duplicate)
+warning: unused import: `ListenerRole`
+  --> tests\memory_telling_test.rs:18:45
+   |
+18 | use npc_mind::domain::event::{EventPayload, ListenerRole};
+   |                                             ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `RumorStore`
+  --> tests\memory_telling_test.rs:22:36
+   |
+22 | use npc_mind::ports::{MemoryStore, RumorStore};
+   |                                    ^^^^^^^^^^
+
+warning: unused import: `SeedRumorRequest`
+  --> tests\memory_telling_test.rs:24:37
+   |
+24 |     EventStore, InMemoryRepository, SeedRumorRequest, TellInformationRequest,
+   |                                     ^^^^^^^^^^^^^^^^
+
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:147:25
+    |
+147 |     let entries = store.get_recent("pupil", 1).unwrap();
+    |                         ^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:182:25
+    |
+182 |     let entries = store.get_recent("final_listener", 1).unwrap();
+    |                         ^^^^^^^^^^
+
+warning: use of deprecated method `npc_mind::MemoryStore::get_recent`: Use MemoryStore::search(MemoryQuery { scope_filter: Some(NpcAllowed(..)), .. })
+   --> tests\memory_telling_test.rs:231:25
+    |
+231 |     let entries = store.get_recent("pupil", 1).unwrap();
+    |                         ^^^^^^^^^^
+
+warning: `npc-mind` (test "memory_telling_test") generated 6 warnings (run `cargo fix --test "memory_telling_test" -p npc-mind` to apply 3 suggestions)
+warning: unused import: `Deserialize`
+ --> src\bin\mind-studio\handlers\scenario.rs:5:13
+  |
+5 | use serde::{Deserialize, Serialize};
+  |             ^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `NpcBuilder`
+    --> src\bin\mind-studio\handler_tests.rs:3344:46
+     |
+3344 |     use npc_mind::domain::personality::{Npc, NpcBuilder};
+     |                                              ^^^^^^^^^^
+
+warning: `npc-mind` (bin "npc-mind-studio" test) generated 2 warnings (run `cargo fix --bin "npc-mind-studio" -p npc-mind --tests` to apply 2 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.37s

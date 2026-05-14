@@ -74,9 +74,10 @@ impl EventHandler for TellingIngestionHandler {
         let source = MemorySource::from_origin_chain(chain.len(), None);
 
         // confidence = stated × normalized_trust
+        // Stage 1: trust ±100 → ±1.0 정규화 후 기존 (1+t)/2 공식 보존.
         let normalized_trust = ctx
             .get_relationship(listener, speaker)
-            .map(|r| (r.trust().value() + 1.0) / 2.0)
+            .map(|r| (r.trust().value() / 100.0 + 1.0) / 2.0)
             .unwrap_or(0.5);
         let confidence = (stated_confidence * normalized_trust).clamp(0.0, 1.0);
 
@@ -125,8 +126,8 @@ mod tests {
     use super::*;
     use crate::application::command::handler_v2::test_support::HandlerTestHarness;
     use crate::domain::event::ListenerRole;
-    use crate::domain::personality::{NpcBuilder, Score};
-    use crate::domain::relationship::Relationship;
+    use crate::domain::personality::NpcBuilder;
+    use crate::domain::relationship::{AxisScore, Relationship, WarinessScore};
     use crate::ports::MemoryQuery;
 
     #[derive(Default)]
@@ -309,9 +310,10 @@ mod tests {
         let rel = Relationship::new(
             "pupil",
             "sage",
-            Score::new(0.0, "closeness").unwrap(),
-            Score::new(0.6, "trust").unwrap(),
-            Score::new(0.0, "power").unwrap(),
+            AxisScore::new(60.0), // trust ±100 (Stage 1 4축 swap: trust 0.6 → 60)
+            AxisScore::NEUTRAL,   // affinity (구 closeness 0.0)
+            AxisScore::NEUTRAL,   // respect
+            WarinessScore::NEUTRAL,
         );
 
         let mut harness = HandlerTestHarness::new()

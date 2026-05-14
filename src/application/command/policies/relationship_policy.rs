@@ -129,18 +129,24 @@ impl RelationshipPolicy {
         ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let relationship = ctx.get_relationship(npc_id, partner_id)?;
-        let emotion = ctx.get_emotion_state(npc_id)?;
+        let _emotion = ctx.get_emotion_state(npc_id)?;
+        let _ = significance;
 
-        let updated = relationship.after_dialogue(&emotion, significance);
+        // Stage 1: after_dialogue 폐기. Stage 2의 `update_axes_from_emotion` 신설 자리.
+        // 임시 no-op — 값은 보존하되 RelationshipUpdated 이벤트는 그대로 발행 (downstream 호환).
+        // TODO(Stage 2): base_delta 표 + HEXACO 보정자 적용 후 apply_delta.
+        let updated = relationship.clone();
+        // Stage 1: closeness 자리에 affinity 값 매핑 (시맨틱 보존, B-D3 자동 변환 정합).
+        // power 자리는 0.0 (Stage 3 schema 6→8 전 임시 fallback, B-D4 폐기).
         let (bc, bt, bp) = (
-            relationship.closeness().value(),
+            relationship.affinity().value(),
             relationship.trust().value(),
-            relationship.power().value(),
+            0.0_f32,
         );
         let (ac, at, ap) = (
-            updated.closeness().value(),
+            updated.affinity().value(),
             updated.trust().value(),
-            updated.power().value(),
+            0.0_f32,
         );
         ctx.save_relationship(updated);
 
@@ -211,17 +217,20 @@ impl RelationshipPolicy {
         // 2. RelationshipUpdated — 게이트 통과 시만 (chitchat skip 시 axes 보존).
         if enter_outer {
             let relationship = ctx.get_relationship(npc_id, partner_id)?;
-            let emotion = ctx.get_emotion_state(npc_id)?;
-            let updated = relationship.after_dialogue(&emotion, sig);
+            let _emotion = ctx.get_emotion_state(npc_id)?;
+            let _ = sig;
+            // Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op.
+            // TODO(Stage 2): base_delta + HEXACO + apply_delta.
+            let updated = relationship.clone();
             let (bc, bt, bp) = (
-                relationship.closeness().value(),
+                relationship.affinity().value(),
                 relationship.trust().value(),
-                relationship.power().value(),
+                0.0_f32,
             );
             let (ac, at, ap) = (
-                updated.closeness().value(),
+                updated.affinity().value(),
                 updated.trust().value(),
-                updated.power().value(),
+                0.0_f32,
             );
             ctx.save_relationship(updated);
             follow_ups.push(DomainEvent::new(

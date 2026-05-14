@@ -4,7 +4,7 @@
 
 mod common;
 
-use common::{TestContext, find_emotion, has_emotion, neutral_rel, score as s, 배신_상황};
+use common::{TestContext, axis, find_emotion, has_emotion, neutral_rel, score as s, 배신_상황};
 use npc_mind::domain::emotion::*;
 use npc_mind::domain::relationship::{Relationship, RelationshipBuilder};
 use npc_mind::ports::Appraiser;
@@ -299,8 +299,8 @@ fn 의형제의_배신이_남의_배신보다_분노가_큼() {
     let situation = 배신_상황();
 
     let brother = RelationshipBuilder::new("gyo_ryong", "brother")
-        .closeness(s(0.9))
-        .trust(s(0.8))
+        .affinity(axis(0.9))
+        .trust(axis(0.8))
         .build();
     let stranger = Relationship::neutral("gyo_ryong", "stranger");
 
@@ -322,10 +322,10 @@ fn 신뢰하던_상대의_배신이_더_강한_분노() {
     let situation = 배신_상황();
 
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+        .trust(axis(0.8))
         .build();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
+        .trust(axis(-0.5))
         .build();
 
     let state_trusted =
@@ -345,7 +345,7 @@ fn 가까운_사이의_좋은_일에_더_기뻐함() {
     let li = &ctx.mu_baek;
 
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -399,7 +399,7 @@ fn 적대관계의_좋은일에_교룡은_더_강한_시기() {
     let yu = &ctx.gyo_ryong;
 
     let rival = RelationshipBuilder::new("gyo_ryong", "rival")
-        .closeness(s(-0.7))
+        .affinity(axis(-0.7))
         .build();
     let nobody = Relationship::neutral("gyo_ryong", "nobody");
 
@@ -497,7 +497,7 @@ fn 원수의_행운에_무백은_기뻐하되_약하게() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let enemy = RelationshipBuilder::new("mu_baek", "enemy")
-        .closeness(s(-0.8))
+        .affinity(axis(-0.8))
         .build();
 
     let state_enemy = AppraisalEngine.appraise(
@@ -522,7 +522,7 @@ fn 친구의_행운에_교룡은_시기하되_약하게() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
     let friend = RelationshipBuilder::new("gyo_ryong", "friend")
-        .closeness(s(0.8))
+        .affinity(axis(0.8))
         .build();
 
     let state_friend = AppraisalEngine.appraise(
@@ -547,7 +547,7 @@ fn 친구의_불행에_수련은_더_강하게_동정() {
     let _ctx = TestContext::new();
     let shu = common::make_수련();
     let friend = RelationshipBuilder::new("shu_lien", "friend")
-        .closeness(s(0.8))
+        .affinity(axis(0.8))
         .build();
 
     let state_friend = AppraisalEngine.appraise(
@@ -572,7 +572,7 @@ fn 원수의_불행에_교룡은_더_강하게_쾌재() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
     let enemy = RelationshipBuilder::new("gyo_ryong", "enemy")
-        .closeness(s(-0.8))
+        .affinity(axis(-0.8))
         .build();
 
     let state_enemy = AppraisalEngine.appraise(
@@ -637,7 +637,7 @@ fn 신뢰하던_사람의_배신에_더_강한_분노() {
     let li = &ctx.mu_baek;
     let situation = 배신_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+        .trust(axis(0.8))
         .build();
 
     let state_trusted =
@@ -657,7 +657,7 @@ fn 신뢰하던_사람의_배신에_더_강한_비난() {
     let li = &ctx.mu_baek;
     let situation = 배신_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+        .trust(axis(0.8))
         .build();
 
     let state_trusted =
@@ -677,7 +677,7 @@ fn 불신하던_사람의_배신에_약한_분노() {
     let li = &ctx.mu_baek;
     let situation = 배신_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
+        .trust(axis(-0.5))
         .build();
 
     let state_distrusted =
@@ -697,7 +697,7 @@ fn 신뢰하던_사람의_도움에_더_강한_감사() {
     let li = &ctx.mu_baek;
     let situation = 도움_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+        .trust(axis(0.8))
         .build();
 
     let state_trusted =
@@ -717,7 +717,7 @@ fn 신뢰하던_사람의_의로운_행동에_더_강한_감탄() {
     let li = &ctx.mu_baek;
     let situation = 도움_상황();
     let trusted = RelationshipBuilder::new("mu_baek", "trusted")
-        .trust(s(0.8))
+        .trust(axis(0.8))
         .build();
 
     let state_trusted =
@@ -737,7 +737,7 @@ fn 불신하던_사람의_도움에_약한_감사() {
     let li = &ctx.mu_baek;
     let situation = 도움_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
+        .trust(axis(-0.5))
         .build();
 
     let state_distrusted =
@@ -757,7 +757,7 @@ fn 불신하던_사람의_의로운_행동에_약한_감탄() {
     let li = &ctx.mu_baek;
     let situation = 도움_상황();
     let distrusted = RelationshipBuilder::new("mu_baek", "distrusted")
-        .trust(s(-0.5))
+        .trust(axis(-0.5))
         .build();
 
     let state_distrusted =
@@ -844,7 +844,7 @@ fn 자기_행동_pride는_closeness에_무관() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -864,7 +864,7 @@ fn 자기_행동_shame은_closeness에_무관() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -886,7 +886,7 @@ fn 타인_행동_admiration은_closeness에_증폭() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -906,7 +906,7 @@ fn 타인_행동_reproach는_closeness에_증폭() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -928,7 +928,7 @@ fn 자기_compound_gratification은_closeness에_무관() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -972,7 +972,7 @@ fn 자기_compound_remorse는_closeness에_무관() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -1018,7 +1018,7 @@ fn 타인_compound_gratitude는_closeness에_증폭() {
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("mu_baek", "distant");
 
@@ -1037,7 +1037,7 @@ fn 타인_compound_anger는_closeness에_증폭() {
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
     let close = RelationshipBuilder::new("gyo_ryong", "close")
-        .closeness(s(0.9))
+        .affinity(axis(0.9))
         .build();
     let distant = Relationship::neutral("gyo_ryong", "distant");
 

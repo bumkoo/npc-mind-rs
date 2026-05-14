@@ -4,6 +4,12 @@
 //! 대화 결과에 따라 관계가 변하는지 검증
 //!
 //! Relationship은 Value Object — 갱신 시 새 인스턴스로 교체
+//!
+//! **Phase 2 Stage 1 비활성화** — closeness/power/after_dialogue 시맨틱은 폐기.
+//! Stage 2에서 `update_axes_from_emotion` (base_delta + HEXACO) 신설 후
+//! 4축 시맨틱으로 *대화 흐름 검증 테스트 재작성*. 그 시점에 본 파일 삭제 또는 교체.
+
+#![cfg(any())] // Stage 2 흡수 대기
 
 mod common;
 

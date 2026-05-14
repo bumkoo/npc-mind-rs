@@ -64,7 +64,7 @@ async fn chitchat_skips_outer_loop_emits_three_events_and_preserves_axes() {
         .unwrap()
         .get_relationship("lin_chong", "passerby")
         .expect("관계 존재");
-    let initial_closeness = initial_relationship.closeness().value();
+    let initial_closeness = initial_relationship.affinity().value();
     let initial_trust = initial_relationship.trust().value();
 
     let output = dispatcher
@@ -111,7 +111,7 @@ async fn chitchat_skips_outer_loop_emits_three_events_and_preserves_axes() {
         .get_relationship("lin_chong", "passerby")
         .expect("관계 여전히 존재");
     assert_eq!(
-        after_relationship.closeness().value(),
+        after_relationship.affinity().value(),
         initial_closeness,
         "★ closeness 보존 (chitchat outer loop skip)"
     );
