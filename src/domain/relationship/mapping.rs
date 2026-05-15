@@ -218,6 +218,25 @@ fn is_negative_emotion(emotion: EmotionType) -> bool {
 ///
 /// **B-D12 (Pride/Shame agent_id=None) 가드는 *호출 측*** (RelationshipPolicy / StimulusPolicy).
 /// 본 함수의 책임은 *상대 관계 4축 갱신* 일관.
+///
+/// ## 호출자 인덱스 (B-D12 가드 *필수* 위치)
+///
+/// 본 함수를 *새 위치에서* 호출할 때는 반드시 다음 패턴을 함께 박을 것:
+/// ```rust,ignore
+/// // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+/// // If this loop is duplicated to a new caller, this guard MUST be copied.
+/// if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+///     continue;
+/// }
+/// update_axes_from_emotion(&mut rel, emotion_type, intensity, hexaco);
+/// ```
+///
+/// 현재 호출자 (4번째 추가 시 본 리스트 갱신 + 호출 측 마커 복사):
+/// - `application::command::policies::relationship_policy::handle_relationship_update_with_cause`
+/// - `application::command::policies::relationship_policy::handle_dialogue_end`
+/// - `application::command::policies::stimulus_policy::process_beat_transition`
+///
+/// 회고 §W4 + spec §7 참조.
 pub fn update_axes_from_emotion(
     rel: &mut Relationship,
     emotion: EmotionType,
@@ -835,5 +854,36 @@ mod tests {
         assert_eq!(after.trust_modifier, before.trust_modifier);
         assert_eq!(after.empathy_modifier, before.empathy_modifier);
         assert_eq!(after.hostility_modifier, before.hostility_modifier);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2.6 B-D12 호출 측 책임 회귀 가드 — Stage W4
+    //   회고 §W4: `update_axes_from_emotion` 자체는 Pride/Shame 차단 *안 함*.
+    //   B-D12 가드는 *호출 측 책임* (spec §4 결정 — 함수 책임 경계 보존).
+    //   (스펙 task-rel-phase2-stage2-retrospective-cleanup §7)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn update_axes_from_emotion_does_not_filter_pride_or_shame_internally() {
+        // B-D12 가드는 *호출 측 책임* (spec §4) — 본 함수는 Pride/Shame이 직접
+        // 전달되면 *base_delta 그대로 4축을 변동*해야 한다.
+        // 누군가 함수 안에 `matches!(Pride|Shame) return;` 박으면 이 테스트가
+        // 깨지며 spec §4 + 회고 §W4 재독 후 결정 재확인 강제.
+        let hexaco = neutral_hexaco();
+        let mut rel = RelationshipBuilder::new("a", "b")
+            .trust(AxisScore::new(50.0))
+            .affinity(AxisScore::new(40.0))
+            .build();
+        let affinity_before = rel.affinity();
+
+        update_axes_from_emotion(&mut rel, EmotionType::Pride, 0.8, &hexaco);
+
+        // base_delta(Pride) = { trust 0, affinity +5, respect +10, wariness 0 }
+        // → affinity 변동 발생해야 함 (함수 안에서 차단 안 됨)
+        assert_ne!(
+            rel.affinity(),
+            affinity_before,
+            "함수 자체는 Pride/Shame 차단하지 *않음* (spec §4 결정)"
+        );
     }
 }
