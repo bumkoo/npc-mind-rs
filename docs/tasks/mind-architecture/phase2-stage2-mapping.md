@@ -160,3 +160,35 @@ Spec 추정 ~42에 근접 (+44 박음).
 3. **`EmotionState::iter_active` API 정합**: spec 가정 `impl Iterator<Item = (EmotionType, f32, Option<&str>)>` *실제와 정합*. `set_intensity(emotion_type, intensity)`도 도메인에서 직접 활용 가능.
 
 4. **Worktree에 baselines/ 폴더 없음**: spec D1 baseline 1220은 main 브랜치 또는 별도 환경 기준. 본 Stage에서는 default + chat features 기준 baseline 별도 박제.
+
+## 알려진 위험 (push 후 Stage 3에서 정리)
+
+### W1 — Beat 후 appraise modifier에 *간접 의미 변경* 발생 (회귀 가드 부재)
+
+[stimulus_policy.rs:69~95](../../../src/application/command/policies/stimulus_policy.rs:69)의 `process_beat_transition`에서:
+- Stage 1: `beat_rel = relationship.clone()` (변동 0) → `beat_rel.modifiers()`은 *원본 affinity/trust*로 산정 → appraise에 전달
+- Stage 2: `beat_rel`에 `update_axes_from_emotion`로 *stimulated emotion 기준 4축 변동* 적용 → `beat_rel.modifiers()`은 *변동된 affinity/trust*로 산정 → appraise에 전달
+
+즉 *Beat 시점 new_state 감정 강도*가 Stage 1 vs Stage 2 사이에 **측정 가능하게 달라짐**. *의도된 활성화* (4축 변동의 효과가 modifier 산정에 *기대 반영*되는 것이 spec §4.1 본질)이지만, **회귀 가드 단위 테스트 부재** — *unintended drift*와 *intended activation* 구분 못함.
+
+- spec §7 종결 게이트 7개 모두 *단위* 수치만 검증 (S2 임충 Anger 단독 trust 50→15.8 등). *integrated Beat appraise* 결과 정합 검증 없음.
+- cargo test 866 PASS 결과는 *기존 단위 테스트가 변경에 robust*했음을 보여줄 뿐 *정량 동등성*을 의미하지 않음.
+- **Stage 3 진입 직전 또는 Phase 2.3 narrative 시뮬에서**: Beat 후 modifier *변화량* 측정 단위 테스트 1~2개 박을 것. 예: `relationship trust 50 / affinity 40` 상태 + Anger 0.95 → `intensity_multiplier` 변화 정량 / 동일 input의 Stage 1 baseline 대비 차이.
+
+### W2 — Pity의 부정 감정 분류 — spec §4.3 본문 모호
+
+`is_negative_emotion` 헬퍼 (mapping.rs:179~)에서 *Pity 제외* 박았으나, spec §4.3 본문이 *"부정 감정"의 정확한 enumeration*을 명시하지 않음. *OCC valence 부정*으로 본다면 Pity 포함되어야 하고, *4축 base_delta가 음 우세*로 본다면 Pity는 affinity +10이라 제외. 본 구현은 **affinity 부호 기준** (4축 효과 우선).
+
+- `is_negative_emotion` 함수 doc에 정의 박제 (commit 시점).
+- Phase 2.3 narrative 검증에서 *공감 군 4 (HappyFor/Pity/Gloating/Resentment)의 A− Forgiveness 룰 적용 여부* 시뮬로 재확인 예정.
+
+### W3 — `update_axes_from_emotion` BondStatus 차단 silent return
+
+[mapping.rs:217~219](../../../src/domain/relationship/mapping.rs:217). Deceased/Resolved/Dormant 시 *조용히 return* — 이벤트/로그 부재. 의도된 동작이지만 *디버깅 추적 단서 없음*. Phase 2.3 진입 시 `tracing::debug!` 1줄 추가 검토 (비용 0).
+
+### W4 — B-D12 가드의 호출 측 분산 (3 위치 동일 패턴)
+
+[relationship_policy.rs:143, 238](../../../src/application/command/policies/relationship_policy.rs:143) + [stimulus_policy.rs:78](../../../src/application/command/policies/stimulus_policy.rs:78) — *`matches!(Pride|Shame) continue`* 3 위치 박힘. spec §4 결정대로 *"호출 측 책임"* 일관이지만 DRY 위반.
+
+- **4번째 호출자** (Phase 3a/3b에서 `Channel 2 Temporal` / `Channel 3 External` 추가 시) 누락 위험.
+- Phase 2.3 또는 3a 진입 시 `Relationship::accepts_axis_update_for(emotion_type)` 같은 헬퍼로 통합 검토 (현재 호출 측 명시 패턴 유지).

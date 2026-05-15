@@ -67,9 +67,14 @@ impl StimulusPolicy {
             HandlerError::InvalidInput(format!("focus to_situation failed: {e}"))
         })?;
 
-        // Beat 전환용 임시 관계 갱신 (modifiers 계산용 — 실제 저장은 RelationshipPolicy).
-        // Stage 2: base_delta × intensity × hexaco_modifier 적용. B-D12 가드 (Pride/Shame skip).
-        // `stimulated`(post-stimulus, pre-merge)을 입력으로 — Beat 전환 시점의 새 modifiers 산출용.
+        // ── Two-phase relationship semantics (Stage 2) ───────────────────────────
+        // Phase 1 (here): `beat_rel`은 *임시* — Beat 시점 modifier 산정용. *저장 안됨*.
+        //                 stimulated(pre-merge) → 4축 변동 → modifiers → appraise input.
+        // Phase 2 (later): RelationshipPolicy가 `BeatTransitioned` 받아 *merged emotion*으로
+        //                  4축 *최종* 갱신 (UoW에 박힘 → 영속 저장).
+        // 즉 4축은 **dispatch 1회당 1번** 영속 갱신되지만, *Beat appraise modifier*는
+        // *aspirational beat_rel*(이번 stimulated 기준 변동)을 *미리 봄*. v2 의도된 디자인 —
+        // *최종* 저장(relationship_policy)은 *merged emotion* 기준 (line 7~18 주석 참조).
         let tuning = profile();
         let _ = tuning.beat_default_significance;
         let mut beat_rel = relationship.clone();

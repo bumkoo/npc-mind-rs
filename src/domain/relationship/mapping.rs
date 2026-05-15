@@ -175,7 +175,18 @@ pub(crate) fn hexaco_modifier(
     m
 }
 
-/// 부정 감정 식별 — A- Forgiveness 룰 적용 조건.
+/// 부정 감정 식별 — A− Forgiveness 룰 적용 조건.
+///
+/// **정의** (relationships.md v0.7 §4.3 + Phase 2 Stage 2 결정):
+/// *OCC valence 자체가 부정인 감정* — Distress/Fear/Disappointment/FearsConfirmed (Well-being/Prospect 부정)
+/// + Anger/Reproach/Resentment/Gloating/Hate (대상 부정 평가) + Shame/Remorse (자기 부정).
+/// 11종.
+///
+/// **Pity 제외**: Pity는 *공감 4 (Fortune-of-others)* 군의 *연민*이며 OCC valence는 부정이지만
+/// base_delta는 `{affinity +10, respect −5, wariness 0}`로 **affinity 긍정**이 주된 효과.
+/// "용서 어려운 캐릭터가 *연민*을 더 강하게 느낀다"는 의미가 게임 narrative상 부자연 →
+/// 부정 감정 분류에서 제외 (spec §4.3 본문이 모호하므로 본 구현이 기준점).
+/// Phase 2.3 narrative 검증에서 *공감 군 4의 ×1.5 적용 여부* 시뮬로 재확인 예정.
 fn is_negative_emotion(emotion: EmotionType) -> bool {
     matches!(
         emotion,
