@@ -73,6 +73,8 @@ Stage 2가 `stimulus_policy::process_beat_transition`에 *aspirational view* 박
 
 ### 4.4 산출 — 테스트 3개
 
+> *v1.0.1 정정 (W1 진입 시 발견, 2026-05-16)*: `RelationshipModifiers`의 4 필드 중 `intensity_multiplier`만 `_multiplier`, 나머지 3개는 `_modifier` (`trust_modifier` / `empathy_modifier` / `hostility_modifier`). 아래 §4.4.2 Test 1 + §4.4.4 Test 3 코드 정정 반영. 실제 박힌 코드(`mapping.rs` tests)는 Claude Code 자동 정정으로 이미 정확한 필드 이름 사용.
+
 위치: `src/domain/relationship/mapping.rs` tests 모듈.
 
 #### 4.4.1 헬퍼 추가
@@ -111,8 +113,8 @@ fn beat_rel_modifiers_affinity_channel_after_anger() {
 
     // (1) 방향 회귀
     assert!(after.intensity_multiplier < before.intensity_multiplier);
-    assert!(after.empathy_multiplier   < before.empathy_multiplier);
-    assert!(after.hostility_multiplier > before.hostility_multiplier);
+    assert!(after.empathy_modifier     < before.empathy_modifier);
+    assert!(after.hostility_modifier   > before.hostility_modifier);
 
     // (2) 정량 회귀 — 회고 §S2 affinity 28.6 / 100 = 0.286
     let p = profile();
@@ -166,8 +168,8 @@ fn beat_rel_modifiers_admiration_no_leak_until_phase_2_3() {
 
     assert_eq!(after.intensity_multiplier, before.intensity_multiplier);
     assert_eq!(after.trust_modifier,        before.trust_modifier);
-    assert_eq!(after.empathy_multiplier,    before.empathy_multiplier);
-    assert_eq!(after.hostility_multiplier,  before.hostility_multiplier);
+    assert_eq!(after.empathy_modifier,      before.empathy_modifier);
+    assert_eq!(after.hostility_modifier,    before.hostility_modifier);
 }
 ```
 
