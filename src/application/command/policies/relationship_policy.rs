@@ -8,8 +8,10 @@ use crate::application::command::handler_v2::{
     DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
+use crate::domain::emotion::EmotionType;
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::reflection::ReflectionResult;
+use crate::domain::relationship::update_axes_from_emotion;
 use crate::domain::scene_id::SceneId;
 use crate::domain::tuning::profile;
 
@@ -129,13 +131,20 @@ impl RelationshipPolicy {
         ctx: &mut dyn DynamicHandlerContext,
     ) -> Result<HandlerResult, HandlerError> {
         let relationship = ctx.get_relationship(npc_id, partner_id)?;
-        let _emotion = ctx.get_emotion_state(npc_id)?;
+        let emotion = ctx.get_emotion_state(npc_id)?;
+        let npc = ctx.get_npc(npc_id)?;
         let _ = significance;
 
-        // Stage 1: after_dialogue 폐기. Stage 2의 `update_axes_from_emotion` 신설 자리.
-        // 임시 no-op — 값은 보존하되 RelationshipUpdated 이벤트는 그대로 발행 (downstream 호환).
-        // TODO(Stage 2): base_delta 표 + HEXACO 보정자 적용 후 apply_delta.
-        let updated = relationship.clone();
+        // Stage 2: base_delta × intensity × hexaco_modifier 적용 — 4축 자동 갱신 활성.
+        // B-D12 — Pride/Shame는 자기 평가라 상대 관계 갱신 안 함 (호출 측 가드).
+        let mut updated = relationship.clone();
+        let hexaco = npc.personality();
+        for (emotion_type, intensity, _context) in emotion.iter_active() {
+            if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+                continue;
+            }
+            update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
+        }
         // Stage 1 ±1.0 contract 보존 — payload schema가 ±1.0이고 downstream
         // (memory_projector RELATIONSHIP_CHANGE_THRESHOLD=0.05, relationship_memory_handler
         // dominant_delta, frontend toFixed 등)이 ±1.0 가정. 4축 ±100 값을 ÷100으로 정규화.
@@ -219,11 +228,18 @@ impl RelationshipPolicy {
         // 2. RelationshipUpdated — 게이트 통과 시만 (chitchat skip 시 axes 보존).
         if enter_outer {
             let relationship = ctx.get_relationship(npc_id, partner_id)?;
-            let _emotion = ctx.get_emotion_state(npc_id)?;
+            let emotion = ctx.get_emotion_state(npc_id)?;
+            let npc = ctx.get_npc(npc_id)?;
             let _ = sig;
-            // Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op.
-            // TODO(Stage 2): base_delta + HEXACO + apply_delta.
-            let updated = relationship.clone();
+            // Stage 2: base_delta × intensity × hexaco_modifier 적용 + B-D12 가드 (위 cause 분기와 동일 패턴).
+            let mut updated = relationship.clone();
+            let hexaco = npc.personality();
+            for (emotion_type, intensity, _context) in emotion.iter_active() {
+                if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+                    continue;
+                }
+                update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
+            }
             // Stage 1 ±1.0 contract 보존 — affinity/trust를 ÷100으로 정규화 (위 cause 분기와 동일).
             let (bc, bt, bp) = (
                 relationship.affinity().value() / 100.0,
@@ -324,7 +340,14 @@ mod handler_v2_tests {
     use crate::application::command::handler_v2::HandlerError;
     use crate::domain::emotion::{EmotionState, EventFocus, FocusTrigger, Scene, SceneFocus};
     use crate::domain::event::{DomainEvent, EventKind, EventPayload};
+    use crate::domain::personality::NpcBuilder;
     use crate::domain::relationship::Relationship;
+
+    /// Stage 2.6 이후 `handle_relationship_update_with_cause` / `handle_dialogue_end`가
+    /// 내부에서 `ctx.get_npc(...)`로 HEXACO를 조회한다 — 외부 진입 게이트 통과 시 npc 등록 필수.
+    fn neutral_npc(id: &str) -> crate::domain::personality::Npc {
+        NpcBuilder::new(id, id).build()
+    }
 
     fn make_scene_ended(npc_id: &str, partner_id: &str) -> DomainEvent {
         DomainEvent::new(
@@ -388,6 +411,7 @@ mod handler_v2_tests {
         let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
+            .with_npc(neutral_npc("alice"))
             .with_relationship(rel)
             .with_emotion_state("alice", EmotionState::default());
 
@@ -441,6 +465,7 @@ mod handler_v2_tests {
         );
 
         let mut harness = HandlerTestHarness::new()
+            .with_npc(neutral_npc("alice"))
             .with_relationship(rel)
             .with_scene(scene)
             .with_emotion_state("alice", EmotionState::default());
@@ -563,6 +588,7 @@ mod handler_v2_tests {
         let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
+            .with_npc(neutral_npc("alice"))
             .with_relationship(rel)
             .with_emotion_state("alice", EmotionState::default());
 
@@ -596,6 +622,7 @@ mod handler_v2_tests {
         let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
+            .with_npc(neutral_npc("alice"))
             .with_relationship(rel)
             .with_emotion_state("alice", EmotionState::default());
 
@@ -629,6 +656,7 @@ mod handler_v2_tests {
         let policy = RelationshipPolicy::new();
         let rel = Relationship::neutral("alice", "bob");
         let mut harness = HandlerTestHarness::new()
+            .with_npc(neutral_npc("alice"))
             .with_relationship(rel)
             .with_emotion_state("alice", EmotionState::default());
 
@@ -638,6 +666,225 @@ mod handler_v2_tests {
         // 4 follow-ups
         assert_eq!(result.follow_up_events.len(), 4);
         assert!(result.follow_up_events.iter().any(|e| e.kind() == EventKind::RelationshipUpdated));
+    }
+
+    // -----------------------------------------------------------------------
+    // Stage 2.7 — update_axes_from_emotion 통합 + B-D12 가드
+    // -----------------------------------------------------------------------
+
+    use crate::domain::emotion::EmotionType;
+    use crate::domain::relationship::{AxisScore, BondStatus, RelationshipBuilder};
+
+    fn emotion_with(intensities: &[(EmotionType, f32)]) -> EmotionState {
+        let mut s = EmotionState::default();
+        for (t, i) in intensities {
+            s.set_intensity(*t, *i);
+        }
+        s
+    }
+
+    fn extract_axes_after(payload: &EventPayload) -> (f32, f32) {
+        // (after_closeness/affinity, after_trust) — Stage 1 ±1.0 contract (×100 후 비교).
+        let EventPayload::RelationshipUpdated(p) = payload else {
+            panic!("expected RelationshipUpdated")
+        };
+        (p.after_closeness, p.after_trust)
+    }
+
+    #[test]
+    fn dialogue_end_applies_4_axes_with_gratitude() {
+        let policy = RelationshipPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = RelationshipBuilder::new("alice", "bob")
+            .trust(AxisScore::new(20.0))
+            .affinity(AxisScore::new(10.0))
+            .build();
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state(
+                "alice",
+                emotion_with(&[(EmotionType::Gratitude, 1.0)]),
+            );
+
+        let event = make_dialogue_end("alice", "bob", Some(0.8));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        // RelationshipUpdated가 4 axes 변동을 반영
+        let rel_update = result
+            .follow_up_events
+            .iter()
+            .find(|e| e.kind() == EventKind::RelationshipUpdated)
+            .expect("RelationshipUpdated must exist");
+        // Gratitude × 1.0 × default modifier = { trust: +20, affinity: +10 }
+        // before: trust 20→40, affinity 10→20 (÷100 정규화 후 0.4, 0.2)
+        let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
+        assert!(
+            (after_trust - 0.4).abs() < 1e-4,
+            "after_trust = {} (expected 0.4 — trust 20→40)",
+            after_trust
+        );
+        assert!(
+            (after_affinity - 0.2).abs() < 1e-4,
+            "after_affinity = {} (expected 0.2 — affinity 10→20)",
+            after_affinity
+        );
+    }
+
+    #[test]
+    fn dialogue_end_skips_pride_and_shame_b_d12() {
+        // B-D12: Pride/Shame은 자기 평가 — 상대 관계 갱신 0.
+        let policy = RelationshipPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = RelationshipBuilder::new("alice", "bob")
+            .trust(AxisScore::new(50.0))
+            .affinity(AxisScore::new(40.0))
+            .build();
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state(
+                "alice",
+                emotion_with(&[
+                    (EmotionType::Pride, 0.8),
+                    (EmotionType::Shame, 0.5),
+                ]),
+            );
+
+        let event = make_dialogue_end("alice", "bob", Some(0.8));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        let rel_update = result
+            .follow_up_events
+            .iter()
+            .find(|e| e.kind() == EventKind::RelationshipUpdated)
+            .expect("RelationshipUpdated must exist");
+        // Pride/Shame skip → 변동 0. before == after.
+        let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
+        assert!(
+            (after_trust - 0.5).abs() < 1e-4,
+            "after_trust = {} (Pride/Shame skip — trust 50 보존)",
+            after_trust
+        );
+        assert!(
+            (after_affinity - 0.4).abs() < 1e-4,
+            "after_affinity = {} (Pride/Shame skip — affinity 40 보존)",
+            after_affinity
+        );
+    }
+
+    #[test]
+    fn dialogue_end_skips_pride_but_applies_anger() {
+        // 혼합: Pride skip + Anger 적용 — Anger만 영향.
+        let policy = RelationshipPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = RelationshipBuilder::new("alice", "bob")
+            .trust(AxisScore::new(50.0))
+            .affinity(AxisScore::new(40.0))
+            .build();
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state(
+                "alice",
+                emotion_with(&[
+                    (EmotionType::Pride, 0.5),
+                    (EmotionType::Anger, 0.5),
+                ]),
+            );
+
+        let event = make_dialogue_end("alice", "bob", Some(0.8));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        let rel_update = result
+            .follow_up_events
+            .iter()
+            .find(|e| e.kind() == EventKind::RelationshipUpdated)
+            .expect("RelationshipUpdated must exist");
+        // Anger × 0.5 × default = { trust: -12.5, affinity: -5, respect: 0, wariness: +12.5 }
+        // before: trust 50→37.5 (÷100=0.375), affinity 40→35 (÷100=0.35)
+        let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
+        assert!(
+            (after_trust - 0.375).abs() < 1e-4,
+            "after_trust = {} (expected 0.375 — Anger only, Pride skip)",
+            after_trust
+        );
+        assert!(
+            (after_affinity - 0.35).abs() < 1e-4,
+            "after_affinity = {} (expected 0.35)",
+            after_affinity
+        );
+    }
+
+    #[test]
+    fn dialogue_end_bond_status_deceased_preserves_axes() {
+        // BondStatus::Deceased — update_axes_from_emotion 내부 가드로 변동 차단.
+        let policy = RelationshipPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = RelationshipBuilder::new("alice", "bob")
+            .trust(AxisScore::new(70.0))
+            .affinity(AxisScore::new(60.0))
+            .bond_status(BondStatus::Deceased)
+            .build();
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state(
+                "alice",
+                emotion_with(&[(EmotionType::Anger, 1.0)]),
+            );
+
+        let event = make_dialogue_end("alice", "bob", Some(0.8));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        let rel_update = result
+            .follow_up_events
+            .iter()
+            .find(|e| e.kind() == EventKind::RelationshipUpdated)
+            .expect("RelationshipUpdated must exist");
+        // Deceased → 차단. before/after 동일.
+        let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
+        assert!(
+            (after_trust - 0.7).abs() < 1e-4,
+            "after_trust = {} (Deceased — preserved)",
+            after_trust
+        );
+        assert!(
+            (after_affinity - 0.6).abs() < 1e-4,
+            "after_affinity = {} (Deceased — preserved)",
+            after_affinity
+        );
+    }
+
+    #[test]
+    fn dialogue_end_empty_emotion_state_no_change() {
+        let policy = RelationshipPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = RelationshipBuilder::new("alice", "bob")
+            .trust(AxisScore::new(50.0))
+            .affinity(AxisScore::new(40.0))
+            .build();
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state("alice", EmotionState::default());
+
+        let event = make_dialogue_end("alice", "bob", Some(0.8));
+        let (result, _) = harness.dispatch(&policy, event).expect("must succeed");
+
+        let rel_update = result
+            .follow_up_events
+            .iter()
+            .find(|e| e.kind() == EventKind::RelationshipUpdated)
+            .expect("RelationshipUpdated must exist");
+        let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
+        assert!((after_trust - 0.5).abs() < 1e-4);
+        assert!((after_affinity - 0.4).abs() < 1e-4);
     }
 
     #[test]

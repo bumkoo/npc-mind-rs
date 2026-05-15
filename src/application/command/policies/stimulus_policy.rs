@@ -23,9 +23,10 @@ use crate::application::command::handler_v2::{
     DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
-use crate::domain::emotion::{AppraisalEngine, EmotionState, StimulusEngine};
+use crate::domain::emotion::{AppraisalEngine, EmotionState, EmotionType, StimulusEngine};
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
 use crate::domain::pad::Pad;
+use crate::domain::relationship::update_axes_from_emotion;
 use crate::domain::scene_id::SceneId;
 use crate::domain::tuning::profile;
 use crate::ports::{Appraiser, StimulusProcessor};
@@ -67,12 +68,18 @@ impl StimulusPolicy {
         })?;
 
         // Beat 전환용 임시 관계 갱신 (modifiers 계산용 — 실제 저장은 RelationshipPolicy).
-        // Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op (관계 modifier 보존).
-        // TODO(Stage 2): update_axes_from_emotion(&mut beat_rel, stimulated, sig, hexaco).
+        // Stage 2: base_delta × intensity × hexaco_modifier 적용. B-D12 가드 (Pride/Shame skip).
+        // `stimulated`(post-stimulus, pre-merge)을 입력으로 — Beat 전환 시점의 새 modifiers 산출용.
         let tuning = profile();
         let _ = tuning.beat_default_significance;
-        let _ = stimulated;
-        let beat_rel = relationship.clone();
+        let mut beat_rel = relationship.clone();
+        let hexaco = npc.personality();
+        for (emotion_type, intensity, _context) in stimulated.iter_active() {
+            if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+                continue;
+            }
+            update_axes_from_emotion(&mut beat_rel, emotion_type, intensity, hexaco);
+        }
         let new_state = self.appraiser.appraise(
             npc.personality(),
             &situation,
@@ -457,6 +464,100 @@ mod handler_v2_tests {
             charlie_scene.active_focus_id().unwrap(),
             "char-init",
             "Charlie's scene focus must not change when interacting with Bob"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Stage 2.7 — Beat 전환 통합 (update_axes_from_emotion 경로)
+    // -----------------------------------------------------------------------
+
+    fn always_trigger_scene(npc_id: &str, partner_id: &str) -> Scene {
+        let mut s = Scene::new(
+            npc_id.into(),
+            partner_id.into(),
+            vec![
+                SceneFocus {
+                    id: "init".into(),
+                    description: "초기".into(),
+                    trigger: FocusTrigger::Initial,
+                    event: None,
+                    action: None,
+                    object: None,
+                    test_script: vec![],
+                },
+                SceneFocus {
+                    id: "next".into(),
+                    description: "다음".into(),
+                    trigger: FocusTrigger::Conditions(vec![vec![]]), // 항상 trigger
+                    event: Some(positive_event_focus()),
+                    action: None,
+                    object: None,
+                    test_script: vec![],
+                },
+            ],
+        );
+        s.set_active_focus("init".into());
+        s
+    }
+
+    #[test]
+    fn beat_transition_with_pride_only_does_not_panic_and_succeeds() {
+        // B-D12 가드 — Pride만 있는 stimulated여도 panic/skip 없이 Beat 전환 성공.
+        let policy = StimulusPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = Relationship::neutral("alice", "bob");
+        let scene = always_trigger_scene("alice", "bob");
+
+        let mut seed = EmotionState::default();
+        seed.set_intensity(EmotionType::Pride, 0.5);
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state("alice", seed)
+            .with_scene(scene);
+
+        let event = make_stim_request("alice", "bob");
+        let (result, uow) = harness
+            .dispatch(&policy, event)
+            .expect("Pride 단독 stimulated여도 Beat 전환 성공");
+
+        // Beat 전환 발동
+        assert_eq!(result.follow_up_events.len(), 2);
+        assert_eq!(
+            result.follow_up_events[1].kind(),
+            EventKind::BeatTransitioned
+        );
+        assert!(uow.scene.is_some());
+    }
+
+    #[test]
+    fn beat_transition_with_gratitude_completes_4_axis_flow() {
+        // Beat 전환 시 stimulated.iter_active()를 돌며 update_axes_from_emotion 호출 —
+        // panic 없이 정상 완주 + beat 전환 emit.
+        let policy = StimulusPolicy::new();
+        let npc = NpcBuilder::new("alice", "Alice").build();
+        let rel = Relationship::neutral("alice", "bob");
+        let scene = always_trigger_scene("alice", "bob");
+
+        let mut seed = EmotionState::default();
+        seed.set_intensity(EmotionType::Gratitude, 0.8);
+
+        let mut harness = HandlerTestHarness::new()
+            .with_npc(npc)
+            .with_relationship(rel)
+            .with_emotion_state("alice", seed)
+            .with_scene(scene);
+
+        let event = make_stim_request("alice", "bob");
+        let (result, _) = harness
+            .dispatch(&policy, event)
+            .expect("Gratitude 단독 stimulated로 Beat 전환 성공");
+
+        let kinds: Vec<_> = result.follow_up_events.iter().map(|e| e.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![EventKind::StimulusApplied, EventKind::BeatTransitioned]
         );
     }
 
