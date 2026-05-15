@@ -253,6 +253,7 @@ mod tests {
     use crate::domain::relationship::axis::{AxisScore, WarinessScore};
     use crate::domain::relationship::bond::BondStatus;
     use crate::domain::relationship::RelationshipBuilder;
+    use crate::domain::tuning::profile;
 
     // -----------------------------------------------------------------------
     // 2.2 base_delta 48셀 — 12 OCC explicit + 10 default
@@ -756,5 +757,83 @@ mod tests {
         assert_eq!(r.affinity().value(), 40.0);
         assert_eq!(r.respect().value(), 30.0);
         assert_eq!(r.wariness().value(), 5.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // 2.5 modifiers() 1 hop 회귀 가드 — Stage W1
+    //   회고 §W1: 4축 → modifiers() 4 필드의 hop 검증
+    //   (스펙 task-rel-phase2-stage2-retrospective-cleanup §4)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn beat_rel_modifiers_affinity_channel_after_anger() {
+        let hexaco = hexaco_lin_chong();
+        let rel = rel_lin_chong_pre_shanshenmiao();
+        let mut beat_rel = rel.clone();
+
+        update_axes_from_emotion(&mut beat_rel, EmotionType::Anger, 0.95, &hexaco);
+
+        let before = rel.modifiers();
+        let after = beat_rel.modifiers();
+
+        // (1) 방향 회귀 — affinity 감소 → 친화 채널 감소·적대 채널 증가
+        assert!(after.intensity_multiplier < before.intensity_multiplier);
+        assert!(after.empathy_modifier < before.empathy_modifier);
+        assert!(after.hostility_modifier > before.hostility_modifier);
+
+        // (2) 정량 회귀 — 회고 §S2 affinity 28.6 / 100 = 0.286
+        let p = profile();
+        let expected = (1.0 + 0.286 * p.rel_closeness_intensity_weight).max(0.0);
+        assert!(
+            (after.intensity_multiplier - expected).abs() < 1e-3,
+            "drift: got {}, expected {}",
+            after.intensity_multiplier,
+            expected
+        );
+    }
+
+    #[test]
+    fn beat_rel_modifiers_trust_channel_after_anger() {
+        let hexaco = hexaco_lin_chong();
+        let rel = rel_lin_chong_pre_shanshenmiao();
+        let mut beat_rel = rel.clone();
+
+        update_axes_from_emotion(&mut beat_rel, EmotionType::Anger, 0.95, &hexaco);
+
+        let before = rel.modifiers();
+        let after = beat_rel.modifiers();
+
+        assert!(after.trust_modifier < before.trust_modifier);
+
+        // 회고 §S2 trust 15.8 / 100 = 0.158
+        let p = profile();
+        let expected = 1.0 + 0.158 * p.rel_trust_emotion_weight;
+        assert!(
+            (after.trust_modifier - expected).abs() < 1e-3,
+            "drift: got {}, expected {}",
+            after.trust_modifier,
+            expected
+        );
+    }
+
+    #[test]
+    fn beat_rel_modifiers_admiration_no_leak_until_phase_2_3() {
+        // Admiration base_delta = { trust 0, affinity 0, respect +20, wariness 0 }
+        // → modifier 4 필드 *완전 불변* 이어야 함.
+        // Phase 2.3에서 respect를 modifier에 연결하면 *이 테스트가 깨지는 게 정상* —
+        // "Phase 2.3 시작 시 spec 재확인" 신호.
+        let hexaco = neutral_hexaco();
+        let rel = rel_lin_chong_pre_shanshenmiao();
+        let mut beat_rel = rel.clone();
+
+        update_axes_from_emotion(&mut beat_rel, EmotionType::Admiration, 0.7, &hexaco);
+
+        let before = rel.modifiers();
+        let after = beat_rel.modifiers();
+
+        assert_eq!(after.intensity_multiplier, before.intensity_multiplier);
+        assert_eq!(after.trust_modifier, before.trust_modifier);
+        assert_eq!(after.empathy_modifier, before.empathy_modifier);
+        assert_eq!(after.hostility_modifier, before.hostility_modifier);
     }
 }
