@@ -376,6 +376,16 @@ pub fn update_axes_from_emotion(rel: &mut Relationship, emotion: OccEmotion, int
 | C+ Prudence 높음 | 큰 변화 시 ×0.8, 시간 분산 |
 | O+ Unconventionality 높음 | 양극 도달 더 쉬움 |
 
+> **Phase 2 Stage 2 W2 명시화 (2026-05-16)**: A− Forgiveness 룰이 적용되는 *부정 감정*은 **4축 base_delta의 affinity 부호가 음(−)이거나 0인 감정 중 OCC valence가 부정인 11종**으로 정의한다. OCC valence와 다를 수 있으며, 특히 **Pity는 OCC valence상 부정이지만 affinity +10이라 제외**된다.
+>
+> 채택 근거: A− Forgiveness 룰의 ×1.5 증폭이 *관계 충격(affinity 감소)이 큰* 감정에만 적용되어야 "인색한 NPC의 동정심이 더 강함" 같은 *서사 반대 효과*를 막을 수 있다.
+>
+> 현재 부정 감정 enumeration (11종): Anger / Reproach / Resentment / Gloating / Hate / Distress / Fear / Disappointment / FearsConfirmed / Shame / Remorse.
+>
+> 공감 군 4감정(HappyFor / Pity / Gloating / Resentment)의 적용 결과 검증: Phase 2.3 narrative 시뮬에서 확인.
+>
+> 본 단락은 v0.7 doc의 *clarification* (정의 추가, behavior 변경 없음). 상세 구현은 [`src/domain/relationship/mapping.rs::is_negative_emotion`](../../../src/domain/relationship/mapping.rs) doc 참조.
+
 ### 4.4 통합 흐름 — npc-mind-rs 연결
 
 사건은 *시간 스케일*이 다른 두 종류의 처리를 통과한다. **Inner Loop**는 *대화 턴마다*, **Outer Loop**는 *장면 종료 시* 동작.
