@@ -1,7 +1,7 @@
 # Phase 2 Stage 2 회고 정리 — W1~W4 통합
 
 **파일**: `docs/tasks/mind-architecture/task-rel-phase2-stage2-retrospective-cleanup.md`
-**v1.0 — 2026-05-16** (frozen)
+**v1.0.2 — 2026-05-16** (frozen — 정정 이력: v1.0.1 필드 이름 §4.4, v1.0.2 분류 정의 정밀화 §5.3)
 **선행**:
   - `phase2-stage2-mapping.md` (회고)
   - Stage 2 commit (claude/relaxed-lichterman-80e860 worktree, 0506213 + d1e645c)
@@ -222,15 +222,21 @@ W2 위험은 *동작*이 아니라 *해석 표면*. 가드는 (a) 코드 doc, (b
 
 ### 5.3 산출
 
+> *v1.0.2 정정 (W2 진입 시 발견, 2026-05-16)*: "부정 감정" 정의를 *affinity 부호 ≤ 0 + OCC valence 부정 11종*으로 정밀화. 실제 박힌 코드(`mapping.rs::is_negative_emotion` enumeration + `relationships.md` §4.3 inline blockquote)는 이미 정확한 정의 사용 — 본 정정은 spec 명시화용. §5.3.1 doc + §5.3.3 단락 정정.
+
 #### 5.3.1 함수 doc 보강 ([`mapping.rs:179~`](../../../src/domain/relationship/mapping.rs#L179) 부근)
 
 ```rust
 /// 부정 감정 판정 (A− Forgiveness 룰 적용 대상).
 ///
-/// **분류 기준**: 본 함수는 *4축 base_delta의 affinity 부호*를 기준으로 한다.
-/// OCC valence(사건-반응의 호/오)와 *다를 수 있음*에 유의:
+/// **분류 기준**: 본 함수는 *4축 base_delta의 affinity 부호 ≤ 0 + OCC valence
+/// 부정인 11종*을 기준으로 분류한다. OCC valence(사건-반응의 호/오)와
+/// 다를 수 있음에 유의:
 /// - Pity는 OCC valence상 *부정*(남의 불운에 대한 반응)이지만
 ///   `base_delta(Pity).affinity = +10` 이므로 *제외*된다.
+/// - Distress / Fear / Disappointment / FearsConfirmed / Remorse 5종은
+///   B-D14 의도된 누락으로 `base_delta.affinity = 0`이지만 OCC valence
+///   부정이라 *포함*된다.
 ///
 /// **결정 근거**: A− Forgiveness 룰의 ×1.5 증폭이 *관계 충격(4축 affinity 감소)이
 /// 큰 감정*에만 적용되어야 서사 직관과 일치. 예) 인색한 사람의 동정심 증폭은
@@ -276,9 +282,13 @@ fn is_negative_emotion_classification_matches_affinity_sign_basis() {
 추가 단락:
 
 > **"부정 감정"의 정확한 정의**: A− Forgiveness 룰이 적용되는 *부정 감정*은
-> **4축 base_delta의 affinity 부호가 음(−)인 감정**으로 정의한다. OCC valence
-> 와 다를 수 있으며, 특히 Pity는 OCC valence상 부정이지만 affinity +10이라
-> *제외*된다.
+> **4축 base_delta의 affinity 부호가 음(−) 또는 0이면서 OCC valence가 부정인
+> 11종**으로 정의한다. OCC valence와 다를 수 있으며, 특히 Pity는 OCC valence상
+> 부정이지만 affinity +10이라 *제외*된다.
+>
+> Distress / Fear / Disappointment / FearsConfirmed / Remorse 5종은 B-D14
+> 의도된 누락으로 `base_delta.affinity = 0`이지만 OCC valence 부정이라
+> *포함*된다.
 >
 > 채택 근거: A− Forgiveness 룰의 ×1.5 증폭이 *관계 충격이 큰* 감정에만 적용
 > 되어야 "인색한 NPC의 동정심이 더 강함" 같은 *서사 반대 효과*를 막을 수 있다.
