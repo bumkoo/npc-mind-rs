@@ -19,10 +19,12 @@
 
 mod axis;
 mod bond;
+mod mapping;
 mod partnership;
 
-pub use axis::{AxisDelta, AxisKind, AxisScore, WarinessScore};
+pub use axis::{AxisDelta, AxisKind, AxisModifier, AxisScore, WarinessScore};
 pub use bond::{BondKind, BondStatus};
+pub use mapping::update_axes_from_emotion;
 pub use partnership::Partnership;
 
 use crate::domain::emotion::RelationshipModifiers;

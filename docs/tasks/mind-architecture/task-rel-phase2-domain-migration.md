@@ -1541,12 +1541,12 @@ commit: phase2-stage1-domain.md ?뚭퀬
 
 ---
 
-### Stage 2 — OCC → 4축 매핑 (base_delta + HEXACO + Updater)
+### Stage 2 — OCC → 4축 매핑 (base_delta + HEXACO + Updater) (✅ spec frozen 2026-05-15)
 
 **범위 (상위 골격)**:
 - `AxisDelta` (Stage 1.2 박힘) + 신설 `AxisModifier` (2.1)
-- `base_delta(OccEmotion) -> AxisDelta` 48셀 lookup (v0.7 §4.2, B-D6 D6-a) — 12 OCC × 4축, Well-being/Prospect 10 OCC는 0 (B-D14)
-- `hexaco_modifier(OccEmotion, &Hexaco) -> AxisModifier` 6 보정 룰 (v0.7 §4.3)
+- `base_delta(EmotionType) -> AxisDelta` 48셀 lookup (v0.7 §4.2, B-D6 D6-a) — 12 OCC × 4축, Well-being/Prospect 10 OCC는 0 (B-D14)
+- `hexaco_modifier(EmotionType, &Hexaco) -> AxisModifier` 6 보정 룰 (v0.7 §4.3)
 - `update_axes_from_emotion(rel, emotion, intensity, hexaco)` 단일 함수 (B-D5)
 - BondStatus 차단 + Shame/Pride 변동 0 (B-D12)
 - `RelationshipModifiers` 4축 이름 변경 (`closeness_*` → `affinity_*`) + 5곳 사용처 갱신
@@ -1648,7 +1648,7 @@ impl Default for AxisModifier {
 - `update_axes_from_emotion` 본체 — 2.4
 - AxisModifier의 헬퍼 메서드 (`scale`, `combine` 등) — 2.3에서 필요해지면 추가
 
-#### 2.2 — `base_delta(OccEmotion) -> AxisDelta` 48셀 lookup
+#### 2.2 — `base_delta(EmotionType) -> AxisDelta` 48셀 lookup
 
 **목적**: OCC 감정 → 4축 변동 *순수 매핑 함수*. v0.7 §4.2 표 그대로 박음. intensity/HEXACO 곱셈 *전*의 *base 변동*.
 
@@ -1660,7 +1660,7 @@ impl Default for AxisModifier {
 //! mapping.rs — OCC → 4축 매핑.
 //! v0.7 §4.1~4.3 + B-D6 D6-a 채택.
 
-use crate::domain::emotion::OccEmotion;
+use crate::domain::emotion::EmotionType;
 use crate::domain::relationship::axis::AxisDelta;
 
 /// OCC 감정 → 4축 base 변동 (intensity/HEXACO 곱셈 *전*).
@@ -1670,27 +1670,27 @@ use crate::domain::relationship::axis::AxisDelta;
 /// + Compound 보조 (Remorse/Gratification) **10 OCC는 default (0)** — B-D14 확정.
 ///
 /// 매핑 안된 감정 입력 시: AxisDelta::default() (모두 0) 반환 — *조용한 fallback*.
-pub(crate) fn base_delta(emotion: OccEmotion) -> AxisDelta {
+pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
     match emotion {
         // ── 지각·평가 4 (대상 외부) ─────
-        OccEmotion::Gratitude   => AxisDelta { trust:  20.0, affinity:  10.0, respect:   0.0, wariness: -10.0 },
-        OccEmotion::Anger       => AxisDelta { trust: -25.0, affinity: -10.0, respect:   0.0, wariness:  25.0 },
-        OccEmotion::Admiration  => AxisDelta { trust:   0.0, affinity:   0.0, respect:  20.0, wariness:   0.0 },
-        OccEmotion::Reproach    => AxisDelta { trust: -10.0, affinity: -10.0, respect: -25.0, wariness:  10.0 },
+        EmotionType::Gratitude   => AxisDelta { trust:  20.0, affinity:  10.0, respect:   0.0, wariness: -10.0 },
+        EmotionType::Anger       => AxisDelta { trust: -25.0, affinity: -10.0, respect:   0.0, wariness:  25.0 },
+        EmotionType::Admiration  => AxisDelta { trust:   0.0, affinity:   0.0, respect:  20.0, wariness:   0.0 },
+        EmotionType::Reproach    => AxisDelta { trust: -10.0, affinity: -10.0, respect: -25.0, wariness:  10.0 },
 
         // ── 공감 4 (Fortune-of-others) ─────
-        OccEmotion::HappyFor    => AxisDelta { trust:   5.0, affinity:  10.0, respect:   0.0, wariness:   0.0 },
-        OccEmotion::Resentment  => AxisDelta { trust:   0.0, affinity: -10.0, respect:  -5.0, wariness:  15.0 },
-        OccEmotion::Pity        => AxisDelta { trust:   0.0, affinity:  10.0, respect:  -5.0, wariness:   0.0 },
-        OccEmotion::Gloating    => AxisDelta { trust: -10.0, affinity: -20.0, respect: -10.0, wariness:   0.0 },
+        EmotionType::HappyFor    => AxisDelta { trust:   5.0, affinity:  10.0, respect:   0.0, wariness:   0.0 },
+        EmotionType::Resentment  => AxisDelta { trust:   0.0, affinity: -10.0, respect:  -5.0, wariness:  15.0 },
+        EmotionType::Pity        => AxisDelta { trust:   0.0, affinity:  10.0, respect:  -5.0, wariness:   0.0 },
+        EmotionType::Gloating    => AxisDelta { trust: -10.0, affinity: -20.0, respect: -10.0, wariness:   0.0 },
 
         // ── 자기 평가 2 (B-D12: agent_id=None 시 4축 변동 0, 호출 측에서 처리) ─────
-        OccEmotion::Pride       => AxisDelta { trust:   0.0, affinity:   5.0, respect:  10.0, wariness:   0.0 },
-        OccEmotion::Shame       => AxisDelta { trust:  -5.0, affinity: -10.0, respect: -10.0, wariness:   5.0 },
+        EmotionType::Pride       => AxisDelta { trust:   0.0, affinity:   5.0, respect:  10.0, wariness:   0.0 },
+        EmotionType::Shame       => AxisDelta { trust:  -5.0, affinity: -10.0, respect: -10.0, wariness:   5.0 },
 
         // ── 대상 평가 2 (Object) ─────
-        OccEmotion::Love        => AxisDelta { trust:   5.0, affinity:  20.0, respect:   5.0, wariness:  -5.0 },
-        OccEmotion::Hate        => AxisDelta { trust: -10.0, affinity: -25.0, respect:  -5.0, wariness:  15.0 },
+        EmotionType::Love        => AxisDelta { trust:   5.0, affinity:  20.0, respect:   5.0, wariness:  -5.0 },
+        EmotionType::Hate        => AxisDelta { trust: -10.0, affinity: -25.0, respect:  -5.0, wariness:  15.0 },
 
         // ── 매핑 안된 10 OCC (B-D14 의도된 누락) ─────
         // Joy / Distress (Well-being)
@@ -1810,7 +1810,7 @@ use crate::domain::relationship::axis::{AxisModifier, AxisKind};
 ///
 /// emotion 인자는 *A- Forgiveness 부정감정 한정* 룰에 사용.
 pub(crate) fn hexaco_modifier(
-    emotion: OccEmotion,
+    emotion: EmotionType,
     hexaco: &HexacoProfile,
 ) -> AxisModifier {
     let mut m = AxisModifier::default();  // 모두 1.0
@@ -1856,15 +1856,15 @@ const HIGH_THRESHOLD: f32 = 0.5;
 const LOW_THRESHOLD:  f32 = -0.5;
 
 /// 부정 감정 식별 — A- Forgiveness 룰 적용 조건.
-fn is_negative_emotion(emotion: OccEmotion) -> bool {
+fn is_negative_emotion(emotion: EmotionType) -> bool {
     matches!(
         emotion,
-        OccEmotion::Anger | OccEmotion::Reproach
-        | OccEmotion::Resentment | OccEmotion::Gloating
-        | OccEmotion::Hate | OccEmotion::Distress
-        | OccEmotion::Fear | OccEmotion::Disappointment
-        | OccEmotion::FearsConfirmed | OccEmotion::Shame
-        | OccEmotion::Remorse
+        EmotionType::Anger | EmotionType::Reproach
+        | EmotionType::Resentment | EmotionType::Gloating
+        | EmotionType::Hate | EmotionType::Distress
+        | EmotionType::Fear | EmotionType::Disappointment
+        | EmotionType::FearsConfirmed | EmotionType::Shame
+        | EmotionType::Remorse
     )
 }
 ```
@@ -1962,7 +1962,7 @@ hexaco_modifier(Anger, &hexaco) 적용:
 use crate::domain::personality::HexacoProfile;
 use crate::domain::relationship::axis::AxisDelta;
 use crate::domain::relationship::Relationship;
-use crate::domain::emotion::OccEmotion;
+use crate::domain::emotion::EmotionType;
 
 /// OCC 감정 → 4축 변동 통합 적용.
 ///
@@ -1980,7 +1980,7 @@ use crate::domain::emotion::OccEmotion;
 /// - BeatTransitioned 분기
 pub fn update_axes_from_emotion(
     rel: &mut Relationship,
-    emotion: OccEmotion,
+    emotion: EmotionType,
     intensity: f32,
     hexaco: &HexacoProfile,
 ) {
@@ -2046,14 +2046,14 @@ Hate + Reproach까지 합치면 *3 차례 함수 호출*. 누적 결과는 Stage
 [정상 통합 — Active Status]
 - let mut rel = Builder::new("a", "b").trust(AxisScore::new(50)).affinity(AxisScore::new(40)).build();
   let hex = HexacoProfile::neutral();
-  update_axes_from_emotion(&mut rel, OccEmotion::Gratitude, 0.7, &hex);
+  update_axes_from_emotion(&mut rel, EmotionType::Gratitude, 0.7, &hex);
   → rel.trust().value()    == 50 + (20 * 0.7 * 1.0) = 64
   → rel.affinity().value() == 40 + (10 * 0.7 * 1.0) = 47
   → rel.wariness().value() ==  0 (clamp floor — Gratitude wariness -10 * 0.7 = -7, clamp 0)
 
 [BondStatus 차단 — Deceased]
 - let mut rel = Builder::new("a", "b").trust(AxisScore::new(50)).bond_status(BondStatus::Deceased).build();
-  update_axes_from_emotion(&mut rel, OccEmotion::Anger, 0.95, &hex);
+  update_axes_from_emotion(&mut rel, EmotionType::Anger, 0.95, &hex);
   → rel.trust().value() == 50  (변경 0)
 
 [BondStatus 차단 — Resolved + Dormant 동일]
@@ -2090,11 +2090,310 @@ Hate + Reproach까지 합치면 *3 차례 함수 호출*. 누적 결과는 Stage
 - axis_modulation (Phase 2.5 LLM 3지선다) — Reflection schema 확장 별도
 - C+ Prudence intensity 조건부 정밀화 — Phase 2.3
 
-#### 2.5 — `RelationshipModifiers` 이름 변경 + 5곳 사용처 갱신 (TBD)
+#### 2.5 — `RelationshipModifiers` 이름 변경 (★ 재검토 결과 — 변경 0)
 
-#### 2.6 — `Relationship::after_dialogue` 호출 3곳 → `update_axes_from_emotion` 이관 (TBD)
+**★ 2.5 작업 면적: 0** (Phase 2.3 이관)
 
-#### 2.7 — Stage 2 단위 테스트 (TBD)
+##### Stage 0 A2 + 1.6 spec 가정 *정정*
+
+Stage 0 A2 + 1.6 spec에서 박았던 *"closeness_* → affinity_* 이름 변경"*은 **실재 코드 검증 결과 옛 가정에 의한 오해**.
+
+##### 현실 코드 (Stage 1 후 검증)
+
+`RelationshipModifiers` 구조 — `closeness_*` 필드 *원래 없었음*:
+
+```rust
+// src/domain/relationship/mod.rs — Stage 1 후 현재 코드
+pub struct RelationshipModifiers {
+    pub intensity_multiplier: f32,
+    pub trust_modifier: f32,
+    pub empathy_modifier: f32,
+    pub hostility_modifier: f32,
+    // pub trust_emotion_modifier: f32,  // (situation.rs 등에서 직접 박음)
+}
+```
+
+→ 4 필드 모두 *추상적 이름* (intensity/trust/empathy/hostility) — closeness 어휘 없음.
+
+##### Stage 1에서 *F1 흡수 정책* 적용
+
+`modifiers()` 메서드의 *입력만* closeness → affinity로 swap. 시그니처 보존:
+
+```rust
+pub fn modifiers(&self) -> RelationshipModifiers {
+    let affinity_norm = self.affinity.value() / 100.0;  // ← Stage 1에서 closeness → affinity 입력 swap
+    let trust_norm = self.trust.value() / 100.0;
+    let p = profile();
+    RelationshipModifiers {
+        intensity_multiplier: (1.0 + affinity_norm * p.rel_closeness_intensity_weight).max(0.0),
+        trust_modifier: 1.0 + trust_norm * p.rel_trust_emotion_weight,
+        empathy_modifier: (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0),
+        hostility_modifier: (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0),
+    }
+}
+```
+
+##### 5곳 사용처 검증 — 변경 0
+
+| 위치 | 사용 | Stage 2 영향 |
+|---|---|---|
+| `application/situation_service.rs:37, 46` | `.modifiers()` 호출 | **변경 0** |
+| `application/command/policies/emotion_policy.rs:66` | `.modifiers()` 호출 | **변경 0** |
+| `application/command/policies/stimulus_policy.rs:79` | `.modifiers()` 호출 | **변경 0** |
+| `application/command/policies/scene_policy.rs:89` | `.modifiers()` 호출 | **변경 0** |
+| `adapter/memory_repository.rs:377, 384` | `.modifiers()` 호출 | **변경 0** |
+
+→ 시그니처 보존이므로 *시맨틱적 자동 흡수* (F1 정책).
+
+##### Phase 2.3로 이관
+
+**Phase 2.3 (`task-rel-phase2.3-appraise-tuning.md`)에서 처리할 항목**:
+
+1. **`RelationshipModifiers` 필드 정밀화**:
+   - `respect_modifier` 신설 검토 — 4축 환경에서 *respect-aware 감정 평가* 필요?
+   - `wariness_modifier` 신설 검토 — 경계심이 *Reproach/Hate 강도* 조정?
+   - 현재 4 필드 (intensity/trust/empathy/hostility) → 6 필드?
+
+2. **Tuning profile rename**:
+   - `rel_closeness_intensity_weight` → `rel_affinity_intensity_weight`
+   - `rel_closeness_empathy_weight` → `rel_affinity_empathy_weight`
+   - `rel_closeness_hostility_weight` → `rel_affinity_hostility_weight`
+   - `rel_trust_emotion_weight` (그대로)
+   - + 신설 `rel_respect_*_weight` (필요 시)
+   - 시나리오 `profile.toml` 자동 마이그레이션 (이름 변경만, 값 보존)
+
+3. **시뮬레이션 검증** — Phase 2.3 시나리오 set으로 modifier 영향 측정
+
+##### Stage 0 A2 가정의 오해 회고
+
+| 가정 | 현실 |
+|---|---|
+| Stage 0 A2: `RelationshipModifiers`에 `closeness_modifier` / `closeness_squared` / `closeness_abs` / `trust_modifier` 4 필드 | *옛 분석 자료*에 의존한 가정 — *Phase 1 1.5* 즈음에 이미 추상 이름 (intensity/empathy/hostility)으로 *리네임된 후* 였음 |
+| 1.6 spec: closeness_* → affinity_* 이름 변경 + 5곳 사용처 갱신 | 코드 grep 검증 누락 — 옛 가정 그대로 박음 |
+
+★ **교훈**: spec 작성 시 *현실 코드 grep 검증을 더 자주*. Stage 0 A 카테고리는 *코드 사실 조사*가 본질인데, Phase 1 진행 중 변경된 부분은 *재확인 필요*.
+
+##### 변경 이력
+
+- Stage 0 A2 (2026-05-12): closeness_* 4 필드 가정 박음
+- Stage 1 코딩 (2026-05-14): F1 흡수 정책으로 *입력 swap*만 적용
+- Stage 2.5 (2026-05-14): 코드 grep 검증으로 가정 *오해* 확인, *변경 0* 결론
+- Stage 2.6 진입 직전 (2026-05-15): EmotionState API grep 검증 중 발견 — spec 2.2~2.4에 박힌 `OccEmotion` enum 명명이 실재 코드와 불일치. 실재는 `EmotionType` (22 variants 동일). spec 전수 정정 (34곳 OccEmotion → EmotionType). variants 의미/매핑은 그대로 — *이름만* 정정.
+
+##### 비포함 (Phase 2.3 영역)
+
+- `RelationshipModifiers` 필드 정밀화 (respect_modifier / wariness_modifier 신설)
+- Tuning profile rename (`rel_closeness_*` → `rel_affinity_*`)
+- 시나리오 `profile.toml` 자동 마이그레이션
+- 4축 환경 modifier 시뮬레이션 검증
+
+#### 2.6 — 옛 `Relationship::after_dialogue` 호출 3곳 → `update_axes_from_emotion` 이관
+
+**목적**: Stage 1에서 *임시 no-op*으로 박힌 3개 호출 위치를 *정식 `update_axes_from_emotion` 루프*로 교체. B-D12 Pride/Shame 가드 포함. 4축 자동 변동 *최초 활성화 자리*.
+
+##### 현재 상태 (Stage 1 코딩 결과)
+
+3 위치 모두 *임시 no-op + TODO(Stage 2)*:
+
+```rust
+// relationship_policy.rs:135 (DialogueEndRequested handler)
+// Stage 1: after_dialogue 폐기. Stage 2의 `update_axes_from_emotion` 신설 자리.
+// 임시 no-op — 값은 보존하되 RelationshipUpdated 이벤트는 그대로 발행 (downstream 호환).
+// TODO(Stage 2): base_delta 표 + HEXACO 보정자 적용 후 apply_delta.
+let updated = relationship.clone();
+```
+
+```rust
+// stimulus_policy.rs:71 (Beat 전환용 임시 관계 갱신)
+// Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op (관계 modifier 보존).
+// TODO(Stage 2): update_axes_from_emotion(&mut beat_rel, stimulated, sig, hexaco).
+let beat_rel = relationship.clone();
+```
+
+##### Stage 2.6 목표 — 표준 호출 패턴
+
+```rust
+use crate::domain::emotion::EmotionType;
+use crate::domain::relationship::update_axes_from_emotion;
+
+let mut updated = relationship.clone();
+let emotion = ctx.get_emotion_state(npc_id)?;
+let hexaco = ctx.get_npc(npc_id)?.personality();   // HexacoProfile
+
+for (emotion_type, intensity, _context) in emotion.iter_active() {
+    // ── B-D12 가드 (의심 결정 B): Pride/Shame는 자기 평가 — partner 관계 갱신 안 함 ─────
+    if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+        continue;
+    }
+    update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
+}
+// updated가 4축 변동 적용된 새 Relationship
+```
+
+##### 3 위치별 적용 패턴
+
+| # | 파일:라인 | Handler | 동일 호출 패턴? |
+|---|---|---|---|
+| (1) | `application/command/policies/relationship_policy.rs:135` | DialogueEndRequested | ✅ 표준 호출 패턴 그대로 |
+| (2) | `application/command/policies/relationship_policy.rs:220+` | DialogueReflected (outer_loop_entry 게이트 통과 시만) | ✅ 표준 호출 패턴 그대로 (게이트는 함수 호출 *외*) |
+| (3) | `application/command/policies/stimulus_policy.rs:71` | Beat 전환용 임시 관계 갱신 (modifiers 계산용) | ✅ 표준 호출 패턴 — `let mut beat_rel = relationship.clone();` 그대로, 호출 후 `beat_rel.modifiers()` 사용 |
+
+##### 설계 의도 5개
+
+| # | 항목 | 의도 |
+|---|---|---|
+| ① | **B-D12 가드는 *호출 측*** (의심 결정 B) | 2.4 결정과 정합 — `update_axes_from_emotion` 함수 책임 = *상대 관계 갱신* 일관. 자기 평가 (Pride/Shame) 가드는 *호출 측이 분기*. |
+| ② | `EmotionType` 사용 (spec 2.5 정정 결과) | 실재 코드 `EmotionType` enum 사용. `OccEmotion` 명명 정정 (2.5 회고). |
+| ③ | `iter_active()` API 사용 | `EmotionState::iter_active() -> impl Iterator<Item = (EmotionType, f32, Option<&str>)>` — 강도 > 0인 OCC만 순회. 22 OCC 모두 적용 후보. |
+| ④ | `_context` 변수 — 활용 안 함 | Stage 2 본체에서는 context 자유 텍스트 사용 안 함. 향후 *axis_modulation* (Phase 2.5) 또는 *RelationshipChangeCause 보강*에서 활용 가능. |
+| ⑤ | `relationship.clone()` 패턴 보존 | Stage 1 코딩 패턴 유지. `&mut updated` 갱신 → RelationshipUpdated payload 발행은 Stage 3에서 다시 검토. |
+
+##### B-D12 가드 동작 시나리오
+
+```
+대화 중 누적 EmotionState:
+- Gratitude   intensity 0.7  (partner의 도움)
+- Pride       intensity 0.5  (자기 만족)
+- Anger       intensity 0.3  (partner의 일부 행동에 분노)
+
+iter_active() 순회 + B-D12 가드:
+- (Gratitude, 0.7) → update_axes_from_emotion 호출 ✅
+- (Pride,     0.5) → matches! 가드 발동, skip ❌ (4축 변동 없음)
+- (Anger,     0.3) → update_axes_from_emotion 호출 ✅
+
+결과: Gratitude + Anger 누적 적용된 4축 변동만 발생.
+```
+
+##### Stage 2.6 작업 면적
+
+| 위치 | 작업 |
+|---|---|
+| `relationship_policy.rs:135` (DialogueEndRequested) | 1) `update_axes_from_emotion` import 추가 2) `EmotionType` import 추가 3) `relationship.clone()` → `let mut updated = ...` 4) iter_active 루프 + B-D12 가드 5) `// TODO(Stage 2)` 주석 제거 |
+| `relationship_policy.rs:220+` (DialogueReflected) | 위와 동일 패턴 (게이트 통과 시만) |
+| `stimulus_policy.rs:71` (Beat 전환) | 위와 동일 + `_let _ = stimulated;` 같은 unused 표시 제거 |
+
+##### 게이트
+
+1. `cargo check --all-features` 통과
+2. 3 위치 모두 *임시 no-op* 코드 제거 + 표준 호출 패턴 박힘
+3. `TODO(Stage 2)` 주석 제거 (3개)
+4. 1220+ tests 통과 (Stage 1 baseline + 시그니처 변경 반영)
+5. 단위 테스트 — Pride/Shame 가드 동작 검증 (B-D12)
+
+##### 단위 테스트 케이스 (2.7에서 통합 박힘)
+
+```
+[B-D12 가드 — Pride/Shame skip]
+- EmotionState에 (Pride 0.5, Anger 0.3) 박은 후 DialogueEndRequested 처리
+  → Anger만 적용. Pride 변동 0.
+- EmotionState에 Pride만 박은 경우
+  → 4축 변동 0 (모든 OCC 가드 통과 X).
+
+[정상 적용 — Pride/Shame 외 모든 OCC]
+- EmotionState에 (Gratitude 0.7) 박음
+  → S0 Gratitude 표 × 0.7 × HEXACO modifier 적용.
+
+[BondStatus 차단 통합 검증]
+- EmotionState에 (Anger 0.95) + bond_status = Deceased
+  → update_axes_from_emotion 안에서 차단 (2.4 가드). 4축 변동 0.
+
+[iter_active() empty 케이스]
+- EmotionState 모든 강도 0 → 루프 0회 → 4축 변동 0.
+```
+
+##### 비포함
+
+- B-D12 Shame/Pride *함수 내부* 가드 (옵션 A 비채택) — 함수 책임은 *상대 관계 갱신* 일관
+- ActionFocus.agent_id 분기 — 감정 발생 시점 upstream에서 이미 결정 (Pride/Shame은 agent_id=None으로 박혀 EmotionType 분기로 자연 흡수)
+- Compound 감정 합산 로직 — `iter_active` 루프가 *각 OCC 개별 호출*로 합산 자동 처리 (Anger + Hate + Reproach 3 차례)
+- RelationshipUpdated payload 6→8 schema 변경 — Stage 3
+- axis_modulation (Phase 2.5 LLM 3지선다) — Reflection schema 확장
+- Stage 1 임시 *±1.0 contract* 정규화 (`/ 100.0`) — Stage 3에서 payload 6→8 확장 시 정리
+
+#### 2.7 — Stage 2 단위 테스트
+
+**목적**: 2.2~2.6에서 박은 *OCC → 4축 매핑 + 호출 측 통합*을 단위 테스트로 검증. Stage 2 종결 게이트.
+
+##### 테스트 위치 — *모듈 내부 패턴* (Stage 1.9 일관)
+
+```
+src/domain/relationship/
+  mapping.rs        # ★ 신설 — base_delta + hexaco_modifier + update_axes_from_emotion tests
+    └── #[cfg(test)] mod tests { ... }
+  axis.rs           # AxisModifier::combine_uniform + scale_axis tests 추가
+    └── (Stage 1 #[cfg(test)] mod tests에 추가)
+
+src/application/command/policies/
+  relationship_policy.rs   # B-D12 가드 + iter_active 루프 통합 tests
+    └── (기존 #[cfg(test)] mod tests에 추가)
+  stimulus_policy.rs       # Beat 전환 통합 tests
+    └── (기존 #[cfg(test)] mod tests에 추가)
+```
+
+근거: Stage 1 코딩 검증으로 `mapping.rs`는 *신설 파일* 확정. 정책 (`*_policy.rs`)은 *기존 테스트 모듈*에 추가.
+
+##### 파일별 테스트 카운트 (추정)
+
+| 파일 | 케이스 영역 | 추정 카운트 |
+|---|---|---|
+| `mapping.rs` (2.2) | 12 OCC base_delta + 10 default + 합산 검증 | **~13** |
+| `mapping.rs` (2.3) | hexaco_modifier 단일 룰 6 + 복합 (S2) + neutral + is_negative + AxisModifier 메서드 3 | **~10** |
+| `mapping.rs` (2.4) | 정상 + BondStatus 차단 5 + Default HEXACO + intensity 0 + S2 + clamp | **~10** |
+| `axis.rs` 추가 | AxisModifier::combine_uniform / scale_axis | **~3** (Stage 1.9에 이미 일부 박힘) |
+| `relationship_policy.rs` 추가 | B-D12 가드 + 정상 적용 + BondStatus 통합 + empty | **~4** |
+| `stimulus_policy.rs` 추가 | Beat 전환 통합 | **~2** |
+| **합계** | | **~42** |
+
+→ Stage 2 신규 단위 테스트 **~42개**. Stage 1 baseline 1220 → Stage 2 종결 시 ~1262 (단순 합 추정).
+
+(실제 카운트는 Stage 2 구현 시 정확 — *baseline log* 박힘. 위 42는 *최소 기준*.)
+
+##### Stage 0 §3.6 시뮬레이션 케이스 통합 검증
+
+Stage 2 종결 시 *S1~S4 4 케이스*를 *통합 테스트로 명시*:
+
+| 케이스 | 입력 | 기대 4축 변동 |
+|---|---|---|
+| **S1** | 임충 → 노지심, Gratitude 0.7, intensity | trust ↑, affinity ↑ (BondStatus Active) |
+| **S2** | 임충 → 육겸 산신묘, Anger 0.95 + Hate + Reproach, 임충 HEXACO | trust 50→16 / affinity 40→29 / respect 30→30 / wariness 5→34 (Anger 단독 — 3 OCC 합산 시 더 큰 변동) |
+| **S3** | 수련 → 무백, Love 0.8 + Admiration | trust ↑ / affinity ↑↑ / respect ↑ |
+| **S4** | 고구 → 육겸, Reproach (정략결혼 정황) | respect ↓↓ / wariness ↑ |
+
+→ `tests/phase2_narrative_test.rs` (Stage 5 narrative 영역) 또는 *Stage 2.7 통합 테스트 module*로 박을지는 *Stage 5에서 결정*. Stage 2 본체는 *각 함수 단위 테스트*만.
+
+##### Stage 2 종결 게이트 (2.1~2.7 모두 통과 시)
+
+| # | 게이트 | 검증 |
+|---|---|---|
+| 1 | `cargo check --all-features` 통과 | 2.1~2.4 시그니처 컴파일 + 2.6 호출 측 갱신 |
+| 2 | base_delta 48셀 *결정론* — 같은 입력 → 같은 출력 | 2.2 단위 테스트 |
+| 3 | BondStatus Deceased/Resolved/Dormant 차단 확인 | 2.4 단위 테스트 |
+| 4 | Shame/Pride agent_id=None 처리 — EmotionType 가드 동작 | 2.6 B-D12 테스트 |
+| 5 | `cargo test --all-features --workspace` 통과 | Stage 1 baseline (1220+) + Stage 2 신규 ~42 = ~1262 |
+| 6 | Baseline log 박제 — `baselines/stage2-cargo-test-2026-MM-DD-PASS.log` | Stage 3 진입 직전 |
+| 7 | S2 임충 케이스 *수치 정합* (Anger 단독: trust 50→16, affinity 40→29, wariness 5→34) | 2.4 + 2.6 통합 테스트 |
+
+##### Stage 2 산출 commit + 회고
+
+```
+commit: phase2-stage2-mapping.md 회고
+파일: docs/tasks/mind-architecture/phase2-stage2-mapping.md
+내용:
+- Stage 2 2.1~2.7 작업 내역
+- 최종 테스트 카운트 (예: 1262)
+- spec 가정 정정 사례 (OccEmotion → EmotionType / 2.5 closeness 오해)
+- Stage 0 §3.6 S2 임충 수치 정합 검증 결과
+- Stage 3 진입 전제 (4축 매핑 동작 검증, BondStatus 차단 동작)
+- 발견 사항 (있다면)
+```
+
+##### 비포함
+
+- 통합 테스트 (cross-module, S1~S4 narrative) — Stage 5 narrative 시뮬레이션 본체
+- `update_axes_from_emotion` 적용 후 RelationshipUpdated payload 6→8 검증 — Stage 3
+- 시나리오 JSON 마이그레이션 후 적용 검증 — Stage 4/5
+- Mind Studio frontend 4축 표시 검증 — Stage 3
+- Phase 2.5 axis_modulation 적용 검증 — Phase 2.5 본체
 
 ---
 
@@ -2209,3 +2508,4 @@ Hate + Reproach까지 합치면 *3 차례 함수 호출*. 누적 결과는 Stage
 | 0.9 | 2026-05-13 | **??짠6 Baseline (D 移댄뀒怨좊━) ?묒꽦**. Phase 1 醫낃껐 ?쒖젏 baseline ?몄슜: 1095 tests passed / dispatch_v2 latency 24/35/29쨉s / narrative 3諛대뱶 0.000/0.461/0.980 / compute_significance 8.36쨉s / EventKind 31媛? D1~D6 ??ぉ. Stage 1 吏꾩엯 吏곸쟾 ?ъ륫???묒뾽 紐낆떆. |
 | 1.0 | 2026-05-13 | **??Stage 0 醫낃껐**. 짠7 Stages ?묒꽦 ??6 stage 遺꾪븷 (Stage 1 Type/Domain ??Stage 2 Mapping ??Stage 3 Updater ??Stage 4 Migration ??Stage 5 Narrative ??Stage 6 Bench/Handoff). 媛?stage 踰붿쐞쨌寃뚯씠?맞룹궛異?commit 紐낆떆. Phase 2 蹂몄껜 spec ?묒꽦 ?꾨즺, Stage 1 吏꾩엯 以鍮? |
 | 1.1 | 2026-05-14 | **??Stage 1 spec ?묒꽦 ?꾨즺 (freeze)**. 1.1 ?붾젆?좊━ 援ъ“ (紐⑤뱢 遺꾪븷 梨꾪깮), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + ?곸뿭 ?ы띁 5媛?(is_zhiji 臾댄삊 ?꾨찓???⑹뼱 蹂댁〈), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating ??true), 1.5 Partnership 4 variants, 1.6 Relationship 蹂몄껜 ?ъ옉??(4異?+ bond_* + partnership + type/type_history, power ?먭린, apply_delta 硫붿꽌?? modifiers closeness_* ??affinity_*), 1.7 RelationshipBuilder 4異?fluent API, 1.8 neutral() ?먮룞 ?≪닔 寃利?(22怨??몄텧, 19怨?蹂寃?0 ?덉긽), 1.9 ?⑥쐞 ?뚯뒪??(~38 ?좉퇋, 紐⑤뱢 ?대? ?⑦꽩). Claude Code??肄붾뵫 ?멸퀎. |
+| 1.2 | 2026-05-15 | **★ Stage 2 spec 작성 완료 (freeze)**. 2.1 mapping.rs 모듈 신설 + 디렉토리 확장 (AxisModifier 위치 axis.rs), 2.2 base_delta(EmotionType) -> AxisDelta 48셀 lookup, 2.3 AxisModifier 메서드 + hexaco_modifier 6 보정 룰 (HIGH_THRESHOLD = 0.5, Prudence 간소화, Unconventionality placeholder), 2.4 update_axes_from_emotion 단일 함수 (BondStatus 차단 + 인라인 곱셈), 2.5 RelationshipModifiers (Stage 0 가정 정정 — 변경 0 + Phase 2.3 이관), 2.6 옛 after_dialogue 호출 3곳 → update_axes_from_emotion 루프 + B-D12 EmotionType 가드, 2.7 단위 테스트 (~42 신규). Stage 1 코딩 검증으로 OccEmotion → EmotionType 명명 정정 (34곳). Claude Code에 코딩 인계. |

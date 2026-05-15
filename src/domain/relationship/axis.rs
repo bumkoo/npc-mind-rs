@@ -2,11 +2,12 @@
 //!
 //! - `AxisScore`: trust / affinity / respect ±100 (음양 가능 축)
 //! - `WarinessScore`: wariness 0..=100 (별 타입으로 음수 컴파일 시점 차단)
-//! - `AxisDelta`: 4축이 한꺼번에 받는 변동 (Stage 2 base_delta 표 + intensity × HEXACO)
-//! - `AxisKind`: 축 식별자 (Stage 2 lookup용)
+//! - `AxisDelta`: 4축이 한꺼번에 받는 변동 (base_delta 표 + intensity × HEXACO)
+//! - `AxisModifier`: 4축에 곱해지는 배수 (HEXACO 보정 결과)
+//! - `AxisKind`: 축 식별자 (base_delta 표 lookup용)
 //!
 //! relationships.md v0.7 §4. 본 모듈은 *불변식 강제 + 산술 인프라*만 박는다.
-//! base_delta / HEXACO 보정 / update_axes_from_emotion은 Stage 2.
+//! `base_delta` / `hexaco_modifier` / `update_axes_from_emotion`은 `mapping.rs`.
 
 use serde::{Deserialize, Serialize};
 
@@ -133,13 +134,61 @@ impl std::ops::Add for AxisDelta {
     }
 }
 
-/// 축 식별자 (Stage 2 base_delta 표 lookup용).
+/// 축 식별자 (base_delta 표 lookup용).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AxisKind {
     Trust,
     Affinity,
     Respect,
     Wariness,
+}
+
+/// 4축 각각에 *곱해지는* 배수.
+///
+/// `hexaco_modifier`의 출력. `base_delta * intensity * modifier` 식으로
+/// `update_axes_from_emotion`이 사용. Default는 모두 1.0 (보정 없음).
+///
+/// AxisDelta(변동량 +/-)와 AxisModifier(배수 ×)는 의미가 다르므로 별 타입으로 분리.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AxisModifier {
+    pub trust: f32,
+    pub affinity: f32,
+    pub respect: f32,
+    pub wariness: f32,
+}
+
+impl Default for AxisModifier {
+    fn default() -> Self {
+        Self {
+            trust: 1.0,
+            affinity: 1.0,
+            respect: 1.0,
+            wariness: 1.0,
+        }
+    }
+}
+
+impl AxisModifier {
+    /// 모든 축에 동일한 곱셈 (전역 룰 — A+ Patience / C+ Prudence / A- Forgiveness).
+    pub fn combine_uniform(self, factor: f32) -> Self {
+        Self {
+            trust: self.trust * factor,
+            affinity: self.affinity * factor,
+            respect: self.respect * factor,
+            wariness: self.wariness * factor,
+        }
+    }
+
+    /// 단일 축에만 곱셈 (축별 룰 — H+ Sincerity → trust / E+ Anxiety → wariness).
+    pub fn scale_axis(mut self, kind: AxisKind, factor: f32) -> Self {
+        match kind {
+            AxisKind::Trust => self.trust *= factor,
+            AxisKind::Affinity => self.affinity *= factor,
+            AxisKind::Respect => self.respect *= factor,
+            AxisKind::Wariness => self.wariness *= factor,
+        }
+        self
+    }
 }
 
 #[cfg(test)]
@@ -272,5 +321,55 @@ mod tests {
         assert_eq!(neg.value(), 0.0);
         let high: WarinessScore = serde_json::from_str("250.0").unwrap();
         assert_eq!(high.value(), 100.0);
+    }
+
+    // -----------------------------------------------------------------------
+    // AxisModifier (Stage 2.3)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn axis_modifier_default_is_unit() {
+        let m = AxisModifier::default();
+        assert_eq!(m.trust, 1.0);
+        assert_eq!(m.affinity, 1.0);
+        assert_eq!(m.respect, 1.0);
+        assert_eq!(m.wariness, 1.0);
+    }
+
+    #[test]
+    fn axis_modifier_combine_uniform_multiplies_all_axes() {
+        let m = AxisModifier::default().combine_uniform(0.7);
+        assert!((m.trust - 0.7).abs() < 1e-6);
+        assert!((m.affinity - 0.7).abs() < 1e-6);
+        assert!((m.respect - 0.7).abs() < 1e-6);
+        assert!((m.wariness - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
+    fn axis_modifier_scale_axis_targets_single_axis() {
+        let m = AxisModifier::default().scale_axis(AxisKind::Trust, 1.2);
+        assert!((m.trust - 1.2).abs() < 1e-6);
+        assert!((m.affinity - 1.0).abs() < 1e-6);
+        assert!((m.respect - 1.0).abs() < 1e-6);
+        assert!((m.wariness - 1.0).abs() < 1e-6);
+
+        let m = AxisModifier::default().scale_axis(AxisKind::Wariness, 1.3);
+        assert!((m.wariness - 1.3).abs() < 1e-6);
+        assert!((m.trust - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn axis_modifier_chained_rules_compose() {
+        // S2 임충 케이스: H+ Sincerity ×1.2 trust → A- Forgiveness ×1.5 전역 → C+ Prudence ×0.8 전역
+        let m = AxisModifier::default()
+            .scale_axis(AxisKind::Trust, 1.2)
+            .combine_uniform(1.5)
+            .combine_uniform(0.8);
+        // trust: 1.0 * 1.2 * 1.5 * 0.8 = 1.44
+        // others: 1.0 * 1.5 * 0.8 = 1.2
+        assert!((m.trust - 1.44).abs() < 1e-6);
+        assert!((m.affinity - 1.2).abs() < 1e-6);
+        assert!((m.respect - 1.2).abs() < 1e-6);
+        assert!((m.wariness - 1.2).abs() < 1e-6);
     }
 }
