@@ -140,6 +140,9 @@ impl RelationshipPolicy {
         let mut updated = relationship.clone();
         let hexaco = npc.personality();
         for (emotion_type, intensity, _context) in emotion.iter_active() {
+            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+            // If this loop is duplicated to a new caller, this guard MUST be copied.
+            // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
             if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
                 continue;
             }
@@ -235,6 +238,9 @@ impl RelationshipPolicy {
             let mut updated = relationship.clone();
             let hexaco = npc.personality();
             for (emotion_type, intensity, _context) in emotion.iter_active() {
+                // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+                // If this loop is duplicated to a new caller, this guard MUST be copied.
+                // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
                 if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
                     continue;
                 }
