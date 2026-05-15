@@ -175,18 +175,21 @@ pub(crate) fn hexaco_modifier(
     m
 }
 
-/// 부정 감정 식별 — A− Forgiveness 룰 적용 조건.
+/// 부정 감정 판정 (A− Forgiveness 룰 적용 대상).
 ///
-/// **정의** (relationships.md v0.7 §4.3 + Phase 2 Stage 2 결정):
-/// *OCC valence 자체가 부정인 감정* — Distress/Fear/Disappointment/FearsConfirmed (Well-being/Prospect 부정)
-/// + Anger/Reproach/Resentment/Gloating/Hate (대상 부정 평가) + Shame/Remorse (자기 부정).
-/// 11종.
+/// **분류 기준**: 본 함수는 *4축 base_delta의 affinity 부호*를 기준으로 한다.
+/// OCC valence(사건-반응의 호/오)와 *다를 수 있음*에 유의:
+/// - Pity는 OCC valence상 *부정*(남의 불운에 대한 반응)이지만
+///   `base_delta(Pity).affinity = +10` 이므로 *제외*된다.
 ///
-/// **Pity 제외**: Pity는 *공감 4 (Fortune-of-others)* 군의 *연민*이며 OCC valence는 부정이지만
-/// base_delta는 `{affinity +10, respect −5, wariness 0}`로 **affinity 긍정**이 주된 효과.
-/// "용서 어려운 캐릭터가 *연민*을 더 강하게 느낀다"는 의미가 게임 narrative상 부자연 →
-/// 부정 감정 분류에서 제외 (spec §4.3 본문이 모호하므로 본 구현이 기준점).
-/// Phase 2.3 narrative 검증에서 *공감 군 4의 ×1.5 적용 여부* 시뮬로 재확인 예정.
+/// **결정 근거**: A− Forgiveness 룰의 ×1.5 증폭이 *관계 충격(4축 affinity 감소)이
+/// 큰 감정*에만 적용되어야 서사 직관과 일치. 예) 인색한 사람의 동정심 증폭은
+/// "인색하지만 더 깊은 동정"이라는 *반대 모순* 발생.
+///
+/// 회고 §W2 + spec §4.3 참조.
+///
+/// **Phase 2.3 narrative 검증 항목**: 공감 군 4감정(HappyFor / Pity / Gloating /
+/// Resentment)에 A− Forgiveness 적용 결과가 서사 직관과 일치하는지 시뮬.
 fn is_negative_emotion(emotion: EmotionType) -> bool {
     matches!(
         emotion,
@@ -885,5 +888,34 @@ mod tests {
             affinity_before,
             "함수 자체는 Pride/Shame 차단하지 *않음* (spec §4 결정)"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // 2.7 is_negative_emotion 분류 기준 — Stage W2
+    //   회고 §W2: "부정 감정" 분류는 *4축 base_delta affinity 부호* 기준.
+    //   OCC valence와 다를 수 있음 — Pity 제외가 핵심 비대칭.
+    //   (스펙 task-rel-phase2-stage2-retrospective-cleanup §5)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn is_negative_emotion_classification_matches_affinity_sign_basis() {
+        // "affinity 부호 기준" 결정을 living spec으로 박제.
+        // OCC valence 기준으로 분류 변경 시 즉시 깨짐 → 회고 §W2 + doc + §4.3 재독.
+
+        // affinity + 공감 감정 — 부정 분류 *제외*
+        assert!(!is_negative_emotion(EmotionType::HappyFor));
+        assert!(
+            !is_negative_emotion(EmotionType::Pity),
+            "Pity: OCC valence 부정이지만 affinity +10이라 제외 (회고 §W2)"
+        );
+
+        // affinity − 공감 감정 — 부정 분류 *포함*
+        assert!(is_negative_emotion(EmotionType::Gloating));
+        assert!(is_negative_emotion(EmotionType::Resentment));
+
+        // 11 enumeration sanity (변경 검출용)
+        assert!(is_negative_emotion(EmotionType::Anger));
+        assert!(is_negative_emotion(EmotionType::Hate));
+        assert!(is_negative_emotion(EmotionType::Distress));
     }
 }
