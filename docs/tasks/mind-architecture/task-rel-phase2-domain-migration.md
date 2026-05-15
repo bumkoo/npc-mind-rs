@@ -1,68 +1,69 @@
-﻿# Phase 2 ??Relationship ?꾨찓??留덉씠洹몃젅?댁뀡 (4異?+ BondKind/BondStatus/Partnership + type)
+# Phase 2 — Relationship 도메인 마이그레이션 (4축 + BondKind/BondStatus/Partnership + type)
 
-**Status**: `ready` ??**Stage 0 醫낃껐 (2026-05-13), v1.0 spec freeze**. Stage 1 吏꾩엯 ?湲?
+**Status**: `ready` — **Stage 0 종결 (2026-05-13), v1.0 spec freeze**. Stage 1 진입 대기.
 **Owner**: Bekay + Claude
-**Parent**: `docs/tasks/mind-architecture/00-roadmap.md` 짠5 Phase 2 (遺꾪븷 ??蹂?phase)
-**Sibling**: `task-rel-phase2.5-channel1.md` (蹂꾨룄 phase濡?遺꾨━, 異뷀썑 ?묒꽦)
-**Prerequisite**: Phase 1/1.5/1.6 ???꾨즺 (`phase1-checkpoint-report.md` v0.2)
+**Parent**: `docs/tasks/mind-architecture/00-roadmap.md` §5 Phase 2 (분할 후 본 phase)
+**Sibling**: `task-rel-phase2.5-channel1.md` (별도 phase로 분리, 추후 작성)
+**Prerequisite**: Phase 1/1.5/1.6 ✅ 완료 (`phase1-checkpoint-report.md` v0.2)
 
 ---
 
-## 짠1 Scope
+## §1 Scope
 
-**?ы븿**:
-- `Relationship` ?꾨찓?? 3異?(closeness/trust/power, 짹1.0) ??4異?(trust/affinity/respect/wariness, 짹100)
-- `BondKind` 11醫?enum ?꾩엯 (relationships.md v0.7 짠3.1)
-- `BondStatus` 5醫?enum ?꾩엯 (짠3.5)
-- `Partnership` 4醫?enum ?꾩엯 (짠3.6)
-- `type: String` + `type_history: Vec<TypeChange>` ?먯쑀 ?띿뒪???꾨뱶 (짠2)
-- ?쒕굹由ъ삤 JSON schema v0.6 ??v0.7 媛깆떊 (Relationship ?꾨뱶 ?쒖젙)
-- 寃利??쒕굹由ъ삤 ~45 ?섏뼱 ?곗씠??留덉씠洹몃젅?댁뀡
-- 1095+ tests ?뚭? 媛깆떊
+**포함**:
+- `Relationship` 도메인: 3축 (closeness/trust/power, ±1.0) → 4축 (trust/affinity/respect/wariness, ±100)
+- `BondKind` 11종 enum 도입 (relationships.md v0.7 §3.1)
+- `BondStatus` 5종 enum 도입 (§3.5)
+- `Partnership` 4종 enum 도입 (§3.6)
+- `type: String` + `type_history: Vec<TypeChange>` 자유 텍스트 필드 (§2)
+- 시나리오 JSON schema v0.6 → v0.7 갱신 (Relationship 필드 한정)
+- 검증 시나리오 ~45 페어 데이터 마이그레이션
+- 1095+ tests 회귀 갱신
 
-**鍮꾪룷??* (Phase 2.3 蹂꾨룄 ???좎꽕):
-- appraise 濡쒖쭅 ?뺣퉬 (?쒕??덉씠??湲곕컲 ?쒕떇)
-- ?꾨씫 OCC ?앸퀎 + ?먮룞 蹂댁셿/寃쎄퀬 (I1)
-- Compound 媛먯젙 ?앸퀎 ?뺤옣
-- `RelationshipModifiers` ?뺣???(4異??섍꼍?먯꽌 ?꾨씫 modifier 寃利?
-- HEXACO 蹂댁젙???뺣웾 誘몄꽭議곗젙
-- base_delta 48? ?쒕굹由ъ삤 湲곕컲 誘몄꽭議곗젙
+**비포함** (Phase 2.3 별도 — 신설):
+- appraise 로직 정비 (시뮬레이션 기반 튜닝)
+- 누락 OCC 식별 + 자동 보완/경고 (I1)
+- Compound 감정 식별 확장
+- `RelationshipModifiers` 정밀화 (4축 환경에서 누락 modifier 검증)
+- HEXACO 보정자 정량 미세조정
+- base_delta 48셀 시나리오 기반 미세조정
 
-**鍮꾪룷??* (Phase 2.5 蹂꾨룄):
-- Channel 1 Declarative ?쒖꽦??(`declarative_events` / `partnership_event` placeholder??*enum/?꾨뱶 ?뺤쓽留? 諛뺢퀬 LLM emit/寃利??곸슜? Phase 2.5)
-- ?ы쉶???쇨???寃利?5 移댄뀒怨좊━ (A~E)
-- 4-tier ?곸슜 紐⑤뱶
-- **??`axis_modulation` (LLM 誘몄꽭議곗젙 3吏?좊떎)** ??Reflection 寃곌낵 schema ?뺤옣
+**비포함** (Phase 2.5 별도):
+- Channel 1 Declarative 활성화 (`declarative_events` / `partnership_event` placeholder는 *enum/필드 정의만* 박고 LLM emit/검증/적용은 Phase 2.5)
+- 사회적 일관성 검증 5 카테고리 (A~E)
+- 4-tier 적용 모드
+- **★ `axis_modulation` (LLM 미세조정 3지선다)** — Reflection 결과 schema 확장
 
-**鍮꾪룷??* (Phase 3 蹂꾨룄):
-- Channel 2 Temporal (BondKind ?쒓컙 寃뚯씠???먮룞 吏꾩엯)
-- Channel 3 External (?멸퀎 ?ш굔 overlay)
-- `RecollectionAction` 5醫?異붾え ?됰룞
+**비포함** (Phase 3 별도):
+- Channel 2 Temporal (BondKind 시간 게이트 자동 진입)
+- Channel 3 External (세계 사건 overlay)
+- `RecollectionAction` 5종 추모 행동
 - `ActionTriggerEvaluator` 5-dim feasibility
 
 ---
 
-## 짠2 Inputs
+## §2 Inputs
 
-| 臾몄꽌 | ?낅젰 踰꾩쟾 | 異쒕젰 踰꾩쟾 |
+| 문서 | 입력 버전 | 출력 버전 |
 |---|---|---|
-| `relationships.md` | v0.7 (?꾪뻾, 蹂寃??놁쓬) | v0.7 (李몄“留? |
-| `_schema.md` | v0.6 (?꾪뻾) | **v0.7** (Phase 2媛 媛깆떊) |
-| `00-roadmap.md` | v0.5 (Phase 1.5/1.6 諛섏쁺) | v0.6 (Phase 2 吏꾩엯 ?쒓린) |
+| `relationships.md` | v0.7 (현행, 변경 없음) | v0.7 (참조만) |
+| `_schema.md` | v0.6 (현행) | **v0.7** (Phase 2가 갱신) |
+| `00-roadmap.md` | v0.5 (Phase 1.5/1.6 반영) | v0.6 (Phase 2 진입 표기) |
 
-**李몄“ baseline**:
-- Phase 1 spec stages (6 stage ?⑦꽩)
-- Phase 1 checkpoint report v0.2 (?꾩젣 議곌굔 짠7)
+**참조 baseline**:
+- Phase 1 spec stages (6 stage 패턴)
+- Phase 1 checkpoint report v0.2 (전제 조건 §7)
 
 ---
 
-## 짠3 Findings (Stage 0)
+## §3 Findings (Stage 0)
 
-Phase 1 Stage 0 ?⑦꽩(F1~F12)??蹂?phase???곸슜. A 移댄뀒怨좊━ 5媛???*?꾩옱 肄붾뱶 ?ъ떎 議곗궗*. 媛???ぉ? 蹂寃???*?꾩옱 ?곹깭*瑜?grep?쇰줈 ?뺤젙?섍퀬, Phase 2 蹂寃?硫댁쟻???곗젙?쒕떎.
+Phase 1 Stage 0 패턴(F1~F12)을 본 phase에 적용. A 카테고리 5개 — *현재 코드 사실 조사*. 각 항목은 변경 전 *현재 상태*를 grep으로 확정하고, Phase 2 변경 면적을 산정한다.
 
 
-### A1 ??`Relationship` ?꾨찓??+ `Score` ???+ ?ъ슜泥?
-**?꾩옱 ?꾨찓??* (`src/domain/relationship.rs`):
+### A1 — `Relationship` 도메인 + `Score` 타입 + 사용처
+
+**현재 도메인** (`src/domain/relationship.rs`):
 ```rust
 pub struct Relationship {
     owner: NpcId, target: NpcId,
@@ -74,77 +75,80 @@ pub struct RelationshipModifiers {
 }
 ```
 
-**`Score` ???*: `src/domain/personality.rs` ?뺤쓽 ??*HEXACO 24 facet怨?怨듭쑀*. `Score(f32)` 踰붿쐞 짹1.0. Phase 2媛 짹100 踰붿쐞濡?媛硫?*怨듭쑀 ???遺꾨━ ?꾩슂*.
+**`Score` 타입**: `src/domain/personality.rs` 정의 — *HEXACO 24 facet과 공유*. `Score(f32)` 범위 ±1.0. Phase 2가 ±100 범위로 가면 *공유 타입 분리 필요*.
 
-**?ъ슜泥?134 留ㅼ튂** (wuxia-core 4留ㅼ튂???쒖쇅, ?먭린 ?덉젙):
+**사용처 134 매치** (wuxia-core 4매치는 제외, 폐기 예정):
 
-| ?곸뿭 | 留ㅼ튂 | 梨낆엫 | Phase 2 蹂寃?|
+| 영역 | 매치 | 책임 | Phase 2 변경 |
 |---|---|---|---|
-| `domain/relationship.rs` | 13 | ?뺤쓽 + ?대? ?뚯뒪??| ?ъ옉??蹂몄껜 |
-| `Relationship::neutral()` ?몄텧 | 16 | Policy fallback (媛?臾닿?) | ?먮룞 ?≪닔 (?ы띁 ?쒓렇?덉쿂 蹂댁〈) |
-| `Relationship::new` / `RelationshipBuilder` | 4 留ㅼ튂 | ?쒕굹由ъ삤 JSON 吏꾩엯??1 + UI CRUD 1 + ?뚯뒪??2 | ?쒓렇?덉쿂 蹂寃?|
-| `.modifiers()` ?듦낵 | 5怨?| emotion/stimulus/scene policy + memory_repository | **蹂寃?0** (?명꽣?섏씠??蹂댁〈, ?대? 留ㅽ븨留??ъ옉?? |
-| `.closeness()`/`.trust()`/`.power()` 吏곸젒 ?몄텧 | 6怨?| snapshot + orchestrator + relationship_policy + memory_repository + telling_ingestion + domain_sync | 紐낆떆 蹂寃?(4異?硫붿꽌?쒕챸) |
-| ?뚯뒪???몄텧 | ~100 | Builder ?⑦꽩 + neutral ?몄텧 | **?뚭? 硫댁쟻 ??* ???먮룞 留덉씠洹몃젅?댁뀡 ?ㅽ겕由쏀듃 寃??|
+| `domain/relationship.rs` | 13 | 정의 + 내부 테스트 | 재작성 본체 |
+| `Relationship::neutral()` 호출 | 16 | Policy fallback (값 무관) | 자동 흡수 (헬퍼 시그니처 보존) |
+| `Relationship::new` / `RelationshipBuilder` | 4 매치 | 시나리오 JSON 진입점 1 + UI CRUD 1 + 테스트 2 | 시그니처 변경 |
+| `.modifiers()` 통과 | 5곳 | emotion/stimulus/scene policy + memory_repository | **변경 0** (인터페이스 보존, 내부 매핑만 재작성) |
+| `.closeness()`/`.trust()`/`.power()` 직접 호출 | 6곳 | snapshot + orchestrator + relationship_policy + memory_repository + telling_ingestion + domain_sync | 명시 변경 (4축 메서드명) |
+| 테스트 호출 | ~100 | Builder 패턴 + neutral 호출 | **회귀 면적 큼** — 자동 마이그레이션 스크립트 검토 |
 
-**?듭떖 諛쒓껄**:
-1. `modifiers()` 異붿긽??寃쎄퀎媛 *OCC 媛먯젙 ?붿쭊 5怨녹쓣 ?먮룞 ?≪닔*. ?명꽣?섏씠??硫댁쟻 ?묒쓬.
-2. ?쒕굹由ъ삤 JSON?붾룄硫붿씤 吏꾩엯?먯? `memory_repository.rs:195` ??1怨? 3異뺚넂4異?蹂??猷?1怨?吏묒쨷 媛??
-3. ?뚭? 硫댁쟻??蹂몄쭏? *?뚯뒪??~100 ?몄텧??Builder ?쒓렇?덉쿂 蹂寃?. ?먮룞 蹂???ㅽ겕由쏀듃媛 鍮꾩슜 ?덇컧 媛????Phase 2 Stage 1?먯꽌 寃??
-4. `Score` ??낆씠 HEXACO? 怨듭쑀??*遺꾨━ 寃곗젙* ?꾩슂 (??B-D1).
+**핵심 발견**:
+1. `modifiers()` 추상화 경계가 *OCC 감정 엔진 5곳을 자동 흡수*. 인터페이스 면적 작음.
+2. 시나리오 JSON↔도메인 진입점은 `memory_repository.rs:195` 단 1곳. 3축→4축 변환 룰 1곳 집중 가능.
+3. 회귀 면적의 본질은 *테스트 ~100 호출의 Builder 시그니처 변경*. 자동 변환 스크립트가 비용 절감 가능 — Phase 2 Stage 1에서 검토.
+4. `Score` 타입이 HEXACO와 공유라 *분리 결정* 필요 (→ B-D1).
 
 
-### A2 ??OCC ??3異?留ㅽ븨 ?⑥닔 + 媛깆떊 梨낆엫??
-**?꾩옱 OCC ??axes 留ㅽ븨**:
+### A2 — OCC → 3축 매핑 함수 + 갱신 책임자
+
+**현재 OCC → axes 매핑**:
 ```rust
-// Relationship::after_dialogue (?⑥씪 ?⑥닔, closeness 1異뺣쭔 ?먮룞)
+// Relationship::after_dialogue (단일 함수, closeness 1축만 자동)
 pub fn after_dialogue(&self, final_state: &EmotionState, significance: f32) -> Self {
     self.with_updated_closeness(final_state.overall_valence(), significance)
-    // trust: 蹂寃??놁쓬 (?ν썑 LLM ?됯?)
-    // power: 蹂寃??놁쓬 (?쒖궗 ?대깽?몃쭔)
+    // trust: 변경 없음 (향후 LLM 평가)
+    // power: 변경 없음 (서사 이벤트만)
 }
 ```
 
-**怨듭떇**: `new_closeness = clamp(old + valence 횞 0.05 횞 (1 + sig 횞 3.0), 짹1.0)`
+**공식**: `new_closeness = clamp(old + valence × 0.05 × (1 + sig × 3.0), ±1.0)`
 
-**媛깆떊 梨낆엫??*: `application/command/policies/relationship_policy.rs` ???몄텧 ?꾩튂 *2 怨?以묐났* (`handle_dialogue_end` + `handle_relationship_update_with_cause`). Phase 2 ?ъ옉????helper 異붿텧 沅뚯옣.
+**갱신 책임자**: `application/command/policies/relationship_policy.rs` — 호출 위치 *2 곳 중복* (`handle_dialogue_end` + `handle_relationship_update_with_cause`). Phase 2 재작성 시 helper 추출 권장.
 
-**`outer_loop_entry()` 寃뚯씠??* ??Phase 2/3 吏꾩엯 ?먮━ *?덉빟??:
+**`outer_loop_entry()` 게이트** — Phase 2/3 진입 자리 *예약됨*:
 ```rust
 match reflection {
     Some(refl) => {
         refl.significance_score >= 0.3
             || !refl.is_chitchat
-            || !refl.declarative_events.is_empty()     // ??Phase 2.5 ?쒖꽦???꾩튂
-            || refl.partnership_event.is_some()        // ??Phase 2.5 ?쒖꽦???꾩튂
+            || !refl.declarative_events.is_empty()     // ← Phase 2.5 활성화 위치
+            || refl.partnership_event.is_some()        // ← Phase 2.5 활성화 위치
         // || temporal_signals (Phase 3a)
         // || external_events (Phase 3b)
     }
     None => legacy_significance.is_some(),
 }
 ```
-?꾩옱??declarative_events/partnership_event媛 ??긽 鍮?None?대씪 議곌굔???묐룞 ???? Phase 2媛 *enum/?꾨뱶 ?뺤쓽*留?諛뺤쑝硫?Phase 2.5?먯꽌 *吏꾩쭨 ?곗씠??媛 ?섎윭?ㅼ뼱? 寃뚯씠??利됱떆 ?숈옉.
+현재는 declarative_events/partnership_event가 항상 빈/None이라 조건이 작동 안 함. Phase 2가 *enum/필드 정의*만 박으면 Phase 2.5에서 *진짜 데이터*가 흘러들어와 게이트 즉시 동작.
 
-**`RelationshipUpdatedPayload`** ???몃? schema ?곹뼢:
+**`RelationshipUpdatedPayload`** — 외부 schema 영향:
 ```rust
-// ?꾩옱: 6 ?꾨뱶 (3異?횞 2 = before/after)
+// 현재: 6 필드 (3축 × 2 = before/after)
 closeness_before, trust_before, power_before,
 closeness_after,  trust_after,  power_after,
-// Phase 2 ?? 8 ?꾨뱶 (4異?횞 2) + cause 洹몃?濡?trust_before, affinity_before, respect_before, wariness_before,
+// Phase 2 후: 8 필드 (4축 × 2) + cause 그대로
+trust_before, affinity_before, respect_before, wariness_before,
 trust_after,  affinity_after,  respect_after,  wariness_after,
-// power ?먭린 (B-D4 ?뺤젙)
+// power 폐기 (B-D4 확정)
 ```
 
-**?몃? 援щ룆??*: `relationship_memory_handler`, SSE bridge (`event_bridge`), Mind Studio frontend ??schema 蹂寃??곹뼢.
+**외부 구독자**: `relationship_memory_handler`, SSE bridge (`event_bridge`), Mind Studio frontend — schema 변경 영향.
 
-**?듭떖 諛쒓껄**:
-1. ?꾩옱 *?먮룞 媛깆떊? closeness 1異뺣퓧*. Phase 2媛 *4異??먮룞 媛깆떊 猷????대뵒源뚯? 諛뺤쓣吏媛 ?묒뾽 ?ш린 寃곗젙 (??B-D5, B-D6).
-2. `RelationshipUpdatedPayload` 6?? ?꾨뱶 蹂寃???frontend `domain_sync.rs` + SSE event_bridge 留ㅽ븨 媛깆떊.
-3. `outer_loop_entry()` 寃뚯씠?몃뒗 *Phase 2 蹂寃?0*. Phase 2.5?먯꽌 ?곗씠?곕쭔 ?먮쫫.
+**핵심 발견**:
+1. 현재 *자동 갱신은 closeness 1축뿐*. Phase 2가 *4축 자동 갱신 룰*을 어디까지 박을지가 작업 크기 결정 (→ B-D5, B-D6).
+2. `RelationshipUpdatedPayload` 6→8 필드 변경 — frontend `domain_sync.rs` + SSE event_bridge 매핑 갱신.
+3. `outer_loop_entry()` 게이트는 *Phase 2 변경 0*. Phase 2.5에서 데이터만 흐름.
 
 
-### A3 ??`RelationshipChangeCause` enum 5 variants + ?ъ슜泥?
-**?뺤쓽** (`src/domain/event.rs:138-150`):
+### A3 — `RelationshipChangeCause` enum 5 variants + 사용처
+
+**정의** (`src/domain/event.rs:138-150`):
 ```rust
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RelationshipChangeCause {
@@ -156,339 +160,351 @@ pub enum RelationshipChangeCause {
 }
 ```
 
-**?ъ슜泥?22 留ㅼ튂 遺꾨쪟**:
+**사용처 22 매치 분류**:
 
-| ?꾩튂 | 醫낅쪟 | ?⑦꽩 |
+| 위치 | 종류 | 패턴 |
 |---|---|---|
-| `relationship_policy.rs:88, 117, 241` | **emit (3 ?꾩튂)** | `SceneInteraction` (BeatTransitioned) + `Unspecified` 횞 2 |
-| `event.rs:901, 1094` | tests | ?⑥쐞 ?뚯뒪??|
-| `projection_handlers.rs:311, 336, 347` | tests | RelationshipProjection ?뚭? |
-| `relationship_memory_handler.rs:87~120` | **consume** | 5 variant 遺꾧린 ??MemorySource/topic/content 留ㅽ븨 |
-| `relationship_memory_handler.rs:188-191` | **consume** | origin_chain 異붿텧 (InformationTold/Rumor) |
-| `relationship_memory_handler.rs:376~531` | tests | 遺꾧린蹂??뚭? ?뚯뒪??|
+| `relationship_policy.rs:88, 117, 241` | **emit (3 위치)** | `SceneInteraction` (BeatTransitioned) + `Unspecified` × 2 |
+| `event.rs:901, 1094` | tests | 단위 테스트 |
+| `projection_handlers.rs:311, 336, 347` | tests | RelationshipProjection 회귀 |
+| `relationship_memory_handler.rs:87~120` | **consume** | 5 variant 분기 — MemorySource/topic/content 매핑 |
+| `relationship_memory_handler.rs:188-191` | **consume** | origin_chain 추출 (InformationTold/Rumor) |
+| `relationship_memory_handler.rs:376~531` | tests | 분기별 회귀 테스트 |
 
-**?듭떖 諛쒓껄**:
-1. **emit? SceneInteraction + Unspecified 2 variant留??ㅼ젣 ?묐룞**. `InformationTold`/`WorldEventOverlay`/`Rumor`??enum ?뺤쓽留??덇퀬 *?대뵒?쒕룄 emit?섏? ?딆쓬* (Step C/D ?ㅺ퀎?먭? 誘몃━ 諛뺤? forward-compat ?먮━).
-2. **consume 痢??꾩쟾 援ы쁽**. ??variant 異붽? ??`relationship_memory_handler` 遺꾧린??異붽?留??섎㈃ ??(湲곗〈 ?⑦꽩 mirror).
-3. **Phase 2 蹂몄껜 ?곹뼢 0**. cause enum怨?*蹂寃?硫댁쟻*? 吏곴탳. Phase 2.5?먯꽌 declarative_events ?쒖꽦??????variant ?꾨낫 (`BondKindFormed` ?? ??*Phase 2 寃곗젙 ?ы빆 ?꾨떂*.
-4. `RelationshipUpdatedPayload`??`cause` ?꾨뱶??洹몃?濡?(4異?蹂寃쎄낵 臾닿?).
+**핵심 발견**:
+1. **emit은 SceneInteraction + Unspecified 2 variant만 실제 작동**. `InformationTold`/`WorldEventOverlay`/`Rumor`는 enum 정의만 있고 *어디서도 emit되지 않음* (Step C/D 설계자가 미리 박은 forward-compat 자리).
+2. **consume 측 완전 구현**. 새 variant 추가 시 `relationship_memory_handler` 분기에 추가만 하면 됨 (기존 패턴 mirror).
+3. **Phase 2 본체 영향 0**. cause enum과 *변경 면적*은 직교. Phase 2.5에서 declarative_events 활성화 시 새 variant 후보 (`BondKindFormed` 등) — *Phase 2 결정 사항 아님*.
+4. `RelationshipUpdatedPayload`의 `cause` 필드는 그대로 (4축 변경과 무관).
 
 
-### A4 ???쒕굹由ъ삤 JSON 3異??곗씠??遺꾪룷
+### A4 — 시나리오 JSON 3축 데이터 분포
 
-**洹쒕え**: 267 留ㅼ튂 (closeness/trust/power 媛곴컖) = ~89 Relationship instance = **~45 ?섏뼱** (?遺遺?a?봟 ?띾갑??. ?꾩튂 ???쒕굹由ъ삤 JSON ??+ `session_*_result.json` ?뚯뒪??寃곌낵 ?뚯씪.
+**규모**: 267 매치 (closeness/trust/power 각각) = ~89 Relationship instance = **~45 페어** (대부분 a↔b 쌍방향). 위치 — 시나리오 JSON 안 + `session_*_result.json` 테스트 결과 파일.
 
-**蹂꾨룄 `wuxia_world/assets/relationships/` ?붾젆?좊━ 鍮꾩뼱 ?덉쓬** ??愿怨꾨뒗 ?쒕굹由ъ삤 JSON ?덉뿉 吏곸젒 諛뺥옒. ?ν썑 Phase 2.x 遺꾨━ ?묒뾽 ?꾨낫吏留?*Phase 2 踰붿쐞 ?꾨떂*.
+**별도 `wuxia_world/assets/relationships/` 디렉토리 비어 있음** — 관계는 시나리오 JSON 안에 직접 박힘. 향후 Phase 2.x 분리 작업 후보지만 *Phase 2 범위 아님*.
 
-**寃利?耳?댁뒪 2媛?*:
+**검증 케이스 2개**:
 
-| ?섏뼱 | closeness | trust | power | ?섎? |
+| 페어 | closeness | trust | power | 의미 |
 |---|---|---|---|---|
-| ?꾩땐 ???↔껴 | +0.4 | +0.5 | 0.0 | "??移쒓뎄" ?몄떇 (諛곗떊 ?? |
-| ?↔껴 ???꾩땐 | -0.2 | -0.3 | -0.4 | "?쒓굅 ??? (諛곗떊 ?섎룄) |
-| ?섎젴 ??臾대갚 | +0.7 | +0.8 | -0.1 | ?섑삎???덉젣???щえ |
-| 臾대갚 ???섎젴 | +0.7 | +0.8 | +0.1 | ?숈씪 |
+| 임충 → 육겸 | +0.4 | +0.5 | 0.0 | "옛 친구" 인식 (배신 전) |
+| 육겸 → 임충 | -0.2 | -0.3 | -0.4 | "제거 대상" (배신 의도) |
+| 수련 → 무백 | +0.7 | +0.8 | -0.1 | 의형제+절제된 사모 |
+| 무백 → 수련 | +0.7 | +0.8 | +0.1 | 동일 |
 
-**3異???4異?type 蹂??猷?*:
+**3축 → 4축+type 변환 룰**:
 
-| 3異?| 4異????| 蹂??媛?μ꽦 |
+| 3축 | 4축 대응 | 변환 가능성 |
 |---|---|---|
-| `trust` 짹1.0 | `trust` 짹100 | **?먮룞** ???섎? ?숈씪 蹂댁〈, `횞 100` |
-| `closeness` 짹1.0 | `affinity` 짹100 | **諛섏옄??* ???섎? 遺遺?寃뱀묠 (closeness ??affinity), `횞 100` ???붿옄?대꼫 寃??|
-| (?놁쓬) | `respect` 짹100 | **?섎룞** ???붿옄?대꼫 蹂댁땐 (B-D10) |
-| (?놁쓬) | `wariness` 0~100 | **?섎룞** ???붿옄?대꼫 蹂댁땐 (B-D10) |
-| `power` 짹1.0 | (?먭린, type ?≪닔) | **?섎룞** ???붿옄?대꼫媛 `type` ??以??묒꽦 (B-D4 ?뺤젙) |
+| `trust` ±1.0 | `trust` ±100 | **자동** — 의미 동일 보존, `× 100` |
+| `closeness` ±1.0 | `affinity` ±100 | **반자동** — 의미 부분 겹침 (closeness ⊃ affinity), `× 100` 후 디자이너 검토 |
+| (없음) | `respect` ±100 | **수동** — 디자이너 보충 (B-D10) |
+| (없음) | `wariness` 0~100 | **수동** — 디자이너 보충 (B-D10) |
+| `power` ±1.0 | (폐기, type 흡수) | **수동** — 디자이너가 `type` 한 줄 작성 (B-D4 확정) |
 
-**?듭떖 諛쒓껄**:
-1. **?먮룞 蹂??媛??鍮꾩쑉 ~50%** (trust + closeness留?. respect/wariness/type? *?붿옄?대꼫 ???묒뾽 ?꾩닔*.
-2. **`session_*_result.json` 寃곌낵 ?뚯씪??3異?諛뺥옒** ??Phase 2 ?꾨즺 ???쇨큵 ?먭린 + ?ъ떎??沅뚯옣 (B-D9).
-3. **?곗씠??留덉씠洹몃젅?댁뀡 ?뚰겕?뚮줈?곕뒗 蹂꾨룄 Stage**媛 ??媛?μ꽦 ????~45 ?섏뼱 횞 4異?+ type = ~225 媛??붿옄?대꼫 寃??
-4. `power` ?곗씠???쒖슜?꾧? *誘몃??덉쓬* (?遺遺?짹0.0~짹0.4 踰붿쐞, ActingGuide ?쇰꺼???붿뒪?뚮젅?? ??B-D4 ?뺤젙 洹쇨굅.
+**핵심 발견**:
+1. **자동 변환 가능 비율 ~50%** (trust + closeness만). respect/wariness/type은 *디자이너 손 작업 필수*.
+2. **`session_*_result.json` 결과 파일도 3축 박힘** — Phase 2 완료 후 일괄 폐기 + 재실행 권장 (B-D9).
+3. **데이터 마이그레이션 워크플로우는 별도 Stage**가 될 가능성 큼 — ~45 페어 × 4축 + type = ~225 값 디자이너 검토.
+4. `power` 데이터 활용도가 *미미했음* (대부분 ±0.0~±0.4 범위, ActingGuide 라벨용 디스플레이) — B-D4 확정 근거.
 
-### A5 ??`MAX_EVENTS_PER_COMMAND` ?ъ궛??
-**?꾩옱 22** (`dispatcher.rs:35-41`): Phase 1 worst-case 8~9 + ?덉쟾 留덉쭊 2.5諛?
+### A5 — `MAX_EVENTS_PER_COMMAND` 재산정
 
-**Phase 2 蹂몄껜 ?곹뼢**: 蹂寃?0.
-- 3異???4異? payload ?꾨뱶 ?ш린留?6 ??8, ?대깽??*?? ?곹뼢 ?놁쓬.
-- BondKind/BondStatus/Partnership/type/type_history ?꾩엯: Relationship ?꾨뱶 異붽?, ?대깽??異붽? ?꾨떂.
-- `power` ?먭린: payload ?꾨뱶 媛먯냼.
+**현재 22** (`dispatcher.rs:35-41`): Phase 1 worst-case 8~9 + 안전 마진 2.5배.
 
-**Phase 2.5 worst-case ?덉긽** (李멸퀬):
+**Phase 2 본체 영향**: 변경 0.
+- 3축 → 4축: payload 필드 크기만 6 → 8, 이벤트 *수* 영향 없음.
+- BondKind/BondStatus/Partnership/type/type_history 도입: Relationship 필드 추가, 이벤트 추가 아님.
+- `power` 폐기: payload 필드 감소.
+
+**Phase 2.5 worst-case 예상** (참고):
 ```
-DialogueEndRequested 1 + DialogueReflected 1 + RelationshipUpdated (4異? 1
-+ declarative_events fan-out N (?꾩떎 ?곹븳 ??5)
-+ ?ы쉶???쇨???寃利?reject 理쒕? 5 (5 移댄뀒怨좊━ A~E)
+DialogueEndRequested 1 + DialogueReflected 1 + RelationshipUpdated (4축) 1
++ declarative_events fan-out N (현실 상한 ≈ 5)
++ 사회적 일관성 검증 reject 최대 5 (5 카테고리 A~E)
 + EmotionCleared 1 + SceneEnded 1 + Inline projection 3
-= 12 + N ??17
+= 12 + N ≈ 17
 ```
 
-**寃곕줎**: Phase 2 / Phase 2.5 紐⑤몢 22 ?덉쟾. **?몄긽 遺덊븘??*.
+**결론**: Phase 2 / Phase 2.5 모두 22 안전. **인상 불필요**.
 
 ---
 
-## 짠3 醫낇빀 ??Phase 2 ?곹뼢 硫댁쟻
+## §3 종합 — Phase 2 영향 면적
 
-| 蹂寃?硫댁쟻 | ?ш린 | 鍮꾧퀬 |
+| 변경 면적 | 크기 | 비고 |
 |---|---|---|
-| ?꾨찓??蹂몄껜 (relationship.rs + Score) | ??| ?ъ옉??|
-| RelationshipPolicy 留ㅽ븨 | 以?| 2 ?꾩튂 helper 異붿텧 + ?ъ옉??|
-| Payload schema (6?? ?꾨뱶) | ?묒쓬 | ?꾨뱶 ?대쫫 蹂寃?+ 異붽? |
-| cause enum | **0** | 吏곴탳 |
-| consume 痢?(memory_handler) | **0** | ?명꽣?섏씠??蹂댁〈 |
-| ?쒕굹由ъ삤 JSON 吏꾩엯??| 以?| 蹂??猷?1怨?吏묒쨷 |
-| Mind Studio CRUD | ?묒쓬 | ?⑥닚 ?꾨뱶 蹂寃?|
-| ?뚯뒪???뚭? | ??| ~100 ?몄텧 ?먮룞 留덉씠洹몃젅?댁뀡 寃??|
-| ?쒕굹由ъ삤 ?곗씠??(?붿옄?대꼫 ?? | ??| ~45 ?섏뼱 횞 5?꾨뱶 = ~225 媛?|
-| `MAX_EVENTS_PER_COMMAND` | **0** | 22 ?덉쟾 |
+| 도메인 본체 (relationship.rs + Score) | 큼 | 재작성 |
+| RelationshipPolicy 매핑 | 중 | 2 위치 helper 추출 + 재작성 |
+| Payload schema (6→8 필드) | 작음 | 필드 이름 변경 + 추가 |
+| cause enum | **0** | 직교 |
+| consume 측 (memory_handler) | **0** | 인터페이스 보존 |
+| 시나리오 JSON 진입점 | 중 | 변환 룰 1곳 집중 |
+| Mind Studio CRUD | 작음 | 단순 필드 변경 |
+| 테스트 회귀 | 큼 | ~100 호출 자동 마이그레이션 검토 |
+| 시나리오 데이터 (디자이너 손) | 큼 | ~45 페어 × 5필드 = ~225 값 |
+| `MAX_EVENTS_PER_COMMAND` | **0** | 22 안전 |
 
 ---
 
-## 짠3.6 ?쒕??덉씠??寃利?(S1~S4) ??Stage 0 異붽? 諛쒓껄
+## §3.6 시뮬레이션 검증 (S1~S4) — Stage 0 추가 발견
 
-B 移댄뀒怨좊━ 寃곗젙 ??ぉ (B-D6, B-D12, B-D13, B-D14)??洹쇨굅 ?뺣낫 + Phase 2 ?듬줈 A ?붿옄??寃利앹쓣 ?꾪빐 臾댄삊吏 ?쒕굹由ъ삤 4 耳?댁뒪??v0.7 짠4 ?붿옄???곸슜.
+B 카테고리 결정 항목 (B-D6, B-D12, B-D13, B-D14)의 근거 확보 + Phase 2 통로 A 디자인 검증을 위해 무협지 시나리오 4 케이스에 v0.7 §4 디자인 적용.
 
-### S1 ???꾩땐 ???몄???(Gratitude ?⑥닚)
+### S1 — 임충 → 노지심 (Gratitude 단순)
 
-- ?붿옄?대꼫 諛뺣뒗 Beat focus: `event(desirability +0.7) + action(agent_id="lu_zhishen", praiseworthiness +0.8)`
-- appraise ?먮룞 ?앹꽦: Joy + **Admiration** + **Gratitude** (compound)
-- 寃곌낵: trust +13, affinity +6, respect 0 ??*Admiration ?먮룞 ?앹꽦*?쇰줈 **respect 0 臾몄젣 ?먯껜媛 諛쒖깮 ????*
-- ??base_delta ??+ ActionFocus 諛뺢린濡?*諛⑺뼢???먯뿰*
+- 디자이너 박는 Beat focus: `event(desirability +0.7) + action(agent_id="lu_zhishen", praiseworthiness +0.8)`
+- appraise 자동 생성: Joy + **Admiration** + **Gratitude** (compound)
+- 결과: trust +13, affinity +6, respect 0 → *Admiration 자동 생성*으로 **respect 0 문제 자체가 발생 안 함**
+- ✅ base_delta 표 + ActionFocus 박기로 *방향성 자연*
 
-### S2 ???꾩땐 ???↔껴 (?곗떊臾?????ш굔)
+### S2 — 임충 → 육겸 (산신묘 대형 사건)
 
-- ?붿옄?대꼫 諛뺣뒗 focus: `event(desirability -0.95, prospect=FearConfirmed) + action(agent_id="lu_qian", praiseworthiness -0.95) + object(appealingness -0.95)`
-- appraise ?먮룞 ?앹꽦: Distress + FearsConfirmed + **Reproach** + **Hate** + **Anger** (compound)
-- 寃곌낵 (Anger + Hate + Reproach ?⑹궛 + HEXACO 횞1.2 + axis_modulation "high"): trust -49, affinity -43, respect -30, wariness +53
-- ?쒕굹由ъ삤 諛뺥엺 *???곹깭* (trust -30, affinity -20, wariness 留ㅼ슦 ?믪쓬)? 鍮꾧탳: **affinity/wariness??align**, trust留?*異붽? -31 蹂?? ?꾩슂
-- ??Phase 2 ?듬줈 A (?먯쭊?? + Phase 2.5 ?듬줈 B (declarative_events ???꾩빟) **遺꾨떞 ?묐룞** ?낆쬆
+- 디자이너 박는 focus: `event(desirability -0.95, prospect=FearConfirmed) + action(agent_id="lu_qian", praiseworthiness -0.95) + object(appealingness -0.95)`
+- appraise 자동 생성: Distress + FearsConfirmed + **Reproach** + **Hate** + **Anger** (compound)
+- 결과 (Anger + Hate + Reproach 합산 + HEXACO ×1.2 + axis_modulation "high"): trust -49, affinity -43, respect -30, wariness +53
+- 시나리오 박힌 *후 상태* (trust -30, affinity -20, wariness 매우 높음)와 비교: **affinity/wariness는 align**, trust만 *추가 -31 변동* 필요
+- ✅ Phase 2 통로 A (점진적) + Phase 2.5 통로 B (declarative_events 큰 도약) **분담 작동** 입증
 
-### S3 ???섎젴 ???κ탳猷?(?곸땐 媛먯젙)
+### S3 — 수련 → 옥교룡 (상충 감정)
 
-- ?붿옄?대꼫 諛뺣뒗 focus: `event(desirability_for_self -0.4, desirability_for_other=?κ탳猷?-0.7) + action(agent_id="yu_xiaolong", praiseworthiness -0.6)`
-- appraise ?먮룞 ?앹꽦: Distress + **Pity** + **Reproach** + **Anger** (compound)
-- 寃곌낵 (Pity + Reproach + Anger ?⑹궛 + HEXACO 횞0.56 + axis_modulation ?쇳빀): trust -9, affinity -3, respect -15, wariness +14
-- ??**affinity 嫄곗쓽 蹂???놁쓬** (Pity +5? Anger/Reproach -10 ?곸뇙) ??*?곸땐 媛먯젙???뺥솗???쒕??덉씠?? (??몄옣猷??섎젴??*?κ탳猷≪쓣 鍮꾨궃?섎㈃?쒕룄 ?덊?源뚯썙?? ?⑦꽩 ?ъ갑)
-- ??base_delta ?쒓? *?곸땐 媛먯젙* 洹좏삎???먮룞 泥섎━
+- 디자이너 박는 focus: `event(desirability_for_self -0.4, desirability_for_other=옥교룡 -0.7) + action(agent_id="yu_xiaolong", praiseworthiness -0.6)`
+- appraise 자동 생성: Distress + **Pity** + **Reproach** + **Anger** (compound)
+- 결과 (Pity + Reproach + Anger 합산 + HEXACO ×0.56 + axis_modulation 혼합): trust -9, affinity -3, respect -15, wariness +14
+- ★ **affinity 거의 변화 없음** (Pity +5와 Anger/Reproach -10 상쇄) — *상충 감정의 정확한 시뮬레이션* (와호장룡 수련의 *옥교룡을 비난하면서도 안타까워함* 패턴 포착)
+- ✅ base_delta 표가 *상충 감정* 균형을 자동 처리
 
-### S4 ???꾩땐 ??怨좉뎄 (留λ씫 ?섏〈, ???쒓퀎 ?쒗뿕)
+### S4 — 임충 → 고구 (맥락 의존, 표 한계 시험)
 
-- *媛숈? ?명삎 ?ш굔* (怨좉뎄???먮퉬)??NPC ?쒓컖???곕씪 *?꾪? ?ㅻⅨ 媛먯젙*. base_delta ?쒕뒗 *留λ씫 臾댁떆* ???쒓퀎?
-- 寃利?寃곌낵: **?쒓퀎 ?꾨떂**. *3 layer separation*???≪닔:
-  - Layer 1 (Beat focus ?ㅺ퀎): ?붿옄?대꼫媛 *NPC ?쒓컖?쇰줈* event/action/object 諛뺤쓬 ???κ탳猷??먮퉬瑜?*?꾪삊*?쇰줈 諛뺤쑝硫?`desirability_for_self -0.3`????  - Layer 1.5 (Relationship modifiers): 湲곗〈 ?꾩땐?믨퀬援??곷? 愿怨꾩쓽 `trust_modifier`/`hostility_modifier`媛 *媛먯젙 媛뺣룄 ?먮룞 議곗젙*
-  - Layer 2/3 (appraise + base_delta): *?낅젰??諛뺥엺 ?? 寃곗젙濡좎쟻 留ㅽ븨
-- ?붿옄?대꼫 ?ㅼ닔 (?듭뀡 A 諛뺤쓬)?먮룄 *Relationship modifiers媛 ?먯뿰 蹂댁젙* ???꾪뙥???쏀솕
-- ??base_delta ?쒖쓽 *留λ씫 臾댁떆*??*吏꾩쭨 ?쒓퀎 ?꾨떂*. Layer 3 only??梨낆엫
+- *같은 외형 사건* (고구의 자비)이 NPC 시각에 따라 *전혀 다른 감정*. base_delta 표는 *맥락 무시* — 한계?
+- 검증 결과: **한계 아님**. *3 layer separation*이 흡수:
+  - Layer 1 (Beat focus 설계): 디자이너가 *NPC 시각으로* event/action/object 박음 → 옥교룡 자비를 *위협*으로 박으면 `desirability_for_self -0.3`이 됨
+  - Layer 1.5 (Relationship modifiers): 기존 임충→고구 적대 관계의 `trust_modifier`/`hostility_modifier`가 *감정 강도 자동 조정*
+  - Layer 2/3 (appraise + base_delta): *입력이 박힌 후* 결정론적 매핑
+- 디자이너 실수 (옵션 A 박음)에도 *Relationship modifiers가 자연 보정* — 임팩트 약화
+- ✅ base_delta 표의 *맥락 무시*는 *진짜 한계 아님*. Layer 3 only의 책임
 
-### ?쒕??덉씠??寃利?醫낇빀
+### 시뮬레이션 검증 종합
 
-| 耳?댁뒪 | 寃利?寃곌낵 |
+| 케이스 | 검증 결과 |
 |---|---|
-| S1 (Gratitude ?⑥닚) | ??Admiration ?먮룞 ?앸퀎 |
-| S2 (?곗떊臾?????ш굔) | ??Phase 2/2.5 遺꾨떞 ?묐룞 |
-| S3 (?곸땐 媛먯젙) | ??affinity ?뺤껜 (?먮룞 洹좏삎) |
-| S4 (留λ씫 ?섏〈) | ??3 layer separation |
+| S1 (Gratitude 단순) | ✅ Admiration 자동 식별 |
+| S2 (산신묘 대형 사건) | ✅ Phase 2/2.5 분담 작동 |
+| S3 (상충 감정) | ✅ affinity 정체 (자동 균형) |
+| S4 (맥락 의존) | ✅ 3 layer separation |
 
-??**base_delta 48? ??+ HEXACO 蹂댁젙??+ axis_modulation 寃고빀??Phase 2 ?듬줈 A??*?⑸떦???묐룞*???낆쬆**. v0.7 짠4 ?붿옄??洹몃?濡?諛뺣뒗 寃??곸젅.
+→ **base_delta 48셀 표 + HEXACO 보정자 + axis_modulation 결합이 Phase 2 통로 A의 *합당한 작동*을 입증**. v0.7 §4 디자인 그대로 박는 게 적절.
 
-### ???듭떖 諛쒓껄 ??appraise ?낅젰 ?섏〈??
-S1~S4?먯꽌 *怨듯넻 ?⑦꽩*: **appraise??*?붿옄?대꼫 諛뺤? Beat focus ?꾩쟾?깆뿉 ?섏〈***. ActionFocus ??諛뺤쑝硫?Admiration/Reproach ?먮룞 ?앹꽦 0. EventFocus ??諛뺤쑝硫?Joy/Distress/HappyFor/Pity ???먮룞 ?앹꽦 0.
+### ★ 핵심 발견 — appraise 입력 의존성
 
-- ?쒕굹由ъ삤 ?붿옄?대꼫媛 *12+ OCC ?꾩쟾 ?앸퀎*? 遺????- *?곸떇??異붾줎* (?? "?꾩?諛쏆쓬 ??移?갔???됱쐞???덉쓬") ?먮룞??????
-??**Phase 2.3 (appraise ?뺣퉬) ?좎꽕 寃곗젙**. Phase 2 蹂몄껜? Phase 2.5 ?ъ씠??*?뉗? phase*濡?遺꾨━. ?쒕??덉씠???쒕굹由ъ삤 set 怨듭떇??+ ?꾨씫 OCC 寃利?寃쎄퀬 (I1) + Compound ?앸퀎 ?뺤옣 + modifiers ?뺣???+ HEXACO/base_delta 誘몄꽭議곗젙.
+S1~S4에서 *공통 패턴*: **appraise는 *디자이너 박은 Beat focus 완전성에 의존***. ActionFocus 안 박으면 Admiration/Reproach 자동 생성 0. EventFocus 안 박으면 Joy/Distress/HappyFor/Pity 등 자동 생성 0.
 
----
+- 시나리오 디자이너가 *12+ OCC 완전 식별*은 부담 큼
+- *상식적 추론* (예: "도움받음 → 칭찬할 행위자 있음") 자동화 안 됨
 
-## 짠4 Decisions (Stage 0 ????Phase 2 蹂몄껜 寃곗젙 ?꾨즺)
-
-B 移댄뀒怨좊━ 14媛???ぉ. **Phase 2 蹂몄껜 12媛??꾨? ?뺤젙 ??*. B-D7/B-D11? Phase 2.5 ?쒖젏 寃곗젙.
-
-| # | ??ぉ | ?곹깭 |
-|---|---|---|
-| B-D1 | `Score` ????대챸 (HEXACO? 遺꾨━/?좎?/?쇰컲?? | ??**?뺤젙 ??A (遺꾨━) + 2 ???*: HEXACO `Score(f32)` 짹1.0 洹몃?濡?/ Relationship 4異??좎꽕 `AxisScore(f32)` 짹100 (trust/affinity/respect) + `WarinessScore(f32)` 0~100 蹂???? wariness ?뚯닔 諛뺣뒗 ?ㅼ닔 *而댄뙆???쒖젏 李⑤떒*. HEXACO ?ъ슜泥?蹂寃?0. |
-| B-D2 | 짹1.0 ??짹100 蹂??諛⑹떇 (?대? float? ?뺤닔?) | ??**?뺤젙 ??f32 ?대? ?쒗쁽 + JSON ?뺤닔 round 異쒕젰**. v0.7 짠4.1 肄붾뱶 洹몃?濡??명솚. base_delta 횞 intensity 횞 HEXACO 怨깆뀍 *?뺣????좎?* (?? -25 횞 0.95 횞 1.2 = -28.5 ?뺥솗). ?쒕굹由ъ삤 JSON??`"trust": 75` ?뺤닔 ?쒓린, ?대? 75.0. |
-| B-D3 | closeness ??affinity 蹂??猷?(?섎? ?ㅻ쫫) | ??**?뺤젙 ??(c) ?쇳빀**: ?먮룞 蹂??baseline `affinity = closeness 횞 100` + ?붿옄?대꼫 ?좏깮??議곗젙. closeness("?④퍡 ?덉쓣 ??移쒓렐媛?) ??affinity("?쇱옄????洹몃━?") ?섎? 遺遺?寃뱀묠. ?먮룞 蹂?섏쓣 *珥덇린媛??쇰줈 諛뺢퀬 narrative 寃利?Phase 2.3 ?쒕??덉씠??以??댁깋??耳?댁뒪留?議곗젙. ?먯닔 耳?댁뒪(?꾩땐?믨퀬援??? ?뚯닔 蹂댁땐? B-D10 (珥덇린媛?猷??먯꽌 ?≪닔. |
-| B-D4 | `power` ?대챸 | ??**?뺤젙 ???먭린, `type` ?먯쑀 ?띿뒪???≪닔** |
-| B-D5 | 4異?媛곴컖 蹂꾨룄 留ㅽ븨 ?⑥닔? ?⑥씪 ?⑥닔? | ??**?뺤젙 ???⑥씪 ?⑥닔 (v0.7 짠4.1 洹몃?濡?** `update_axes_from_emotion(rel, emotion, intensity, hexaco)`. ??OCC 媛먯젙 ?낅젰??4異??숈떆 媛깆떊. `base_delta(emotion) -> AxisDelta` 48? lookup + `hexaco_modifier(emotion, hexaco) -> AxisModifier` + clamp. 4異뺣퀎 遺꾨━ ?⑥닔??*肄붾뱶 以묐났 + 鍮꾪슚???대씪 鍮꾩콈?? 援ъ껜 援ы쁽 (lookup ?먮즺援ъ“ / 硫붿꽌??vs ?먯쑀 ?⑥닔)? Stage 1. |
-| B-D6 | 4異??먮룞 媛깆떊 猷?+ ?쒖젏 + 媛?쒕젅??| ??**?뺤젙 ??T1 (?????batch) + D6-a (v0.7 짠4.1~4.3 洹몃?濡? base_delta 48? + HEXACO 蹂댁젙??+ BondStatus 李⑤떒 + clamp) + axis_modulation 3吏?좊떎 (low/default/high ??짹5/0/+5, reflection LLM 異쒕젰 ?꾨뱶 ?좎꽕, 異붽? LLM ?몄텧 0)** |
-| B-D7 | (Phase 2.5) ??cause variant 紐낅챸 | Phase 2.5 |
-| B-D8 | ?쒕굹由ъ삤 ?곗씠??留덉씠洹몃젅?댁뀡 ??諛섏옄???ㅽ겕由쏀듃 + ?붿옄?대꼫 ?섎룞? | ??**?뺤젙 ??W3+ (?먮룞 + Claude AI 異붾줎 + ?붿옄?대꼫 寃??**. 6 ?④퀎 ?뚰겕?뚮줈?? ??Rust binary 留덉씠洹몃젅?댁뀡 ?꾧뎄 ?묒꽦 (`tools/migrate_relationships/`) ????Claude AI 異붾줎?쇰줈 BondKind/type 梨꾩? + ?붿옄?대꼫 寃??????Rust binary ?ㅽ뻾 (?먮룞 ?곗닠 蹂?? trust횞100, closeness횞100?뭓ffinity, BondKind 湲곕컲 respect/wariness baseline) ????而댄뙆??+ 湲곗〈 ?뚯뒪??????narrative ?쒕??덉씠??寃利?????Claude AI 異붾줎?쇰줈 ?댁깋 耳?댁뒪 議곗젙 + ?붿옄?대꼫 寃?? **Claude prompt template 諛뺤쓬** (`docs/migration/claude-prompts/`: bond-kind-inference.md, type-text-inference.md, adjustment-suggestion.md). ?덉쟾?μ튂: ?먮낯 諛깆뾽 (`data/scenarios.backup-v0.6/`) + ?쒕씪?대윴 紐⑤뱶 + diff 異쒕젰. |
-| B-D9 | `session_*_result.json` ?먭린 ?뺤콉 | ??**?뺤젙 ??(a) ?쇨큵 ?먭린 + Phase 2 ???ъ깮??*. 寃곌낵 ?뚯씪? *?낅젰 ?꾨땶 異쒕젰* ???ы쁽 媛?? 諛깆뾽 `data/sessions.backup-v0.6/` ?대룞 ???먭린. Phase 2 醫낃껐 ?쒖젏 narrative ?쒕??덉씠??(Stage 5)?먯꽌 4異??쒖뒪?쒖쑝濡??쇨큵 ?ъ깮?? ?ъ깮?깅맂 寃곌낵媛 v0.7 寃利??곗씠?? |
-| B-D10 | respect/wariness 珥덇린媛?猷?(0 ?쒖옉? closeness 遺?몃줈 異붿젙?) | ??**?뺤젙 ??(B') 媛꾨떒 ?대━?ㅽ떛 + BondKind 蹂댁셿**. 留덉씠洹몃젅?댁뀡 ???붿옄?대꼫媛 *BondKind 癒쇱? 諛뺤쓬* (?녿뒗 ?섏뼱 None). ?먮룞 蹂?? BondKind ?먯닔 4醫???respect -60 / wariness +80, BondKind Guardian/Mentor ??respect +60 / wariness +5, BondKind 吏湲?4 + Companion/LoyalRetainer ??respect closeness횞70 / wariness +5, BondKind None ??respect closeness횞50 / wariness max(0, -trust횞50). ?붿옄?대꼫 narrative 寃利앹뿉??議곗젙. B-D8 ?뚰겕?뚮줈?곗? 寃고빀. |
-| B-D11 | (Phase 2.5) declarative_events ?곹븳 N | Phase 2.5 |
-| B-D12 | Shame/Pride (`agent_id=None`) 泥섎━ | ??**?뺤젙 ??4異?蹂??0, PAD留??곹뼢** (v0.7 짠4.2 ?쒖쓽 Shame/Pride ?됱? 4異??먮룞 媛깆떊?먯꽌 臾댁떆) |
-| B-D13 | 1??蹂???곹븳 | ??**?뺤젙 ??蹂꾨룄 cap ?놁쓬** (HEXACO 蹂댁젙??+ intensity 怨?+ axis_modulation 짹5媛 ?먯뿰 ?쒓퀎 ?뺤꽦) |
-| B-D14 | Well-being/Prospect 10 OCC 4異?留ㅽ븨 ?꾨씫 | ??**?뺤젙 ???섎룄???꾨씫 梨꾪깮** (Joy/Distress/Hope/Fear/Satisfaction/Disappointment/Relief/FearsConfirmed/Remorse/Gratification 10媛쒕뒗 4異?蹂??0, PAD留??곹뼢. Compound 媛먯젙(Anger/Gratitude)??媛꾩젒 ?≪닔) |
-
-### ??Phase 2.3 ?좎꽕 寃곗젙
-
-짠3.6 ?쒕??덉씠??寃利앹뿉??諛쒓껄??*appraise ?낅젰 ?섏〈?? 臾몄젣 ?닿껐???꾪빐 Phase 2 蹂몄껜? Phase 2.5 ?ъ씠??**Phase 2.3 ??appraise ?뺣퉬** ?좎꽕:
-
-- Phase 2 (4異??꾨찓???덉젙) ??**Phase 2.3 (appraise ?뺣퉬, ?쒕??덉씠??湲곕컲)** ??Phase 2.5 (LLM ?듯빀)
-- ?묒뾽 ?꾨낫: ?쒕??덉씠???쒕굹由ъ삤 set 怨듭떇??(S1~S4 + ?좉퇋 耳?댁뒪 ~15媛? / ?꾨씫 OCC 寃利?寃쎄퀬 (I1) / Compound ?앸퀎 ?뺤옣 / `RelationshipModifiers` ?뺣???/ HEXACO쨌base_delta 誘몄꽭議곗젙
-- 蹂꾨룄 spec `task-rel-phase2.3-appraise-tuning.md` (Phase 2 醫낃껐 ???묒꽦)
-- `00-roadmap.md` 짠5??Phase 2.3 ???좎꽕 ?꾩슂
+→ **Phase 2.3 (appraise 정비) 신설 결정**. Phase 2 본체와 Phase 2.5 사이에 *얇은 phase*로 분리. 시뮬레이션 시나리오 set 공식화 + 누락 OCC 검증/경고 (I1) + Compound 식별 확장 + modifiers 정밀화 + HEXACO/base_delta 미세조정.
 
 ---
 
-## 짠5 Risks (C 移댄뀒怨좊━ ??Stage 0 吏꾪뻾 以?
+## §4 Decisions (Stage 0 — ✅ Phase 2 본체 결정 완료)
 
-### R1 ???뚭? 硫댁쟻 ??
-- ?뚯뒪??~100 ?몄텧??`Relationship` 3異??쒓렇?덉쿂???섏〈 (Builder ?⑦꽩 + `Relationship::new`)
-- ?꾪솕: Stage 1?먯꽌 ?먮룞 留덉씠洹몃젅?댁뀡 ?ㅽ겕由쏀듃 寃??(B-D8 寃곗젙 ??
+B 카테고리 14개 항목. **Phase 2 본체 12개 전부 확정 ✅**. B-D7/B-D11은 Phase 2.5 시점 결정.
 
-### R2 ???쒕굹由ъ삤 ?곗씠???붿옄?대꼫 ???묒뾽 ??**????꾪솕 (B-D8 ?뺤젙 2026-05-13)**
+| # | 항목 | 상태 |
+|---|---|---|
+| B-D1 | `Score` 타입 운명 (HEXACO와 분리/유지/일반화) | ✅ **확정 — A (분리) + 2 타입**: HEXACO `Score(f32)` ±1.0 그대로 / Relationship 4축 신설 `AxisScore(f32)` ±100 (trust/affinity/respect) + `WarinessScore(f32)` 0~100 별 타입. wariness 음수 박는 실수 *컴파일 시점 차단*. HEXACO 사용처 변경 0. |
+| B-D2 | ±1.0 → ±100 변환 방식 (내부 float? 정수?) | ✅ **확정 — f32 내부 표현 + JSON 정수 round 출력**. v0.7 §4.1 코드 그대로 호환. base_delta × intensity × HEXACO 곱셈 *정밀도 유지* (예: -25 × 0.95 × 1.2 = -28.5 정확). 시나리오 JSON엔 `"trust": 75` 정수 표기, 내부 75.0. |
+| B-D3 | closeness → affinity 변환 룰 (의미 다름) | ✅ **확정 — (c) 혼합**: 자동 변환 baseline `affinity = closeness × 100` + 디자이너 선택적 조정. closeness("함께 있을 때 친근감") ⊃ affinity("혼자일 때 그리움") 의미 부분 겹침. 자동 변환을 *초기값*으로 박고 narrative 검증/Phase 2.3 시뮬레이션 중 어색한 케이스만 조정. 원수 케이스(임충→고구 등) 음수 보충은 B-D10 (초기값 룰)에서 흡수. |
+| B-D4 | `power` 운명 | ✅ **확정 — 폐기, `type` 자유 텍스트 흡수** |
+| B-D5 | 4축 각각 별도 매핑 함수? 단일 함수? | ✅ **확정 — 단일 함수 (v0.7 §4.1 그대로)** `update_axes_from_emotion(rel, emotion, intensity, hexaco)`. 한 OCC 감정 입력에 4축 동시 갱신. `base_delta(emotion) -> AxisDelta` 48셀 lookup + `hexaco_modifier(emotion, hexaco) -> AxisModifier` + clamp. 4축별 분리 함수는 *코드 중복 + 비효율*이라 비채택. 구체 구현 (lookup 자료구조 / 메서드 vs 자유 함수)은 Stage 1. |
+| B-D6 | 4축 자동 갱신 룰 + 시점 + 가드레일 | ✅ **확정 — T1 (대화 끝 batch) + D6-a (v0.7 §4.1~4.3 그대로: base_delta 48셀 + HEXACO 보정자 + BondStatus 차단 + clamp) + axis_modulation 3지선다 (low/default/high → ±5/0/+5, reflection LLM 출력 필드 신설, 추가 LLM 호출 0)** |
+| B-D7 | (Phase 2.5) 새 cause variant 명명 | Phase 2.5 |
+| B-D8 | 시나리오 데이터 마이그레이션 — 반자동 스크립트 + 디자이너 수동? | ✅ **확정 — W3+ (자동 + Claude AI 추론 + 디자이너 검토)**. 6 단계 워크플로우: ① Rust binary 마이그레이션 도구 작성 (`tools/migrate_relationships/`) → ② Claude AI 추론으로 BondKind/type 채움 + 디자이너 검토 → ③ Rust binary 실행 (자동 산술 변환: trust×100, closeness×100→affinity, BondKind 기반 respect/wariness baseline) → ④ 컴파일 + 기존 테스트 → ⑤ narrative 시뮬레이션 검증 → ⑥ Claude AI 추론으로 어색 케이스 조정 + 디자이너 검토. **Claude prompt template 박음** (`docs/migration/claude-prompts/`: bond-kind-inference.md, type-text-inference.md, adjustment-suggestion.md). 안전장치: 원본 백업 (`data/scenarios.backup-v0.6/`) + 드라이런 모드 + diff 출력. |
+| B-D9 | `session_*_result.json` 폐기 정책 | ✅ **확정 — (a) 일괄 폐기 + Phase 2 후 재생성**. 결과 파일은 *입력 아닌 출력* — 재현 가능. 백업 `data/sessions.backup-v0.6/` 이동 후 폐기. Phase 2 종결 시점 narrative 시뮬레이션 (Stage 5)에서 4축 시스템으로 일괄 재생성. 재생성된 결과가 v0.7 검증 데이터. |
+| B-D10 | respect/wariness 초기값 룰 (0 시작? closeness 부호로 추정?) | ✅ **확정 — (B') 간단 휴리스틱 + BondKind 보완**. 마이그레이션 시 디자이너가 *BondKind 먼저 박음* (없는 페어 None). 자동 변환: BondKind 원수 4종 → respect -60 / wariness +80, BondKind Guardian/Mentor → respect +60 / wariness +5, BondKind 지기 4 + Companion/LoyalRetainer → respect closeness×70 / wariness +5, BondKind None → respect closeness×50 / wariness max(0, -trust×50). 디자이너 narrative 검증에서 조정. B-D8 워크플로우와 결합. |
+| B-D11 | (Phase 2.5) declarative_events 상한 N | Phase 2.5 |
+| B-D12 | Shame/Pride (`agent_id=None`) 처리 | ✅ **확정 — 4축 변동 0, PAD만 영향** (v0.7 §4.2 표의 Shame/Pride 행은 4축 자동 갱신에서 무시) |
+| B-D13 | 1회 변동 상한 | ✅ **확정 — 별도 cap 없음** (HEXACO 보정자 + intensity 곱 + axis_modulation ±5가 자연 한계 형성) |
+| B-D14 | Well-being/Prospect 10 OCC 4축 매핑 누락 | ✅ **확정 — 의도된 누락 채택** (Joy/Distress/Hope/Fear/Satisfaction/Disappointment/Relief/FearsConfirmed/Remorse/Gratification 10개는 4축 변동 0, PAD만 영향. Compound 감정(Anger/Gratitude)이 간접 흡수) |
 
-- 湲곗〈 ?곕젮: ~45 ?섏뼱 횞 4異?+ type = ~225 媛??붿옄?대꼫 寃???꾩슂
-- **?꾪솕**: B-D8 W3+ 梨꾪깮. *?붿옄?대꼫 ???묒뾽* ??*Claude AI 異붾줎 + ?붿옄?대꼫 寃??. ?붿옄?대꼫??*?묒꽦*?섏? ?딄퀬 *寃??留? Claude prompt template (`docs/migration/claude-prompts/`)濡??몃? ?ъ슜?먮룄 ?숈씪 ?뚰겕?뚮줈???곸슜 媛??
-- ?붿〈 ?꾪뿕: Claude 異붾줎 *臾명븰???뺥솗?? ??臾댄삊 ?먯쟾 留λ씫 (?섑샇吏/??몄옣猷??ъ“?곸썒???????LLM 吏??踰붿쐞 ?쒓퀎. 寃利?遺?댁? narrative ?쒕??덉씠??(Stage 5)?쇰줈 ?≪닔.
+### ★ Phase 2.3 신설 결정
 
-### R3 ??`Score` ???HEXACO? 怨듭쑀 ??**?댁냼 (B-D1 ?뺤젙 2026-05-13)**
+§3.6 시뮬레이션 검증에서 발견된 *appraise 입력 의존성* 문제 해결을 위해 Phase 2 본체와 Phase 2.5 사이에 **Phase 2.3 — appraise 정비** 신설:
 
-- 湲곗〈 ?곕젮: `Score(f32)` 짹1.0 ?꾩옱 HEXACO 24 facet怨?*怨듭쑀 Value Object*. 4異?짹100 ?꾩엯 ??異⑸룎 媛??
-- **?댁냼**: B-D1 A (遺꾨━) + 2 ???寃곗젙?쇰줈 *HEXACO `Score` ?ъ슜泥?蹂寃?0*. ??`AxisScore`/`WarinessScore` ????좎꽕濡?寃⑸━.
-
-### R4 ??`RelationshipUpdatedPayload` 6?? ?꾨뱶 schema breaking
-
-- ?몃? 援щ룆?? `relationship_memory_handler`, SSE bridge (`event_bridge`), Mind Studio frontend
-- ?꾪솕: Stage 1?먯꽌 schema 媛깆떊 + Phase 1.6??event_bridge ?⑦꽩 ?쒖슜 (?섎룞 emit 0)
-
-### R5 ??appraise ?낅젰 ?섏〈??(S1~S4 寃利앹뿉??諛쒓껄)
-
-- appraise??*?붿옄?대꼫 諛뺤? Beat focus ?꾩쟾?????섏〈. ?꾨씫 ??4異?蹂???꾨씫
-- ?붿옄?대꼫媛 *12+ OCC ?뺥솗 ?앸퀎* 遺???? *?곸떇??異붾줎* ?먮룞??????- ?꾪솕: **Phase 2.3 (appraise ?뺣퉬)?먯꽌 ?쒕??덉씠??湲곕컲 寃利?寃쎄퀬 (I1) + Compound ?앸퀎 ?뺤옣**
-- Phase 2 蹂몄껜?먮뒗 ?곹뼢 ?놁쓬 (?꾨찓??留덉씠洹몃젅?댁뀡怨?吏곴탳)
-
-### R6 ??base_delta 48? ?쒕굹由ъ삤 寃利?遺??
-- ??媛?*諛⑺뼢??? S1~S4 寃利??듦낵. *?뺣웾媛? 誘몄꽭議곗젙 媛?μ꽦 議댁옱.
-- ?꾪솕: Phase 2.3?먯꽌 ?쒕굹由ъ삤 set 湲곕컲 ?뺣웾 誘몄꽭議곗젙 (Phase 2 蹂몄껜?먯꽑 v0.7 짠4.2 ??洹몃?濡?諛뺤쓬)
+- Phase 2 (4축 도메인 안정) → **Phase 2.3 (appraise 정비, 시뮬레이션 기반)** → Phase 2.5 (LLM 통합)
+- 작업 후보: 시뮬레이션 시나리오 set 공식화 (S1~S4 + 신규 케이스 ~15개) / 누락 OCC 검증/경고 (I1) / Compound 식별 확장 / `RelationshipModifiers` 정밀화 / HEXACO·base_delta 미세조정
+- 별도 spec `task-rel-phase2.3-appraise-tuning.md` (Phase 2 종결 후 작성)
+- `00-roadmap.md` §5에 Phase 2.3 행 신설 필요
 
 ---
 
-## 짠6 Baseline (D 移댄뀒怨좊━)
+## §5 Risks (C 카테고리 — Stage 0 진행 중)
 
-Phase 2 ?뚭? 寃利앹쓽 湲곗??? Phase 1 醫낃껐 ?쒖젏 (2026-05-11 baseline) ?몄슜 + Stage 1 吏꾩엯 吏곸쟾 ?ъ륫??
+### R1 — 회귀 면적 큼
 
-### D1 ??cargo test ?듦낵 移댁슫??
-| ??ぉ | ?쒖젏 / ?섏튂 | 異쒖쿂 |
+- 테스트 ~100 호출이 `Relationship` 3축 시그니처에 의존 (Builder 패턴 + `Relationship::new`)
+- 완화: Stage 1에서 자동 마이그레이션 스크립트 검토 (B-D8 결정 후)
+
+### R2 — 시나리오 데이터 디자이너 손 작업 ✅ **대폭 완화 (B-D8 확정 2026-05-13)**
+
+- 기존 우려: ~45 페어 × 4축 + type = ~225 값 디자이너 검토 필요
+- **완화**: B-D8 W3+ 채택. *디자이너 손 작업* → *Claude AI 추론 + 디자이너 검토*. 디자이너는 *작성*하지 않고 *검토*만. Claude prompt template (`docs/migration/claude-prompts/`)로 외부 사용자도 동일 워크플로우 적용 가능.
+- 잔존 위험: Claude 추론 *문학적 정확성* — 무협 원전 맥락 (수호지/와호장룡/사조영웅전)에 대한 LLM 지식 범위 한계. 검증 부담은 narrative 시뮬레이션 (Stage 5)으로 흡수.
+
+### R3 — `Score` 타입 HEXACO와 공유 ✅ **해소 (B-D1 확정 2026-05-13)**
+
+- 기존 우려: `Score(f32)` ±1.0 현재 HEXACO 24 facet과 *공유 Value Object*. 4축 ±100 도입 시 충돌 가능.
+- **해소**: B-D1 A (분리) + 2 타입 결정으로 *HEXACO `Score` 사용처 변경 0*. 새 `AxisScore`/`WarinessScore` 타입 신설로 격리.
+
+### R4 — `RelationshipUpdatedPayload` 6→8 필드 schema breaking
+
+- 외부 구독자: `relationship_memory_handler`, SSE bridge (`event_bridge`), Mind Studio frontend
+- 완화: Stage 1에서 schema 갱신 + Phase 1.6의 event_bridge 패턴 활용 (수동 emit 0)
+
+### R5 — appraise 입력 의존성 (S1~S4 검증에서 발견)
+
+- appraise는 *디자이너 박은 Beat focus 완전성*에 의존. 누락 시 4축 변동 누락
+- 디자이너가 *12+ OCC 정확 식별* 부담 큼, *상식적 추론* 자동화 안 됨
+- 완화: **Phase 2.3 (appraise 정비)에서 시뮬레이션 기반 검증/경고 (I1) + Compound 식별 확장**
+- Phase 2 본체에는 영향 없음 (도메인 마이그레이션과 직교)
+
+### R6 — base_delta 48셀 시나리오 검증 부담
+
+- 표 값 *방향성*은 S1~S4 검증 통과. *정량값* 미세조정 가능성 존재.
+- 완화: Phase 2.3에서 시나리오 set 기반 정량 미세조정 (Phase 2 본체에선 v0.7 §4.2 표 그대로 박음)
+
+---
+
+## §6 Baseline (D 카테고리)
+
+Phase 2 회귀 검증의 기준점. Phase 1 종결 시점 (2026-05-11 baseline) 인용 + Stage 1 진입 직전 재측정.
+
+### D1 — cargo test 통과 카운트
+
+| 항목 | 시점 / 수치 | 출처 |
 |---|---|---|
-| Phase 1 醫낃껐 baseline | **1095 passed**, 0 failed (2026-05-11) | `phase1-checkpoint-report.md:35-36, 308` |
-| **Stage 1 吏꾩엯 吏곸쟾 ?ъ륫??* | **1220 passed**, 3 skipped, 0 failed (2026-05-14) | `baselines/cargo-test-2026-05-14-PASS.log` ??Phase 1.5/1.6 + ?꾩냽 ?꾩쟻 +125 |
-| `cargo check --all-features` | ??| ?숈씪 |
-| `cargo build --features chat` | ??| ?숈씪 |
+| Phase 1 종결 baseline | **1095 passed**, 0 failed (2026-05-11) | `phase1-checkpoint-report.md:35-36, 308` |
+| **Stage 1 진입 직전 재측정** | **1220 passed**, 3 skipped, 0 failed (2026-05-14) | `baselines/cargo-test-2026-05-14-PASS.log` — Phase 1.5/1.6 + 후속 누적 +125 |
+| `cargo check --all-features` | ✅ | 동일 |
+| `cargo build --features chat` | ✅ | 동일 |
 
-**寃뚯씠??*: Phase 2 留덉씠洹몃젅?댁뀡 ?꾨즺 ??*Stage 1 吏꾩엯 ?쒖젏 1220 + ?좉퇋 ?뚯뒪???? ?듦낵. ?뚭? 0嫄?
+**게이트**: Phase 2 마이그레이션 완료 후 *Stage 1 진입 시점 1220 + 신규 테스트 수* 통과. 회귀 0건.
 
-### D2 ??`dispatch_v2(EndDialogue)` latency
+### D2 — `dispatch_v2(EndDialogue)` latency
 
-| 耳?댁뒪 | Phase 1 latency | follow-up |
+| 케이스 | Phase 1 latency | follow-up |
 |---|---|---|
-| chitchat | **24.17 쨉s** | 3 |
-| significant | **35.03 쨉s** | 4 |
-| legacy | **29.34 쨉s** | 3 |
+| chitchat | **24.17 µs** | 3 |
+| significant | **35.03 µs** | 4 |
+| legacy | **29.34 µs** | 3 |
 
-**寃뚯씠??*: Phase 2 ??*짹20% ?대궡*. 4異?留ㅽ븨 異붽?濡??쎄컙 利앷? ?덉긽 (?? ~30/42/35 쨉s). axis_modulation??reflection LLM?먯꽌 異붽??섎?濡?蹂??곹뼢 ?놁쓬.
+**게이트**: Phase 2 후 *±20% 이내*. 4축 매핑 추가로 약간 증가 예상 (예: ~30/42/35 µs). axis_modulation는 reflection LLM에서 추가되므로 별 영향 없음.
 
-### D3 ??Narrative 3諛대뱶 calibration
+### D3 — Narrative 3밴드 calibration
 
-| ?쒕굹由ъ삤 | significance | Target |
+| 시나리오 | significance | Target |
 |---|---|---|
-| chitchat-passerby | **0.000** | <0.3 ??|
-| daily-training | **0.461** | 0.3~0.7 ??|
-| lin-chong-shanshenmiao | **0.980** | ??.7 ??|
+| chitchat-passerby | **0.000** | <0.3 ✅ |
+| daily-training | **0.461** | 0.3~0.7 ✅ |
+| lin-chong-shanshenmiao | **0.980** | ≥0.7 ✅ |
 
-**寃뚯씠??*: Phase 2 留덉씠洹몃젅?댁뀡 ???숈씪 ?쒕굹由ъ삤??*3諛대뱶 ?꾩튂 蹂댁〈*. 媛以묒튂 `0.40/0.30/0.15/0.15` + ?꾧퀎媛?`0.3` ?좎?.
+**게이트**: Phase 2 마이그레이션 후 동일 시나리오의 *3밴드 위치 보존*. 가중치 `0.40/0.30/0.15/0.15` + 임계값 `0.3` 유지.
 
-### D4 ??`compute_significance` ?붿쭊 ?깅뒫
+### D4 — `compute_significance` 엔진 성능
 
-| ??ぉ | Phase 1 baseline |
+| 항목 | Phase 1 baseline |
 |---|---|
-| `compute_significance(10 turn) 횞10000` | **8.36 쨉s/call** (target <1ms, 100x 留덉쭊) |
+| `compute_significance(10 turn) ×10000` | **8.36 µs/call** (target <1ms, 100x 마진) |
 
-**寃뚯씠??*: Phase 2 ??짹20% ?대궡.
+**게이트**: Phase 2 후 ±20% 이내.
 
-### D5 ??`MAX_EVENTS_PER_COMMAND`
+### D5 — `MAX_EVENTS_PER_COMMAND`
 
-| ??ぉ | ?꾩옱 | A5 寃곕줎 |
+| 항목 | 현재 | A5 결론 |
 |---|---|---|
-| ?곸닔 媛?| **22** | Phase 2 蹂몄껜 蹂寃?0, Phase 2.5 worst-case 17, ?몄긽 遺덊븘??|
+| 상수 값 | **22** | Phase 2 본체 변경 0, Phase 2.5 worst-case 17, 인상 불필요 |
 
-### D6 ??肄붾뱶 硫뷀듃由?
-| ??ぉ | Phase 1 醫낃껐 | 異쒖쿂 |
+### D6 — 코드 메트릭
+
+| 항목 | Phase 1 종결 | 출처 |
 |---|---|---|
-| domain/ tokio 李몄“ | 0 | userMemories |
-| ports.rs tokio 李몄“ | 1 (`send_message_stream` ??蹂꾨룄 migration) | userMemories |
-| application/ tokio 李몄“ | 5 (event_bus + memory_projector + director/) | userMemories |
-| EventKind variant ??| 31媛?| `00-roadmap.md` 짠2 |
+| domain/ tokio 참조 | 0 | userMemories |
+| ports.rs tokio 참조 | 1 (`send_message_stream` — 별도 migration) | userMemories |
+| application/ tokio 참조 | 5 (event_bus + memory_projector + director/) | userMemories |
+| EventKind variant 수 | 31개 | `00-roadmap.md` §2 |
 
-### Stage 1 吏꾩엯 吏곸쟾 ?ъ륫???묒뾽
+### Stage 1 진입 직전 재측정 작업
 
-Stage 1 ?쒖옉 泥??묒뾽: ???섏튂 *?ъ륫???섏뿬 `baselines/cargo-test-2026-MM-DD-PASS.log` ?⑦꽩?쇰줈 諛뺤젣. Phase 2 吏꾪뻾 以?鍮꾧탳 湲곗?.
+Stage 1 시작 첫 작업: 위 수치 *재측정*하여 `baselines/cargo-test-2026-MM-DD-PASS.log` 패턴으로 박제. Phase 2 진행 중 비교 기준.
 
 ---
 
-## 짠7 Stages
+## §7 Stages
 
-Phase 1 6 stage ?⑦꽩 ?곕씪 遺꾪븷. 吏곸꽑 ?섏〈 (Stage N ??Stage N+1). 媛?stage 醫낃껐 ??grep 寃뚯씠??+ ?듦낵 移댁슫??寃利?
+Phase 1 6 stage 패턴 따라 분할. 직선 의존 (Stage N → Stage N+1). 각 stage 종결 시 grep 게이트 + 통과 카운트 검증.
 
-### Stage 1 ??Type ?좎꽕 + Domain ?ъ옉??(??spec frozen 2026-05-14)
+### Stage 1 — Type 신설 + Domain 재작성 (✅ spec frozen 2026-05-14)
 
-**踰붿쐞 (?곸쐞 怨④꺽)**:
-- `AxisScore(f32)` + `WarinessScore(f32)` ?좎꽕 (B-D1/D2)
+**범위 (상위 골격)**:
+- `AxisScore(f32)` + `WarinessScore(f32)` 신설 (B-D1/D2)
 - `BondKind` 11 variants / `BondStatus` 5 variants + `accepts_live_input()` / `Partnership` 4 variants enum
-- `Relationship` 蹂몄껜 ?ъ옉?? 4異?+ bond_kind + bond_status + partnership + type + type_history (B-D4: `power` ?먭린)
-- `RelationshipBuilder` 4異?API
-- `Relationship::neutral()` ?쒓렇?덉쿂 蹂댁〈 (16怨??먮룞 ?≪닔)
-- ?⑥쐞 ?뚯뒪??
-**?꾪뿕**: ?묒쓬~以? ?꾨찓??紐⑤뱢 遺꾪븷 + 4異??꾩엯. 16怨??먮룞 ?≪닔媛 ?명꽣?섏씠??硫댁쟻 蹂댁〈.
+- `Relationship` 본체 재작성: 4축 + bond_kind + bond_status + partnership + type + type_history (B-D4: `power` 폐기)
+- `RelationshipBuilder` 4축 API
+- `Relationship::neutral()` 시그니처 보존 (16곳 자동 흡수)
+- 단위 테스트
 
-?몃? ??ぉ 1.1~1.9:
+**위험**: 작음~중. 도메인 모듈 분할 + 4축 도입. 16곳 자동 흡수가 인터페이스 면적 보존.
 
-#### 1.1 ???붾젆?좊━ 援ъ“
+세부 항목 1.1~1.9:
 
-**寃곗젙**: (a) 紐⑤뱢 遺꾪븷 梨꾪깮.
+#### 1.1 — 디렉토리 구조
+
+**결정**: (a) 모듈 분할 채택.
 
 ```
 src/domain/relationship/
-  mod.rs                # Relationship aggregate (??relationship.rs 蹂몄껜 ?닿?) + RelationshipBuilder + neutral
+  mod.rs                # Relationship aggregate (현 relationship.rs 본체 이관) + RelationshipBuilder + neutral
   axis.rs               # AxisScore + WarinessScore + AxisKind + AxisDelta
   bond.rs               # BondKind + BondStatus + accepts_live_input()
   partnership.rs        # Partnership
 ```
 
-**鍮꾪룷??* (?섎룄??:
-- `RelationshipChangeCause` enum? `src/domain/event.rs`??*?꾩옱 ?꾩튂 ?좎?* (A3 寃利? variant ?섎?媛 *?대깽??遺꾨쪟*??媛源뚯?, Relationship aggregate ?대? X)
-- OCC ??4異?留ㅽ븨 (`base_delta` / `hexaco_modifier` / `update_axes_from_emotion`)? **Stage 2 ??`src/domain/relationship/mapping.rs` ?좎꽕** ?꾩튂 ?덉빟
+**비포함** (의도적):
+- `RelationshipChangeCause` enum은 `src/domain/event.rs`에 *현재 위치 유지* (A3 검증: variant 의미가 *이벤트 분류*에 가까움, Relationship aggregate 내부 X)
+- OCC → 4축 매핑 (`base_delta` / `hexaco_modifier` / `update_axes_from_emotion`)은 **Stage 2 — `src/domain/relationship/mapping.rs` 신설** 위치 예약
 
-**?닿? ?⑦꽩**:
-- 湲곗〈 `src/domain/relationship.rs` (~700以? ???붾젆?좊━濡?遺꾪븷
-- 湲곗〈 ?ъ슜泥?import 寃쎈줈 `use crate::domain::relationship::Relationship;` 洹몃?濡??좎? (mod.rs媛 re-export)
-- `pub use axis::{AxisScore, WarinessScore, AxisKind, AxisDelta};` ??mod.rs?먯꽌 re-export
+**이관 패턴**:
+- 기존 `src/domain/relationship.rs` (~700줄) → 디렉토리로 분할
+- 기존 사용처 import 경로 `use crate::domain::relationship::Relationship;` 그대로 유지 (mod.rs가 re-export)
+- `pub use axis::{AxisScore, WarinessScore, AxisKind, AxisDelta};` 등 mod.rs에서 re-export
 
-**?묒뾽 ?쒖꽌**: 1.1 ?붾젆?좊━ ?앹꽦 ??1.2~1.5 ??????뺤쓽 ??1.6 蹂몄껜 ?닿?/?ъ옉????1.7~1.8 ??1.9 ?뚯뒪??
-**寃뚯씠??*: `cargo check` ?듦낵 (?붾젆?좊━ 遺꾪븷 ??而댄뙆???덉쟾).
+**작업 순서**: 1.1 디렉토리 생성 → 1.2~1.5 새 타입 정의 → 1.6 본체 이관/재작성 → 1.7~1.8 → 1.9 테스트
+
+**게이트**: `cargo check` 통과 (디렉토리 분할 후 컴파일 안전).
 
 ---
 
-#### 1.2 ??`AxisScore` + `WarinessScore`
+#### 1.2 — `AxisScore` + `WarinessScore`
 
-**紐⑹쟻**: 4異??먯닔??*遺덈???媛뺤젣* (踰붿쐞 + wariness ?뚯닔 而댄뙆???쒖젏 李⑤떒) + 4異??곗닠 ?곗궛 ?명봽??
+**목적**: 4축 점수의 *불변식 강제* (범위 + wariness 음수 컴파일 시점 차단) + 4축 산술 연산 인프라.
 
-**?꾩튂**: `src/domain/relationship/axis.rs` (?좉퇋)
+**위치**: `src/domain/relationship/axis.rs` (신규)
 
-**?쒓렇?덉쿂**:
+**시그니처**:
 
 ```rust
-//! 愿怨?4異??먯닔 ??낃낵 ?곗닠 ?곗궛.
-//! - AxisScore: trust/affinity/respect 짹100
-//! - WarinessScore: wariness 0..=100 (?뚯닔 ?섎? ?놁쓬, 蹂???낆쑝濡?而댄뙆???쒖젏 李⑤떒)
+//! 관계 4축 점수 타입과 산술 연산.
+//! - AxisScore: trust/affinity/respect ±100
+//! - WarinessScore: wariness 0..=100 (음수 의미 없음, 별 타입으로 컴파일 시점 차단)
 
 use serde::{Deserialize, Serialize};
 
-/// ?뚯뼇 媛??異뺤쓽 ?먯닔 (trust / affinity / respect).
+/// 음양 가능 축의 점수 (trust / affinity / respect).
 ///
-/// 踰붿쐞: -100.0 ~ +100.0
-/// ?대?: f32 (B-D2 ??base_delta 횞 intensity 횞 HEXACO 怨깆뀍 ?뺣????좎?)
-/// JSON: ?뺤닔 round 異쒕젰 (?붿옄?대꼫 移쒗솕)
+/// 범위: -100.0 ~ +100.0
+/// 내부: f32 (B-D2 — base_delta × intensity × HEXACO 곱셈 정밀도 유지)
+/// JSON: 정수 round 출력 (디자이너 친화)
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct AxisScore(f32);
 
@@ -497,14 +513,14 @@ impl AxisScore {
     pub const MAX: f32 = 100.0;
     pub const NEUTRAL: AxisScore = AxisScore(0.0);
 
-    /// ?낅젰??짹100?쇰줈 clamp.
+    /// 입력을 ±100으로 clamp.
     pub fn new(value: f32) -> Self {
         Self(value.clamp(Self::MIN, Self::MAX))
     }
 
     pub fn value(&self) -> f32 { self.0 }
 
-    /// delta瑜??뷀븯怨?clamp????媛?
+    /// delta를 더하고 clamp한 새 값.
     pub fn add(self, delta: f32) -> Self {
         Self::new(self.0 + delta)
     }
@@ -514,11 +530,11 @@ impl Default for AxisScore {
     fn default() -> Self { Self::NEUTRAL }
 }
 
-/// 寃쎄퀎??異??먯닔 (wariness ?꾩슜).
+/// 경계심 축 점수 (wariness 전용).
 ///
-/// 踰붿쐞: 0.0 ~ +100.0
-/// 蹂???낆씠誘濡?*而댄뙆???쒖젏*??AxisScore? ?쇰룞 李⑤떒.
-/// `WarinessScore::new(-50.0)` ?몄텧? runtime??0.0?쇰줈 clamp.
+/// 범위: 0.0 ~ +100.0
+/// 별 타입이므로 *컴파일 시점*에 AxisScore와 혼동 차단.
+/// `WarinessScore::new(-50.0)` 호출은 runtime에 0.0으로 clamp.
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct WarinessScore(f32);
 
@@ -542,8 +558,8 @@ impl Default for WarinessScore {
     fn default() -> Self { Self::NEUTRAL }
 }
 
-/// 4異뺤씠 *?숈떆?? 諛쏅뒗 蹂??
-/// base_delta ??+ HEXACO 怨깆뀍 寃곌낵 (Stage 2 ?뺤쓽/?ъ슜).
+/// 4축이 *동시에* 받는 변동.
+/// base_delta 표 + HEXACO 곱셈 결과 (Stage 2 정의/사용).
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct AxisDelta {
     pub trust:    f32,
@@ -553,7 +569,7 @@ pub struct AxisDelta {
 }
 
 impl AxisDelta {
-    /// ?ㅼ뭡??怨?(intensity 횞 HEXACO modifier ??.
+    /// 스칼라 곱 (intensity × HEXACO modifier 등).
     pub fn scaled_by(self, factor: f32) -> Self {
         Self {
             trust:    self.trust    * factor,
@@ -564,8 +580,8 @@ impl AxisDelta {
     }
 }
 
-/// ??AxisDelta ?깅텇蹂??⑹궛 (Stage 2 ??蹂듯빀 媛먯젙??base_delta ?⑹궛???ъ슜).
-/// ?? `Anger.base_delta() + Hate.base_delta() + Reproach.base_delta()`
+/// 두 AxisDelta 성분별 합산 (Stage 2 — 복합 감정의 base_delta 합산에 사용).
+/// 예: `Anger.base_delta() + Hate.base_delta() + Reproach.base_delta()`
 impl std::ops::Add for AxisDelta {
     type Output = AxisDelta;
     fn add(self, other: AxisDelta) -> AxisDelta {
@@ -578,37 +594,37 @@ impl std::ops::Add for AxisDelta {
     }
 }
 
-/// 異??앸퀎??(base_delta ??lookup???ъ슜, Stage 2).
+/// 축 식별자 (base_delta 표 lookup에 사용, Stage 2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AxisKind {
     Trust, Affinity, Respect, Wariness,
 }
 ```
 
-**?ㅺ퀎 ?섎룄 5媛?*:
+**설계 의도 5개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 2 ???遺꾨━ (`AxisScore` / `WarinessScore`) | *而댄뙆???쒖젏*??wariness ?뚯닔 李⑤떒. `let w: WarinessScore = AxisScore::new(50.0);` ??而댄뙆???먮윭 (B-D1) |
-| ??| `NEUTRAL` const + `impl Default` 紐낆떆 | `Relationship::neutral()`??湲곕낯媛? derive Default??*?곗뿰?? 0.0怨??쇱튂?섏?留?*紐낆떆 impl*濡??섎룄 諛뺤쓬. 1.8 ?먮룞 ?≪닔 ?꾩? |
-| ??| `add(self, delta: f32)` 硫붿꽌?쒕줈留?蹂??| ?몃??먯꽌 `score.value() + 50.0` 媛숈씠 raw f32 ?곗닠?섎㈃ clamp ??????`add()` 媛뺤젣濡?*?먮룞 clamp* |
-| ??| `AxisDelta` 蹂????+ `Add` trait | 4異뺤씠 *?쒓볼踰덉뿉 諛쏅뒗 蹂??. Stage 2??蹂듯빀 媛먯젙 ?⑹궛 (`Anger + Hate + Reproach`)???ъ슜. `scaled_by()`濡?intensity/HEXACO 怨?|
-| ??| `AxisKind` enum | Stage 2 `base_delta` ??lookup 諛?`update_axes_from_emotion`??異뺣퀎 遺꾧린???ъ슜. `Eq + Hash` 諛뺥? HashMap ?ㅻ줈 ?ъ슜 媛??|
+| ① | 2 타입 분리 (`AxisScore` / `WarinessScore`) | *컴파일 시점*에 wariness 음수 차단. `let w: WarinessScore = AxisScore::new(50.0);` → 컴파일 에러 (B-D1) |
+| ② | `NEUTRAL` const + `impl Default` 명시 | `Relationship::neutral()`의 기본값. derive Default는 *우연히* 0.0과 일치하지만 *명시 impl*로 의도 박음. 1.8 자동 흡수 도움 |
+| ③ | `add(self, delta: f32)` 메서드로만 변동 | 외부에서 `score.value() + 50.0` 같이 raw f32 산술하면 clamp 안 됨 — `add()` 강제로 *자동 clamp* |
+| ④ | `AxisDelta` 별 타입 + `Add` trait | 4축이 *한꺼번에 받는 변동*. Stage 2의 복합 감정 합산 (`Anger + Hate + Reproach`)에 사용. `scaled_by()`로 intensity/HEXACO 곱 |
+| ⑤ | `AxisKind` enum | Stage 2 `base_delta` 표 lookup 및 `update_axes_from_emotion`의 축별 분기에 사용. `Eq + Hash` 박혀 HashMap 키로 사용 가능 |
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
-[clamp 踰붿쐞]
-- AxisScore::new(150.0).value()       == 100.0  (??cap)
-- AxisScore::new(-200.0).value()      == -100.0 (??cap)
-- AxisScore::new(50.0).value()        == 50.0   (?뺤긽)
-- WarinessScore::new(-50.0).value()   == 0.0    ???듭떖 (?뚯닔 floor)
+[clamp 범위]
+- AxisScore::new(150.0).value()       == 100.0  (양 cap)
+- AxisScore::new(-200.0).value()      == -100.0 (음 cap)
+- AxisScore::new(50.0).value()        == 50.0   (정상)
+- WarinessScore::new(-50.0).value()   == 0.0    ★ 핵심 (음수 floor)
 - WarinessScore::new(150.0).value()   == 100.0
 - WarinessScore::new(50.0).value()    == 50.0
 
-[add() ?먮룞 clamp]
-- AxisScore::new(50.0).add(60.0).value()       == 100.0  (??cap)
-- AxisScore::new(-50.0).add(-60.0).value()     == -100.0 (??cap)
+[add() 자동 clamp]
+- AxisScore::new(50.0).add(60.0).value()       == 100.0  (양 cap)
+- AxisScore::new(-50.0).add(-60.0).value()     == -100.0 (음 cap)
 - WarinessScore::new(80.0).add(50.0).value()   == 100.0
 - WarinessScore::new(30.0).add(-50.0).value()  == 0.0
 
@@ -623,73 +639,76 @@ pub enum AxisKind {
     .scaled_by(0.5)
   == AxisDelta { trust: 10.0, affinity: 5.0, respect: 0.0, wariness: -5.0 }
 
-[AxisDelta Add ??Stage 2 蹂듯빀 媛먯젙 ?⑹궛 ?⑦꽩]
-- Anger??base_delta + Hate??base_delta = (trust -35, affinity -35, respect -5, wariness +40)
-  (Stage 2??base_delta ?쒓? 諛뺥????뺥솗??耳?댁뒪 ??1.2???곗닠 ?숈옉留?寃利?
+[AxisDelta Add — Stage 2 복합 감정 합산 패턴]
+- Anger의 base_delta + Hate의 base_delta = (trust -35, affinity -35, respect -5, wariness +40)
+  (Stage 2의 base_delta 표가 박혀야 정확한 케이스 — 1.2는 산술 동작만 검증)
 - AxisDelta { trust: 10.0, ... } + AxisDelta { trust: 5.0, ... }
-  ??trust == 15.0
+  의 trust == 15.0
 
 [serde round-trip]
-- AxisScore::new(75.0) ??serde_json::to_string ??"75.0" ??from_str ??AxisScore::new(75.0)
-- WarinessScore::new(50.0) ?숈씪
+- AxisScore::new(75.0) → serde_json::to_string → "75.0" → from_str → AxisScore::new(75.0)
+- WarinessScore::new(50.0) 동일
 ```
 
-**而댄뙆??李⑤떒 寃利?* (Rust 而댄뙆?쇰윭 ?먮룞, 紐낆떆 unit test ?놁쓬):
+**컴파일 차단 검증** (Rust 컴파일러 자동, 명시 unit test 없음):
 ```rust
-// ??肄붾뱶??而댄뙆???먮윭:
+// 이 코드는 컴파일 에러:
 // let w: WarinessScore = AxisScore::new(50.0);
-// ??expected struct `WarinessScore`, found struct `AxisScore`
+// → expected struct `WarinessScore`, found struct `AxisScore`
 ```
 
-**鍮꾪룷??*:
-- `Add<f32>` for AxisScore (raw delta ?뷀븯湲? ??`add()` 硫붿꽌?쒕줈 異⑸텇, trait 以묐났
-- `Add<AxisScore>` for AxisScore ??*AxisScore + AxisScore* ?쒕㎤???놁쓬 (?섏떖 1 寃곕줎)
-- `Hash` for AxisScore/WarinessScore ??f32 NaN ?뚮Ц 遺덇?
+**비포함**:
+- `Add<f32>` for AxisScore (raw delta 더하기) — `add()` 메서드로 충분, trait 중복
+- `Add<AxisScore>` for AxisScore — *AxisScore + AxisScore* 시맨틱 없음 (의심 1 결론)
+- `Hash` for AxisScore/WarinessScore — f32 NaN 때문 불가
 
-#### 1.3 ??`BondKind`
+#### 1.3 — `BondKind`
 
-**紐⑹쟻**: 愿怨꾩쓽 *?뺤꽌쨌湲곕뒫??遺꾨쪟* 11醫? axes 蹂?????꾧퀎 ?꾨떖/?댄깉濡?*Channel 2 Temporal (Phase 3a)*?먯꽌 ?먮룞 吏꾩엯/?댄깉. Phase 2??*enum ?뺤쓽 + ?곸뿭 ?ы띁*留?
+**목적**: 관계의 *정서·기능적 분류* 11종. axes 변화 → 임계 도달/이탈로 *Channel 2 Temporal (Phase 3a)*에서 자동 진입/이탈. Phase 2는 *enum 정의 + 영역 헬퍼*만.
 
-**?꾩튂**: `src/domain/relationship/bond.rs` (?좉퇋, BondStatus? 媛숈? ?뚯씪)
+**위치**: `src/domain/relationship/bond.rs` (신규, BondStatus와 같은 파일)
 
-**?쒓렇?덉쿂**:
+**시그니처**:
 
 ```rust
-//! BondKind / BondStatus ??愿怨꾩쓽 ?뺤꽌쨌湲곕뒫 遺꾨쪟 + ?쒕룞 ?곹깭.
-//! relationships.md v0.7 짠3.1 (BondKind 11) + 짠3.5 (BondStatus 5)
+//! BondKind / BondStatus — 관계의 정서·기능 분류 + 활동 상태.
+//! relationships.md v0.7 §3.1 (BondKind 11) + §3.5 (BondStatus 5)
 
 use serde::{Deserialize, Serialize};
 
-/// 愿怨꾩쓽 ?뺤꽌쨌湲곕뒫??遺꾨쪟 (relationships.md v0.7 짠3.1).
+/// 관계의 정서·기능적 분류 (relationships.md v0.7 §3.1).
 ///
-/// 11 variants 4 ?곸뿭:
-/// - 吏湲걔룸룞諛?(?묎레 ?꾧퀎): 6醫???SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer, Companion, Guardian
-/// - 硫섑넗 (以묎컙洹??꾧퀎): 1醫???Mentor
-/// - ?먯닔 (?뚭레 ?꾧퀎): 4醫???BloodEnemy, ArchRival, Betrayer, Oppressor
+/// 11 variants 4 영역:
+/// - 지기·동반 (양극 임계): 6종 — SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer, Companion, Guardian
+/// - 멘토 (중간극 임계): 1종 — Mentor
+/// - 원수 (음극 임계): 4종 — BloodEnemy, ArchRival, Betrayer, Oppressor
 ///
-/// Phase 2??*enum ?뺤쓽 + ?곸뿭 ?ы띁*源뚯?.
-/// ?먮룞 吏꾩엯/?댄깉 (?쒓컙 寃뚯씠??+ ?꾧퀎媛?? Phase 3a (Channel 2 Temporal).
+/// Phase 2는 *enum 정의 + 영역 헬퍼*까지.
+/// 자동 진입/이탈 (시간 게이트 + 임계값)은 Phase 3a (Channel 2 Temporal).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BondKind {
-    // 吏湲걔룸룞諛????묎레 ?꾧퀎 (6醫?
-    SwornBrothers,    // ?섑삎?쑣룸룞吏??    MasterDisciple,   // ?щ?-?쒖옄??(臾댁닠 鍮꾩쟾 ?꾩닔)
-    Soulmate,         // ?곹샎???숇컲?먰삎
-    LoyalRetainer,    // 媛?졖룹??명삎
-    Companion,        // ?됱깮???곗씤 (v0.6 ?좎꽕)
-    Guardian,         // 遺紐??먮???(v0.6 ?좎꽕)
+    // 지기·동반 — 양극 임계 (6종)
+    SwornBrothers,    // 의형제·동지형
+    MasterDisciple,   // 사부-제자형 (무술 비전 전수)
+    Soulmate,         // 영혼의 동반자형
+    LoyalRetainer,    // 가신·은인형
+    Companion,        // 평생의 우인 (v0.6 신설)
+    Guardian,         // 부모-자녀형 (v0.6 신설)
 
-    // 硫섑넗 ??以묎컙洹??꾧퀎
-    Mentor,           // ?몄깮 ?좊같쨌?꾨같
+    // 멘토 — 중간극 임계
+    Mentor,           // 인생 선배·후배
 
-    // ?먯닔 ???뚭레 ?꾧퀎 (4醫?
-    BloodEnemy,       // ?덉쟻
-    ArchRival,        // ?숈쟻
-    Betrayer,         // 諛곗떊??    Oppressor,        // ?뺤젣??}
+    // 원수 — 음극 임계 (4종)
+    BloodEnemy,       // 혈적
+    ArchRival,        // 숙적
+    Betrayer,         // 배신자
+    Oppressor,        // 압제자
+}
 
 impl BondKind {
-    /// 吏湲?4醫?(SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer).
-    /// 以묎뎅??*吏湲??ε런)* ??源딆? ?뺤떊???숈?/吏??
+    /// 지기 4종 (SwornBrothers, MasterDisciple, Soulmate, LoyalRetainer).
+    /// 중국어 *지기(知己)* — 깊은 정신적 동지/지음.
     pub fn is_zhiji(&self) -> bool {
         matches!(self,
             Self::SwornBrothers | Self::MasterDisciple
@@ -697,22 +716,22 @@ impl BondKind {
         )
     }
 
-    /// ?됱깮???곗씤 (Companion).
+    /// 평생의 우인 (Companion).
     pub fn is_companion_class(&self) -> bool {
         matches!(self, Self::Companion)
     }
 
-    /// 遺紐??먮???(Guardian).
+    /// 부모-자녀형 (Guardian).
     pub fn is_guardian(&self) -> bool {
         matches!(self, Self::Guardian)
     }
 
-    /// ?몄깮 ?좊같쨌?꾨같 (Mentor).
+    /// 인생 선배·후배 (Mentor).
     pub fn is_mentor(&self) -> bool {
         matches!(self, Self::Mentor)
     }
 
-    /// ?먯닔 4醫?(BloodEnemy, ArchRival, Betrayer, Oppressor).
+    /// 원수 4종 (BloodEnemy, ArchRival, Betrayer, Oppressor).
     pub fn is_enemy(&self) -> bool {
         matches!(self,
             Self::BloodEnemy | Self::ArchRival
@@ -722,21 +741,21 @@ impl BondKind {
 }
 ```
 
-**?ㅺ퀎 ?섎룄 4媛?*:
+**설계 의도 4개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 11 variants 洹몃?濡?(v0.7 짠3.1 紐낆떆) | ?붿옄?대꼫 移쒖닕 ??臾댄삊 ?먯쟾??*愿怨?移댄깉濡쒓렇*. 異붽? ?좎꽕? Phase 3+?먯꽌. |
-| ??| ?곸뿭 ?ы띁 5媛?(v0.7 짠3.1 洹몃?濡? | B-D10 留덉씠洹몃젅?댁뀡 baseline 猷곗뿉??*?곸뿭蹂?遺꾧린* ???ъ슜. `is_zhiji`??*吏湲??ε런)* 臾댄삊 ?꾨찓???⑹뼱 蹂댁〈 (npc-mind-rs ?뺤껜??. |
-| ??| `is_positive_pole`/`is_negative_pole` *鍮꾪룷?? | YAGNI ??Phase 2?먯꽌 ?ъ슜 鍮덈룄 ??쓬. Phase 3a Channel 2 Temporal 吏꾩엯 ???꾩슂?댁?硫?異붽?. |
-| ??| `#[serde(rename_all = "snake_case")]` | JSON 吏곷젹?? `"sworn_brothers"`, `"blood_enemy"` ?? ?붿옄?대꼫 ?쒕굹由ъ삤 JSON 移쒗솕. |
+| ① | 11 variants 그대로 (v0.7 §3.1 명시) | 디자이너 친숙 — 무협 원전의 *관계 카탈로그*. 추가 신설은 Phase 3+에서. |
+| ② | 영역 헬퍼 5개 (v0.7 §3.1 그대로) | B-D10 마이그레이션 baseline 룰에서 *영역별 분기* 시 사용. `is_zhiji`는 *지기(知己)* 무협 도메인 용어 보존 (npc-mind-rs 정체성). |
+| ③ | `is_positive_pole`/`is_negative_pole` *비포함* | YAGNI — Phase 2에서 사용 빈도 낮음. Phase 3a Channel 2 Temporal 진입 시 필요해지면 추가. |
+| ④ | `#[serde(rename_all = "snake_case")]` | JSON 직렬화: `"sworn_brothers"`, `"blood_enemy"` 등. 디자이너 시나리오 JSON 친화. |
 
-**`Display` impl 鍮꾪룷??*: ?꾨찓??enum? *?쒖닔*. presentation layer (`presentation/locale.rs`)媛 ko/en ?쇰꺼 諛뺤쓬 ???꾩옱 `PowerLevel` ?⑦꽩 ?좎?. 援?젣??誘몃옒 蹂댁〈. Stage 4 ?먮뒗 6?먯꽌 諛뺤쓬.
+**`Display` impl 비포함**: 도메인 enum은 *순수*. presentation layer (`presentation/locale.rs`)가 ko/en 라벨 박음 — 현재 `PowerLevel` 패턴 유지. 국제화 미래 보존. Stage 4 또는 6에서 박음.
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
-[?곸뿭 ?ы띁 ??遺꾨쪟 ?뺥빀]
+[영역 헬퍼 — 분류 정합]
 - BondKind::SwornBrothers.is_zhiji()      == true
 - BondKind::MasterDisciple.is_zhiji()     == true
 - BondKind::Soulmate.is_zhiji()           == true
@@ -750,53 +769,53 @@ impl BondKind {
 - BondKind::Companion.is_companion_class() == true
 - BondKind::Guardian.is_guardian()         == true
 - BondKind::Mentor.is_mentor()             == true
-- BondKind::SwornBrothers.is_companion_class() == false  (吏湲곗? ?됱깮???곗씤 援щ퀎)
+- BondKind::SwornBrothers.is_companion_class() == false  (지기와 평생의 우인 구별)
 
-[?먯닔]
+[원수]
 - BondKind::BloodEnemy.is_enemy()  == true
 - BondKind::ArchRival.is_enemy()   == true
 - BondKind::Betrayer.is_enemy()    == true
 - BondKind::Oppressor.is_enemy()   == true
 - BondKind::Mentor.is_enemy()      == false
 
-[?곸뿭 ?곹샇 諛고???寃利???11 variants 紐⑤몢 ?뺥솗??1媛??곸뿭???랁븿]
-- 11 variants 媛곴컖: is_zhiji + is_companion_class + is_guardian + is_mentor + is_enemy ???⑹씠 ?뺥솗??1
+[영역 상호 배타성 검증 — 11 variants 모두 정확히 1개 영역에 속함]
+- 11 variants 각각: is_zhiji + is_companion_class + is_guardian + is_mentor + is_enemy 의 합이 정확히 1
 
 [serde round-trip]
-- BondKind::SwornBrothers ??"sworn_brothers" ??SwornBrothers
-- BondKind::BloodEnemy   ??"blood_enemy"    ??BloodEnemy
-- BondKind::MasterDisciple ??"master_disciple" ??MasterDisciple
-- BondKind::LoyalRetainer  ??"loyal_retainer"  ??LoyalRetainer
+- BondKind::SwornBrothers → "sworn_brothers" → SwornBrothers
+- BondKind::BloodEnemy   → "blood_enemy"    → BloodEnemy
+- BondKind::MasterDisciple → "master_disciple" → MasterDisciple
+- BondKind::LoyalRetainer  → "loyal_retainer"  → LoyalRetainer
 ```
 
-**鍮꾪룷??*:
-- `Display` impl ??presentation layer (Stage 4 ?먮뒗 6)
-- `is_positive_pole` / `is_negative_pole` ??Phase 3a?먯꽌 ?꾩슂 ??異붽?
-- ?쒓컙 寃뚯씠??/ ?꾧퀎媛???Phase 3a Channel 2 Temporal
-- BondKind 吏꾩엯 議곌굔 ?⑥닔 ??Phase 3a
+**비포함**:
+- `Display` impl — presentation layer (Stage 4 또는 6)
+- `is_positive_pole` / `is_negative_pole` — Phase 3a에서 필요 시 추가
+- 시간 게이트 / 임계값 — Phase 3a Channel 2 Temporal
+- BondKind 진입 조건 함수 — Phase 3a
 
-#### 1.4 ??`BondStatus` + `accepts_live_input()`
+#### 1.4 — `BondStatus` + `accepts_live_input()`
 
-**紐⑹쟻**: 愿怨꾩쓽 *?쒕룞 ?곹깭*. base_delta 李⑤떒??*?듭떖 寃뚯씠?? ??Stage 2 `update_axes_from_emotion`?????ы띁濡?*?낅젰 嫄곕?* 寃곗젙.
+**목적**: 관계의 *활동 상태*. base_delta 차단의 *핵심 게이트* — Stage 2 `update_axes_from_emotion`이 이 헬퍼로 *입력 거부* 결정.
 
-**?꾩튂**: `src/domain/relationship/bond.rs` (1.3怨?媛숈? ?뚯씪)
+**위치**: `src/domain/relationship/bond.rs` (1.3과 같은 파일)
 
-**?쒓렇?덉쿂**:
+**시그니처**:
 
 ```rust
 use crate::domain::event::EventId;
 use serde::{Deserialize, Serialize};
 
-/// 愿怨꾩쓽 ?쒕룞 ?곹깭 (relationships.md v0.7 짠3.5).
+/// 관계의 활동 상태 (relationships.md v0.7 §3.5).
 ///
-/// - Active: ?뺤긽 ?쒖꽦. axes ?먮룞 蹂??
-/// - Resolved { reason }: terminal ???뷀빐/留ㅻ벊 ?깆쑝濡?*?꾧껐*. axes freeze.
-/// - Deceased: terminal ??????щ쭩. axes freeze.
-/// - Dormant: ?대㈃ (?ㅻ옖 誘몄젒珥?. axes freeze. ?몃━嫄곕줈 Reactivating ?꾩씠 媛??
-/// - Reactivating { trigger }: 蹂듦? 以?(transient state). axes 諛쏄린 ?쒖옉 ??*?곗냽???뚮났*.
-///   Active???李⑥씠: 蹂듦? trigger 諛뺥옒 + Phase 3a ?쒓컙 寃뚯씠?????(Active ?먮룞 ?꾩씠).
+/// - Active: 정상 활성. axes 자동 변동.
+/// - Resolved { reason }: terminal — 화해/매듭 등으로 *완결*. axes freeze.
+/// - Deceased: terminal — 대상 사망. axes freeze.
+/// - Dormant: 휴면 (오랜 미접촉). axes freeze. 트리거로 Reactivating 전이 가능.
+/// - Reactivating { trigger }: 복귀 중 (transient state). axes 받기 시작 — *연속적 회복*.
+///   Active와의 차이: 복귀 trigger 박힘 + Phase 3a 시간 게이트 대상 (Active 자동 전이).
 ///
-/// ?꾩씠 猷곗? Phase 3a (Channel 2 Temporal). Phase 2??enum + `accepts_live_input()`源뚯?.
+/// 전이 룰은 Phase 3a (Channel 2 Temporal). Phase 2는 enum + `accepts_live_input()`까지.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BondStatus {
@@ -812,13 +831,13 @@ impl Default for BondStatus {
 }
 
 impl BondStatus {
-    /// 4異??먮룞 蹂?숈쓣 諛쏅뒗吏 (Stage 2 base_delta 李⑤떒???듭떖 ?ы띁).
-    /// v0.7 짠4.1:
+    /// 4축 자동 변동을 받는지 (Stage 2 base_delta 차단의 핵심 헬퍼).
+    /// v0.7 §4.1:
     ///   `if !rel.bond_status.accepts_live_input() { return; }`
     ///
-    /// - Active: true (?뺤긽 ?쒖꽦)
-    /// - Reactivating: true ??(蹂듦? ?쒖옉 = axes ?ㅼ떆 諛쏄린. Reactivating state??議댁옱 ?섎?)
-    /// - Dormant: false (?대㈃)
+    /// - Active: true (정상 활성)
+    /// - Reactivating: true ★ (복귀 시작 = axes 다시 받기. Reactivating state의 존재 의미)
+    /// - Dormant: false (휴면)
     /// - Resolved: false (terminal freeze)
     /// - Deceased: false (terminal freeze)
     pub fn accepts_live_input(&self) -> bool {
@@ -827,82 +846,83 @@ impl BondStatus {
 }
 ```
 
-**?ㅺ퀎 ?섎룄 5媛?*:
+**설계 의도 5개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 5 variants 洹몃?濡?(v0.7 짠3.5 紐낆떆) | 2 variants??payload ?ы븿: `Resolved { reason }` / `Reactivating { trigger }`. terminal/transient state ?쒗쁽. |
-| ??| `#[serde(tag = "kind", rename_all = "snake_case")]` | RelationshipChangeCause ?⑦꽩 (event.rs:137) ??JSON: `{ "kind": "resolved", "reason": "..." }`. payload variants ?먯뿰 吏곷젹?? |
-| ??| `Default = Active` 紐낆떆 | 留덉씠洹몃젅?댁뀡 ??湲곗〈 ?쒕굹由ъ삤 ?섏뼱媛 紐⑤몢 default Active濡?諛뺥옒. Relationship Aggregate Default ?먮룞 ?≪닔. |
-| ??| **`Reactivating.accepts_live_input() == true`** ??| ?곗냽???뚮났 ?쒕㎤?????ы쉶 泥??쒓컙遺???뺤꽌媛 ?ㅼ떆 ?吏곸엫. Reactivating??*議댁옱 ?섎?*瑜??대┝ (false??ㅻ㈃ Dormant? ?숈씪 ?숈옉 ??state 遺꾨━ ?댁쑀 ?щ씪吏?. |
-| ??| `Copy` 鍮꾪룷??| variants??`String`/`EventId` ?ы븿 ??Copy 遺덇?. `Clone`留? |
+| ① | 5 variants 그대로 (v0.7 §3.5 명시) | 2 variants는 payload 포함: `Resolved { reason }` / `Reactivating { trigger }`. terminal/transient state 표현. |
+| ② | `#[serde(tag = "kind", rename_all = "snake_case")]` | RelationshipChangeCause 패턴 (event.rs:137) — JSON: `{ "kind": "resolved", "reason": "..." }`. payload variants 자연 직렬화. |
+| ③ | `Default = Active` 명시 | 마이그레이션 시 기존 시나리오 페어가 모두 default Active로 박힘. Relationship Aggregate Default 자동 흡수. |
+| ④ | **`Reactivating.accepts_live_input() == true`** ★ | 연속적 회복 시맨틱 — 재회 첫 순간부터 정서가 다시 움직임. Reactivating의 *존재 의미*를 살림 (false였다면 Dormant와 동일 동작 — state 분리 이유 사라짐). |
+| ⑤ | `Copy` 비포함 | variants에 `String`/`EventId` 포함 — Copy 불가. `Clone`만. |
 
-**`accepts_live_input` 寃곗젙 留ㅽ듃由?뒪**:
+**`accepts_live_input` 결정 매트릭스**:
 
-| ?곹깭 | ?섎? | `accepts_live_input` |
+| 상태 | 의미 | `accepts_live_input` |
 |---|---|---|
-| Active | ?뺤긽 ?쒖꽦 | **true** |
-| Reactivating { trigger } | 蹂듦? ?쒖옉 (transient) | **true** ??|
-| Dormant | ?대㈃ (誘몄젒珥? | false |
-| Resolved { reason } | ?꾧껐 (?뷀빐/留ㅻ벊) | false (terminal) |
-| Deceased | ????щ쭩 | false (terminal) |
+| Active | 정상 활성 | **true** |
+| Reactivating { trigger } | 복귀 시작 (transient) | **true** ★ |
+| Dormant | 휴면 (미접촉) | false |
+| Resolved { reason } | 완결 (화해/매듭) | false (terminal) |
+| Deceased | 대상 사망 | false (terminal) |
 
-**異붽? ?ы띁 鍮꾪룷??* (YAGNI):
-- `is_terminal()` (Resolved + Deceased) ??Phase 3a Channel 2 Temporal?먯꽌 ?꾩슂?댁?硫?異붽?
-- `is_dormant()` ??`matches!` 濡?異⑸텇
-- ?꾩씠 ?⑥닔 (`reactivate(trigger)` ?? ??Phase 3a (?쒓컙 寃뚯씠??+ ?몃━嫄?猷?
+**추가 헬퍼 비포함** (YAGNI):
+- `is_terminal()` (Resolved + Deceased) — Phase 3a Channel 2 Temporal에서 필요해지면 추가
+- `is_dormant()` — `matches!` 로 충분
+- 전이 함수 (`reactivate(trigger)` 등) — Phase 3a (시간 게이트 + 트리거 룰)
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
-[accepts_live_input ???듭떖 寃뚯씠??
+[accepts_live_input — 핵심 게이트]
 - BondStatus::Active.accepts_live_input()                               == true
-- BondStatus::Reactivating { trigger: EventId(...) }.accepts_live_input() == true  ??- BondStatus::Dormant.accepts_live_input()                              == false
-- BondStatus::Resolved { reason: "?ы솕".into() }.accepts_live_input()    == false
+- BondStatus::Reactivating { trigger: EventId(...) }.accepts_live_input() == true  ★
+- BondStatus::Dormant.accepts_live_input()                              == false
+- BondStatus::Resolved { reason: "사화".into() }.accepts_live_input()    == false
 - BondStatus::Deceased.accepts_live_input()                             == false
 
 [Default]
 - BondStatus::default() == BondStatus::Active
 
 [serde round-trip]
-- Active ??{"kind": "active"} ??Active
-- Resolved { reason: "?ы솕" } ??{"kind": "resolved", "reason": "?ы솕"} ??Resolved { reason: "?ы솕" }
-- Deceased ??{"kind": "deceased"} ??Deceased
-- Dormant ??{"kind": "dormant"} ??Dormant
-- Reactivating { trigger: EventId("evt_001") } ??{"kind": "reactivating", "trigger": "evt_001"} ??Reactivating
+- Active → {"kind": "active"} → Active
+- Resolved { reason: "사화" } → {"kind": "resolved", "reason": "사화"} → Resolved { reason: "사화" }
+- Deceased → {"kind": "deceased"} → Deceased
+- Dormant → {"kind": "dormant"} → Dormant
+- Reactivating { trigger: EventId("evt_001") } → {"kind": "reactivating", "trigger": "evt_001"} → Reactivating
 ```
 
-**鍮꾪룷??*:
-- ?꾩씠 ?⑥닔 / ?몃━嫄?猷???Phase 3a Channel 2 Temporal
-- `Eq` / `Hash` ??String ?뚮Ц???좎쨷, Phase 2 ?ъ슜泥??놁쓬 (?꾩슂?댁?硫?異붽?)
-- `is_terminal` ??異붽? ?ы띁 ??YAGNI
+**비포함**:
+- 전이 함수 / 트리거 룰 — Phase 3a Channel 2 Temporal
+- `Eq` / `Hash` — String 때문에 신중, Phase 2 사용처 없음 (필요해지면 추가)
+- `is_terminal` 등 추가 헬퍼 — YAGNI
 
-#### 1.5 ??`Partnership`
+#### 1.5 — `Partnership`
 
-**紐⑹쟻**: 愿怨꾩쓽 *?뺤떇???숇컲 ?곹깭*. BondKind? *?꾩쟾 吏곴탳* ???뺣왂寃고샎 = trust 0 + Spouse 媛?? axes? 吏곸젒 ?곕룞 X. 蹂???숇젰? *怨듭떇 ?ш굔* (Phase 2.5 declarative_events `PartnershipChange` ?꾨낫).
+**목적**: 관계의 *형식적 동반 상태*. BondKind와 *완전 직교* — 정략결혼 = trust 0 + Spouse 가능. axes와 직접 연동 X. 변화 동력은 *공식 사건* (Phase 2.5 declarative_events `PartnershipChange` 후보).
 
-**?꾩튂**: `src/domain/relationship/partnership.rs` (?좉퇋)
+**위치**: `src/domain/relationship/partnership.rs` (신규)
 
-**?쒓렇?덉쿂**:
+**시그니처**:
 
 ```rust
-//! Partnership ??愿怨꾩쓽 ?뺤떇???숇컲 ?곹깭.
-//! relationships.md v0.7 짠3.6
+//! Partnership — 관계의 형식적 동반 상태.
+//! relationships.md v0.7 §3.6
 
 use serde::{Deserialize, Serialize};
 
-/// ?뺤떇???숇컲 ?곹깭 (relationships.md v0.7 짠3.6).
+/// 형식적 동반 상태 (relationships.md v0.7 §3.6).
 ///
-/// - Spouse: 諛곗슦??(?쇱씤 愿怨?
-/// - Engaged: ?쏀샎 (寃고샎 ?쎌냽)
-/// - Lover: ?곗씤 (鍮꾧났???뺤꽌??愿怨?
-/// - Separated: 蹂꾧굅 (Spouse/Engaged/Lover?먯꽌??寃곕퀎 ?곹깭)
+/// - Spouse: 배우자 (혼인 관계)
+/// - Engaged: 약혼 (결혼 약속)
+/// - Lover: 연인 (비공식 정서적 관계)
+/// - Separated: 별거 (Spouse/Engaged/Lover에서의 결별 상태)
 ///
-/// BondKind? *?꾩쟾 吏곴탳*. axes? *吏곸젒 ?곕룞 X*.
-/// ?뺣왂寃고샎 = trust 0 + Spouse 媛??
-/// 蹂???숇젰? *怨듭떇 ?ш굔* ??Phase 2.5 declarative_events `PartnershipChange`.
+/// BondKind와 *완전 직교*. axes와 *직접 연동 X*.
+/// 정략결혼 = trust 0 + Spouse 가능.
+/// 변화 동력은 *공식 사건* — Phase 2.5 declarative_events `PartnershipChange`.
 ///
-/// `Relationship.partnership: Option<Partnership>` ?⑦꽩?쇰줈 ?ъ슜 (None = ?뺤떇 愿怨??놁쓬).
+/// `Relationship.partnership: Option<Partnership>` 패턴으로 사용 (None = 형식 관계 없음).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Partnership {
@@ -913,52 +933,54 @@ pub enum Partnership {
 }
 ```
 
-**?ㅺ퀎 ?섎룄 4媛?*:
+**설계 의도 4개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 4 variants payload ?놁쓬 | ?⑥닚 *?뺤떇 ?쇰꺼*. 寃고샎 ?ъ쑀, 蹂꾧굅 ?댁쑀 ?깆? *type ?먯쑀 ?띿뒪?? ?먮뒗 `RelationshipChangeCause`??諛뺥옒. |
-| ??| `Copy` 媛??| payload ?놁쑝誘濡?BondKind泥섎읆 Copy. |
-| ??| `Eq + Hash` | payload ?놁쑝誘濡??먯뿰. HashMap ?ㅻ줈 ?ъ슜 媛?? |
-| ??| `Default` impl *?놁쓬* | `Option<Partnership>`?쇰줈 泥섎━ (`Relationship.partnership: Option<Partnership>`, None = ?뺤떇 愿怨??놁쓬). Default媛 *?대뒓 variant*?몄? ?섎? 紐⑦샇?섎?濡?紐낆떆??Option???먯뿰. |
+| ① | 4 variants payload 없음 | 단순 *형식 라벨*. 결혼 사유, 별거 이유 등은 *type 자유 텍스트* 또는 `RelationshipChangeCause`에 박힘. |
+| ② | `Copy` 가능 | payload 없으므로 BondKind처럼 Copy. |
+| ③ | `Eq + Hash` | payload 없으므로 자연. HashMap 키로 사용 가능. |
+| ④ | `Default` impl *없음* | `Option<Partnership>`으로 처리 (`Relationship.partnership: Option<Partnership>`, None = 형식 관계 없음). Default가 *어느 variant*인지 의미 모호하므로 명시적 Option이 자연. |
 
-**`Display` impl 鍮꾪룷??*: BondKind? ?숈씪 ??presentation layer?먯꽌 ko/en ?쇰꺼.
+**`Display` impl 비포함**: BondKind와 동일 — presentation layer에서 ko/en 라벨.
 
-**異붽? ?ы띁 鍮꾪룷??* (YAGNI):
-- `is_committed()` (Spouse + Engaged + Lover) ??Phase 2.5 declarative_events 寃利????꾩슂?댁?硫?異붽?
-- `is_separated()` ??`matches!`濡?異⑸텇
+**추가 헬퍼 비포함** (YAGNI):
+- `is_committed()` (Spouse + Engaged + Lover) — Phase 2.5 declarative_events 검증 시 필요해지면 추가
+- `is_separated()` — `matches!`로 충분
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
-[variants ?뺥빀]
-- Partnership::Spouse, Engaged, Lover, Separated ??4醫?紐⑤몢 ?뺤쓽??
-[serde round-trip]
-- Spouse    ??"spouse"    ??Spouse
-- Engaged   ??"engaged"   ??Engaged
-- Lover     ??"lover"     ??Lover
-- Separated ??"separated" ??Separated
+[variants 정합]
+- Partnership::Spouse, Engaged, Lover, Separated — 4종 모두 정의됨
 
-[Copy + Eq + Hash ?숈옉]
+[serde round-trip]
+- Spouse    → "spouse"    → Spouse
+- Engaged   → "engaged"   → Engaged
+- Lover     → "lover"     → Lover
+- Separated → "separated" → Separated
+
+[Copy + Eq + Hash 동작]
 - let a = Partnership::Spouse; let b = a;     // Copy OK
 - a == b                                       // Eq OK
 - HashSet::from([Spouse, Engaged])             // Hash OK
 ```
 
-**鍮꾪룷??*:
-- ?꾩씠 ?⑥닔 (`Spouse ??Separated` ?? ??Phase 2.5 declarative_events `PartnershipChange`
-- `Display` impl ??presentation layer
-- `is_committed` ??異붽? ?ы띁 ??YAGNI
+**비포함**:
+- 전이 함수 (`Spouse → Separated` 등) — Phase 2.5 declarative_events `PartnershipChange`
+- `Display` impl — presentation layer
+- `is_committed` 등 추가 헬퍼 — YAGNI
 
-#### 1.6 ??`Relationship` 蹂몄껜 ?ъ옉??
-**紐⑹쟻**: 1.2~1.5?먯꽌 諛뺤? *紐⑤뱺 ??????듯빀. 4異?+ BondKind + BondStatus + Partnership + type. `power` ?쒓굅 (B-D4). 湲곗〈 ?명꽣?섏씠??(`neutral`, `modifiers`) 蹂댁〈?섏뿬 16怨??먮룞 ?≪닔.
+#### 1.6 — `Relationship` 본체 재작성
 
-**?꾩튂**: `src/domain/relationship/mod.rs` (?붾젆?좊━ 遺꾪븷 ??蹂몄껜)
+**목적**: 1.2~1.5에서 박은 *모든 타입*을 통합. 4축 + BondKind + BondStatus + Partnership + type. `power` 제거 (B-D4). 기존 인터페이스 (`neutral`, `modifiers`) 보존하여 16곳 자동 흡수.
 
-**?쒓렇?덉쿂**:
+**위치**: `src/domain/relationship/mod.rs` (디렉토리 분할 후 본체)
+
+**시그니처**:
 
 ```rust
-//! Relationship Aggregate ??4異?+ BondKind + BondStatus + Partnership + type ?듯빀.
+//! Relationship Aggregate — 4축 + BondKind + BondStatus + Partnership + type 통합.
 
 use crate::domain::event::{EventId, RelationshipChangeCause};
 use crate::domain::npc::NpcId;
@@ -972,46 +994,47 @@ mod axis;
 mod bond;
 mod partnership;
 
-/// 愿怨?蹂몄껜 (relationships.md v0.7).
+/// 관계 본체 (relationships.md v0.7).
 ///
-/// 4異?+ bond_kind + bond_status + partnership + type + type_history.
-/// `power` ?먭린 (B-D4) ???꾧퀎 ?뺣낫??`type_text` ?먯쑀 ?띿뒪?몃줈 ?≪닔.
+/// 4축 + bond_kind + bond_status + partnership + type + type_history.
+/// `power` 폐기 (B-D4) — 위계 정보는 `type_text` 자유 텍스트로 흡수.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Relationship {
     owner: NpcId,
     target: NpcId,
 
-    // 4異?(B-D1: 蹂????
+    // 4축 (B-D1: 별 타입)
     trust:    AxisScore,
     affinity: AxisScore,
     respect:  AxisScore,
     wariness: WarinessScore,
 
-    // 遺꾨쪟 + ?곹깭 (1.3~1.5)
-    bond_kind:   Option<BondKind>,            // None = 誘몃텇瑜?    #[serde(default)]
+    // 분류 + 상태 (1.3~1.5)
+    bond_kind:   Option<BondKind>,            // None = 미분류
+    #[serde(default)]
     bond_status: BondStatus,                   // default = Active
-    partnership: Option<Partnership>,          // None = ?뺤떇 愿怨??놁쓬
+    partnership: Option<Partnership>,          // None = 형식 관계 없음
 
-    // ?먯쑀 ?띿뒪??(B-D4: power ?≪닔)
+    // 자유 텍스트 (B-D4: power 흡수)
     #[serde(rename = "type")]
-    type_text:   String,                       // ?? "議곗젙 ?꾧퀎: 援먮몢?믫깭?? 遺??愿怨?
+    type_text:   String,                       // 예: "조정 위계: 교두→태위, 부하 관계"
     #[serde(default)]
     type_history: Vec<TypeChange>,
 }
 
-/// type 蹂寃??대젰 element (v0.7 짠2).
+/// type 변경 이력 element (v0.7 §2).
 ///
-/// ?쒓컙/?먯씤 異붿쟻? *RelationshipUpdated event log*?먯꽌 蹂꾨룄.
-/// type_history??*?쒖궗 ?먮쫫*??吏묒쨷 (?섏떖 1 寃곗젙: 3 ?꾨뱶 ?⑥닚 援ъ“).
+/// 시간/원인 추적은 *RelationshipUpdated event log*에서 별도.
+/// type_history는 *서사 흐름*에 집중 (의심 1 결정: 3 필드 단순 구조).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TypeChange {
     pub from_type: String,
     pub to_type:   String,
-    pub note:      String,    // 蹂寃?留λ씫 (?? "?섑삎??寃곗뿰 ?ш굔")
+    pub note:      String,    // 변경 맥락 (예: "의형제 결연 사건")
 }
 
 impl Relationship {
-    /// ??愿怨??앹꽦 (?쒕굹由ъ삤 JSON 吏꾩엯?먯뿉???몄텧).
+    /// 새 관계 생성 (시나리오 JSON 진입점에서 호출).
     pub fn new(
         owner: NpcId, target: NpcId,
         trust: AxisScore, affinity: AxisScore,
@@ -1028,8 +1051,8 @@ impl Relationship {
         }
     }
 
-    /// 以묐┰ 愿怨???紐⑤뱺 4異?0, 洹???default.
-    /// **?쒓렇?덉쿂 蹂댁〈** (1.8 ?먮룞 ?≪닔 16怨?.
+    /// 중립 관계 — 모든 4축 0, 그 외 default.
+    /// **시그니처 보존** (1.8 자동 흡수 16곳).
     pub fn neutral(owner: NpcId, target: NpcId) -> Self {
         Self::new(
             owner, target,
@@ -1038,7 +1061,7 @@ impl Relationship {
         )
     }
 
-    // ?? Getters ?????
+    // ── Getters ─────
     pub fn owner(&self)        -> &NpcId           { &self.owner }
     pub fn target(&self)       -> &NpcId           { &self.target }
     pub fn trust(&self)        -> AxisScore        { self.trust }
@@ -1051,9 +1074,9 @@ impl Relationship {
     pub fn type_text(&self)    -> &str             { &self.type_text }
     pub fn type_history(&self) -> &[TypeChange]    { &self.type_history }
 
-    /// 4異??쇨큵 蹂??(Stage 2 `update_axes_from_emotion`?먯꽌 ?몄텧).
-    /// BondStatus 李⑤떒? ?몄텧 痢?(Stage 2)?먯꽌 泥섎━.
-    /// 罹≪뒓??蹂댁〈 ??Relationship???먭린 ?곹깭 蹂寃?梨낆엫 (?섏떖 2 寃곗젙).
+    /// 4축 일괄 변동 (Stage 2 `update_axes_from_emotion`에서 호출).
+    /// BondStatus 차단은 호출 측 (Stage 2)에서 처리.
+    /// 캡슐화 보존 — Relationship이 자기 상태 변경 책임 (의심 2 결정).
     pub fn apply_delta(&mut self, delta: &AxisDelta) {
         self.trust    = self.trust.add(delta.trust);
         self.affinity = self.affinity.add(delta.affinity);
@@ -1061,11 +1084,11 @@ impl Relationship {
         self.wariness = self.wariness.add(delta.wariness);
     }
 
-    /// 媛먯젙 ?됯? 而⑦뀓?ㅽ듃 modifier (A2??5怨??ъ슜泥?.
-    /// ?섎? 蹂댁〈 + ?대쫫 蹂寃?(?섏떖 3 寃곗젙: closeness_* ??affinity_*).
-    /// Phase 2.3?먯꽌 ?뺣???(respect_modifier ?좎꽕 ??寃利?.
+    /// 감정 평가 컨텍스트 modifier (A2의 5곳 사용처).
+    /// 의미 보존 + 이름 변경 (의심 3 결정: closeness_* → affinity_*).
+    /// Phase 2.3에서 정밀화 (respect_modifier 신설 등 검증).
     pub fn modifiers(&self) -> RelationshipModifiers {
-        let a = self.affinity.value() / 100.0;   // -1.0..1.0 ?뺢퇋??(5怨??ъ슜泥??명솚)
+        let a = self.affinity.value() / 100.0;   // -1.0..1.0 정규화 (5곳 사용처 호환)
         let t = self.trust.value() / 100.0;
         RelationshipModifiers {
             affinity_modifier: a,
@@ -1076,10 +1099,10 @@ impl Relationship {
     }
 }
 
-/// 媛먯젙 ?됯? 而⑦뀓?ㅽ듃??modifier (5怨??ъ슜泥? emotion/stimulus/scene policy, situation_service, memory_repository).
+/// 감정 평가 컨텍스트의 modifier (5곳 사용처: emotion/stimulus/scene policy, situation_service, memory_repository).
 ///
-/// **Phase 2 蹂寃?*: `closeness_*` ??`affinity_*` ?대쫫 蹂寃?(?섏떖 3 寃곗젙 ??closeness ?먭린 ?뺥빀).
-/// Stage 2?먯꽌 5怨??ъ슜泥??대쫫 媛깆떊.
+/// **Phase 2 변경**: `closeness_*` → `affinity_*` 이름 변경 (의심 3 결정 — closeness 폐기 정합).
+/// Stage 2에서 5곳 사용처 이름 갱신.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct RelationshipModifiers {
     pub affinity_modifier: f32,
@@ -1089,38 +1112,38 @@ pub struct RelationshipModifiers {
 }
 ```
 
-**?ㅺ퀎 ?섎룄 8媛?*:
+**설계 의도 8개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 4異?蹂?????ъ슜 (`AxisScore` 횞3 + `WarinessScore`) | 1.2 寃곗젙. wariness ?뚯닔 而댄뙆???쒖젏 李⑤떒. |
-| ??| `bond_kind: Option<BondKind>` | None = 誘몃텇瑜?(?遺遺??쒕굹由ъ삤 ?섏뼱 default). 1.3 ?ы띁濡??곸뿭 遺꾧린. |
-| ??| `#[serde(default)] bond_status: BondStatus` (Active) | 1.4 寃곗젙. 留덉씠洹몃젅?댁뀡 ??湲곗〈 ?쒕굹由ъ삤 ?먮룞 Active. |
-| ??| `partnership: Option<Partnership>` | 1.5 寃곗젙. None = ?뺤떇 愿怨??놁쓬. |
-| ??| `type_text: String` + `#[serde(rename = "type")]` | `type`? Rust ?덉빟?????꾨뱶紐낆? `type_text`, JSON ?ㅻ뒗 `type`. B-D4 power ?≪닔. |
-| ??| `type_history: Vec<TypeChange>` ?⑥닚 3 ?꾨뱶 | ?섏떖 1 寃곗젙. from/to/note留? ?쒓컙/?먯씤 異붿쟻? 蹂??쒖뒪?? |
-| ??| `apply_delta(&mut self, delta)` | ?섏떖 2 寃곗젙. 罹≪뒓??蹂댁〈. Stage 2 ?⑥닔媛 ?몄텧. |
-| ??| `RelationshipModifiers` ?대쫫 蹂寃?(`closeness_*` ??`affinity_*`) | ?섏떖 3 寃곗젙. 5怨??ъ슜泥?Stage 2?먯꽌 ?④퍡 媛깆떊. closeness ?먭린 ?뺥빀. |
+| ① | 4축 별 타입 사용 (`AxisScore` ×3 + `WarinessScore`) | 1.2 결정. wariness 음수 컴파일 시점 차단. |
+| ② | `bond_kind: Option<BondKind>` | None = 미분류 (대부분 시나리오 페어 default). 1.3 헬퍼로 영역 분기. |
+| ③ | `#[serde(default)] bond_status: BondStatus` (Active) | 1.4 결정. 마이그레이션 시 기존 시나리오 자동 Active. |
+| ④ | `partnership: Option<Partnership>` | 1.5 결정. None = 형식 관계 없음. |
+| ⑤ | `type_text: String` + `#[serde(rename = "type")]` | `type`은 Rust 예약어 — 필드명은 `type_text`, JSON 키는 `type`. B-D4 power 흡수. |
+| ⑥ | `type_history: Vec<TypeChange>` 단순 3 필드 | 의심 1 결정. from/to/note만. 시간/원인 추적은 별 시스템. |
+| ⑦ | `apply_delta(&mut self, delta)` | 의심 2 결정. 캡슐화 보존. Stage 2 함수가 호출. |
+| ⑧ | `RelationshipModifiers` 이름 변경 (`closeness_*` → `affinity_*`) | 의심 3 결정. 5곳 사용처 Stage 2에서 함께 갱신. closeness 폐기 정합. |
 
-**`neutral()` ?쒓렇?덉쿂 蹂댁〈** (1.8 ?먮룞 ?≪닔 ?듭떖):
+**`neutral()` 시그니처 보존** (1.8 자동 흡수 핵심):
 
 ```rust
-// ?꾩옱: Relationship::neutral(owner, target) -> Relationship
-// Phase 2: Relationship::neutral(owner, target) -> Relationship  ???숈씪
+// 현재: Relationship::neutral(owner, target) -> Relationship
+// Phase 2: Relationship::neutral(owner, target) -> Relationship  ← 동일
 ```
 
-??16怨??몄텧 蹂寃?0. (1.8?먯꽌 grep 寃利?
+→ 16곳 호출 변경 0. (1.8에서 grep 검증)
 
-**湲곗〈 硫붿꽌???먭린**:
-- `Relationship::after_dialogue` ??Stage 2 `update_axes_from_emotion`?쇰줈 ?닿? (Stage 3?먯꽌 `relationship_policy.rs` ?ъ슜泥?媛깆떊)
-- `Relationship::with_updated_closeness` ??Stage 2??base_delta + apply_delta ?⑦꽩?쇰줈 ?≪닔
-- `Relationship::closeness()` / `power()` 硫붿꽌?????꾩쟾 ?쒓굅
-- `Relationship::with_power` ???꾩쟾 ?쒓굅 (?몄텧泥?0嫄? A2 諛쒓껄)
+**기존 메서드 폐기**:
+- `Relationship::after_dialogue` — Stage 2 `update_axes_from_emotion`으로 이관 (Stage 3에서 `relationship_policy.rs` 사용처 갱신)
+- `Relationship::with_updated_closeness` — Stage 2의 base_delta + apply_delta 패턴으로 흡수
+- `Relationship::closeness()` / `power()` 메서드 — 완전 제거
+- `Relationship::with_power` — 완전 제거 (호출처 0건, A2 발견)
 
-**湲곗〈 硫붿꽌??蹂댁〈**:
-- `new` / `neutral` / `owner` / `target` / `trust` / `modifiers` ???쒓렇?덉쿂/?쒕㎤??蹂댁〈 (??`modifiers()` 諛섑솚 ????꾨뱶 ?대쫫留?蹂寃?
+**기존 메서드 보존**:
+- `new` / `neutral` / `owner` / `target` / `trust` / `modifiers` — 시그니처/시맨틱 보존 (단 `modifiers()` 반환 타입 필드 이름만 변경)
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
 [new + getter]
@@ -1136,25 +1159,25 @@ pub struct RelationshipModifiers {
   r.type_text()        == ""
   r.type_history()     == &[]
 
-[neutral - ?쒓렇?덉쿂 蹂댁〈]
+[neutral - 시그니처 보존]
 - Relationship::neutral(npc_a, npc_b) 
-  ??4異?紐⑤몢 0, bond_kind None, status Active, partnership None, type "", history []
+  → 4축 모두 0, bond_kind None, status Active, partnership None, type "", history []
 
-[apply_delta - 4異??쇨큵 蹂??
-- let mut r = Relationship::neutral(a, b);  // 紐⑤몢 0
+[apply_delta - 4축 일괄 변동]
+- let mut r = Relationship::neutral(a, b);  // 모두 0
   r.apply_delta(&AxisDelta { trust: 20.0, affinity: 10.0, respect: 5.0, wariness: 15.0 });
   r.trust().value()    == 20.0
   r.affinity().value() == 10.0
   r.respect().value()  == 5.0
   r.wariness().value() == 15.0
 
-[apply_delta clamp ?숈옉]
+[apply_delta clamp 동작]
 - let mut r = Relationship::new(a, b, AxisScore::new(90), AxisScore::NEUTRAL, AxisScore::NEUTRAL, WarinessScore::new(5));
   r.apply_delta(&AxisDelta { trust: 30.0, affinity: 0.0, respect: 0.0, wariness: -20.0 });
   r.trust().value()    == 100.0  (cap)
   r.wariness().value() == 0.0    (floor)
 
-[modifiers - ?대쫫 蹂寃?+ ?뺢퇋??
+[modifiers - 이름 변경 + 정규화]
 - let r = Relationship::new(a, b, AxisScore::new(50), AxisScore::new(80), 
                             AxisScore::NEUTRAL, WarinessScore::NEUTRAL);
   let m = r.modifiers();
@@ -1164,51 +1187,51 @@ pub struct RelationshipModifiers {
   m.trust_modifier    == 0.5
 
 [serde round-trip]
-- Relationship ??JSON ??Relationship (紐⑤뱺 ?꾨뱶 蹂댁〈, type ?꾨뱶??JSON ??"type")
-- bond_status ?꾨씫??JSON ??default Active ?먮룞 ?곸슜
-- type_history ?꾨씫??JSON ??default [] ?먮룞 ?곸슜
+- Relationship → JSON → Relationship (모든 필드 보존, type 필드는 JSON 키 "type")
+- bond_status 누락된 JSON → default Active 자동 적용
+- type_history 누락된 JSON → default [] 자동 적용
 
 [TypeChange]
-- TypeChange { from_type: "議곗젙 ?숇즺".into(), to_type: "泥섎떒 ???.into(), note: "?곗떊臾??ш굔".into() }
-  ??serde round-trip OK
+- TypeChange { from_type: "조정 동료".into(), to_type: "처단 대상".into(), note: "산신묘 사건".into() }
+  → serde round-trip OK
 ```
 
-**鍮꾪룷??*:
-- `Relationship::after_dialogue` ??Stage 2/3?먯꽌 泥섎━ (?ъ옉???먮뒗 ?먭린)
-- `bond_status` ?꾩씠 ?⑥닔 ??Phase 3a Channel 2 Temporal
-- `partnership` ?꾩씠 ?⑥닔 ??Phase 2.5 declarative_events `PartnershipChange`
-- type_history ?먮룞 append ?몃뱾????Phase 2.5 declarative_events `TypeChanged`
-- `Display` impl ??presentation layer
-- 5怨?modifier ?ъ슜泥?媛깆떊 ??Stage 2 (`closeness_*` ??`affinity_*` ?대쫫 蹂寃?
-- `with_power` 硫붿꽌?????꾩쟾 ?쒓굅 (?몄텧泥?0嫄?
+**비포함**:
+- `Relationship::after_dialogue` — Stage 2/3에서 처리 (재작성 또는 폐기)
+- `bond_status` 전이 함수 — Phase 3a Channel 2 Temporal
+- `partnership` 전이 함수 — Phase 2.5 declarative_events `PartnershipChange`
+- type_history 자동 append 핸들러 — Phase 2.5 declarative_events `TypeChanged`
+- `Display` impl — presentation layer
+- 5곳 modifier 사용처 갱신 — Stage 2 (`closeness_*` → `affinity_*` 이름 변경)
+- `with_power` 메서드 — 완전 제거 (호출처 0건)
 
-#### 1.7 ??`RelationshipBuilder` 4異?API
+#### 1.7 — `RelationshipBuilder` 4축 API
 
-**紐⑹쟻**: ?쒕굹由ъ삤 JSON ?뚯떛 + Mind Studio CRUD?먯꽌 ?ъ슜?섎뒗 *fluent builder*. 4異뺤쑝濡?蹂寃? ???꾨뱶 (bond_kind/bond_status/partnership/type) ?듭뀡 setter 異붽?.
+**목적**: 시나리오 JSON 파싱 + Mind Studio CRUD에서 사용하는 *fluent builder*. 4축으로 변경, 새 필드 (bond_kind/bond_status/partnership/type) 옵션 setter 추가.
 
-**?꾩튂**: `src/domain/relationship/mod.rs` (1.6 `Relationship`怨?媛숈? ?뚯씪)
+**위치**: `src/domain/relationship/mod.rs` (1.6 `Relationship`과 같은 파일)
 
-**?쒓렇?덉쿂**:
+**시그니처**:
 
 ```rust
-//! RelationshipBuilder ??fluent API.
-//! ?ъ슜泥?
-//! - `adapter/memory_repository.rs:195` (?쒕굹由ъ삤 JSON ?뚯떛)
+//! RelationshipBuilder — fluent API.
+//! 사용처:
+//! - `adapter/memory_repository.rs:195` (시나리오 JSON 파싱)
 //! - `bin/mind-studio/state.rs:797` (UI CRUD)
-//! - ?⑥쐞 ?뚯뒪??~100 ?몄텧
+//! - 단위 테스트 ~100 호출
 
 #[derive(Debug, Clone)]
 pub struct RelationshipBuilder {
     owner: NpcId,
     target: NpcId,
 
-    // 4異?default = NEUTRAL
+    // 4축 default = NEUTRAL
     trust:    AxisScore,
     affinity: AxisScore,
     respect:  AxisScore,
     wariness: WarinessScore,
 
-    // ???꾨뱶 default
+    // 새 필드 default
     bond_kind:    Option<BondKind>,
     bond_status:  BondStatus,
     partnership:  Option<Partnership>,
@@ -1217,7 +1240,7 @@ pub struct RelationshipBuilder {
 }
 
 impl RelationshipBuilder {
-    /// ??builder. 紐⑤뱺 4異?NEUTRAL, ???꾨뱶 default (BondStatus::Active ??None/鍮?.
+    /// 새 builder. 모든 4축 NEUTRAL, 새 필드 default (BondStatus::Active 외 None/빈).
     pub fn new(owner_id: impl Into<String>, target_id: impl Into<String>) -> Self {
         Self {
             owner:  NpcId::new(owner_id.into()),
@@ -1234,7 +1257,7 @@ impl RelationshipBuilder {
         }
     }
 
-    // ?? 4異?setter ?????
+    // ── 4축 setter ─────
     pub fn trust(mut self, value: AxisScore) -> Self {
         self.trust = value;
         self
@@ -1252,9 +1275,9 @@ impl RelationshipBuilder {
         self
     }
 
-    // ?? ???꾨뱶 setter ?????
-    /// bond_kind setter ???섏떖 1 寃곗젙 (A): setter ?덉뿉??Some ?섑븨.
-    /// None? *setter 誘명샇異?濡??쒗쁽.
+    // ── 새 필드 setter ─────
+    /// bond_kind setter — 의심 1 결정 (A): setter 안에서 Some 래핑.
+    /// None은 *setter 미호출*로 표현.
     pub fn bond_kind(mut self, value: BondKind) -> Self {
         self.bond_kind = Some(value);
         self
@@ -1263,7 +1286,7 @@ impl RelationshipBuilder {
         self.bond_status = value;
         self
     }
-    /// partnership setter ???숈씪 ?⑦꽩 (Option ?섑븨).
+    /// partnership setter — 동일 패턴 (Option 래핑).
     pub fn partnership(mut self, value: Partnership) -> Self {
         self.partnership = Some(value);
         self
@@ -1272,15 +1295,15 @@ impl RelationshipBuilder {
         self.type_text = value.into();
         self
     }
-    /// type_history setter ???섏떖 2 寃곗젙 (X): ?꾩껜 援먯껜.
-    /// append??Phase 2.5 declarative_events `TypeChanged` ?몃뱾?ъ뿉??蹂꾨룄.
+    /// type_history setter — 의심 2 결정 (X): 전체 교체.
+    /// append는 Phase 2.5 declarative_events `TypeChanged` 핸들러에서 별도.
     pub fn type_history(mut self, value: Vec<TypeChange>) -> Self {
         self.type_history = value;
         self
     }
 
-    /// 鍮뚮뱶 ??Relationship ?몄뒪?댁뒪 ?앹꽦.
-    /// 媛숈? 紐⑤뱢?대?濡?private ?꾨뱶 吏곸젒 packing 媛??
+    /// 빌드 — Relationship 인스턴스 생성.
+    /// 같은 모듈이므로 private 필드 직접 packing 가능.
     pub fn build(self) -> Relationship {
         Relationship {
             owner:        self.owner,
@@ -1299,67 +1322,67 @@ impl RelationshipBuilder {
 }
 ```
 
-**?ㅺ퀎 ?섎룄 5媛?*:
+**설계 의도 5개**:
 
-| # | ??ぉ | ?섎룄 |
+| # | 항목 | 의도 |
 |---|---|---|
-| ??| 4異?setter (4媛? ??湲곗〈 `.closeness()` / `.power()` ?쒓굅 + `.affinity()`/`.respect()`/`.wariness()` ?좎꽕 | ?쒕굹由ъ삤 JSON + Mind Studio CRUD 蹂寃?硫댁쟻. Stage 4 留덉씠洹몃젅?댁뀡 ?꾧뎄媛 ?먮룞 蹂?? |
-| ??| `bond_kind(BondKind)` setter ??Option ?섑븨 setter ?대? (?섏떖 1 寃곗젙 A) | ?붿옄?대꼫 移쒗솕 ??`.bond_kind(BondKind::SwornBrothers)` 吏곴?. None? setter 誘명샇異쒕줈 ?쒗쁽. |
-| ??| `partnership(Partnership)` ?숈씪 ?⑦꽩 | None 泥섎━ ?숈씪. |
-| ??| `type_text` setter??`impl Into<String>` | `.type_text("?섑삎??)` literal ?먯뿰. `String::from()` ?몄텧 遺덊븘?? |
-| ??| `type_history(Vec<TypeChange>)` ?꾩껜 援먯껜 setter (?섏떖 2 寃곗젙 X) | ?붿옄?대꼫媛 ?쒕굹由ъ삤 JSON??*?꾩껜 history*瑜?諛뺣뒗 ?⑦꽩. append??Phase 2.5?먯꽌 ?먮룞. |
+| ① | 4축 setter (4개) — 기존 `.closeness()` / `.power()` 제거 + `.affinity()`/`.respect()`/`.wariness()` 신설 | 시나리오 JSON + Mind Studio CRUD 변경 면적. Stage 4 마이그레이션 도구가 자동 변환. |
+| ② | `bond_kind(BondKind)` setter — Option 래핑 setter 내부 (의심 1 결정 A) | 디자이너 친화 — `.bond_kind(BondKind::SwornBrothers)` 직관. None은 setter 미호출로 표현. |
+| ③ | `partnership(Partnership)` 동일 패턴 | None 처리 동일. |
+| ④ | `type_text` setter는 `impl Into<String>` | `.type_text("의형제")` literal 자연. `String::from()` 호출 불필요. |
+| ⑤ | `type_history(Vec<TypeChange>)` 전체 교체 setter (의심 2 결정 X) | 디자이너가 시나리오 JSON에 *전체 history*를 박는 패턴. append는 Phase 2.5에서 자동. |
 
-**`.build()` 吏곸젒 ?꾨뱶 packing**:
-- ?꾩옱: `Relationship::new(self.owner_id, ...)` ?몄텧 ???대??먯꽌 ?ㅼ떆 packing
-- Phase 2: *吏곸젒 ?꾨뱶 梨꾩?* ??`mod.rs` 媛숈? 紐⑤뱢?대?濡?*private ?꾨뱶 ?묎렐 媛??
-- ?대윭硫?Builder??*紐⑤뱺 ?꾨뱶 吏곸젒 ?쒖뼱* (bond_kind/type ??`Relationship::new` ?쒓렇?덉쿂???녿뒗 ?꾨뱶 諛뺢린 媛??
+**`.build()` 직접 필드 packing**:
+- 현재: `Relationship::new(self.owner_id, ...)` 호출 → 내부에서 다시 packing
+- Phase 2: *직접 필드 채움* — `mod.rs` 같은 모듈이므로 *private 필드 접근 가능*
+- 이러면 Builder는 *모든 필드 직접 제어* (bond_kind/type 등 `Relationship::new` 시그니처에 없는 필드 박기 가능)
 
-**湲곗〈 ?몄텧泥??곹뼢**:
+**기존 호출처 영향**:
 
-| ?꾩튂 | 蹂寃?|
+| 위치 | 변경 |
 |---|---|
-| `adapter/memory_repository.rs:195` | `.closeness(s).trust(s).power(s)` ??`.trust(s).affinity(s).respect(s).wariness(s)` + ???꾨뱶 setter ??Stage 4 留덉씠洹몃젅?댁뀡 ?꾧뎄媛 ?먮룞 蹂??|
-| `bin/mind-studio/state.rs:797` | UI?먯꽌 愿怨??섎룞 ?앹꽦 ??Stage 3?먯꽌 Mind Studio frontend? ?④퍡 媛깆떊 |
-| ?뚯뒪??~100 ?몄텧 | `.closeness(s).trust(s).power(s)` ?⑦꽩 ??Stage 4 ?먮룞 留덉씠洹몃젅?댁뀡 ?ㅽ겕由쏀듃濡?蹂??|
+| `adapter/memory_repository.rs:195` | `.closeness(s).trust(s).power(s)` → `.trust(s).affinity(s).respect(s).wariness(s)` + 새 필드 setter — Stage 4 마이그레이션 도구가 자동 변환 |
+| `bin/mind-studio/state.rs:797` | UI에서 관계 수동 생성 — Stage 3에서 Mind Studio frontend와 함께 갱신 |
+| 테스트 ~100 호출 | `.closeness(s).trust(s).power(s)` 패턴 — Stage 4 자동 마이그레이션 스크립트로 변환 |
 
-**?⑥쐞 ?뚯뒪??耳?댁뒪** (1.9?먯꽌 援ы쁽):
+**단위 테스트 케이스** (1.9에서 구현):
 
 ```
-[湲곕낯 ?ъ슜 ??4異?setter]
+[기본 사용 — 4축 setter]
 - RelationshipBuilder::new("a", "b")
     .trust(AxisScore::new(50.0))
     .affinity(AxisScore::new(40.0))
     .respect(AxisScore::new(30.0))
     .wariness(WarinessScore::new(20.0))
     .build()
-  ??4異?紐⑤몢 ?뺥솗 + bond_kind None + status Active + type_text "" + type_history []
+  → 4축 모두 정확 + bond_kind None + status Active + type_text "" + type_history []
 
-[partial ?ъ슜 ???쇰? setter留?
+[partial 사용 — 일부 setter만]
 - RelationshipBuilder::new("a", "b").trust(AxisScore::new(50.0)).build()
-  ??trust 50, ?섎㉧吏 axes NEUTRAL, ???꾨뱶 default
+  → trust 50, 나머지 axes NEUTRAL, 새 필드 default
 
-[bond_kind setter ??Option ?섑븨]
+[bond_kind setter — Option 래핑]
 - RelationshipBuilder::new("a", "b")
     .bond_kind(BondKind::SwornBrothers)
     .build()
-  ??bond_kind == Some(SwornBrothers)
+  → bond_kind == Some(SwornBrothers)
 
 [partnership setter]
 - RelationshipBuilder::new("a", "b")
     .partnership(Partnership::Spouse)
     .build()
-  ??partnership == Some(Spouse)
+  → partnership == Some(Spouse)
 
 [type_text + Into<String>]
-- RelationshipBuilder::new("a", "b").type_text("?섑삎??).build()
-  ??type_text == "?섑삎??
+- RelationshipBuilder::new("a", "b").type_text("의형제").build()
+  → type_text == "의형제"
 
-[type_history ?꾩껜 援먯껜]
-- let history = vec![TypeChange { from_type: "?숇즺".into(), to_type: "?먯닔".into(), note: "?곗떊臾?.into() }];
+[type_history 전체 교체]
+- let history = vec![TypeChange { from_type: "동료".into(), to_type: "원수".into(), note: "산신묘".into() }];
   RelationshipBuilder::new("a", "b").type_history(history.clone()).build()
-  ??type_history == history
+  → type_history == history
 
-[Builder fluent chain ??紐⑤뱺 ?꾨뱶]
+[Builder fluent chain — 모든 필드]
 - RelationshipBuilder::new("a", "b")
     .trust(AxisScore::new(50.0))
     .affinity(AxisScore::new(60.0))
@@ -1368,1144 +1391,332 @@ impl RelationshipBuilder {
     .bond_kind(BondKind::SwornBrothers)
     .bond_status(BondStatus::Active)
     .partnership(Partnership::Lover)
-    .type_text("?섑삎?쒖씠???곗씤")
+    .type_text("의형제이자 연인")
     .build()
-  ??紐⑤뱺 ?꾨뱶 ?뺥솗
+  → 모든 필드 정확
 ```
 
-**鍮꾪룷??*:
-- `bond_kind_none()` / `partnership_none()` 紐낆떆 setter ??誘명샇異쒖씠 None?대?濡?遺덊븘??
-- `with_type_change(change)` append 硫붿꽌????Phase 2.5?먯꽌 `TypeChanged` ?몃뱾???먯껜
-- ?⑥닚 wrapper 硫붿꽌????YAGNI
+**비포함**:
+- `bond_kind_none()` / `partnership_none()` 명시 setter — 미호출이 None이므로 불필요
+- `with_type_change(change)` append 메서드 — Phase 2.5에서 `TypeChanged` 핸들러 자체
+- 단순 wrapper 메서드 — YAGNI
 
-#### 1.8 ??`Relationship::neutral()` ?먮룞 ?≪닔 寃利?
+#### 1.8 — `Relationship::neutral()` 자동 흡수 검증
 
-**紐⑹쟻**: Stage 1 ?꾨찓???ъ옉????`Relationship::neutral(owner, target) -> Relationship` ?쒓렇?덉쿂媛 *洹몃?濡?蹂댁〈*?섎?濡?22怨??몄텧泥?*蹂寃?0* ??grep?쇰줈 寃利?
+**목적**: Stage 1 도메인 재작성 후 `Relationship::neutral(owner, target) -> Relationship` 시그니처가 *그대로 보존*되므로 22곳 호출처 *변경 0* — grep으로 검증.
 
-##### ?몄텧泥?22 ?꾩튂 (?뚯씪蹂?吏묎퀎)
+##### 호출처 22 위치 (파일별 집계)
 
-| ?뚯씪 | ?몄텧 ??| 鍮꾧퀬 |
+| 파일 | 호출 수 | 비고 |
 |---|---|---|
-| `domain/relationship.rs` | 3 | ?먯껜 ?⑥쐞 ?뚯뒪????Phase 2?먯꽌 *???⑥쐞 ?뚯뒪?몃줈 援먯껜* (1.9) |
-| `application/command/telling_ingestion_handler.rs` | 3 | ?뚯뒪??+ production |
-| `application/command/policies/emotion_policy.rs` | 1 | ?⑥쐞 ?뚯뒪??|
-| `application/command/policies/guide_policy.rs` | 2 | ?⑥쐞 ?뚯뒪??|
-| `application/command/policies/relationship_policy.rs` | 6 | ?⑥쐞 ?뚯뒪??|
-| `application/command/policies/scene_policy.rs` | 2 | ?⑥쐞 ?뚯뒪??|
-| `application/command/policies/stimulus_policy.rs` | 5 | ?⑥쐞 ?뚯뒪??|
-| **?⑷퀎** | **22** | |
+| `domain/relationship.rs` | 3 | 자체 단위 테스트 — Phase 2에서 *새 단위 테스트로 교체* (1.9) |
+| `application/command/telling_ingestion_handler.rs` | 3 | 테스트 + production |
+| `application/command/policies/emotion_policy.rs` | 1 | 단위 테스트 |
+| `application/command/policies/guide_policy.rs` | 2 | 단위 테스트 |
+| `application/command/policies/relationship_policy.rs` | 6 | 단위 테스트 |
+| `application/command/policies/scene_policy.rs` | 2 | 단위 테스트 |
+| `application/command/policies/stimulus_policy.rs` | 5 | 단위 테스트 |
+| **합계** | **22** | |
 
-??`domain/relationship.rs:324~377` 3媛쒕뒗 Phase 2?먯꽌 ?먯껜 ?뚯뒪??援먯껜. ?섎㉧吏 **19怨?*? *?쒓렇?덉쿂 蹂댁〈留뚯쑝濡??먮룞 ?≪닔*.
+→ `domain/relationship.rs:324~377` 3개는 Phase 2에서 자체 테스트 교체. 나머지 **19곳**은 *시그니처 보존만으로 자동 흡수*.
 
-##### ?먮룞 ?≪닔 議곌굔
+##### 자동 흡수 조건
 
-| 議곌굔 | 留뚯” |
+| 조건 | 만족 |
 |---|---|
-| ??`Relationship::neutral(impl Into<String>, impl Into<String>) -> Relationship` ?쒓렇?덉쿂 蹂댁〈 | ??(1.6 諛뺥옒) |
-| ??諛섑솚 ???`Relationship` 蹂댁〈 | ??|
-| ???몄텧 ??*3異?硫붿꽌??(.closeness/.power) ?몄텧 ?놁쓬* | 22怨?寃利??꾩슂 |
+| ① `Relationship::neutral(impl Into<String>, impl Into<String>) -> Relationship` 시그니처 보존 | ✅ (1.6 박힘) |
+| ② 반환 타입 `Relationship` 보존 | ✅ |
+| ③ 호출 후 *3축 메서드 (.closeness/.power) 호출 없음* | 22곳 검증 필요 |
 
-議곌굔 ??? *?꾩냽 肄붾뱶 寃??媛 ?꾩슂. **媛쒕퀎 寃?????cargo check濡??쇨큵 寃利?* ??而댄뙆???먮윭媛 *3異??꾩냽 ?몄텧 ?꾩튂*瑜?*?먮룞 ?앸퀎*.
+조건 ③은 *후속 코드 검사*가 필요. **개별 검사 대신 cargo check로 일괄 검증** — 컴파일 에러가 *3축 후속 호출 위치*를 *자동 식별*.
 
-##### 蹂꾨룄 蹂寃?硫댁쟻 (1.8 鍮꾪룷?? Stage 2/3?먯꽌)
+##### 별도 변경 면적 (1.8 비포함, Stage 2/3에서)
 
-**3異??ъ슜 ?꾩냽 ?몄텧 移댄깉濡쒓렇**:
+**3축 사용 후속 호출 카탈로그**:
 
-| ?⑦꽩 | ?꾩튂 ??| 泥섎━ stage |
+| 패턴 | 위치 수 | 처리 stage |
 |---|---|---|
-| `.closeness()` / `.power()` ?몄텧 | **14** | Stage 3 ??紐⑤몢 ?쒓굅 (?꾨뱶 ?먯껜 ?먭린) |
-| `with_updated_closeness` 硫붿꽌??+ ?몄텧 | 4 (?뺤쓽 1 + ?몄텧 3) | Stage 2 ??`update_axes_from_emotion`?쇰줈 ?닿? |
-| `Relationship::after_dialogue` 硫붿꽌??+ ?몄텧 | 4 (?뺤쓽 1 + ?몄텧 3) | Stage 2/3 ???닿? + ?먭린 |
-| `with_power` 硫붿꽌??+ ?몄텧 | 1 (?뺤쓽留? ?몄텧 0) | Stage 1.6?먯꽌 *?꾩쟾 ?쒓굅* (A2 諛쒓껄) |
+| `.closeness()` / `.power()` 호출 | **14** | Stage 3 — 모두 제거 (필드 자체 폐기) |
+| `with_updated_closeness` 메서드 + 호출 | 4 (정의 1 + 호출 3) | Stage 2 — `update_axes_from_emotion`으로 이관 |
+| `Relationship::after_dialogue` 메서드 + 호출 | 4 (정의 1 + 호출 3) | Stage 2/3 — 이관 + 폐기 |
+| `with_power` 메서드 + 호출 | 1 (정의만, 호출 0) | Stage 1.6에서 *완전 제거* (A2 발견) |
 
-**?꾩튂 ?곸꽭**:
+**위치 상세**:
 - `.closeness()`/`.power()`: `dialogue_orchestrator.rs:836,838`, `relationship_policy.rs:136,138,141,143,217,219,222,224`, `domain_sync.rs:68,70`, `guide/snapshot.rs:313,315`
-- `with_updated_closeness` ?몄텧: `domain/relationship.rs:191` ?대? 1??
-- `Relationship::after_dialogue` ?몄텧: `relationship_policy.rs:134,215`, `stimulus_policy.rs:71`
+- `with_updated_closeness` 호출: `domain/relationship.rs:191` 내부 1회
+- `Relationship::after_dialogue` 호출: `relationship_policy.rs:134,215`, `stimulus_policy.rs:71`
 
-##### ?좑툘 紐낆묶 異⑸룎 ?명듃 (Stage 2/3 吏꾩엯 ???뚯븘??寃?
+##### ⚠️ 명칭 충돌 노트 (Stage 2/3 진입 전 알아둘 것)
 
-`after_dialogue` 紐낆묶??**??媛쒕뀗**???곗뿬 ?덉쓬:
+`after_dialogue` 명칭이 **두 개념**에 쓰여 있음:
 
-1. **`Relationship::after_dialogue` 硫붿꽌??(?꾨찓??** ??Phase 2 ?먭린 ??? ?몄텧 3怨?
-2. **`after_dialogue` ?꾨뱶/?붾뱶?ъ씤??(Mind Studio + DTO)** ??*?????泥섎━ ?꾩껜 ?먮쫫*. **Phase 2 蹂寃?臾닿?**.
+1. **`Relationship::after_dialogue` 메서드 (도메인)** — Phase 2 폐기 대상. 호출 3곳.
+2. **`after_dialogue` 필드/엔드포인트 (Mind Studio + DTO)** — *대화 후 처리 전체 흐름*. **Phase 2 변경 무관**.
 
-Stage 2/3?먯꽌 (1)留??닿?/?먭린, (2)??洹몃?濡??좎?. 50+ ?꾩튂??(2)??*Phase 2 硫댁쟻 ?꾨떂*.
+Stage 2/3에서 (1)만 이관/폐기, (2)는 그대로 유지. 50+ 위치의 (2)는 *Phase 2 면적 아님*.
 
-##### 寃利?紐낅졊 (Stage 1 醫낃껐 ???ㅽ뻾)
+##### 검증 명령 (Stage 1 종결 시 실행)
 
 ```powershell
-# (1) Relationship::neutral ?몄텧 ???뺤씤 ??22 ?좎?
+# (1) Relationship::neutral 호출 수 확인 — 22 유지
 (Get-ChildItem -Path "src" -Recurse -Filter "*.rs" |
-  Select-String -Pattern "Relationship::neutral").Count    # ??22
+  Select-String -Pattern "Relationship::neutral").Count    # → 22
 
-# (2) cargo check ??而댄뙆???먮윭 ?꾩튂媛 *?꾩냽 axes ?몄텧 ?꾩튂* ?앸퀎
+# (2) cargo check — 컴파일 에러 위치가 *후속 axes 호출 위치* 식별
 cargo check --all-features 2>&1 | Tee-Object -FilePath "baselines\stage1-cargo-check.log"
 
-# (3) ?먮룞 ?≪닔 寃利? 22怨?以?而댄뙆???먮윭 ?꾩튂媛 *3異??ъ슜 ?꾩냽 ?몄텧*怨쇰쭔 ?쇱튂?섎뒗吏 ?뺤씤
-# (?덉긽: relationship_policy/stimulus_policy??.closeness/.power/.after_dialogue ?꾩튂留?
+# (3) 자동 흡수 검증: 22곳 중 컴파일 에러 위치가 *3축 사용 후속 호출*과만 일치하는지 확인
+# (예상: relationship_policy/stimulus_policy의 .closeness/.power/.after_dialogue 위치만)
 ```
 
-##### 鍮꾪룷??
+##### 비포함
 
-- 3異??꾩냽 ?몄텧 媛깆떊 ??Stage 2 (`modifiers()` `closeness_*` ??`affinity_*` ?대쫫 蹂寃? + Stage 3 (`relationship_policy.rs` ?ъ옉?? `dialogue_orchestrator.rs` 4異?DTO, `domain_sync.rs` 4異?DTO, `guide/snapshot.rs` 4異??쒖떆)
-- `Relationship::after_dialogue` 硫붿꽌???닿? ??Stage 2 (`update_axes_from_emotion`?쇰줈 ?泥?
-- Mind Studio `perform_after_dialogue` ??50+ ?꾩튂 ??Phase 2 硫댁쟻 ??(紐낆묶 異⑸룎留? ?섎? 蹂?
+- 3축 후속 호출 갱신 — Stage 2 (`modifiers()` `closeness_*` → `affinity_*` 이름 변경) + Stage 3 (`relationship_policy.rs` 재작성, `dialogue_orchestrator.rs` 4축 DTO, `domain_sync.rs` 4축 DTO, `guide/snapshot.rs` 4축 표시)
+- `Relationship::after_dialogue` 메서드 이관 — Stage 2 (`update_axes_from_emotion`으로 대체)
+- Mind Studio `perform_after_dialogue` 등 50+ 위치 — Phase 2 면적 외 (명칭 충돌만, 의미 별)
 
-##### Stage 1.8 醫낃껐 寃뚯씠??
+##### Stage 1.8 종결 게이트
 
-1. `Relationship::neutral` ?몄텧 22怨?grep 寃곌낵 蹂댁〈 (`baselines/stage1-neutral-callsites.log`)
-2. `cargo check` 而댄뙆???먮윭 ?꾩튂媛 *?덉긽 3異??ъ슜 ?꾩튂* (14 + 3 = 17 + ?꾨찓??3 = ~20)? ?쇱튂
-3. 22怨?以?*?덉긽 ??而댄뙆???먮윭* 0嫄?(?쒓렇?덉쿂 蹂댁〈 ?ㅽ뙣 0)
+1. `Relationship::neutral` 호출 22곳 grep 결과 보존 (`baselines/stage1-neutral-callsites.log`)
+2. `cargo check` 컴파일 에러 위치가 *예상 3축 사용 위치* (14 + 3 = 17 + 도메인 3 = ~20)와 일치
+3. 22곳 중 *예상 외 컴파일 에러* 0건 (시그니처 보존 실패 0)
 
-#### 1.9 ??Stage 1 ?⑥쐞 ?뚯뒪??
+#### 1.9 — Stage 1 단위 테스트
 
-**紐⑹쟻**: 1.2~1.8?먯꽌 諛뺤? *遺덈???+ 蹂??+ ?쒓렇?덉쿂 蹂댁〈*???⑥쐞 ?뚯뒪?몃줈 寃利? Stage 1 醫낃껐 寃뚯씠??
+**목적**: 1.2~1.8에서 박은 *불변식 + 변환 + 시그니처 보존*을 단위 테스트로 검증. Stage 1 종결 게이트.
 
-##### ?뚯뒪???꾩튂 ??*紐⑤뱢 ?대? ?⑦꽩* (?꾩옱 肄붾뱶 ?쇨?)
+##### 테스트 위치 — *모듈 내부 패턴* (현재 코드 일관)
 
 ```
 src/domain/relationship/
   mod.rs           # Relationship + RelationshipBuilder + TypeChange tests
-    ?붴?? #[cfg(test)] mod tests { ... }
-  axis.rs          # AxisScore + WarinessScore + AxisDelta tests
-    ?붴?? #[cfg(test)] mod tests { ... }
-  bond.rs          # BondKind + BondStatus tests
-    ?붴?? #[cfg(test)] mod tests { ... }
-  partnership.rs   # Partnership tests
-    ?붴?? #[cfg(test)] mod tests { ... }
-```
-
-洹쇨굅: ?꾩옱 `domain/relationship.rs:323~` ?꾩튂??`#[cfg(test)] mod tests` 諛뺥엺 ?⑦꽩. Phase 1 ?쇨?.
-
-##### ?뚯씪蹂??뚯뒪??移댁슫??(異붿젙)
-
-| ?뚯씪 | 耳?댁뒪 ?곸뿭 | 異붿젙 移댁슫??|
-|---|---|---|
-| `axis.rs` | clamp 6 + add 4 + Default/NEUTRAL 4 + AxisDelta scaled_by 2 + AxisDelta Add 2 + serde 2 | **~12** (臾띠쓬) |
-| `bond.rs` | BondKind ?곸뿭 ?ы띁 6 + ?곹샇 諛고???1 + serde 2 / BondStatus accepts_live_input 5 + Default 1 + serde 5 | **~10** |
-| `partnership.rs` | variants 1 + serde 4 + Copy/Eq/Hash 3 | **~4** |
-| `mod.rs` | Relationship new/neutral 2 + apply_delta 2 + modifiers 1 + serde 3 + TypeChange 1 + Builder chain 7 | **~12** |
-| **?⑷퀎** | | **~38** |
-
-??Stage 1 ?좉퇋 ?⑥쐞 ?뚯뒪??**~38媛?*. baseline 1220 ??Stage 1 醫낃껐 ??~1258 (?⑥닚 ??.
-
-(?ㅼ젣 移댁슫?몃뒗 Stage 1 援ы쁽 ???뺥솗 ??*baseline log* 諛뺥옒. ??38? *理쒖냼 湲곗?*.)
-
-##### 1.8 ?먮룞 ?≪닔 19怨녹쓽 湲곗〈 ?뚯뒪??蹂댁〈
-
-- `policies/*_test.rs` 22怨?以?19怨?(`domain/relationship.rs` 3怨??쒖쇅)? *湲곗〈 ?뚯뒪??洹몃?濡?. *?쒓렇?덉쿂 蹂댁〈*留뚯쑝濡??듦낵.
-- 而댄뙆???먮윭媛 *3異??꾩냽 ?몄텧 ?꾩튂*留??앸퀎 ??Stage 2/3?먯꽌 媛깆떊.
-
-##### Stage 1 醫낃껐 寃뚯씠??(1.1~1.9 紐⑤몢 ?듦낵 ??
-
-| # | 寃뚯씠??| 寃利?|
-|---|---|---|
-| 1 | `cargo check --all-features` ?듦낵 | 1.2~1.7 ???而댄뙆??|
-| 2 | **`Relationship::neutral()` ?몄텧 22怨?*?덉긽 ??而댄뙆???먮윭 0*** | 1.8 ?먮룞 ?≪닔 寃利?|
-| 3 | `WarinessScore::new(-50.0)` 而댄뙆??李⑤떒 寃利?| 1.2 ????Rust 而댄뙆?쇰윭 ?먮룞 |
-| 4 | `cargo test --all-features --workspace` ?듦낵 | Stage 1 ?좉퇋 ~38媛?+ 湲곗〈 1220 = ~1258 |
-| 5 | Baseline log 諛뺤젣 ??`baselines/stage1-cargo-test-2026-MM-DD-PASS.log` | Stage 2 吏꾩엯 吏곸쟾 |
-
-##### Stage 1 ?곗텧 commit + ?뚭퀬
-
-```
-commit: phase2-stage1-domain.md ?뚭퀬
-?뚯씪: docs/tasks/mind-architecture/phase2-stage1-domain.md
-?댁슜:
-- Stage 1 1.1~1.9 ?묒뾽 ?댁뿭
-- 理쒖쥌 ?뚯뒪??移댁슫??(?? 1258)
-- ?먮룞 ?≪닔 19怨??뺤씤
-- Stage 2 吏꾩엯 ?꾩젣 (紐⑤뱢 遺꾪븷 ?꾨즺, 4異?????덉젙)
-- 諛쒓껄 ?ы빆 (?덈떎硫?
-```
-
-##### 鍮꾪룷??
-
-- ?듯빀 ?뚯뒪??(cross-module) ??Stage 5 narrative ?쒕??덉씠??
-- `update_axes_from_emotion` ?곸슜 ??4異?蹂??寃利???Stage 2/5
-- `RelationshipUpdatedPayload` 6?? schema 寃利???Stage 3
-- ?쒕굹由ъ삤 JSON 留덉씠洹몃젅?댁뀡 寃利???Stage 4/5
-- Mind Studio frontend 4異??쒖떆 寃利???Stage 3
-
----
-
-**Stage 1 醫낇빀 寃뚯씠??* (1.1~1.9 紐⑤몢 ?듦낵 ??:
-1. `cargo check --all-features` ?듦낵
-2. `Relationship::neutral()` ?몄텧 16怨??먮룞 ?≪닔 (蹂寃?0)
-3. `WarinessScore::new(-50.0)` 而댄뙆??李⑤떒 ?뺤씤 (遺덈???媛뺤젣)
-4. ?⑥쐞 ?뚯뒪???듦낵
-5. Stage 1 baseline `baselines/cargo-test-2026-05-14-PASS.log` 1220 tests ?듦낵 ?좎?
-
-**?곗텧 commit**: `phase2-stage1-domain.md` ?뚭퀬
-
----
-
-### Stage 2 — OCC → 4축 매핑 (base_delta + HEXACO + Updater) (✅ spec frozen 2026-05-15)
-
-**범위 (상위 골격)**:
-- `AxisDelta` (Stage 1.2 박힘) + 신설 `AxisModifier` (2.1)
-- `base_delta(EmotionType) -> AxisDelta` 48셀 lookup (v0.7 §4.2, B-D6 D6-a) — 12 OCC × 4축, Well-being/Prospect 10 OCC는 0 (B-D14)
-- `hexaco_modifier(EmotionType, &Hexaco) -> AxisModifier` 6 보정 룰 (v0.7 §4.3)
-- `update_axes_from_emotion(rel, emotion, intensity, hexaco)` 단일 함수 (B-D5)
-- BondStatus 차단 + Shame/Pride 변동 0 (B-D12)
-- `RelationshipModifiers` 4축 이름 변경 (`closeness_*` → `affinity_*`) + 5곳 사용처 갱신
-- 기존 `Relationship::after_dialogue` 호출 3곳 → `update_axes_from_emotion` 이관
-- 단위 테스트 (S1~S4 ground truth + Compound 감정 검증)
-
-세부 항목 2.1~2.7:
-
-#### 2.1 — `mapping.rs` 모듈 신설 + 디렉토리 구조 확장
-
-**목적**: OCC → 4축 매핑 함수 (base_delta + hexaco_modifier + update_axes_from_emotion)의 위치. 1.1의 모듈 분할 패턴 확장.
-
-**위치**: `src/domain/relationship/mapping.rs` (신설)
-
-##### 디렉토리 구조 (Stage 2 후)
-
-```
-src/domain/relationship/
-  mod.rs              # Relationship + Builder + TypeChange + re-export
-  axis.rs             # AxisScore + WarinessScore + AxisDelta + AxisKind
-                      # + ★ AxisModifier (추가, 의심 1 결정 A)
-  bond.rs             # BondKind + BondStatus
-  partnership.rs      # Partnership
-  mapping.rs          # ★ 신설 — base_delta + hexaco_modifier + update_axes_from_emotion
-```
-
-##### mod.rs 변경
-
-```rust
-// 기존 (Stage 1)
-mod axis;
-mod bond;
-mod partnership;
-
-// Stage 2 추가
-mod mapping;
-
-pub use mapping::update_axes_from_emotion;
-// base_delta / hexaco_modifier는 *내부 API* (pub(crate) 또는 mod 내부)
-```
-
-##### Public API 노출 패턴
-
-| 함수/타입 | 가시성 | 이유 |
-|---|---|---|
-| `update_axes_from_emotion(...)` | `pub` | Stage 3 `relationship_policy.rs`가 호출 (외부 진입점) |
-| `base_delta(emotion) -> AxisDelta` | `pub(crate)` 또는 private | 내부 헬퍼 — 외부 노출 불필요 |
-| `hexaco_modifier(emotion, hexaco) -> AxisModifier` | `pub(crate)` 또는 private | 내부 헬퍼 |
-| `AxisModifier` 타입 | `pub` (axis.rs) | 의심 1 결정 A — 데이터 모듈 일관성 |
-
-##### `AxisModifier` 신설 위치 — `axis.rs` (의심 1 결정 A)
-
-Stage 1.2의 *데이터 타입은 axis.rs* 패턴 정합. AxisDelta와 인접 — 의미 비교 명확:
-- AxisDelta = 변동량 (+/-)
-- AxisModifier = 배수 (×)
-
-```rust
-// axis.rs 추가 (2.1 시점에 박음, 2.3에서 메서드 채움)
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct AxisModifier {
-    pub trust:    f32,   // 곱셈 배수 (default 1.0)
-    pub affinity: f32,
-    pub respect:  f32,
-    pub wariness: f32,
-}
-
-impl Default for AxisModifier {
-    fn default() -> Self {
-        Self { trust: 1.0, affinity: 1.0, respect: 1.0, wariness: 1.0 }
-    }
-}
-```
-
-##### 작업 순서 (Stage 2)
-
-```
-2.1 모듈/디렉토리 (현재 항목)
-  ↓
-2.2 base_delta (병렬 가능)  ─┐
-2.3 hexaco_modifier         ─┤
-                             ↓
-2.4 update_axes_from_emotion 통합
-  ↓
-2.5 RelationshipModifiers 이름 변경 + 5곳 사용처 갱신
-  ↓
-2.6 Relationship::after_dialogue 후속 호출 이관
-  ↓
-2.7 Stage 2 단위 테스트
-```
-
-##### 게이트
-
-`cargo check --all-features` 통과 (디렉토리 분할 후 컴파일 안전).
-
-##### 비포함
-
-- base_delta 48셀 표 — 2.2
-- HEXACO 보정 룰 본체 — 2.3
-- `update_axes_from_emotion` 본체 — 2.4
-- AxisModifier의 헬퍼 메서드 (`scale`, `combine` 등) — 2.3에서 필요해지면 추가
-
-#### 2.2 — `base_delta(EmotionType) -> AxisDelta` 48셀 lookup
-
-**목적**: OCC 감정 → 4축 변동 *순수 매핑 함수*. v0.7 §4.2 표 그대로 박음. intensity/HEXACO 곱셈 *전*의 *base 변동*.
-
-**위치**: `src/domain/relationship/mapping.rs`
-
-**시그니처**:
-
-```rust
-//! mapping.rs — OCC → 4축 매핑.
-//! v0.7 §4.1~4.3 + B-D6 D6-a 채택.
-
-use crate::domain::emotion::EmotionType;
-use crate::domain::relationship::axis::AxisDelta;
-
-/// OCC 감정 → 4축 base 변동 (intensity/HEXACO 곱셈 *전*).
-///
-/// v0.7 §4.2 표 — 12 OCC × 4축 = 48셀.
-/// Well-being (Joy/Distress) + Prospect (Hope/Fear/Satisfaction/Disappointment/Relief/FearsConfirmed)
-/// + Compound 보조 (Remorse/Gratification) **10 OCC는 default (0)** — B-D14 확정.
-///
-/// 매핑 안된 감정 입력 시: AxisDelta::default() (모두 0) 반환 — *조용한 fallback*.
-pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
-    match emotion {
-        // ── 지각·평가 4 (대상 외부) ─────
-        EmotionType::Gratitude   => AxisDelta { trust:  20.0, affinity:  10.0, respect:   0.0, wariness: -10.0 },
-        EmotionType::Anger       => AxisDelta { trust: -25.0, affinity: -10.0, respect:   0.0, wariness:  25.0 },
-        EmotionType::Admiration  => AxisDelta { trust:   0.0, affinity:   0.0, respect:  20.0, wariness:   0.0 },
-        EmotionType::Reproach    => AxisDelta { trust: -10.0, affinity: -10.0, respect: -25.0, wariness:  10.0 },
-
-        // ── 공감 4 (Fortune-of-others) ─────
-        EmotionType::HappyFor    => AxisDelta { trust:   5.0, affinity:  10.0, respect:   0.0, wariness:   0.0 },
-        EmotionType::Resentment  => AxisDelta { trust:   0.0, affinity: -10.0, respect:  -5.0, wariness:  15.0 },
-        EmotionType::Pity        => AxisDelta { trust:   0.0, affinity:  10.0, respect:  -5.0, wariness:   0.0 },
-        EmotionType::Gloating    => AxisDelta { trust: -10.0, affinity: -20.0, respect: -10.0, wariness:   0.0 },
-
-        // ── 자기 평가 2 (B-D12: agent_id=None 시 4축 변동 0, 호출 측에서 처리) ─────
-        EmotionType::Pride       => AxisDelta { trust:   0.0, affinity:   5.0, respect:  10.0, wariness:   0.0 },
-        EmotionType::Shame       => AxisDelta { trust:  -5.0, affinity: -10.0, respect: -10.0, wariness:   5.0 },
-
-        // ── 대상 평가 2 (Object) ─────
-        EmotionType::Love        => AxisDelta { trust:   5.0, affinity:  20.0, respect:   5.0, wariness:  -5.0 },
-        EmotionType::Hate        => AxisDelta { trust: -10.0, affinity: -25.0, respect:  -5.0, wariness:  15.0 },
-
-        // ── 매핑 안된 10 OCC (B-D14 의도된 누락) ─────
-        // Joy / Distress (Well-being)
-        // Hope / Fear / Satisfaction / Disappointment / Relief / FearsConfirmed (Prospect)
-        // Remorse / Gratification (Compound — Pride/Shame 합산은 별 OCC로 자동 식별, base_delta 불필요)
-        _ => AxisDelta::default(),
-    }
-}
-```
-
-**설계 의도 5개**:
-
-| # | 항목 | 의도 |
-|---|---|---|
-| ① | `match` 표현식 (HashMap/const 배열 X) | 컴파일 시점 *exhaustive* 검증 — 새 OCC 추가 시 컴파일 경고. lookup 비용 O(1). |
-| ② | 12 OCC 명시 + `_ => Default` fallback | v0.7 §4.2 표 12행 그대로. Well-being/Prospect/일부 Compound 10개는 *조용히 0* — B-D14 의도된 누락. |
-| ③ | `pub(crate)` 가시성 | mapping 모듈 내부 헬퍼. 외부 직접 호출 차단. 외부 진입점은 `update_axes_from_emotion` (2.4). |
-| ④ | Pride/Shame 표값 박음 (≠ 0) | base_delta는 *순수 lookup* — 표 그대로. **B-D12 (agent_id=None 시 4축 변동 0) 처리는 *호출 측* (2.4 `update_axes_from_emotion`)**. base_delta 자체는 *데이터*. |
-| ⑤ | 영역 코멘트 4그룹 (지각/공감/자기/대상) | OCC 22 분류와 정합. 유지보수 시 *왜 이 값인지* 추적 가능. |
-
-**계산 검증** (Stage 0 §3.6 S2 케이스):
-
-```
-산신묘 사건 — Anger + Hate + Reproach 합산:
-  Anger:    AxisDelta { trust: -25, affinity: -10, respect:   0, wariness:  25 }
-  Hate:     AxisDelta { trust: -10, affinity: -25, respect:  -5, wariness:  15 }
-  Reproach: AxisDelta { trust: -10, affinity: -10, respect: -25, wariness:  10 }
-  합산:     AxisDelta { trust: -45, affinity: -45, respect: -30, wariness:  50 }
-  × intensity 0.95/0.6/0.7 평균 적용 → S2 Step 4 결과
-```
-
-(intensity 적용은 2.4. base_delta는 *순수 표값*만.)
-
-**단위 테스트 케이스** (2.7에서 구현):
-
-```
-[12 OCC base_delta 값 검증]
-- base_delta(Gratitude)  == AxisDelta { trust:  20.0, affinity:  10.0, respect:   0.0, wariness: -10.0 }
-- base_delta(Anger)      == AxisDelta { trust: -25.0, affinity: -10.0, respect:   0.0, wariness:  25.0 }
-- base_delta(Admiration) == AxisDelta { trust:   0.0, affinity:   0.0, respect:  20.0, wariness:   0.0 }
-- base_delta(Reproach)   == AxisDelta { trust: -10.0, affinity: -10.0, respect: -25.0, wariness:  10.0 }
-- base_delta(HappyFor)   == AxisDelta { trust:   5.0, affinity:  10.0, respect:   0.0, wariness:   0.0 }
-- base_delta(Resentment) == AxisDelta { trust:   0.0, affinity: -10.0, respect:  -5.0, wariness:  15.0 }
-- base_delta(Pity)       == AxisDelta { trust:   0.0, affinity:  10.0, respect:  -5.0, wariness:   0.0 }
-- base_delta(Gloating)   == AxisDelta { trust: -10.0, affinity: -20.0, respect: -10.0, wariness:   0.0 }
-- base_delta(Pride)      == AxisDelta { trust:   0.0, affinity:   5.0, respect:  10.0, wariness:   0.0 }
-- base_delta(Shame)      == AxisDelta { trust:  -5.0, affinity: -10.0, respect: -10.0, wariness:   5.0 }
-- base_delta(Love)       == AxisDelta { trust:   5.0, affinity:  20.0, respect:   5.0, wariness:  -5.0 }
-- base_delta(Hate)       == AxisDelta { trust: -10.0, affinity: -25.0, respect:  -5.0, wariness:  15.0 }
-
-[10 OCC default 검증 — B-D14]
-- base_delta(Joy)             == AxisDelta::default()  // 모두 0
-- base_delta(Distress)        == AxisDelta::default()
-- base_delta(Hope)            == AxisDelta::default()
-- base_delta(Fear)            == AxisDelta::default()
-- base_delta(Satisfaction)    == AxisDelta::default()
-- base_delta(Disappointment)  == AxisDelta::default()
-- base_delta(Relief)          == AxisDelta::default()
-- base_delta(FearsConfirmed)  == AxisDelta::default()
-- base_delta(Remorse)         == AxisDelta::default()
-- base_delta(Gratification)   == AxisDelta::default()
-
-[합산 검증 — S2 산신묘 케이스]
-- base_delta(Anger) + base_delta(Hate) + base_delta(Reproach)
-  == AxisDelta { trust: -45.0, affinity: -45.0, respect: -30.0, wariness: 50.0 }
-```
-
-**비포함**:
-- intensity 곱셈 → 2.4 `update_axes_from_emotion`
-- HEXACO 곱셈 → 2.3 `hexaco_modifier` + 2.4 적용
-- BondStatus 차단 → 2.4
-- Shame/Pride agent_id=None 처리 → 2.4 (base_delta 자체는 표값만 반환)
-
-#### 2.3 — `AxisModifier` 메서드 + `hexaco_modifier` 6 보정 룰
-
-**목적**: HEXACO 6 facet → 4축 곱셈 배수. v0.7 §4.3 보정 룰 6개. base_delta 결과에 *곱셈 적용*.
-
-**위치**:
-- `AxisModifier` 메서드: `src/domain/relationship/axis.rs` (2.1 결정 — 타입은 axis.rs)
-- `hexaco_modifier` 함수: `src/domain/relationship/mapping.rs`
-
-##### 시그니처
-
-```rust
-// === axis.rs (2.1 박힌 AxisModifier에 메서드 추가) ===
-
-impl AxisModifier {
-    /// 모든 축에 동일 곱셈 (A+ Patience ×0.7 / C+ Prudence ×0.8 같은 "전역" 룰).
-    pub fn combine_uniform(self, factor: f32) -> Self {
-        Self {
-            trust:    self.trust    * factor,
-            affinity: self.affinity * factor,
-            respect:  self.respect  * factor,
-            wariness: self.wariness * factor,
-        }
-    }
-
-    /// 단일 축에만 곱셈 (H+ Sincerity ×1.2 trust / E+ Anxiety ×1.3 wariness 같은 "축별" 룰).
-    pub fn scale_axis(mut self, kind: AxisKind, factor: f32) -> Self {
-        match kind {
-            AxisKind::Trust    => self.trust    *= factor,
-            AxisKind::Affinity => self.affinity *= factor,
-            AxisKind::Respect  => self.respect  *= factor,
-            AxisKind::Wariness => self.wariness *= factor,
-        }
-        self
-    }
-}
-
-// === mapping.rs ===
-
-use crate::domain::personality::HexacoProfile;
-use crate::domain::relationship::axis::{AxisModifier, AxisKind};
-
-/// HEXACO 6 facet → 4축 곱셈 배수.
-/// v0.7 §4.3 — 6 보정 룰.
-///
-/// emotion 인자는 *A- Forgiveness 부정감정 한정* 룰에 사용.
-pub(crate) fn hexaco_modifier(
-    emotion: EmotionType,
-    hexaco: &HexacoProfile,
-) -> AxisModifier {
-    let mut m = AxisModifier::default();  // 모두 1.0
-
-    // ── H+ Sincerity 높음 → trust 변화 ×1.2 ─────
-    if hexaco.honesty_humility.sincerity.value() > HIGH_THRESHOLD {
-        m = m.scale_axis(AxisKind::Trust, 1.2);
-    }
-
-    // ── A+ Patience 높음 → 모든 변화 ×0.7 ─────
-    if hexaco.agreeableness.patience.value() > HIGH_THRESHOLD {
-        m = m.combine_uniform(0.7);
-    }
-
-    // ── A- Forgiveness 낮음 → 부정 감정 변화 ×1.5 ─────
-    if hexaco.agreeableness.forgiveness.value() < LOW_THRESHOLD
-        && is_negative_emotion(emotion) {
-        m = m.combine_uniform(1.5);
-    }
-
-    // ── E+ Anxiety 높음 → wariness 변화 ×1.3 ─────
-    if hexaco.emotionality.anxiety.value() > HIGH_THRESHOLD {
-        m = m.scale_axis(AxisKind::Wariness, 1.3);
-    }
-
-    // ── C+ Prudence 높음 → 모든 변화 ×0.8 (의심 2 결정 a: 간소화) ─────
-    // v0.7 "큰 변화 시 ×0.8, 시간 분산" — Stage 2 본체는 *간소 곱셈*. 
-    // intensity 조건부 + 시간 분산은 Phase 2.3에서 정밀화.
-    if hexaco.conscientiousness.prudence.value() > HIGH_THRESHOLD {
-        m = m.combine_uniform(0.8);
-    }
-
-    // ── O+ Unconventionality 높음 → 양극 도달 더 쉬움 ─────
-    // *Phase 2 본체에서는 미적용* — v0.7 "양극 도달 가속"은 clamp 근처에서만 의미.
-    // 단순 곱셈으로 표현 어려움. Phase 2.3 또는 3+에서 정밀화.
-    // (placeholder — 적용 0)
-
-    m
-}
-
-/// HEXACO facet "높음" 임계 (의심 1 결정 α: 0.5).
-const HIGH_THRESHOLD: f32 = 0.5;
-const LOW_THRESHOLD:  f32 = -0.5;
-
-/// 부정 감정 식별 — A- Forgiveness 룰 적용 조건.
-fn is_negative_emotion(emotion: EmotionType) -> bool {
-    matches!(
-        emotion,
-        EmotionType::Anger | EmotionType::Reproach
-        | EmotionType::Resentment | EmotionType::Gloating
-        | EmotionType::Hate | EmotionType::Distress
-        | EmotionType::Fear | EmotionType::Disappointment
-        | EmotionType::FearsConfirmed | EmotionType::Shame
-        | EmotionType::Remorse
-    )
-}
-```
-
-##### 설계 의도 6개
-
-| # | 항목 | 의도 |
-|---|---|---|
-| ① | `AxisModifier` 메서드 2개 (`combine_uniform` / `scale_axis`) | 6 룰 적용 패턴 — 전역 곱셈 (Patience/Prudence) vs 축별 곱셈 (Sincerity/Anxiety) |
-| ② | `hexaco_modifier(emotion, &hexaco)` 시그니처 | A- Forgiveness 룰이 *부정 감정 한정*이라 emotion 필요. 다른 룰은 hexaco만 사용. |
-| ③ | `HIGH_THRESHOLD = 0.5` / `LOW_THRESHOLD = -0.5` (의심 1 결정 α) | 중립(0.0)과 최대(±1.0)의 *중간*. "높음"/"낮음" 정량 기준. Phase 2.3에서 시뮬레이션 검증 후 미세조정. |
-| ④ | C+ Prudence "큰 변화 시" 조건 *간소화* — 모든 변화 ×0.8 (의심 2 결정 a) | v0.7의 "큰 변화 시 + 시간 분산"은 Stage 2 본체에서 *간소 곱셈*. Phase 2.3에서 intensity 조건부 + 시간 분산 정밀화. |
-| ⑤ | O+ Unconventionality 룰 *placeholder*만 (적용 0) | v0.7 "양극 도달 더 쉬움"은 *clamp 근처 가속*이라 단순 곱셈으로 표현 어려움. Phase 2.3 또는 3+에서 정밀화. |
-| ⑥ | `is_negative_emotion` 헬퍼 | A- Forgiveness 룰의 부정 감정 식별. 12 base + Distress/Fear/Disappointment/FearsConfirmed/Remorse 포함 (총 11개). |
-
-##### 계산 검증 (Stage 0 §3.6 S2 케이스)
-
-```
-임충 산신묘 사건 — Anger 0.95 감정 발생.
-임충 HEXACO: C+ Prudence 0.8 (높음) + A- Forgiveness -0.7 (낮음)
-
-hexaco_modifier(Anger, &hexaco) 적용:
-  초기: AxisModifier { 1.0, 1.0, 1.0, 1.0 }
-  ── H+ Sincerity 0.7 > 0.5 → trust ×1.2 → { 1.2, 1.0, 1.0, 1.0 }
-  ── A+ Patience 0.3 < 0.5 → 미적용
-  ── A- Forgiveness -0.7 < -0.5 + Anger 부정 → 전역 ×1.5 → { 1.8, 1.5, 1.5, 1.5 }
-  ── E+ Anxiety 0.4 < 0.5 → 미적용
-  ── C+ Prudence 0.8 > 0.5 → 전역 ×0.8 → { 1.44, 1.2, 1.2, 1.2 }
-  ── O+ Unconventionality → placeholder, 적용 0
-
-최종: AxisModifier { trust: 1.44, affinity: 1.2, respect: 1.2, wariness: 1.2 }
-```
-
-(이 modifier × base_delta(Anger) × intensity 0.95 적용은 2.4 `update_axes_from_emotion`)
-
-##### 단위 테스트 케이스 (2.7에서 구현)
-
-```
-[AxisModifier 메서드]
-- AxisModifier::default().combine_uniform(0.7)
-  == AxisModifier { trust: 0.7, affinity: 0.7, respect: 0.7, wariness: 0.7 }
-- AxisModifier::default().scale_axis(AxisKind::Trust, 1.2)
-  == AxisModifier { trust: 1.2, affinity: 1.0, respect: 1.0, wariness: 1.0 }
-- AxisModifier::default().scale_axis(AxisKind::Wariness, 1.3)
-  == AxisModifier { trust: 1.0, affinity: 1.0, respect: 1.0, wariness: 1.3 }
-
-[hexaco_modifier — 단일 룰 발동]
-- H+ Sincerity 0.7만 높음, Anger 입력
-  → AxisModifier { trust: 1.2, 나머지: 1.0 }
-- A+ Patience 0.7만 높음
-  → AxisModifier { 1.0, 1.0, 1.0, 1.0 } × 0.7 = { 0.7, 0.7, 0.7, 0.7 }
-- A- Forgiveness -0.7 낮음 + Anger (부정)
-  → AxisModifier 모두 × 1.5 = { 1.5, 1.5, 1.5, 1.5 }
-- A- Forgiveness -0.7 낮음 + Gratitude (긍정) — 룰 미발동
-  → AxisModifier::default()
-- E+ Anxiety 0.7만 높음
-  → AxisModifier { trust: 1.0, affinity: 1.0, respect: 1.0, wariness: 1.3 }
-- C+ Prudence 0.7만 높음
-  → AxisModifier 모두 × 0.8 = { 0.8, 0.8, 0.8, 0.8 }
-
-[hexaco_modifier — 복합 룰 (S2 임충 케이스)]
-- HEXACO: Sincerity 0.7 + Forgiveness -0.7 + Prudence 0.8, Anger 입력
-  단계: × 1.2(trust) → × 1.5(전역) → × 0.8(전역)
-  최종: AxisModifier { trust: 1.44, affinity: 1.2, respect: 1.2, wariness: 1.2 }
-
-[hexaco_modifier — neutral HEXACO]
-- HEXACO 모든 facet 0.0, 어떤 OCC 입력이든
-  → AxisModifier::default()  (모든 룰 미발동, 모두 1.0)
-
-[is_negative_emotion 식별]
-- Anger / Reproach / Resentment / Gloating / Hate / Distress / Fear /
-  Disappointment / FearsConfirmed / Shame / Remorse → true
-- Joy / Gratitude / Admiration / HappyFor / Pity / Pride / Love /
-  Hope / Satisfaction / Relief / Gratification → false
-```
-
-##### 비포함
-
-- intensity 곱셈 적용 → 2.4 `update_axes_from_emotion`
-- BondStatus 차단 → 2.4
-- Shame/Pride agent_id=None 처리 → 2.4
-- C+ Prudence intensity 조건부 정밀화 → Phase 2.3
-- C+ Prudence "시간 분산" → Phase 2.3 또는 3+
-- O+ Unconventionality "양극 가속" → Phase 2.3 또는 3+
-
-#### 2.4 — `update_axes_from_emotion` 단일 함수
-
-**목적**: Stage 2의 *통합 진입점*. 2.2 (base_delta) + 2.3 (hexaco_modifier)을 intensity와 함께 묶어 적용. BondStatus 차단 게이트 포함. B-D5 단일 함수.
-
-**위치**: `src/domain/relationship/mapping.rs`
-
-##### 시그니처
-
-```rust
-use crate::domain::personality::HexacoProfile;
-use crate::domain::relationship::axis::AxisDelta;
-use crate::domain::relationship::Relationship;
-use crate::domain::emotion::EmotionType;
-
-/// OCC 감정 → 4축 변동 통합 적용.
-///
-/// 흐름 (v0.7 §4.1):
-///   1. BondStatus 차단 (`accepts_live_input` false면 즉시 종료)
-///   2. base_delta(emotion) lookup (2.2)
-///   3. intensity × hexaco_modifier(emotion, hexaco) 곱셈 (2.3)
-///   4. rel.apply_delta(&delta) — 4축 자동 clamp
-///
-/// **B-D12 (Shame/Pride agent_id=None) 처리는 *호출 측*** (Stage 3 RelationshipPolicy).
-/// 자기 평가는 *어느 관계에도 적용 안 함* — 호출 측이 이 함수 호출 안 하는 게 자연.
-///
-/// 호출 위치 (Stage 3):
-/// - `relationship_policy.rs` — DialogueEndRequested handler (대화 끝 batch)
-/// - BeatTransitioned 분기
-pub fn update_axes_from_emotion(
-    rel: &mut Relationship,
-    emotion: EmotionType,
-    intensity: f32,
-    hexaco: &HexacoProfile,
-) {
-    // ── 가드 1: BondStatus 차단 ─────
-    if !rel.bond_status().accepts_live_input() {
-        return;
-    }
-
-    // ── 매핑 + 곱셈 ─────
-    let base = base_delta(emotion);
-    let modulator = hexaco_modifier(emotion, hexaco);
-    let delta = AxisDelta {
-        trust:    base.trust    * intensity * modulator.trust,
-        affinity: base.affinity * intensity * modulator.affinity,
-        respect:  base.respect  * intensity * modulator.respect,
-        wariness: base.wariness * intensity * modulator.wariness,
-    };
-
-    // ── 적용 (Relationship::apply_delta가 자동 clamp) ─────
-    rel.apply_delta(&delta);
-}
-```
-
-##### v0.7 §4.1과 비교
-
-시맨틱 동일. Stage 2 본체는 *`apply_delta` 메서드*를 통해 clamp 일원화. v0.7 의도와 정합 + 캡슐화 보존.
-
-##### 설계 의도 5개
-
-| # | 항목 | 의도 |
-|---|---|---|
-| ① | `pub` 가시성 (mod.rs `pub use` 통한 외부 노출) | Stage 3 `relationship_policy.rs`가 외부 진입점으로 호출. base_delta/hexaco_modifier는 `pub(crate)`로 *내부 헬퍼*. |
-| ② | BondStatus 차단을 *함수 진입 첫 줄*에 | 도메인 invariant — Relationship 자체 책임. Deceased/Resolved/Dormant 즉시 종료. Reactivating은 통과 (1.4 결정). |
-| ③ | **B-D12 (Shame/Pride agent_id=None) 처리는 호출 측** (의심 1 결정 A) | 함수 책임 = *상대 관계 4축 갱신*. 자기 평가는 *별개 시스템*. 호출 측 (Stage 3 RelationshipPolicy)이 ActionFocus.agent_id 분기. agent_id=None → 함수 호출 안 함. |
-| ④ | 인라인 곱셈 (`base.* * intensity * modulator.*`) (의심 2 결정 b) | `AxisDelta::multiply_by` 같은 추가 메서드 *없음*. 코드 4줄 단순. 가독성 좋음. Stage 2 본체 *추가 메서드 최소*. |
-| ⑤ | `&mut Relationship` 시그니처 — `apply_delta` 호출 | Relationship의 캡슐화 보존 (1.6 의심 2 결정 X). 외부에서 *raw 필드 직접 변경* 차단. |
-
-##### 계산 검증 (S2 임충 케이스 — Anger 단독)
-
-```
-입력: rel(임충→육겸 산신묘 *전*), Anger 0.95, 임충 HEXACO
-
-1. BondStatus 차단: rel.bond_status = Active → accepts_live_input == true → 통과
-2. base_delta(Anger) = AxisDelta { trust: -25, affinity: -10, respect: 0, wariness: 25 }
-3. hexaco_modifier(Anger, &hexaco) = AxisModifier { trust: 1.44, affinity: 1.2, respect: 1.2, wariness: 1.2 } (2.3 검증)
-4. delta = base * 0.95 * modulator:
-     trust    = -25 * 0.95 * 1.44 = -34.2
-     affinity = -10 * 0.95 * 1.2  = -11.4
-     respect  =   0 * 0.95 * 1.2  =   0
-     wariness =  25 * 0.95 * 1.2  =  28.5
-5. rel.apply_delta(&delta):
-     trust    50 + (-34.2) = +15.8  (clamp ±100 통과)
-     affinity 40 + (-11.4) = +28.6
-     respect  30 +    0    = +30
-     wariness  5 +  28.5   = +33.5
-```
-
-Hate + Reproach까지 합치면 *3 차례 함수 호출*. 누적 결과는 Stage 0 §3.6 S2.
-
-##### 단위 테스트 케이스 (2.7에서 구현)
-
-```
-[정상 통합 — Active Status]
-- let mut rel = Builder::new("a", "b").trust(AxisScore::new(50)).affinity(AxisScore::new(40)).build();
-  let hex = HexacoProfile::neutral();
-  update_axes_from_emotion(&mut rel, EmotionType::Gratitude, 0.7, &hex);
-  → rel.trust().value()    == 50 + (20 * 0.7 * 1.0) = 64
-  → rel.affinity().value() == 40 + (10 * 0.7 * 1.0) = 47
-  → rel.wariness().value() ==  0 (clamp floor — Gratitude wariness -10 * 0.7 = -7, clamp 0)
-
-[BondStatus 차단 — Deceased]
-- let mut rel = Builder::new("a", "b").trust(AxisScore::new(50)).bond_status(BondStatus::Deceased).build();
-  update_axes_from_emotion(&mut rel, EmotionType::Anger, 0.95, &hex);
-  → rel.trust().value() == 50  (변경 0)
-
-[BondStatus 차단 — Resolved + Dormant 동일]
-- bond_status = Resolved { reason: "사화".into() } → 변경 0
-- bond_status = Dormant → 변경 0
-
-[BondStatus 허용 — Active + Reactivating]
-- bond_status = Active → axes 변동 정상
-- bond_status = Reactivating { trigger: EventId("evt_001".into()) } → axes 변동 정상
-
-[Default HEXACO — modifier 모두 1.0]
-- HexacoProfile::neutral() 입력 시 hexaco_modifier가 default 반환
-- 결과: delta == base * intensity (modifier 영향 0)
-
-[Intensity 0.0 — 변동 0]
-- update_axes_from_emotion(..., Gratitude, 0.0, ...) → 4축 변동 0
-
-[S2 임충 시뮬레이션 — Anger 0.95 + 임충 HEXACO]
-- 위 계산 검증 그대로:
-  rel.trust    50 → 15.8
-  rel.affinity 40 → 28.6
-  rel.respect  30 → 30
-  rel.wariness  5 → 33.5
-
-[clamp 동작]
-- rel.trust = 95, Gratitude 0.95 적용 → 95 + ~19 = 100 (clamp cap)
-- rel.wariness = 3, Love 0.95 적용 → 3 + (-5 * 0.95) = -1.75 → 0.0 (floor)
-```
-
-##### 비포함
-
-- B-D12 Shame/Pride 가드 — 호출 측 (Stage 3 RelationshipPolicy)
-- 합산 패턴 (Anger + Hate + Reproach 3 차례 호출) — Stage 3 RelationshipPolicy가 *대화 끝 batch*로 호출
-- axis_modulation (Phase 2.5 LLM 3지선다) — Reflection schema 확장 별도
-- C+ Prudence intensity 조건부 정밀화 — Phase 2.3
-
-#### 2.5 — `RelationshipModifiers` 이름 변경 (★ 재검토 결과 — 변경 0)
-
-**★ 2.5 작업 면적: 0** (Phase 2.3 이관)
-
-##### Stage 0 A2 + 1.6 spec 가정 *정정*
-
-Stage 0 A2 + 1.6 spec에서 박았던 *"closeness_* → affinity_* 이름 변경"*은 **실재 코드 검증 결과 옛 가정에 의한 오해**.
-
-##### 현실 코드 (Stage 1 후 검증)
-
-`RelationshipModifiers` 구조 — `closeness_*` 필드 *원래 없었음*:
-
-```rust
-// src/domain/relationship/mod.rs — Stage 1 후 현재 코드
-pub struct RelationshipModifiers {
-    pub intensity_multiplier: f32,
-    pub trust_modifier: f32,
-    pub empathy_modifier: f32,
-    pub hostility_modifier: f32,
-    // pub trust_emotion_modifier: f32,  // (situation.rs 등에서 직접 박음)
-}
-```
-
-→ 4 필드 모두 *추상적 이름* (intensity/trust/empathy/hostility) — closeness 어휘 없음.
-
-##### Stage 1에서 *F1 흡수 정책* 적용
-
-`modifiers()` 메서드의 *입력만* closeness → affinity로 swap. 시그니처 보존:
-
-```rust
-pub fn modifiers(&self) -> RelationshipModifiers {
-    let affinity_norm = self.affinity.value() / 100.0;  // ← Stage 1에서 closeness → affinity 입력 swap
-    let trust_norm = self.trust.value() / 100.0;
-    let p = profile();
-    RelationshipModifiers {
-        intensity_multiplier: (1.0 + affinity_norm * p.rel_closeness_intensity_weight).max(0.0),
-        trust_modifier: 1.0 + trust_norm * p.rel_trust_emotion_weight,
-        empathy_modifier: (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0),
-        hostility_modifier: (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0),
-    }
-}
-```
-
-##### 5곳 사용처 검증 — 변경 0
-
-| 위치 | 사용 | Stage 2 영향 |
-|---|---|---|
-| `application/situation_service.rs:37, 46` | `.modifiers()` 호출 | **변경 0** |
-| `application/command/policies/emotion_policy.rs:66` | `.modifiers()` 호출 | **변경 0** |
-| `application/command/policies/stimulus_policy.rs:79` | `.modifiers()` 호출 | **변경 0** |
-| `application/command/policies/scene_policy.rs:89` | `.modifiers()` 호출 | **변경 0** |
-| `adapter/memory_repository.rs:377, 384` | `.modifiers()` 호출 | **변경 0** |
-
-→ 시그니처 보존이므로 *시맨틱적 자동 흡수* (F1 정책).
-
-##### Phase 2.3로 이관
-
-**Phase 2.3 (`task-rel-phase2.3-appraise-tuning.md`)에서 처리할 항목**:
-
-1. **`RelationshipModifiers` 필드 정밀화**:
-   - `respect_modifier` 신설 검토 — 4축 환경에서 *respect-aware 감정 평가* 필요?
-   - `wariness_modifier` 신설 검토 — 경계심이 *Reproach/Hate 강도* 조정?
-   - 현재 4 필드 (intensity/trust/empathy/hostility) → 6 필드?
-
-2. **Tuning profile rename**:
-   - `rel_closeness_intensity_weight` → `rel_affinity_intensity_weight`
-   - `rel_closeness_empathy_weight` → `rel_affinity_empathy_weight`
-   - `rel_closeness_hostility_weight` → `rel_affinity_hostility_weight`
-   - `rel_trust_emotion_weight` (그대로)
-   - + 신설 `rel_respect_*_weight` (필요 시)
-   - 시나리오 `profile.toml` 자동 마이그레이션 (이름 변경만, 값 보존)
-
-3. **시뮬레이션 검증** — Phase 2.3 시나리오 set으로 modifier 영향 측정
-
-##### Stage 0 A2 가정의 오해 회고
-
-| 가정 | 현실 |
-|---|---|
-| Stage 0 A2: `RelationshipModifiers`에 `closeness_modifier` / `closeness_squared` / `closeness_abs` / `trust_modifier` 4 필드 | *옛 분석 자료*에 의존한 가정 — *Phase 1 1.5* 즈음에 이미 추상 이름 (intensity/empathy/hostility)으로 *리네임된 후* 였음 |
-| 1.6 spec: closeness_* → affinity_* 이름 변경 + 5곳 사용처 갱신 | 코드 grep 검증 누락 — 옛 가정 그대로 박음 |
-
-★ **교훈**: spec 작성 시 *현실 코드 grep 검증을 더 자주*. Stage 0 A 카테고리는 *코드 사실 조사*가 본질인데, Phase 1 진행 중 변경된 부분은 *재확인 필요*.
-
-##### 변경 이력
-
-- Stage 0 A2 (2026-05-12): closeness_* 4 필드 가정 박음
-- Stage 1 코딩 (2026-05-14): F1 흡수 정책으로 *입력 swap*만 적용
-- Stage 2.5 (2026-05-14): 코드 grep 검증으로 가정 *오해* 확인, *변경 0* 결론
-- Stage 2.6 진입 직전 (2026-05-15): EmotionState API grep 검증 중 발견 — spec 2.2~2.4에 박힌 `OccEmotion` enum 명명이 실재 코드와 불일치. 실재는 `EmotionType` (22 variants 동일). spec 전수 정정 (34곳 OccEmotion → EmotionType). variants 의미/매핑은 그대로 — *이름만* 정정.
-
-##### 비포함 (Phase 2.3 영역)
-
-- `RelationshipModifiers` 필드 정밀화 (respect_modifier / wariness_modifier 신설)
-- Tuning profile rename (`rel_closeness_*` → `rel_affinity_*`)
-- 시나리오 `profile.toml` 자동 마이그레이션
-- 4축 환경 modifier 시뮬레이션 검증
-
-#### 2.6 — 옛 `Relationship::after_dialogue` 호출 3곳 → `update_axes_from_emotion` 이관
-
-**목적**: Stage 1에서 *임시 no-op*으로 박힌 3개 호출 위치를 *정식 `update_axes_from_emotion` 루프*로 교체. B-D12 Pride/Shame 가드 포함. 4축 자동 변동 *최초 활성화 자리*.
-
-##### 현재 상태 (Stage 1 코딩 결과)
-
-3 위치 모두 *임시 no-op + TODO(Stage 2)*:
-
-```rust
-// relationship_policy.rs:135 (DialogueEndRequested handler)
-// Stage 1: after_dialogue 폐기. Stage 2의 `update_axes_from_emotion` 신설 자리.
-// 임시 no-op — 값은 보존하되 RelationshipUpdated 이벤트는 그대로 발행 (downstream 호환).
-// TODO(Stage 2): base_delta 표 + HEXACO 보정자 적용 후 apply_delta.
-let updated = relationship.clone();
-```
-
-```rust
-// stimulus_policy.rs:71 (Beat 전환용 임시 관계 갱신)
-// Stage 1: after_dialogue 폐기 — Stage 2 placeholder. 임시 no-op (관계 modifier 보존).
-// TODO(Stage 2): update_axes_from_emotion(&mut beat_rel, stimulated, sig, hexaco).
-let beat_rel = relationship.clone();
-```
-
-##### Stage 2.6 목표 — 표준 호출 패턴
-
-```rust
-use crate::domain::emotion::EmotionType;
-use crate::domain::relationship::update_axes_from_emotion;
-
-let mut updated = relationship.clone();
-let emotion = ctx.get_emotion_state(npc_id)?;
-let hexaco = ctx.get_npc(npc_id)?.personality();   // HexacoProfile
-
-for (emotion_type, intensity, _context) in emotion.iter_active() {
-    // ── B-D12 가드 (의심 결정 B): Pride/Shame는 자기 평가 — partner 관계 갱신 안 함 ─────
-    if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
-        continue;
-    }
-    update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
-}
-// updated가 4축 변동 적용된 새 Relationship
-```
-
-##### 3 위치별 적용 패턴
-
-| # | 파일:라인 | Handler | 동일 호출 패턴? |
-|---|---|---|---|
-| (1) | `application/command/policies/relationship_policy.rs:135` | DialogueEndRequested | ✅ 표준 호출 패턴 그대로 |
-| (2) | `application/command/policies/relationship_policy.rs:220+` | DialogueReflected (outer_loop_entry 게이트 통과 시만) | ✅ 표준 호출 패턴 그대로 (게이트는 함수 호출 *외*) |
-| (3) | `application/command/policies/stimulus_policy.rs:71` | Beat 전환용 임시 관계 갱신 (modifiers 계산용) | ✅ 표준 호출 패턴 — `let mut beat_rel = relationship.clone();` 그대로, 호출 후 `beat_rel.modifiers()` 사용 |
-
-##### 설계 의도 5개
-
-| # | 항목 | 의도 |
-|---|---|---|
-| ① | **B-D12 가드는 *호출 측*** (의심 결정 B) | 2.4 결정과 정합 — `update_axes_from_emotion` 함수 책임 = *상대 관계 갱신* 일관. 자기 평가 (Pride/Shame) 가드는 *호출 측이 분기*. |
-| ② | `EmotionType` 사용 (spec 2.5 정정 결과) | 실재 코드 `EmotionType` enum 사용. `OccEmotion` 명명 정정 (2.5 회고). |
-| ③ | `iter_active()` API 사용 | `EmotionState::iter_active() -> impl Iterator<Item = (EmotionType, f32, Option<&str>)>` — 강도 > 0인 OCC만 순회. 22 OCC 모두 적용 후보. |
-| ④ | `_context` 변수 — 활용 안 함 | Stage 2 본체에서는 context 자유 텍스트 사용 안 함. 향후 *axis_modulation* (Phase 2.5) 또는 *RelationshipChangeCause 보강*에서 활용 가능. |
-| ⑤ | `relationship.clone()` 패턴 보존 | Stage 1 코딩 패턴 유지. `&mut updated` 갱신 → RelationshipUpdated payload 발행은 Stage 3에서 다시 검토. |
-
-##### B-D12 가드 동작 시나리오
-
-```
-대화 중 누적 EmotionState:
-- Gratitude   intensity 0.7  (partner의 도움)
-- Pride       intensity 0.5  (자기 만족)
-- Anger       intensity 0.3  (partner의 일부 행동에 분노)
-
-iter_active() 순회 + B-D12 가드:
-- (Gratitude, 0.7) → update_axes_from_emotion 호출 ✅
-- (Pride,     0.5) → matches! 가드 발동, skip ❌ (4축 변동 없음)
-- (Anger,     0.3) → update_axes_from_emotion 호출 ✅
-
-결과: Gratitude + Anger 누적 적용된 4축 변동만 발생.
-```
-
-##### Stage 2.6 작업 면적
-
-| 위치 | 작업 |
-|---|---|
-| `relationship_policy.rs:135` (DialogueEndRequested) | 1) `update_axes_from_emotion` import 추가 2) `EmotionType` import 추가 3) `relationship.clone()` → `let mut updated = ...` 4) iter_active 루프 + B-D12 가드 5) `// TODO(Stage 2)` 주석 제거 |
-| `relationship_policy.rs:220+` (DialogueReflected) | 위와 동일 패턴 (게이트 통과 시만) |
-| `stimulus_policy.rs:71` (Beat 전환) | 위와 동일 + `_let _ = stimulated;` 같은 unused 표시 제거 |
-
-##### 게이트
-
-1. `cargo check --all-features` 통과
-2. 3 위치 모두 *임시 no-op* 코드 제거 + 표준 호출 패턴 박힘
-3. `TODO(Stage 2)` 주석 제거 (3개)
-4. 1220+ tests 통과 (Stage 1 baseline + 시그니처 변경 반영)
-5. 단위 테스트 — Pride/Shame 가드 동작 검증 (B-D12)
-
-##### 단위 테스트 케이스 (2.7에서 통합 박힘)
-
-```
-[B-D12 가드 — Pride/Shame skip]
-- EmotionState에 (Pride 0.5, Anger 0.3) 박은 후 DialogueEndRequested 처리
-  → Anger만 적용. Pride 변동 0.
-- EmotionState에 Pride만 박은 경우
-  → 4축 변동 0 (모든 OCC 가드 통과 X).
-
-[정상 적용 — Pride/Shame 외 모든 OCC]
-- EmotionState에 (Gratitude 0.7) 박음
-  → S0 Gratitude 표 × 0.7 × HEXACO modifier 적용.
-
-[BondStatus 차단 통합 검증]
-- EmotionState에 (Anger 0.95) + bond_status = Deceased
-  → update_axes_from_emotion 안에서 차단 (2.4 가드). 4축 변동 0.
-
-[iter_active() empty 케이스]
-- EmotionState 모든 강도 0 → 루프 0회 → 4축 변동 0.
-```
-
-##### 비포함
-
-- B-D12 Shame/Pride *함수 내부* 가드 (옵션 A 비채택) — 함수 책임은 *상대 관계 갱신* 일관
-- ActionFocus.agent_id 분기 — 감정 발생 시점 upstream에서 이미 결정 (Pride/Shame은 agent_id=None으로 박혀 EmotionType 분기로 자연 흡수)
-- Compound 감정 합산 로직 — `iter_active` 루프가 *각 OCC 개별 호출*로 합산 자동 처리 (Anger + Hate + Reproach 3 차례)
-- RelationshipUpdated payload 6→8 schema 변경 — Stage 3
-- axis_modulation (Phase 2.5 LLM 3지선다) — Reflection schema 확장
-- Stage 1 임시 *±1.0 contract* 정규화 (`/ 100.0`) — Stage 3에서 payload 6→8 확장 시 정리
-
-#### 2.7 — Stage 2 단위 테스트
-
-**목적**: 2.2~2.6에서 박은 *OCC → 4축 매핑 + 호출 측 통합*을 단위 테스트로 검증. Stage 2 종결 게이트.
-
-##### 테스트 위치 — *모듈 내부 패턴* (Stage 1.9 일관)
-
-```
-src/domain/relationship/
-  mapping.rs        # ★ 신설 — base_delta + hexaco_modifier + update_axes_from_emotion tests
     └── #[cfg(test)] mod tests { ... }
-  axis.rs           # AxisModifier::combine_uniform + scale_axis tests 추가
-    └── (Stage 1 #[cfg(test)] mod tests에 추가)
-
-src/application/command/policies/
-  relationship_policy.rs   # B-D12 가드 + iter_active 루프 통합 tests
-    └── (기존 #[cfg(test)] mod tests에 추가)
-  stimulus_policy.rs       # Beat 전환 통합 tests
-    └── (기존 #[cfg(test)] mod tests에 추가)
+  axis.rs          # AxisScore + WarinessScore + AxisDelta tests
+    └── #[cfg(test)] mod tests { ... }
+  bond.rs          # BondKind + BondStatus tests
+    └── #[cfg(test)] mod tests { ... }
+  partnership.rs   # Partnership tests
+    └── #[cfg(test)] mod tests { ... }
 ```
 
-근거: Stage 1 코딩 검증으로 `mapping.rs`는 *신설 파일* 확정. 정책 (`*_policy.rs`)은 *기존 테스트 모듈*에 추가.
+근거: 현재 `domain/relationship.rs:323~` 위치에 `#[cfg(test)] mod tests` 박힌 패턴. Phase 1 일관.
 
 ##### 파일별 테스트 카운트 (추정)
 
 | 파일 | 케이스 영역 | 추정 카운트 |
 |---|---|---|
-| `mapping.rs` (2.2) | 12 OCC base_delta + 10 default + 합산 검증 | **~13** |
-| `mapping.rs` (2.3) | hexaco_modifier 단일 룰 6 + 복합 (S2) + neutral + is_negative + AxisModifier 메서드 3 | **~10** |
-| `mapping.rs` (2.4) | 정상 + BondStatus 차단 5 + Default HEXACO + intensity 0 + S2 + clamp | **~10** |
-| `axis.rs` 추가 | AxisModifier::combine_uniform / scale_axis | **~3** (Stage 1.9에 이미 일부 박힘) |
-| `relationship_policy.rs` 추가 | B-D12 가드 + 정상 적용 + BondStatus 통합 + empty | **~4** |
-| `stimulus_policy.rs` 추가 | Beat 전환 통합 | **~2** |
-| **합계** | | **~42** |
+| `axis.rs` | clamp 6 + add 4 + Default/NEUTRAL 4 + AxisDelta scaled_by 2 + AxisDelta Add 2 + serde 2 | **~12** (묶음) |
+| `bond.rs` | BondKind 영역 헬퍼 6 + 상호 배타성 1 + serde 2 / BondStatus accepts_live_input 5 + Default 1 + serde 5 | **~10** |
+| `partnership.rs` | variants 1 + serde 4 + Copy/Eq/Hash 3 | **~4** |
+| `mod.rs` | Relationship new/neutral 2 + apply_delta 2 + modifiers 1 + serde 3 + TypeChange 1 + Builder chain 7 | **~12** |
+| **합계** | | **~38** |
 
-→ Stage 2 신규 단위 테스트 **~42개**. Stage 1 baseline 1220 → Stage 2 종결 시 ~1262 (단순 합 추정).
+→ Stage 1 신규 단위 테스트 **~38개**. baseline 1220 → Stage 1 종결 시 ~1258 (단순 합).
 
-(실제 카운트는 Stage 2 구현 시 정확 — *baseline log* 박힘. 위 42는 *최소 기준*.)
+(실제 카운트는 Stage 1 구현 시 정확 — *baseline log* 박힘. 위 38은 *최소 기준*.)
 
-##### Stage 0 §3.6 시뮬레이션 케이스 통합 검증
+##### 1.8 자동 흡수 19곳의 기존 테스트 보존
 
-Stage 2 종결 시 *S1~S4 4 케이스*를 *통합 테스트로 명시*:
+- `policies/*_test.rs` 22곳 중 19곳 (`domain/relationship.rs` 3곳 제외)은 *기존 테스트 그대로*. *시그니처 보존*만으로 통과.
+- 컴파일 에러가 *3축 후속 호출 위치*만 식별 → Stage 2/3에서 갱신.
 
-| 케이스 | 입력 | 기대 4축 변동 |
-|---|---|---|
-| **S1** | 임충 → 노지심, Gratitude 0.7, intensity | trust ↑, affinity ↑ (BondStatus Active) |
-| **S2** | 임충 → 육겸 산신묘, Anger 0.95 + Hate + Reproach, 임충 HEXACO | trust 50→16 / affinity 40→29 / respect 30→30 / wariness 5→34 (Anger 단독 — 3 OCC 합산 시 더 큰 변동) |
-| **S3** | 수련 → 무백, Love 0.8 + Admiration | trust ↑ / affinity ↑↑ / respect ↑ |
-| **S4** | 고구 → 육겸, Reproach (정략결혼 정황) | respect ↓↓ / wariness ↑ |
-
-→ `tests/phase2_narrative_test.rs` (Stage 5 narrative 영역) 또는 *Stage 2.7 통합 테스트 module*로 박을지는 *Stage 5에서 결정*. Stage 2 본체는 *각 함수 단위 테스트*만.
-
-##### Stage 2 종결 게이트 (2.1~2.7 모두 통과 시)
+##### Stage 1 종결 게이트 (1.1~1.9 모두 통과 시)
 
 | # | 게이트 | 검증 |
 |---|---|---|
-| 1 | `cargo check --all-features` 통과 | 2.1~2.4 시그니처 컴파일 + 2.6 호출 측 갱신 |
-| 2 | base_delta 48셀 *결정론* — 같은 입력 → 같은 출력 | 2.2 단위 테스트 |
-| 3 | BondStatus Deceased/Resolved/Dormant 차단 확인 | 2.4 단위 테스트 |
-| 4 | Shame/Pride agent_id=None 처리 — EmotionType 가드 동작 | 2.6 B-D12 테스트 |
-| 5 | `cargo test --all-features --workspace` 통과 | Stage 1 baseline (1220+) + Stage 2 신규 ~42 = ~1262 |
-| 6 | Baseline log 박제 — `baselines/stage2-cargo-test-2026-MM-DD-PASS.log` | Stage 3 진입 직전 |
-| 7 | S2 임충 케이스 *수치 정합* (Anger 단독: trust 50→16, affinity 40→29, wariness 5→34) | 2.4 + 2.6 통합 테스트 |
+| 1 | `cargo check --all-features` 통과 | 1.2~1.7 타입 컴파일 |
+| 2 | **`Relationship::neutral()` 호출 22곳 *예상 외 컴파일 에러 0*** | 1.8 자동 흡수 검증 |
+| 3 | `WarinessScore::new(-50.0)` 컴파일 차단 검증 | 1.2 ⑤ — Rust 컴파일러 자동 |
+| 4 | `cargo test --all-features --workspace` 통과 | Stage 1 신규 ~38개 + 기존 1220 = ~1258 |
+| 5 | Baseline log 박제 — `baselines/stage1-cargo-test-2026-MM-DD-PASS.log` | Stage 2 진입 직전 |
 
-##### Stage 2 산출 commit + 회고
+##### Stage 1 산출 commit + 회고
 
 ```
-commit: phase2-stage2-mapping.md 회고
-파일: docs/tasks/mind-architecture/phase2-stage2-mapping.md
+commit: phase2-stage1-domain.md 회고
+파일: docs/tasks/mind-architecture/phase2-stage1-domain.md
 내용:
-- Stage 2 2.1~2.7 작업 내역
-- 최종 테스트 카운트 (예: 1262)
-- spec 가정 정정 사례 (OccEmotion → EmotionType / 2.5 closeness 오해)
-- Stage 0 §3.6 S2 임충 수치 정합 검증 결과
-- Stage 3 진입 전제 (4축 매핑 동작 검증, BondStatus 차단 동작)
+- Stage 1 1.1~1.9 작업 내역
+- 최종 테스트 카운트 (예: 1258)
+- 자동 흡수 19곳 확인
+- Stage 2 진입 전제 (모듈 분할 완료, 4축 타입 안정)
 - 발견 사항 (있다면)
 ```
 
 ##### 비포함
 
-- 통합 테스트 (cross-module, S1~S4 narrative) — Stage 5 narrative 시뮬레이션 본체
-- `update_axes_from_emotion` 적용 후 RelationshipUpdated payload 6→8 검증 — Stage 3
-- 시나리오 JSON 마이그레이션 후 적용 검증 — Stage 4/5
+- 통합 테스트 (cross-module) — Stage 5 narrative 시뮬레이션
+- `update_axes_from_emotion` 적용 후 4축 변동 검증 — Stage 2/5
+- `RelationshipUpdatedPayload` 6→8 schema 검증 — Stage 3
+- 시나리오 JSON 마이그레이션 검증 — Stage 4/5
 - Mind Studio frontend 4축 표시 검증 — Stage 3
-- Phase 2.5 axis_modulation 적용 검증 — Phase 2.5 본체
 
 ---
 
-**Stage 2 종합 게이트** (2.1~2.7 모두 통과 시):
+**Stage 1 종합 게이트** (1.1~1.9 모두 통과 시):
 1. `cargo check --all-features` 통과
-2. 단위 테스트 통과 (S1~S4 ground truth ±N 이내)
-3. base_delta 48셀 결정론 (같은 입력 → 같은 출력)
-4. BondStatus Deceased/Resolved/Dormant 차단 확인
-5. Shame/Pride 4축 변동 0 확인 (agent_id=None)
-6. Stage 1 baseline (~1258 tests) + Stage 2 신규 통과
+2. `Relationship::neutral()` 호출 16곳 자동 흡수 (변경 0)
+3. `WarinessScore::new(-50.0)` 컴파일 차단 확인 (불변식 강제)
+4. 단위 테스트 통과
+5. Stage 1 baseline `baselines/cargo-test-2026-05-14-PASS.log` 1220 tests 통과 유지
+
+**산출 commit**: `phase2-stage1-domain.md` 회고
+
+---
+
+### Stage 2 — OCC → 4축 매핑 (base_delta + HEXACO + modifiers)
+
+**범위**:
+- `AxisDelta { trust: f32, affinity: f32, respect: f32, wariness: f32 }` Value Object
+- `base_delta(emotion: OccEmotion) -> AxisDelta` 48셀 lookup (v0.7 §4.2, B-D6 D6-a)
+  - 12 OCC × 4축 (Well-being/Prospect 10 OCC는 4축 변동 0 — B-D14)
+  - `match` 표현식 또는 `const` 배열 (구현 선택)
+- `hexaco_modifier(emotion: OccEmotion, hexaco: &Hexaco) -> AxisModifier` 6 보정 룰 (v0.7 §4.3, B-D6 D6-a)
+  - H+ Sincerity ×1.2 trust / A+ Patience ×0.7 전역 / A- Forgiveness ×1.5 부정 / E+ Anxiety ×1.3 wariness / C+ Prudence ×0.8 큰 변화 / O+ Unconventionality 양극 가속
+- `update_axes_from_emotion(rel, emotion, intensity, hexaco)` 단일 함수 (B-D5)
+- BondStatus 차단 (`if !rel.bond_status.accepts_live_input() { return; }`)
+- Shame/Pride (`agent_id=None`) 4축 변동 0 (B-D12)
+- `RelationshipModifiers` 갱신 (4축 환경 modifier — Phase 2.3에서 정밀화 예정, Phase 2는 기존 시그니처 유지)
+- 단위 테스트: S1~S4 ground truth 비교, Compound 감정 (Anger/Gratitude 등) 검증
+
+**게이트**:
+1. 단위 테스트 통과 (S1~S4 ground truth ±N 이내)
+2. base_delta 48셀 lookup 결정론 (같은 입력 → 같은 출력)
+3. BondStatus Deceased/Resolved/Dormant 차단 확인
+4. Shame/Pride 4축 변동 0 확인
 
 **산출 commit**: `phase2-stage2-mapping.md` 회고
-**?곗텧 commit**: `phase2-stage3-updater.md` ?뚭퀬
 
 ---
 
-### Stage 4 ??留덉씠洹몃젅?댁뀡 ?꾧뎄 + ?쒕굹由ъ삤 ?곗씠??
-**踰붿쐞**:
-- Rust binary ?묒꽦: `tools/migrate_relationships/` (B-D8)
-  - ?낅젰: v0.6 ?쒕굹由ъ삤 JSON ?붾젆?좊━
-  - 異쒕젰: v0.7 ?쒕굹由ъ삤 JSON
-  - ?먮룞 蹂?? `trust 횞 100` ??trust / `closeness 횞 100` ??affinity / BondKind 湲곕컲 respect/wariness baseline (B-D10) / `power` ?꾨뱶 ??젣 / default ?꾨뱶 梨꾩?
-  - ?듭뀡: `--dry-run` / `--diff` / `--backup-dir`
-- Claude prompt template 3 ?뚯씪 (`docs/migration/claude-prompts/`):
-  - `bond-kind-inference.md` ???쒕굹由ъ삤 ?섏뼱蹂?BondKind 異붾줎
-  - `type-text-inference.md` ??type ?먯쑀 ?띿뒪??異붾줎
-  - `adjustment-suggestion.md` ??narrative 寃곌낵 湲곕컲 議곗젙 ?쒖븞 (Stage 5?먯꽌 ?ъ슜)
-- 諛깆뾽 ?붾젆?좊━ ?대룞: `data/scenarios.backup-v0.6/` + `data/sessions.backup-v0.6/`
-- ?붿옄?대꼫 + Claude ?묒뾽: ~45 ?섏뼱 BondKind/type 諛뺢린
-- 留덉씠洹몃젅?댁뀡 ?꾧뎄 ?ㅽ뻾 ??v0.7 JSON ?앹꽦
-- `_schema.md` v0.6 ??v0.7 媛깆떊 (Relationship ?뱀뀡 ?쒖젙)
+### Stage 3 — RelationshipUpdater (대화 끝 batch 갱신)
 
-**寃뚯씠??*:
-1. 留덉씠洹몃젅?댁뀡 ?꾧뎄 ?먯껜 ?⑥쐞 ?뚯뒪???듦낵
-2. 紐⑤뱺 ?쒕굹由ъ삤 JSON v0.7 schema ?듦낵 (serde ??쭅?ы솕 + ?꾨찓??validation)
-3. 留덉씠洹몃젅?댁뀡 ??而댄뙆??+ 1095+ tests ?듦낵
-4. ?붿옄?대꼫 BondKind/type 寃???듦낵 (Claude 異붾줎 寃곌낵 ?⑸떦???뺤씤)
+**범위**:
+- `relationship_policy.rs` 재작성:
+  - 기존 closeness 1축 자동 갱신 코드 제거
+  - 4축 자동 갱신 코드 신설 (`update_axes_from_emotion` 호출)
+  - T1 시점 유지 (대화 끝 + 게이트 통과 시 1번)
+  - 매핑 호출 2곳 중복 → helper 추출
+- `RelationshipUpdatedPayload` 6→8 필드:
+  - `closeness_before/after, trust_before/after, power_before/after` 제거
+  - `trust_before/after, affinity_before/after, respect_before/after, wariness_before/after` 추가
+  - `cause` 그대로 (변경 0)
+- `RelationshipChangeCause` 변경 0 (A3 결론)
+- `event_bridge` SSE 매핑 갱신 — `RelationshipUpdated` 페이로드 8 필드 반영
+- Mind Studio frontend `domain_sync.rs` 4축 DTO 변환 갱신
+- Reflection schema에 `axis_modulation` 필드 *placeholder* 추가 (Phase 2.5 활성화 대기 — 일단 모두 "default" 박힘 가정)
+- `outer_loop_entry()` 게이트 변경 0 (Phase 2/2.5/3 진입 자리 그대로)
+- 통합 테스트
 
-**?곗텧 commit**: `phase2-stage4-migration.md` ?뚭퀬
+**게이트**:
+1. **1095+ tests 통과** (시그니처 변경 ~100 호출 모두 갱신)
+2. `dispatch_v2(EndDialogue)` latency ±20% 이내 (D2 baseline 비교)
+3. `event_bridge` SSE 발행 8 필드 확인
+4. Mind Studio frontend 4축 표시 동작 확인
+5. `outer_loop_entry()` 게이트 작동 (chitchat skip / significant 진입)
 
----
-
-### Stage 5 ??Narrative ?쒕??덉씠??寃利?
-**踰붿쐞**:
-- Phase 1 narrative 3 ?쒕굹由ъ삤 (chitchat-passerby/daily-training/lin-chong-shanshenmiao) 4異??쒖뒪?쒖뿉???ъ떎??- S1~S4 ?쒕??덉씠??耳?댁뒪瑜?*Phase 2 narrative test*濡?諛뺤쓬 (`tests/phase2_narrative_test.rs` ?좎꽕)
-  - 媛?耳?댁뒪 ground truth (湲곕? 4異?蹂?? 紐낆떆
-  - base_delta + HEXACO + (axis_modulation Phase 2.5 ?꾩씠誘濡?紐⑤몢 "default") ?곸슜 寃곌낵 ?뺤씤
-- session_*_result.json ?쇨큵 ?ъ깮??(B-D9)
-- ?댁깋 耳?댁뒪 ?앸퀎 ??Claude AI 異붾줎?쇰줈 議곗젙 ?쒖븞 (`adjustment-suggestion.md` ?ъ슜) ???붿옄?대꼫 寃????JSON 誘몄꽭議곗젙
-- ?쒕굹由ъ삤蹂?narrative report
-
-**寃뚯씠??*:
-1. 3諛대뱶 calibration 蹂댁〈 (chitchat 0.000 / daily 0.461 / shanshenmiao 0.980 짹 tolerance ??D3 baseline 鍮꾧탳)
-2. S1~S4 ground truth 짹N ?대궡
-3. 4異?蹂?숈씠 ?쒕굹由ъ삤 ?섎룄? ?뺥빀 (?붿옄?대꼫 narrative 寃???듦낵)
-4. ?댁깋 耳?댁뒪 0嫄?(?먮뒗 紐⑤몢 ?붿옄?대꼫 議곗젙 ?꾨즺)
-
-**?곗텧 commit**: `phase2-stage5-narrative.md` ?뚭퀬
+**산출 commit**: `phase2-stage3-updater.md` 회고
 
 ---
 
-### Stage 6 ??Bench + ?뚭퀬 + Phase 2.3 KICKOFF
+### Stage 4 — 마이그레이션 도구 + 시나리오 데이터
 
-**踰붿쐞**:
-- `dispatch_v2(EndDialogue)` ?ъ륫??(chitchat/significant/legacy) ??D2 baseline 鍮꾧탳
-- `compute_significance` ?ъ륫????D4 baseline 鍮꾧탳
-- `MAX_EVENTS_PER_COMMAND = 22` ?덉쟾???ы솗??(A5 worst-case ?곗텧 寃利?
-- 4異?留ㅽ븨 異붽???latency ?곹뼢 痢≪젙 (Stage 2??base_delta lookup + HEXACO 蹂댁젙 鍮꾩슜)
-- Phase 2 checkpoint report ?묒꽦 (`phase2-checkpoint-report.md`)
-- **Phase 2.3 KICKOFF ?묒꽦** (`PHASE2.3-KICKOFF.md`) ???ㅼ쓬 phase ?멸퀎
-  - Phase 2.3 spec ?묒꽦 以鍮?(`task-rel-phase2.3-appraise-tuning.md`)
-  - ?쒕??덉씠???쒕굹由ъ삤 set ?좎꽕 ?붾젆?좊━ (`data/scenarios/appraise-validation/`)
-- ?몃? 臾몄꽌 ?몃뜳??媛깆떊:
-  - `CLAUDE.md` Mind Architecture Phase 2 ???쒓린
-  - `00-roadmap.md` 짠5 Phase 2 ?꾨즺 ?쒓린 + 짠6.5 짠1~짠3 吏꾩쿃 媛깆떊
-- spec `task-rel-phase2-domain-migration.md` v1.0 frozen ?쒓린
+**범위**:
+- Rust binary 작성: `tools/migrate_relationships/` (B-D8)
+  - 입력: v0.6 시나리오 JSON 디렉토리
+  - 출력: v0.7 시나리오 JSON
+  - 자동 변환: `trust × 100` → trust / `closeness × 100` → affinity / BondKind 기반 respect/wariness baseline (B-D10) / `power` 필드 삭제 / default 필드 채움
+  - 옵션: `--dry-run` / `--diff` / `--backup-dir`
+- Claude prompt template 3 파일 (`docs/migration/claude-prompts/`):
+  - `bond-kind-inference.md` — 시나리오 페어별 BondKind 추론
+  - `type-text-inference.md` — type 자유 텍스트 추론
+  - `adjustment-suggestion.md` — narrative 결과 기반 조정 제안 (Stage 5에서 사용)
+- 백업 디렉토리 이동: `data/scenarios.backup-v0.6/` + `data/sessions.backup-v0.6/`
+- 디자이너 + Claude 협업: ~45 페어 BondKind/type 박기
+- 마이그레이션 도구 실행 → v0.7 JSON 생성
+- `_schema.md` v0.6 → v0.7 갱신 (Relationship 섹션 한정)
 
-**寃뚯씠??*:
-1. Latency 짹20% ?대궡 (D2 baseline 鍮꾧탳, 4異?留ㅽ븨 異붽? ?곹뼢 痢≪젙媛?諛뺤젣)
-2. Bench ?ъ륫???꾨즺
-3. ?뚭? 0嫄?(1095+ tests ?듦낵 + narrative 3諛대뱶 蹂댁〈)
-4. Phase 2.3 吏꾩엯 以鍮??꾨즺 (KICKOFF + spec ?붾젆?좊━ 珥덉븞)
-5. ?몃? 臾몄꽌 ?몃뜳???숆린???꾨즺
+**게이트**:
+1. 마이그레이션 도구 자체 단위 테스트 통과
+2. 모든 시나리오 JSON v0.7 schema 통과 (serde 역직렬화 + 도메인 validation)
+3. 마이그레이션 후 컴파일 + 1095+ tests 통과
+4. 디자이너 BondKind/type 검토 통과 (Claude 추론 결과 합당성 확인)
 
-**?곗텧 commit**: `phase2-stage6-bench-handoff.md` ?뚭퀬 + `PHASE2.3-KICKOFF.md`
-
----
-
-## Stage 0 醫낃껐
-
-蹂?spec??짠0~짠7 紐⑤뱺 ???묒꽦 ?꾨즺. Phase 2 蹂몄껜 寃곗젙 12媛?諛뺥옒. Stage 1 吏꾩엯 以鍮??꾨즺.
-
-**?ㅼ쓬 ?묒뾽** (Stage 1 吏꾩엯):
-1. `baselines/cargo-test-2026-MM-DD-PASS.log` ?ъ륫??諛뺤젣
-2. Stage 1 `feat/phase2-stage1-domain` 釉뚮옖移??묒꽦
-3. `src/domain/relationship/axis.rs` ?좎꽕遺???쒖옉
+**산출 commit**: `phase2-stage4-migration.md` 회고
 
 ---
 
-## 蹂寃??대젰
+### Stage 5 — Narrative 시뮬레이션 검증
 
-| 踰꾩쟾 | ?좎쭨 | 蹂寃?|
+**범위**:
+- Phase 1 narrative 3 시나리오 (chitchat-passerby/daily-training/lin-chong-shanshenmiao) 4축 시스템에서 재실행
+- S1~S4 시뮬레이션 케이스를 *Phase 2 narrative test*로 박음 (`tests/phase2_narrative_test.rs` 신설)
+  - 각 케이스 ground truth (기대 4축 변동) 명시
+  - base_delta + HEXACO + (axis_modulation Phase 2.5 전이므로 모두 "default") 적용 결과 확인
+- session_*_result.json 일괄 재생성 (B-D9)
+- 어색 케이스 식별 → Claude AI 추론으로 조정 제안 (`adjustment-suggestion.md` 사용) → 디자이너 검토 → JSON 미세조정
+- 시나리오별 narrative report
+
+**게이트**:
+1. 3밴드 calibration 보존 (chitchat 0.000 / daily 0.461 / shanshenmiao 0.980 ± tolerance — D3 baseline 비교)
+2. S1~S4 ground truth ±N 이내
+3. 4축 변동이 시나리오 의도와 정합 (디자이너 narrative 검토 통과)
+4. 어색 케이스 0건 (또는 모두 디자이너 조정 완료)
+
+**산출 commit**: `phase2-stage5-narrative.md` 회고
+
+---
+
+### Stage 6 — Bench + 회고 + Phase 2.3 KICKOFF
+
+**범위**:
+- `dispatch_v2(EndDialogue)` 재측정 (chitchat/significant/legacy) — D2 baseline 비교
+- `compute_significance` 재측정 — D4 baseline 비교
+- `MAX_EVENTS_PER_COMMAND = 22` 안전성 재확인 (A5 worst-case 산출 검증)
+- 4축 매핑 추가의 latency 영향 측정 (Stage 2의 base_delta lookup + HEXACO 보정 비용)
+- Phase 2 checkpoint report 작성 (`phase2-checkpoint-report.md`)
+- **Phase 2.3 KICKOFF 작성** (`PHASE2.3-KICKOFF.md`) — 다음 phase 인계
+  - Phase 2.3 spec 작성 준비 (`task-rel-phase2.3-appraise-tuning.md`)
+  - 시뮬레이션 시나리오 set 신설 디렉토리 (`data/scenarios/appraise-validation/`)
+- 외부 문서 인덱스 갱신:
+  - `CLAUDE.md` Mind Architecture Phase 2 ✅ 표기
+  - `00-roadmap.md` §5 Phase 2 완료 표기 + §6.5 §1~§3 진척 갱신
+- spec `task-rel-phase2-domain-migration.md` v1.0 frozen 표기
+
+**게이트**:
+1. Latency ±20% 이내 (D2 baseline 비교, 4축 매핑 추가 영향 측정값 박제)
+2. Bench 재측정 완료
+3. 회귀 0건 (1095+ tests 통과 + narrative 3밴드 보존)
+4. Phase 2.3 진입 준비 완료 (KICKOFF + spec 디렉토리 초안)
+5. 외부 문서 인덱스 동기화 완료
+
+**산출 commit**: `phase2-stage6-bench-handoff.md` 회고 + `PHASE2.3-KICKOFF.md`
+
+---
+
+## Stage 0 종결
+
+본 spec의 §0~§7 모든 절 작성 완료. Phase 2 본체 결정 12개 박힘. Stage 1 진입 준비 완료.
+
+**다음 작업** (Stage 1 진입):
+1. `baselines/cargo-test-2026-MM-DD-PASS.log` 재측정 박제
+2. Stage 1 `feat/phase2-stage1-domain` 브랜치 작성
+3. `src/domain/relationship/axis.rs` 신설부터 시작
+
+---
+
+## 변경 이력
+
+| 버전 | 날짜 | 변경 |
 |---|---|---|
-| 0.1 | 2026-05-13 | 珥덉븞. A 移댄뀒怨좊━ Findings 5媛?醫낃껐, B 移댄뀒怨좊━ 吏꾪뻾 以?(B-D4 ?뺤젙). |
-| 0.2 | 2026-05-13 | 짠3.6 ?쒕??덉씠??寃利?(S1~S4) 異붽?. B-D6/D12/D13/D14 ?뺤젙. **Phase 2.3 ?좎꽕 寃곗젙**. 짠5 Risks ?묒꽦 (R1~R6). 짠1 Scope??Phase 2.3/2.5 鍮꾪룷????ぉ + axis_modulation ?쒓린 異붽?. |
-| 0.3 | 2026-05-13 | B-D1 (Score ???遺꾨━) + B-D2 (f32 ?대? ?쒗쁽) ?뺤젙. `AxisScore` + `WarinessScore` 2 ????좎꽕 寃곗젙. R3 ?댁냼 ?쒓린. |
-| 0.4 | 2026-05-13 | B-D3 (closeness ??affinity ?쇳빀 蹂?? ?뺤젙. ?먮룞 蹂??baseline + ?붿옄?대꼫 ?좏깮??議곗젙. |
-| 0.5 | 2026-05-13 | B-D10 (respect/wariness 珥덇린媛?猷? ?뺤젙. 媛꾨떒 ?대━?ㅽ떛 + BondKind 蹂댁셿 (?먯닔/Guardian/Mentor/吏湲?李⑤벑 baseline). |
-| 0.6 | 2026-05-13 | B-D5 (4異?留ㅽ븨 ?⑥닔 援ъ“) ?뺤젙. v0.7 짠4.1 ?⑥씪 ?⑥닔 洹몃?濡?(4異??숈떆 媛깆떊). |
-| 0.7 | 2026-05-13 | B-D8 (?쒕굹由ъ삤 留덉씠洹몃젅?댁뀡 ?뚰겕?뚮줈?? ?뺤젙. W3+ ??Rust binary ?먮룞 蹂??+ Claude AI 異붾줎 (BondKind/type/議곗젙) + ?붿옄?대꼫 寃?? Claude prompt template 諛뺤쓬 (`docs/migration/claude-prompts/`). R2 ????꾪솕 ?쒓린. |
-| 0.8 | 2026-05-13 | **??B 移댄뀒怨좊━ Phase 2 蹂몄껜 12媛?寃곗젙 ?꾨즺**. B-D9 (session_*_result.json ?먭린) ?뺤젙 ??Phase 2 ???쇨큵 ?ъ깮?? B-D7/B-D11? Phase 2.5 ?쒖젏 寃곗젙. 짠4 ?ㅻ뜑 醫낃껐 ?쒓린. |
-| 0.9 | 2026-05-13 | **??짠6 Baseline (D 移댄뀒怨좊━) ?묒꽦**. Phase 1 醫낃껐 ?쒖젏 baseline ?몄슜: 1095 tests passed / dispatch_v2 latency 24/35/29쨉s / narrative 3諛대뱶 0.000/0.461/0.980 / compute_significance 8.36쨉s / EventKind 31媛? D1~D6 ??ぉ. Stage 1 吏꾩엯 吏곸쟾 ?ъ륫???묒뾽 紐낆떆. |
-| 1.0 | 2026-05-13 | **??Stage 0 醫낃껐**. 짠7 Stages ?묒꽦 ??6 stage 遺꾪븷 (Stage 1 Type/Domain ??Stage 2 Mapping ??Stage 3 Updater ??Stage 4 Migration ??Stage 5 Narrative ??Stage 6 Bench/Handoff). 媛?stage 踰붿쐞쨌寃뚯씠?맞룹궛異?commit 紐낆떆. Phase 2 蹂몄껜 spec ?묒꽦 ?꾨즺, Stage 1 吏꾩엯 以鍮? |
-| 1.1 | 2026-05-14 | **??Stage 1 spec ?묒꽦 ?꾨즺 (freeze)**. 1.1 ?붾젆?좊━ 援ъ“ (紐⑤뱢 遺꾪븷 梨꾪깮), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + ?곸뿭 ?ы띁 5媛?(is_zhiji 臾댄삊 ?꾨찓???⑹뼱 蹂댁〈), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating ??true), 1.5 Partnership 4 variants, 1.6 Relationship 蹂몄껜 ?ъ옉??(4異?+ bond_* + partnership + type/type_history, power ?먭린, apply_delta 硫붿꽌?? modifiers closeness_* ??affinity_*), 1.7 RelationshipBuilder 4異?fluent API, 1.8 neutral() ?먮룞 ?≪닔 寃利?(22怨??몄텧, 19怨?蹂寃?0 ?덉긽), 1.9 ?⑥쐞 ?뚯뒪??(~38 ?좉퇋, 紐⑤뱢 ?대? ?⑦꽩). Claude Code??肄붾뵫 ?멸퀎. |
-| 1.2 | 2026-05-15 | **★ Stage 2 spec 작성 완료 (freeze)**. 2.1 mapping.rs 모듈 신설 + 디렉토리 확장 (AxisModifier 위치 axis.rs), 2.2 base_delta(EmotionType) -> AxisDelta 48셀 lookup, 2.3 AxisModifier 메서드 + hexaco_modifier 6 보정 룰 (HIGH_THRESHOLD = 0.5, Prudence 간소화, Unconventionality placeholder), 2.4 update_axes_from_emotion 단일 함수 (BondStatus 차단 + 인라인 곱셈), 2.5 RelationshipModifiers (Stage 0 가정 정정 — 변경 0 + Phase 2.3 이관), 2.6 옛 after_dialogue 호출 3곳 → update_axes_from_emotion 루프 + B-D12 EmotionType 가드, 2.7 단위 테스트 (~42 신규). Stage 1 코딩 검증으로 OccEmotion → EmotionType 명명 정정 (34곳). Claude Code에 코딩 인계. |
+| 0.1 | 2026-05-13 | 초안. A 카테고리 Findings 5개 종결, B 카테고리 진행 중 (B-D4 확정). |
+| 0.2 | 2026-05-13 | §3.6 시뮬레이션 검증 (S1~S4) 추가. B-D6/D12/D13/D14 확정. **Phase 2.3 신설 결정**. §5 Risks 작성 (R1~R6). §1 Scope에 Phase 2.3/2.5 비포함 항목 + axis_modulation 표기 추가. |
+| 0.3 | 2026-05-13 | B-D1 (Score 타입 분리) + B-D2 (f32 내부 표현) 확정. `AxisScore` + `WarinessScore` 2 타입 신설 결정. R3 해소 표기. |
+| 0.4 | 2026-05-13 | B-D3 (closeness → affinity 혼합 변환) 확정. 자동 변환 baseline + 디자이너 선택적 조정. |
+| 0.5 | 2026-05-13 | B-D10 (respect/wariness 초기값 룰) 확정. 간단 휴리스틱 + BondKind 보완 (원수/Guardian/Mentor/지기 차등 baseline). |
+| 0.6 | 2026-05-13 | B-D5 (4축 매핑 함수 구조) 확정. v0.7 §4.1 단일 함수 그대로 (4축 동시 갱신). |
+| 0.7 | 2026-05-13 | B-D8 (시나리오 마이그레이션 워크플로우) 확정. W3+ — Rust binary 자동 변환 + Claude AI 추론 (BondKind/type/조정) + 디자이너 검토. Claude prompt template 박음 (`docs/migration/claude-prompts/`). R2 대폭 완화 표기. |
+| 0.8 | 2026-05-13 | **★ B 카테고리 Phase 2 본체 12개 결정 완료**. B-D9 (session_*_result.json 폐기) 확정 — Phase 2 후 일괄 재생성. B-D7/B-D11은 Phase 2.5 시점 결정. §4 헤더 종결 표기. |
+| 0.9 | 2026-05-13 | **★ §6 Baseline (D 카테고리) 작성**. Phase 1 종결 시점 baseline 인용: 1095 tests passed / dispatch_v2 latency 24/35/29µs / narrative 3밴드 0.000/0.461/0.980 / compute_significance 8.36µs / EventKind 31개. D1~D6 항목. Stage 1 진입 직전 재측정 작업 명시. |
+| 1.0 | 2026-05-13 | **★ Stage 0 종결**. §7 Stages 작성 — 6 stage 분할 (Stage 1 Type/Domain → Stage 2 Mapping → Stage 3 Updater → Stage 4 Migration → Stage 5 Narrative → Stage 6 Bench/Handoff). 각 stage 범위·게이트·산출 commit 명시. Phase 2 본체 spec 작성 완료, Stage 1 진입 준비. |
+| 1.1 | 2026-05-14 | **★ Stage 1 spec 작성 완료 (freeze)**. 1.1 디렉토리 구조 (모듈 분할 채택), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + 영역 헬퍼 5개 (is_zhiji 무협 도메인 용어 보존), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating → true), 1.5 Partnership 4 variants, 1.6 Relationship 본체 재작성 (4축 + bond_* + partnership + type/type_history, power 폐기, apply_delta 메서드, modifiers closeness_* → affinity_*), 1.7 RelationshipBuilder 4축 fluent API, 1.8 neutral() 자동 흡수 검증 (22곳 호출, 19곳 변경 0 예상), 1.9 단위 테스트 (~38 신규, 모듈 내부 패턴). Claude Code에 코딩 인계. |
