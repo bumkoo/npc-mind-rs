@@ -248,6 +248,14 @@ pub fn update_axes_from_emotion(
 ) {
     // ── 가드: BondStatus 차단 ─────
     if !rel.bond_status().accepts_live_input() {
+        tracing::debug!(
+            owner = %rel.owner_id(),
+            target = %rel.target_id(),
+            emotion = ?emotion,
+            bond_status = ?rel.bond_status(),
+            intensity = intensity,
+            "update_axes_from_emotion skipped: bond_status blocks live input"
+        );
         return;
     }
 
