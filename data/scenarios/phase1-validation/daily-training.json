@@ -9,7 +9,7 @@
     "summary_pattern": "수련이 춘설병에게 호흡 중심 검법을 가르치고 격려"
   },
   "_expected_events": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
-  "_expected_axes_delta": "미세 (affinity/trust 약간 ↑)",
+  "_expected_axes_delta": "미세 (respect ↑ — 제자 성장 인정/Admiration)",
   "npcs": {
     "yu_shulien": {
       "id": "yu_shulien",

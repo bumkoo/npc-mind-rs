@@ -36,7 +36,6 @@ fn shanshenmiao_reflection() -> ReflectionResult {
 }
 
 #[tokio::test]
-#[ignore = "Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 axes 갱신 no-op"]
 async fn shanshenmiao_high_band_emits_four_events_and_reverses_axes_strongly() {
     // 1. 시나리오 로드
     let repo = InMemoryRepository::from_file(SCENARIO_PATH).expect("시나리오 로드 OK");

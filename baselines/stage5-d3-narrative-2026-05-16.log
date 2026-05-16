@@ -1,0 +1,30 @@
+# Stage 5 D3 — narrative calibration 박제 로그
+# Spec: docs/tasks/mind-architecture/task-rel-phase2-stage5-narrative-FROZEN.md §2 작업 4 (S5-D6)
+# Date: 2026-05-16
+# Command: cargo test --test phase1_bench_test bench_narrative_calibration -- --nocapture --test-threads=1
+
+## 박제 (밴드 + exact)
+
+| 케이스 | exact (S5 측정) | Stage 2 baseline | 편차 | 밴드 assert | 결과 |
+|---|---|---|---|---|---|
+| chitchat (low)      | 0.000 | 0.000 | 0.000 | `< 0.3`       | ✅ pass |
+| daily (mid)         | 0.461 | 0.461 | 0.000 | `[0.3, 0.7)`  | ✅ pass |
+| shanshenmiao (high) | 0.980 | 0.980 | 0.000 | `>= 0.7`      | ✅ pass |
+
+## S5-D6 판정
+
+- 밴드 assert 자동: ✅ 3/3 통과
+- exact 박제 → Stage2 수동대조: 편차 0.000 (전부) ≪ ±0.01 → 재독 트리거 없음
+- exact 자동 assert 강화: 적용 *안 함* (S5-D6 / D4 간섭 회피)
+
+## 원본 stdout
+
+running 3 tests
+test bench_narrative_calibration_chitchat_low_band ... chitchat 시나리오 significance: 0.000 (target < 0.3)
+ok
+test bench_narrative_calibration_daily_mid_band ... daily 시나리오 significance: 0.461 (target 0.3~0.7)
+ok
+test bench_narrative_calibration_shanshenmiao_high_band ... shanshenmiao 시나리오 significance: 0.980 (target >= 0.7)
+ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.00s
