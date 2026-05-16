@@ -270,7 +270,7 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 - **보너스**: `/api/v2/scenes/*` Director 경로도 자동 SSE 발행 (단 `director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 — shared_dispatcher 통합은 별도 작업)
 - 7 단위 + 1 통합 신규
 
-### Phase 2 (v0.8) — 4-axis + BondKind + type 도메인 마이그레이션 ✅ **완료 (2026-05-16)**
+### Phase 2 (v0.8) — 4-axis + BondKind + type 도메인 마이그레이션 ✅ **완료** (Phase 2 종결 = Stage 6 / PR #93 `9339909` / 2026-05-17. 코드 종결은 Stage 5 / PR #92 `5b2b798` / 2026-05-16, Stage 6은 bench·회고·KICKOFF 등 검증·인계 — 코드 변경 0)
 
 **범위 변경 (2026-05-13)**: 본래 roadmap의 Phase 2 (4-axis + BondKind + Channel 1)를 **얇은 phase 3개로 분할**:
 - **Phase 2** ← 도메인 마이그레이션 only (본 phase) ✅ **완료**
@@ -456,7 +456,7 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 | 섹션 | 정의 | 반영 phase | 현재 % | 완료 마커 |
 |---|---|---|---|---|
 | §0 명제 | LLM↔Engine 분업 6 명제 | 1 + 0-pillars Pillar 6 격상 | **100%** ✅ Phase 1 완료 | Phase 1 완료 |
-| §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | **100%** ✅ | Phase 2 완료 (2026-05-16) |
+| §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | **100%** ✅ | Phase 2 완료 (Stage 6 종결, PR #93 `9339909`) |
 | §2 type / type_history | 자유 텍스트 + 이력 | 2 | **100%** ✅ | Phase 2 완료 |
 | §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | **100%** ✅ (enum 신설, 인스턴스 명시는 디자이너 narrative 검토 후) | Phase 2 완료 |
 | §3.5 BondStatus 5종 | Active/Resolved/Deceased/Dormant/Reactivating | 2 | **100%** ✅ (`accepts_live_input()` 게이트 활성) | Phase 2 완료 |
