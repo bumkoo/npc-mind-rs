@@ -1918,28 +1918,101 @@ fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
 
 ---
 
-### Stage 4 — 마이그레이션 도구 + 시나리오 데이터
+### Stage 4 — 시나리오 v0.7 영구 변환 + v0.6 코드 0건화 (✅ spec frozen 2026-05-16 v1.4)
 
-**범위**:
-- Rust binary 작성: `tools/migrate_relationships/` (B-D8)
-  - 입력: v0.6 시나리오 JSON 디렉토리
-  - 출력: v0.7 시나리오 JSON
-  - 자동 변환: `trust × 100` → trust / `closeness × 100` → affinity / BondKind 기반 respect/wariness baseline (B-D10) / `power` 필드 삭제 / default 필드 채움
-  - 옵션: `--dry-run` / `--diff` / `--backup-dir`
-- Claude prompt template 3 파일 (`docs/migration/claude-prompts/`):
-  - `bond-kind-inference.md` — 시나리오 페어별 BondKind 추론
-  - `type-text-inference.md` — type 자유 텍스트 추론
-  - `adjustment-suggestion.md` — narrative 결과 기반 조정 제안 (Stage 5에서 사용)
-- 백업 디렉토리 이동: `data/scenarios.backup-v0.6/` + `data/sessions.backup-v0.6/`
-- 디자이너 + Claude 협업: ~45 페어 BondKind/type 박기
-- 마이그레이션 도구 실행 → v0.7 JSON 생성
+**Status**: ✅ v1.4 spec freeze. Claude Code 인계 대기.
+**Spec 작성 베이스**: `PHASE2.3-KICKOFF.md §1-E` (v1.1 정정본) + `phase2-stage3-domain-wire-frontend.md §5/§7-E` + 본 §4 B-D8. Stage 0 사실조사(코드 실물) → B-D8-1/2/3 결정 → C-1~C-5 위험 → D baseline.
+
+**★ B-D8 책임 재정의 (원 단일 → 2분할 → 데이터정리로 축소판)**:
+- **책임 A**: 생존 시나리오 JSON을 v0.7 4-필드 스키마로 *영구 변환*
+- **책임 B**: Stage 3 리뷰 H1이 만든 부산물 — `state.rs` 커스텀 `Deserialize` impl + 5 테스트 *제거* + dead code 0건 게이트 (KICKOFF §1-E와 일치)
+- "데이터 정리 + 필요 데이터만 새로" 결정으로 원 W3+ **Rust binary 워크플로우 폐기** → "생존 4파일 v0.7 직접 작성(Claude 추론 + 디자이너 검토)"으로 대체. 4파일 직접 작성이 binary 작성·테스트보다 안전·저렴 (~7페어).
+
+**범위 (상위 골격)**:
+- **데이터 폐기** (B-D8-3): `data/huckleberry_finn/` + `data/treasure_island/` → `data/_discarded-v0.6/`로 *이동* (하드 삭제 아님 — 안전장치). C-1 검증: 로드 코드 0건, `mcp_server.rs:242` description 예시 문자열 1건만(cosmetic)
+- **생존 4파일 v0.7 영구 변환** (전부 임베디드 레이아웃 — `relationships` = `{"owner:target": {...}}` 맵):
+  - `data/wuxia_world/confession/session_001/scenario.json` (shu_lien↔mu_baek 1페어, ground truth = spec A4 "의형제+절제된 사모")
+  - `data/scenarios/phase1-validation/chitchat-passerby.json` (D3 0.000)
+  - `data/scenarios/phase1-validation/daily-training.json` (D3 0.461)
+  - `data/scenarios/phase1-validation/lin-chong-shanshenmiao.json` (D3 0.980 / lin_chong↔lu_qian, ground truth = spec A4 "옛 친구→배신")
+- **코드 v0.6 0건화** (legacy 제거 결정):
+  - `state.rs:681~734` 커스텀 `impl<'de> Deserialize<'de> for RelationshipData` + `:925~1009` `mod relationship_data_tests` (5 테스트) **제거** — struct 필드 불변, `#[derive(... Deserialize)]` 환원 (책임 B)
+  - `adapter/memory_repository.rs:186~211` `RelationshipJson` + `to_relationship()` **순수 v0.7 재작성** (×100 삭제, `closeness`/`power` 필드 삭제) — production 시나리오→도메인 *유일 진입점*(spec A1), 단순 제거 불가
+  - `bin/mind-studio/handlers/v2_scenes.rs:246~282` `RelationshipUpsertV0_6` struct + `upsert_relationship_v2` fn + 라우터 등록 **제거** (legacy REST 진입점, `#[test]` 0)
 - `_schema.md` v0.6 → v0.7 갱신 (Relationship 섹션 한정)
+- Claude prompt template 3종(`docs/migration/claude-prompts/`: `bond-kind-inference.md` / `type-text-inference.md` / `adjustment-suggestion.md`) — *변환용 아님, v0.7 신규 작성 가이드*로 재배치
 
-**게이트**:
-1. 마이그레이션 도구 자체 단위 테스트 통과
-2. 모든 시나리오 JSON v0.7 schema 통과 (serde 역직렬화 + 도메인 validation)
-3. 마이그레이션 후 컴파일 + 1095+ tests 통과
-4. 디자이너 BondKind/type 검토 통과 (Claude 추론 결과 합당성 확인)
+**비포함 (재정의로 소멸)**:
+- ~~`tools/migrate_relationships/` Rust binary + 자체 단위 테스트 + `--dry-run`/`--diff`~~ — 데이터 정리 결정으로 폐기
+- ~~~45 페어 / 2 레이아웃(임베디드+분리파일)~~ — 생존 ~7페어·4파일·임베디드 1패턴으로 축소 (treasure_island 분리파일 패턴 폐기와 함께 소멸)
+- ÷100 도메인 내부 2위치(`relationship/mod.rs` modifiers + `guide/snapshot.rs` RelationshipLevel) + telling_ingestion 1 — **Phase 2.3 위임** (B-D-A2 (ii))
+- `session_*_result.json` 등 result/output 파일 — Stage 5 4축 재생성 (B-D9)
+
+**위험**: 작음. 데이터 4파일 + 코드 3경로. C-3로 D3 보존 *구조적 보장*.
+
+세부 항목 4.1~4.6:
+
+#### 4.1 — 데이터 폐기 (huckleberry_finn / treasure_island)
+
+**근거**: C-1 검증 — `src/ tests/ benches/ *.rs` + `Cargo.toml` 전수 grep → 로드 코드 **0건**. 유일 매치 `src/bin/mind-studio/mcp_server.rs:242` MCP 도구 schema `description` 내 예시 경로 문자열(기계 무관, cosmetic).
+
+**작업**: `data/huckleberry_finn/`, `data/treasure_island/` → `data/_discarded-v0.6/` 이동. `mcp_server.rs:242` 예시 경로를 wuxia 경로로 교체(선택, non-blocking).
+
+**게이트**: 이동 후 `cargo test --features chat --lib --tests` 회귀 0 / `data/` 하위 `treasure_island|huckleberry_finn` 잔존 0.
+
+#### 4.2 — 생존 4파일 v0.7 영구 변환
+
+**★ 산술 hard 불변식** (C-3 D3 보존 조건 — 위반 시 D3 깨짐):
+- `affinity = closeness × 100` (정확)
+- `trust_v07 = trust × 100` (정확)
+- `power` 필드 삭제 (B-D4)
+
+검증된 동치 사슬: `modifiers()`가 `affinity.value()/100` = `(closeness×100)/100` = closeness → modifier 4 출력 불변 → `compute_significance` 불변 → D3 3밴드 exact 보존. `modifiers()`는 `respect`/`wariness` 비참조 → 신규 2축 추가는 significance 불활성(B-D14 정합).
+
+**신규 축 (B-D10 휴리스틱 + Claude 추론)**:
+- `bond_kind` 미지정: `respect = closeness × 50`, `wariness = max(0, -trust × 50)`
+- `bond_kind` 지정 시 영역 차등 (원수 4종 → respect -60/wariness +80, Guardian/Mentor → respect +60/wariness +5, 지기 4+Companion/LoyalRetainer → respect closeness×70/wariness +5)
+- `bond_kind`·`type` = Claude 추론(prompt template) + 디자이너 검토. 생존 페어 ground truth: shu_lien↔mu_baek "의형제+절제된 사모", lin_chong↔lu_qian "옛 친구 인식 → 제거 대상(배신 의도)"
+
+**prose 메타데이터 갱신** (결정 (a)): `_expected_axes_delta`/`_expected_*` 자유텍스트 내 옛 축명(`closeness`/`power`)을 v0.7 축명(`affinity` 등)으로 갱신 — Stage 5 narrative 검토 시 용어 혼동 방지.
+
+**백업**: 변환 전 생존 4파일 → `data/scenarios.backup-v0.6/`.
+
+**게이트**: 4파일 v0.7 serde 역직렬화 통과 / 파일 내 `closeness`·`power` 키 0 / `_expected_*` prose 내 v0.6 축명 0 / `affinity = closeness×100` 산술 디자이너 검토.
+
+#### 4.3 — `memory_repository.rs::RelationshipJson` 순수 v0.7 재작성
+
+**Before**: 필드 `closeness/trust/power` + `to_relationship()` `* 100.0`.
+**After**: 필드 `trust/affinity/respect/wariness` ±100 raw 직독(wariness 0~100), `* 100.0` 삭제, `closeness`/`power` 필드 삭제. `#[serde(default)]` on `respect`/`wariness` 유지(디자이너 부분 생략 backward compat — KICKOFF §1-E 말미).
+
+**신규 단위 테스트 N_v07 (≥3)**: v0.7 4축 roundtrip / missing-optional → 0 default / v0.6 키(`closeness`/`power`) 입력 시 명시 동작(무시 또는 reject — 구현 선택, doc 명시).
+
+**게이트**: cargo check / 신규 ≥3 / `RelationshipJson` 블록 내 `* 100.0` 0건 / 생존 4파일이 본 파서로 정확 로드(integration).
+
+#### 4.4 — `state.rs` 커스텀 Deserialize + 5 테스트 제거 (책임 B)
+
+`state.rs:681~734` `impl<'de> Deserialize<'de> for RelationshipData` 제거 → struct 선언을 `#[derive(Clone, Serialize, Deserialize)]`로 환원(필드 8개 불변). `state.rs:925~1009` `#[cfg(test)] mod relationship_data_tests`(5 테스트: `v06_schema_auto_multiplies_by_100` 외 4) 제거.
+
+**게이트**: cargo check / Mind Studio bin 테스트 **77 → 72**(−5 H1 제거 = *정상, 회귀 아님*) / `is_v06`·`auto-multiplying`·`RawRelationship` production grep 0.
+
+#### 4.5 — `v2_scenes.rs` legacy endpoint 제거
+
+`RelationshipUpsertV0_6` struct + `upsert_relationship_v2` async fn + axum 라우터 `POST /api/v2/relationships` 등록 제거. `#[test]` 0 → 테스트 손실 0. frontend/문서 호출처 잔존 확인.
+
+**게이트**: cargo check / `RelationshipUpsertV0_6`·`upsert_relationship_v2` production grep 0 / 라우터 컴파일 / `npm run build` 영향 0.
+
+#### 4.6 — `_schema.md` v0.7 갱신 + Stage 4 종결 게이트
+
+`_schema.md` Relationship 섹션 v0.6(closeness/trust/power) → v0.7(trust/affinity/respect/wariness ±100·0~100 + bond_kind/bond_status/partnership/type/type_history, power 폐기).
+
+**종결 게이트 (메타, 7 조건)**:
+1. `cargo check --features chat` / `cargo test --features chat --lib --tests` **871 유지**(회귀 0) + Mind Studio bin **72 + N_v07**
+2. D3 재실행 **0.000 / 0.461 / 0.980 exact**(C-3 검증 — Stage 5 전 sanity)
+3. v0.6 코드 0건: `closeness`·`power`·`RelationshipUpsertV0_6`·`is_v06` production grep 0
+4. ×100 production **2 → 0**(memory_repository + v2_scenes) / `state.rs` 커스텀 Deserialize 제거 확인
+5. 생존 4파일 `closeness`·`power` 0 / v0.7 키 존재 / prose v0.6 축명 0
+6. baseline log 박제: `stage4-prep-cargo-test-2026-MM-DD.log`(진입 직전 재측정) / `stage4-cargo-test-*.log` / `stage4-grep-v06-zero-*.log` / `stage4-d3-sanity-*.log`
+7. 회고 `phase2-stage4-migration.md` 박제
 
 **산출 commit**: `phase2-stage4-migration.md` 회고
 
@@ -2021,3 +2094,4 @@ fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
 | 1.1 | 2026-05-14 | **★ Stage 1 spec 작성 완료 (freeze)**. 1.1 디렉토리 구조 (모듈 분할 채택), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + 영역 헬퍼 5개 (is_zhiji 무협 도메인 용어 보존), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating → true), 1.5 Partnership 4 variants, 1.6 Relationship 본체 재작성 (4축 + bond_* + partnership + type/type_history, power 폐기, apply_delta 메서드, modifiers closeness_* → affinity_*), 1.7 RelationshipBuilder 4축 fluent API, 1.8 neutral() 자동 흡수 검증 (22곳 호출, 19곳 변경 0 예상), 1.9 단위 테스트 (~38 신규, 모듈 내부 패턴). Claude Code에 코딩 인계. |
 | 1.2 | 2026-05-15 | **★ Stage 2 spec freeze (간소 — 세부는 `phase2-stage2-mapping.md` 회고 참조)**. 2.1~2.7 OCC → 4축 매핑 작업 완료: base_delta 48셀 + HEXACO 보정 6 룰 + `update_axes_from_emotion` 단일 진입점 + 정책 3 위치 표준 호출 + 단위 테스트 +44. `cargo test --features chat` 866 passed / 0 failed. Stage 2 종결 후 W1~W4 처리 (회귀 가드 5개 = W1 ×3 + W2 ×1 + W4 ×1) Stage 2 회고 §2.5~§2.7에 박힘. 변경 이력 v1.2 박는 것을 v1.3 작성 시점에 보강. |
 | 1.3 | 2026-05-16 | **★ Stage 3 spec 작성 완료 (freeze)**. Stage 3 진입 prep A 카테고리 사실 조사 (A1~A6: `RelationshipUpdatedPayload` 카탈로그 / `event_bridge` 변경 0 / `RelationshipValues` 변환 4 위치 / Frontend 수동 TS 매핑 / 정규화 layer 5→2 / `update_axes_from_emotion` 호출자 인덱스). B-D 6 결정 (B-D-A ±100 raw / B-D-A2 도메인 내부 ±1.0 유지 + Phase 2.3 위임 / B-D-B closeness→affinity / B-D-C 4축 동일 표시 / B-D-D 한글 라벨 `호감`/`호` / B-D-helper `RelationshipPolicy` 내부 method). R-3a~R-3g 7 위험. 3.1~3.7 세부 spec (Payload anchor / helper + emit / DTO + 변환 4 / `dominant_delta` / projection + threshold / frontend / 종결 게이트 + baseline). spec 가정 정정 4건 (`event_bridge` 변경 0 / `dialogue_test_service` 변경 0 / 변환 3→4 / Slider 변경 0). Claude Code에 코딩 인계. |
+| 1.4 | 2026-05-16 | **★ Stage 4 spec 재작성·freeze**. KICKOFF §1-E(v1.1) + Stage3 회고 §5/§7-E + B-D8 교차 사실조사. B-D8 책임 재정의: 단일 → 2분할(책임 A JSON 영구변환 + 책임 B H1 부산물 제거) → 데이터정리 결정으로 축소판. B-D8-1 (`memory_repository::RelationshipJson` 순수 v0.7 재작성 — 단순 제거 불가, production 유일 진입점) / B-D8-2 (`v2_scenes` legacy endpoint 제거) / B-D8-3 (생존 4파일·~7페어, huckleberry_finn·treasure_island 폐기). 원 `tools/migrate_relationships/` Rust binary 워크플로우 폐기(4파일 직접 v0.7 작성). C-1~C-5 위험(C-1 폐기 무해 검증 / C-3 D3 보존 ×100 동치사슬 코드검증 — 구조적 보장 / prose 메타 (a) v0.7 갱신). D baseline (D1 871 lib + Mind Studio 77→72+N_v07 / D3 0.000·0.461·0.980 / 72·77 불일치 해소). 4.1~4.6 세부 spec. Claude Code에 코딩 인계. |
