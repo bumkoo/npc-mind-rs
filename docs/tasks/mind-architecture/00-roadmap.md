@@ -270,31 +270,31 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 - **보너스**: `/api/v2/scenes/*` Director 경로도 자동 SSE 발행 (단 `director_v2`는 *별도 dispatcher*라 본 bridge 범위 외 — shared_dispatcher 통합은 별도 작업)
 - 7 단위 + 1 통합 신규
 
-### Phase 2 (v0.8) — 4-axis + BondKind + type 도메인 마이그레이션
+### Phase 2 (v0.8) — 4-axis + BondKind + type 도메인 마이그레이션 ✅ **완료 (2026-05-16)**
 
 **범위 변경 (2026-05-13)**: 본래 roadmap의 Phase 2 (4-axis + BondKind + Channel 1)를 **얇은 phase 3개로 분할**:
-- **Phase 2** ← 도메인 마이그레이션 only (본 phase)
+- **Phase 2** ← 도메인 마이그레이션 only (본 phase) ✅ **완료**
 - **Phase 2.3** ← appraise 정비 (신설, Stage 0 §3.6 시뮬레이션 검증 결과)
 - **Phase 2.5** ← Channel 1 + axis_modulation (LLM 통합)
 
 분할 근거: Phase 1 → 1.5 → 1.6 패턴 정합. 각 phase = 단일 책임. 회귀 위험 분산.
 
-**포함**:
-- 도메인: `Relationship` 재작성 (4축 trust/affinity/respect/wariness ±100), BondKind 11종/BondStatus 5종/Partnership 4종 enum, `type: String` + `type_history` 자유 텍스트 필드
-- `power` 폐기 (B-D4 확정), `type` 자유 텍스트로 위계 정보 흡수
-- OCC → 4축 자동 갱신 함수 (v0.7 §4.1~4.3 그대로: base_delta 48셀 + HEXACO 보정자 + BondStatus 차단 + clamp). T1 (대화 끝 batch) 시점.
-- 마이그레이션: 기존 3축 → 4축 변환 룰 (trust 자동, closeness → affinity 반자동, respect/wariness 수동, power → type 흡수)
-- 시나리오 JSON schema 갱신 (`_schema.md` v0.7) — Relationship 필드 한정
-- 검증 인물 시나리오 ~45 페어 데이터 마이그레이션 (디자이너 손 작업 ~225 값)
+**Stage 분해 (실행 결과)**: Stage 0 (사실조사) → 1 (도메인) → 2 (OCC→4축 매핑) → 3 (wire+frontend) → 4 (시나리오 v0.7 영구 변환 + v0.6 code 0건화) → 5 (narrative 박제) → 6 (bench + 회고 + Phase 2.3 KICKOFF). 총 6 Stage.
 
-**위험**: 큼. 도메인 모델 재작성. 1095+ tests 중 ~100 호출 회귀 갱신. 시나리오 데이터 마이그레이션 디자이너 손 작업.
+**산출 요약**:
+- 도메인: `domain/relationship/{mod,axis,bond,partnership}.rs` 신설 (4축 + BondKind 11/BondStatus 5/Partnership 4 + type 자유 텍스트). `power` 폐기 (B-D4). `AxisScore`/`WarinessScore` 2 타입 분리로 wariness 음수 컴파일 시점 차단 (B-D1).
+- 매핑: `mapping.rs` 48셀 base_delta + HEXACO 6 보정룰 + `update_axes_from_emotion` 단일 진입점.
+- Wire: payload 6→8 필드 + ÷100 layer 4겹 제거 (B-D-A ±100 raw) + frontend 4축 + 한글 라벨.
+- 데이터: 4파일 v0.7 영구 변환 + 2 데이터셋 `_discarded-v0.6/`로 폐기 + v0.6 code 3 경로 제거.
+- 검증: D3 3밴드 exact 보존 (0.000/0.461/0.980). D2 latency 임계값 50% 마진. S1~S3 정량 박제 + S4 정성.
 
-**검증 게이트**:
-1. compile + 기존 테스트 (마이그레이션 변환 후 통과) + 신규 unit
-2. Bench 회귀 측정 (`dispatch_v2(EndDialogue)` Phase 1 baseline 24/35/29µs 유지)
-3. base_delta 48셀 시나리오 검증 (S1~S4 + 신규 케이스): 방향성 정합 확인 (정량 미세조정은 Phase 2.3)
+**메트릭** (Phase 2 종결, `cargo test --lib --tests --bins`): 843 passed / 0 failed / 2 ignored / 65 묶음.
 
-**산출물 spec**: `task-rel-phase2-domain-migration.md` (Stage 0 진행 중).
+**디자이너 잔여 (Phase 2.3 인계)**: intensity 0.4 / S1~S3 narrative 타당성 / S4 정성 — Phase 2 종결 게이트 차단 아님.
+
+**부채 (Phase 2.3 인계)**: ÷100 잔존 (telling_ingestion + modifiers + RelationshipLevel) + closeness/power src 12 파일/69 매치 재카탈로그 + state.rs:666~671 커스텀 Deserialize 잔존 (Stage 4 미처리) + B-D9 result.json 자동 dump 인프라 부재.
+
+**산출물 spec**: [`task-rel-phase2-domain-migration.md`](task-rel-phase2-domain-migration.md) **v1.0 FROZEN**. 종합 보고: [`phase2-checkpoint-report.md`](phase2-checkpoint-report.md). 회고: `phase2-stage{1~6}-*.md` 6종.
 
 ### Phase 2.3 — appraise 정비 (★ 신설 2026-05-13)
 
@@ -318,7 +318,7 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 2. 공식 시나리오 set 회귀 (S1~S4 + 신규 케이스 모두 ground truth와 ±N 이내)
 3. Bench 회귀 측정
 
-**산출물 spec**: `task-rel-phase2.3-appraise-tuning.md` (Phase 2 종결 후 작성).
+**산출물 spec**: [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md) — 🟡 **DRAFT** 작성됨 (Phase 2 Stage 6 작업 6). 본체는 Phase 2.3 진입 시 작성. **KICKOFF (정본 인계)**: [`PHASE2.3-KICKOFF.md`](PHASE2.3-KICKOFF.md) v1.2 — Stage 4·5·6 인계 5항 (result.json dump / intensity 0.4 / S1~S3 narrative / S4 정성 / 메트릭 baseline) + 역대조 게이트 + closeness/power 12 파일/69 매치 재카탈로그 플래그.
 
 ### Phase 2.5 (v0.8.5) — Channel 1 Declarative + axis_modulation
 
@@ -433,11 +433,11 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 | DialogueReflected | rel §6.2 | — | Phase 1: `src/domain/event.rs` EventKind 추가 |
 | DTO (Reflection 응답) | rel §6.2 | `application/dto/` (7 도메인 분할) | Phase 1: `dto/scene.rs` 흡수 vs `dto/reflection.rs` 신설 (Stage 0 결정) |
 | UoW 영향 | (본 문서 §2.3) | `application/command/uow.rs` (HandlerShared 출력 쉐이프) | Phase 1: `RelationshipPolicy` 변경 시 *UoW 변경 등록* 패턴 확인 (Stage 0) |
-| 4 axes | rel §1 | 3축 (closeness/trust/power) | Phase 2: `src/domain/relationship.rs` 재작성 |
-| BondKind | rel §3.1 | — | Phase 2: 새 enum |
-| BondStatus | rel §3.5 | — | Phase 2 |
-| Partnership | rel §3.6 | — | Phase 2 |
-| type/type_history | rel §2 | — | Phase 2 |
+| 4 axes | rel §1 | ✅ **Phase 2 완료** — `src/domain/relationship/{mod,axis}.rs` (trust/affinity/respect/wariness ±100, AxisScore/WarinessScore 2 타입 분리) | (변경 없음) |
+| BondKind | rel §3.1 | ✅ **Phase 2 완료** — `src/domain/relationship/bond.rs` (11 variants enum) | (변경 없음) |
+| BondStatus | rel §3.5 | ✅ **Phase 2 완료** — `src/domain/relationship/bond.rs` (5 variants + `accepts_live_input()` 게이트) | (변경 없음) |
+| Partnership | rel §3.6 | ✅ **Phase 2 완료** — `src/domain/relationship/partnership.rs` (4 variants enum) | (변경 없음) |
+| type/type_history | rel §2 | ✅ **Phase 2 완료** — `src/domain/relationship/mod.rs::Relationship.type_text + type_history` 자유 텍스트 + 이력 (B-D4 `power` 흡수) | (변경 없음) |
 | Channel 1 Declarative | rel §6.4 | — | Phase 2: `reflection_service.rs` 확장 + `command/policies/relationship_policy.rs` 진입 조건 변경 |
 | 사회적 일관성 검증 (A~E) | rel §6.4 | — | Phase 2: `command/policies/relationship_policy.rs` 확장 |
 | 적용 모드 (4-tier) | rel §6.4 | — | Phase 2: scenario JSON schema |
@@ -456,12 +456,12 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 | 섹션 | 정의 | 반영 phase | 현재 % | 완료 마커 |
 |---|---|---|---|---|
 | §0 명제 | LLM↔Engine 분업 6 명제 | 1 + 0-pillars Pillar 6 격상 | **100%** ✅ Phase 1 완료 | Phase 1 완료 |
-| §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | 0% | Phase 2 |
-| §2 type / type_history | 자유 텍스트 + 이력 | 2 | 0% | Phase 2 |
-| §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | 0% | Phase 2 |
-| §3.5 BondStatus 5종 | Active/Resolved/Deceased/Dormant/Reactivating | 2 | 0% | Phase 2 |
-| §3.6 Partnership 4종 | Spouse/Engaged/Lover/Separated | 2 | 0% | Phase 2 |
-| §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1) + 3a (Ch2) + 3b (Ch3) | 0% | Phase 3b 완료 시 |
+| §1 4 axes | trust/affinity/respect/wariness, ±100 | 2 | **100%** ✅ | Phase 2 완료 (2026-05-16) |
+| §2 type / type_history | 자유 텍스트 + 이력 | 2 | **100%** ✅ | Phase 2 완료 |
+| §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | **100%** ✅ (enum 신설, 인스턴스 명시는 디자이너 narrative 검토 후) | Phase 2 완료 |
+| §3.5 BondStatus 5종 | Active/Resolved/Deceased/Dormant/Reactivating | 2 | **100%** ✅ (`accepts_live_input()` 게이트 활성) | Phase 2 완료 |
+| §3.6 Partnership 4종 | Spouse/Engaged/Lover/Separated | 2 | **100%** ✅ (enum 신설) | Phase 2 완료 |
+| §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1 partial: base_delta + HEXACO + BondStatus 차단 + clamp) + 3a (Ch2) + 3b (Ch3) | **Ch1 partial 60%** (Phase 2.5에서 declarative_events + axis_modulation 완성) | Phase 3b 완료 시 100% |
 | §4.5.5 추모 행동 | RecollectionAction 5종 | 3c | 0% | Phase 3c |
 | §5 LLM acting guide | ActingGuide 명세 | 부분 — PAD 기반 acting guide 코드 존재 | ~40% | Phase 2에서 풍부화 |
 | **§6 Scene Boundary Reflection** | **LLM↔Engine 분업·Reflection·is_chitchat 게이트·DialogueReflected** | **1 + 1.5 + 1.6 ✅ 완료** | **100%** | Phase 1/1.5/1.6 완료 (2026-05-11~12) |

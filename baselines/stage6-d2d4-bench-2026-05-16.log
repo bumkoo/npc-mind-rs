@@ -1,0 +1,27 @@
+
+running 6 tests
+compute_significance(0 turns): 7.321µs
+compute_significance(1 turns): 41.805µs
+compute_significance(5 turns): 5.774µs
+compute_significance(10 turns): 6.696µs
+chitchat 시나리오 significance: 0.000 (target < 0.3)
+compute_significance(30 turns): 15.672µs
+test bench_narrative_calibration_chitchat_low_band ... ok
+compute_significance(100 turns): 40.859µs
+daily 시나리오 significance: 0.461 (target 0.3~0.7)
+test bench_compute_significance_empty_short_long_scaling ... ok
+test bench_narrative_calibration_daily_mid_band ... ok
+shanshenmiao 시나리오 significance: 0.980 (target >= 0.7)
+test bench_narrative_calibration_shanshenmiao_high_band ... ok
+dispatch_v2(EndDialogue) per-call (N=50):
+  chitchat (3 follow-up):   15.699µs
+  significant (4 follow-up): 26.68µs
+  legacy   (3 follow-up):   20.892µs
+  chitchat vs legacy ratio: 0.75x (1.0 = 동일, <1.0 = chitchat 더 빠름)
+  significant vs legacy ratio: 1.28x
+test bench_dispatch_v2_end_dialogue_chitchat_vs_significant ... ok
+compute_significance(10 turns) ×10000: total=97.651099ms, per-call=9.77 µs (sum=5875.00)
+test bench_compute_significance_single_call_under_microsecond_avg ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+

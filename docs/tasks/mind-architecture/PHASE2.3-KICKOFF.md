@@ -1,8 +1,8 @@
 # Phase 2.3 KICKOFF — Appraise Tuning + ±100 Native 전환
 
-**Stage**: Phase 2 종결 → Phase 2.3 진입 (Stage 4-6 사이 또는 별도 트랙)
-**전제**: Phase 2 Stage 3 종결 ([phase2-stage3-domain-wire-frontend.md](phase2-stage3-domain-wire-frontend.md)). Stage 4 (시나리오 마이그레이션) 완료 가정.
-**Phase 2.3 spec**: 본 문서는 KICKOFF (인계). 정식 spec은 `task-rel-phase2.3-appraise-tuning.md`로 분리 작성.
+**Stage**: Phase 2 **종결 ✅ (Stage 0~6 완료, 2026-05-16)** → Phase 2.3 진입.
+**전제**: Phase 2 전체 종결 — [`phase2-checkpoint-report.md`](phase2-checkpoint-report.md) (Stage 1~6 종합) + [`phase2-stage6-bench-handoff.md`](phase2-stage6-bench-handoff.md) (회고). Stage 3~6 회고가 인계 사항의 정본 소스.
+**Phase 2.3 spec**: 본 문서는 KICKOFF (인계). 정식 spec은 [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md)로 분리 작성 (Stage 6에서 초안 신설).
 
 ---
 
@@ -11,6 +11,21 @@
 ### A) ±100 native 전환 — 잔존 ÷100 layer 청소
 
 Stage 3는 wire boundary 4겹 (domain → application → adapter → frontend)에서 ÷100 layer를 제거했으나, *도메인 내부* 2 사이트 + 1 uncatalogued 사이트가 ±1.0 가정으로 잔존:
+
+> ★ **Stage 6 추가 플래그 (S6-D5)** — spec L508 "closeness/power production 0건" vs **실측 12 파일 / 69 매치**.
+> Stage 6에서는 *정리 안 함* (W1 회귀 가드 = Phase 2.3 진입 트리거 조기 발파 위험). Phase 2.3 §A 진입 시 **정확 위치 재카탈로그 필수**.
+>
+> 분포 힌트 (정확한 분류는 Phase 2.3에서):
+> - **튜닝 파라미터 명칭** (logical 이름 유지): `domain/tuning.rs` (`closeness_update_rate`, `rel_closeness_*` 가중치) — 의미상 affinity 가중치이므로 *이름만* `affinity_*`로 rename 후보. 값/동작 변경 0
+> - **modifiers 내부 ÷100** (이 문서 §1-A 본문 2): `domain/relationship/mod.rs`, `domain/relationship/mapping.rs` — modifier 가중치 표 재조정 핵심 작업
+> - **RelationshipLevel from_score ÷100** (이 문서 §1-A 본문 3): `domain/guide/snapshot.rs`
+> - **UI/locale presentation** (3축 라벨 잔존): `presentation/{locale,formatter}.rs`, `bin/mind-studio/{state,domain_sync,handler_tests}.rs` — `closeness_level`/`power_level` 라벨/슬롯. B-D-D 한글 라벨은 Stage 3에서 frontend에 추가됐으나 *backend presentation 슬롯은 3축 그대로*. Phase 2.3에서 4축 라벨로 확장 (closeness_level → affinity_level + respect_level 등). `power_level` 폐기 (B-D4)
+> - **adapter test doc string**: `adapter/memory_repository.rs:634-636` — 더미 v0.6 JSON 예시 (테스트용), 의미 영향 0
+> - **telling_ingestion ÷100** (이 문서 §1-A 본문 1): `application/command/telling_ingestion_handler.rs:80`
+> - **emotion situation**: `domain/emotion/situation.rs` — 분류 필요 (별 의미 가능성: closeness가 NPC↔partner 평가 함수 인자명)
+> - **worldbuilding/markdown**: 미발견 (별 의미 = 장소 인접성)이라 *별도 도메인* 가능성 — Phase 2.3에서 분해 확인
+>
+> Phase 2.3 §A 첫 작업 = **12 파일 69 매치 정확 분류 + 변경 카테고리화** (rename / 값 변경 / 폐기 / 별 의미 분리).
 
 1. **`src/application/command/telling_ingestion_handler.rs:80`**
    ```rust
@@ -74,7 +89,9 @@ Phase 2.3 narrative 시뮬 결과 보고 결정.
 | `trust_channel_after_anger` | `0.158` | `15.8` | 단위만 변경 |
 | `admiration_no_leak_until_phase_2_3` | 4 modifier 불변 | — | Admiration이 더 이상 *no-leak* 이 아닌 경우 (modifier 변경) 시 *제거 가능 정상* |
 
-### E) v0.6 시나리오 JSON 로드 — 커스텀 Deserialize (리뷰 H1 반영해 해소됨, Stage 4 제거 대상)
+### E) v0.6 시나리오 JSON 로드 — 커스텀 Deserialize (Stage 4 미처리 확정, Phase 2.3 인계 유지)
+
+> ★ **Stage 6 갱신 (S6-D5)** — Stage 4 회고 §4-C3 "state.rs:680~734 커스텀 Deserialize impl + 5 테스트 *제거*"가 산문으로 박혔으나 **실측 코드 확인 결과 잔존**: `src/bin/mind-studio/state.rs:666~671` 부근. Stage 4 책임 2번 항목은 *미처리 확정*. Stage 6에서는 *건드리지 않음* (Phase 2.3 진입 트리거 조기 발파 위험). Phase 2.3 §E 본문이 정본 위치.
 
 Stage 3 리뷰 H1 (save-roundtrip data loss) 반영 → `RelationshipData`에 **커스텀 `Deserialize` impl** 도입 (`state.rs:680~`). serde alias가 아니라 스키마 감지 + 값 의미 보존:
 
@@ -119,28 +136,36 @@ Stage 3 후의 `RelationshipMemoryHandler::dominant_delta` 라벨:
 
 ---
 
-## §3. Stage 3 → Phase 2.3 인계 메트릭 baseline
+## §3. Phase 2 종결 → Phase 2.3 인계 메트릭 baseline
 
-`docs/tasks/mind-architecture/baselines/stage3-*-2026-05-16.log` 모든 파일 참조.
+**측정 명령 (S5-D5 / S6-D1 정본, Stage 5·6 일관 고정)**: `cargo test --lib --tests --bins`
 
-### Stage 3 종결 시점 메트릭 표
+`docs/tasks/mind-architecture/baselines/stage{3,4,5,6}-*-2026-05-16.log` 참조.
 
-| 메트릭 | Stage 3 종결 |
-|---|---|
-| ÷100 production 위치 (logical) | 2 (domain modifiers + RelationshipLevel) + 1 uncatalogued (telling_ingestion) |
-| ×100 production 위치 | 2 (memory_repository v0.6 deserializer + v2_scenes v0.6 endpoint) |
-| W4 마커 (production) | 2 (relationship_policy helper + stimulus_policy beat) |
-| `closeness`/`power` wire payload 잔존 | 0 (payload + DTO + frontend) |
-| `cargo test --features chat` 통과 | 871 (lib + tests) + 72 (mind-studio bin) = 943 |
-| D2 latency (chitchat / significant / legacy) | 7 / 10 / 8 µs |
-| D3 3밴드 calibration | 0.000 / 0.461 / 0.980 (Stage 1 baseline exact match) |
+### Phase 2 종결 시점 메트릭 표 (Stage 6 박제 — 본 KICKOFF 정본 baseline)
+
+| 메트릭 | Stage 3 종결 (참고) | Stage 4 종결 (참고) | **Stage 5 종결 = Stage 6 진입 = Phase 2 종결** |
+|---|---|---|---|
+| failed | 0 | 0 | **0** |
+| passed (`--lib --tests --bins`) | 871 (`--features chat --lib --tests`) | 875 (동일 측정 명령) | **843** (S5-D5 정본 명령) |
+| ignored | 5 | — | **2** (daily/shanshenmiao 해제) |
+| result 묶음 | — | — | **65** |
+| ÷100 production 위치 (logical) | 2 + 1 uncatalogued | 동일 | 동일 (telling_ingestion + modifiers + RelationshipLevel) + **closeness/power src 12 파일 / 69 매치 (S6-D5 신규 카탈로그)** |
+| ×100 production 위치 | 3 | **0** (Stage 4 v0.6 code 0건화) | 0 유지 |
+| W4 마커 (production) | 2 | — | 2 (relationship_policy helper + stimulus_policy beat) |
+| `closeness`/`power` wire payload 잔존 | 0 | 0 | 0 (payload + DTO + frontend) |
+| D2 latency chitchat / significant / legacy (debug 빌드) | 7 / 10 / 8 µs (release N=50) | — | **15.70 / 26.68 / 20.89 µs** (Stage 6, 임계값 29/42/35.2 전부 이내) |
+| D4 10turn×10000 avg | — | — | **9.77 µs/call** (임계값 ~10 µs ±20% 이내) |
+| D3 3밴드 calibration | 0.000 / 0.461 / 0.980 (exact) | (chitchat 1 pass, 나머지 ignored) | **0.000 / 0.461 / 0.980** (exact, Stage 1 baseline 동치 사슬 C-3 보존) |
+| git HEAD | — | — | `e3df875` (Stage 6 FROZEN spec) / Stage 5 종결 = `5b2b798` (PR #92) |
 
 ### Phase 2.3 진입 시 재측정 권장 항목
 
-1. `cargo test --features chat` 871 → ? (modifier ±100 native 전환 후 회귀 확인)
-2. D2 latency 재측정 (modifier 가중치 재조정으로 ±1.0 정규화 부담 제거 시 -5% 추정)
+1. `cargo test --lib --tests --bins` — 843 → ? (modifier ±100 native 전환 후 회귀 확인). S5-D5 정본 정의 *(failed=0 ∧ 회귀 0 ∧ 증감 설명가능 ∧ D3 3밴드 보존)* 적용.
+2. D2 latency 재측정 (modifier 가중치 재조정으로 ÷100 부담 제거 시 -5% 추정 — Stage 6 진입 실측 대비)
 3. D3 narrative band — modifier 정밀화로 변동 가능 (Phase 2.3 narrative 검증 필수)
-4. Phase 2.3 narrative 시뮬: `data/scenarios/appraise-validation/` 디렉토리 신설 + S1~S4 case 박제 (`tests/phase2_3_narrative_test.rs` 또는 동등)
+4. Phase 2.3 narrative 시뮬: [`data/scenarios/appraise-validation/`](../../../data/scenarios/appraise-validation/) 디렉토리 (Stage 6에서 신설) + S1~S4 case 박제 (`tests/phase2_3_narrative_test.rs` 또는 동등)
+5. W1 회귀 가드 expected 값 재조정 (§1-D 표)
 
 ---
 
@@ -159,9 +184,79 @@ Stage 3 후의 `RelationshipMemoryHandler::dominant_delta` 라벨:
 
 ---
 
-## §5. 변경 이력
+## §5. Stage 4·5 → Phase 2.3 인계 5항 (Stage 6 신규 — S6-D3)
+
+Stage 4·5 회고 §부채/잔여로 박힌 5항. Phase 2.3 정식 spec 작성 전 *전수 검토* 권장.
+
+### 5.1. **`session_*_result.json` 자동 dump 인프라 부재** (B-D9, Stage 5 §5 작업5 + §7)
+
+- **현황**: `state.rs::save_to_file(path, as_scenario=false)` 만 result.json writer. Mind Studio REST `/api/save` 핸들러를 통한 *인터랙티브 사용자 액션* 전용. 테스트(`tests/*.rs`), `dispatch_v2`, narrative 시나리오 어디에도 `serde_json::to_writer` + `result.json` 자동 dump 패턴 없음. 기존 `data/_discarded-v0.6/treasure_island/.../session_*_result.json` 3건 = 과거 인터랙티브 세션 산출. 재생성 대상 0건.
+- **Phase 2.3 위임**: narrative 시뮬레이션 자동 dump CLI (`cargo run --bin narrative-dump -- --scenario S1` 등) 신설 후 결과 일괄 재생성. 위험 *하* (regression guard는 Stage 5 §4 작업 3·4가 이미 보장).
+
+### 5.2. **작업 1 intensity 0.4 잠정 확정** (Stage 5 §6.1)
+
+- **현황**: `tests/phase1_daily_training_test.rs::set_intensity(EmotionType::Admiration, 0.4)` 는 *잠정값*. 디자이너 검토 시 1택:
+  - **0.4 유지** — 일상 가르침의 "어제보다 안정됐다" 톤
+  - **상향** (0.5~0.6) — mid 밴드 axes 변동이 미세→중강 필요 시
+  - **하향** (0.3) — mid 밴드 axes 변동 *너무 큼* 판정 시
+- **조정 시 동기**: `daily-training.json` `_expected_axes_delta` 문구 + Stage 5 회고 §4 작업 1 박제값 (S5-D4)
+
+### 5.3. **S1~S3 narrative 타당성 검토** (Stage 5 §6.2)
+
+Stage 5 §4 작업 3 표 EXPECTED는 "현재 코드의 출력"이지 "디자이너 의도와 정합" 보증 아님. 게이트 3 디자이너 검토 항목:
+
+| 케이스 | 박제값 (trust/aff/resp/war) | 검토 포인트 |
+|---|---|---|
+| S1 임충→노지심 | (64.4, 46.0, 32.0, 0.0) | respect +12, trust +14.4. 의리·은혜 갚음. Admiration+Gratitude 효과 합치 적절? |
+| S2 임충→육겸 | (3.8, 3.0, -4.0, 42.5) | trust 50→3.8 (거의 0). 옛 친구의 처단 → 완전 단절. wariness +42.5 (50% 도달) — 과한지/부족한지 |
+| S3 수련→옥교룡 | (25.216, 26.64, -1.76, 32.32) | trust -14.8 / respect -11.8 / wariness +12.3. 안타까움+책망+분노. 사부의 *체념과 한* 표현 적절? |
+
+어색 시: 입력 emotion intensity 조정 → 코드 재실행 → 새 EXPECTED 박제 → Stage 5 §4 작업 3 표 갱신. 게이트 2 tolerance 완화 *금지* (S5-D4).
+
+### 5.4. **S4 임충→고구 정성 검증 + 시간 분산** (Stage 5 §6.3)
+
+- §3.6 focus 수치 *의도적 부재* (S5-D2). 임충 對고구 감정 = *체제 정점에 대한 누적 분노* — 단일 시점 EmotionState mock으로 박제 어려움 (시간 분산 + 권력 거리).
+- "3 layer separation" (서사·인지·정서)이 4축 변동에 자연스럽게 반영되는지 *서사 직관*과 정합 검증.
+- **Phase 2.3+ 정량화 진입점**: 시간 분산 모델 + `axis_modulation` 활성화 (B-D6) 시 정량 가능. `axis_modulation` 자체가 reflection LLM 출력 필드로 신설되어야 함 (S5-D1 박제 — `ReflectionResult` 7 필드 현재 부재).
+
+### 5.5. **Stage 4·5 메트릭 baseline** (S6-D3 통합 표시)
+
+- Stage 3 종결 시점 baseline은 본 KICKOFF v1.0/1.1 §3 표 (참고치).
+- Stage 4 종결: 875 passed (`--features chat --lib --tests`) + Mind Studio 90 passed. v0.6 grep 0건. (회고 §1·§3)
+- Stage 5 종결: **843 passed / 0 failed / 2 ignored / 65 묶음** (`--lib --tests --bins`, S5-D5 정본). D3 3밴드 exact 보존.
+- Stage 6 진입 = Stage 5 종결 동등. Stage 6 코드 변경 0. (S6-D1)
+- Phase 2.3 진입 시 본 baseline 대비 회귀 0 확인 필수.
+
+---
+
+## §6. 역대조 게이트 (C6-2 — Stage 6 신규)
+
+Stage 4 회고 §5 + Stage 5 회고 §6·§7 잔여표 ↔ 본 KICKOFF 항목 1:1 매핑 확인. **누락 0건**.
+
+| Source 회고 | 항목 | KICKOFF 위치 |
+|---|---|---|
+| Stage 4 회고 §5-1 | D3 sanity 직접 측정 (daily/shanshenmiao `#[ignore]` 해제 후) | Stage 5 작업 1·2에서 해소 (게이트 표시 — Stage 6에서 D3 0.000/0.461/0.980 exact 재확인) |
+| Stage 4 회고 §5-2 | 휴리스틱 신규 2축 narrative 검토 (respect = closeness × 50 / wariness = max(0, -trust × 50)) | §5.3 (S1~S3 narrative 타당성) — Phase 2.3 디자이너 검토 |
+| Stage 4 회고 §5-3 | bond_kind 명시 진입 (전 페어 미지정 → MasterDisciple/Betrayer 등) | §5.3 (narrative 검토 결과 따라 진입) — 도메인 `modifiers()` 비참조이므로 D3 영향 없음 |
+| Stage 4 회고 §5-4 | `session_*_result.json` 재생성 (B-D9) | §5.1 (자동 dump 인프라 부재 — Phase 2.3/3 위임) |
+| Stage 4 회고 §5-5 | `_discarded-v0.6/` 영구 폐기 결정 | (Phase 2.3 본체 진입 시 디자이너 결정 — 본 KICKOFF *아래* 비스코프) |
+| Stage 5 회고 §6.1 | 작업 1 intensity 0.4 잠정 확정 | **§5.2** |
+| Stage 5 회고 §6.2 | S1~S3 박제값 narrative 타당성 | **§5.3** |
+| Stage 5 회고 §6.3 | S4 임충→고구 정성 검증 | **§5.4** |
+| Stage 5 회고 §7-1 | listener_perspective default-ON 발견 (사실 정정) | (본 KICKOFF 비스코프 — Phase 2 종합 보고서 §6.2 박제) |
+| Stage 5 회고 §7-2 | examples `phase5b_checkpoint2_eval` 빌드 실패 | (본 KICKOFF 비스코프 — Phase 5 후속 처리) |
+| Stage 5 회고 §7-3 | result.json 자동 dump 인프라 부재 | **§5.1** |
+| Stage 5 회고 §7-4 | 작업 1 intensity 0.4 잠정 | **§5.2** |
+| Stage 5 회고 §7-5 | S4 정성 검증 | **§5.4** |
+| Stage 6 회고 (신규) | closeness/power src 12 파일 / 69 매치 재카탈로그 | **§1-A 본문 박스 + §3 메트릭 표** |
+| Stage 6 회고 (신규) | state.rs:666~671 커스텀 Deserialize 잔존 | **§1-E 본문 박스** |
+
+---
+
+## §7. 변경 이력
 
 | 버전 | 날짜 | 변경 |
 |---|---|---|
 | 1.0 | 2026-05-16 | Stage 3 종결 시점 작성. 잔존 ÷100 3 위치 / W1 깨지는 트리거 / W1 expected 재조정 표 / R-3b memory 혼재 / R-3g threshold 정밀화 / v0.6 transient bug 청소 / Phase 2.3 작업 순서 권장. |
 | 1.1 | 2026-05-16 | §1-E 정정: 실제 코드는 `#[serde(alias)]`가 아니라 커스텀 `Deserialize` impl (state.rs:680~) — 값 의미 보존 (closeness 0.5 → affinity 50). 회고 §5/§7-E와 일치. Stage 4 제거 대상 = 커스텀 Deserialize impl 전체 + 5 테스트 (존재하지 않는 serde alias 아님). 코드 검증으로 확정. |
+| **1.2** | **2026-05-16** | **Stage 6 갱신 (S6-D3/D5/C6-2)**: §1-A 플래그 박스 추가 (spec L508 "production 0" vs 실측 12 파일 / 69 매치 분포 힌트) + §1-E 갱신 박스 (Stage 4 미처리 확정 → Phase 2.3 인계 유지) + §3 baseline Phase 2 종결값으로 갱신 + **§5 신규 5항 인계 섹션** (result.json dump 부재 / intensity 0.4 / S1~S3 narrative / S4 정성·시간분산 / Stage 4·5 메트릭) + **§6 역대조 게이트** (Stage 4·5 잔여 ↔ KICKOFF 1:1 매핑, 누락 0). 기존 157줄 보존. |
