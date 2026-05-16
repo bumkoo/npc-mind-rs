@@ -1,0 +1,115 @@
+warning: unused imports: `DeclarativeEventPlaceholder` and `PartnershipEventPlaceholder`
+  --> src/application/reflection_service.rs:30:5
+   |
+30 |     DeclarativeEventPlaceholder, PartnershipEventPlaceholder, ReflectionResult, TurnSnapshot,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (lib) generated 1 warning (run `cargo fix --lib -p npc-mind` to apply 1 suggestion)
+warning: unused import: `NpcBuilder`
+    --> src/bin/mind-studio/handler_tests.rs:3332:46
+     |
+3332 |     use npc_mind::domain::personality::{Npc, NpcBuilder};
+     |                                              ^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (bin "npc-mind-studio" test) generated 1 warning (run `cargo fix --bin "npc-mind-studio" -p npc-mind --tests` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.20s
+     Running unittests src/bin/mind-studio/main.rs (target/debug/deps/npc_mind_studio-b57c667f474ef849)
+
+running 90 tests
+test event_bridge::tests::dialogue_turn_user_does_not_emit ... ok
+test event_bridge::tests::dialogue_reflected_emits ... ok
+test event_bridge::tests::dialogue_turn_assistant_emits_chat_turn_completed ... ok
+test event_bridge::tests::maps_appraised ... ok
+test event_bridge::tests::maps_scene_ended_to_after_dialogue ... ok
+test event_bridge::tests::consume_stream_emits_state_events_in_order ... ok
+test event_bridge::tests::lagged_triggers_replay_from_event_store ... ok
+test handler_tests::analyze_utterance_without_embed_returns_not_implemented ... ok
+test handler_tests::broadcast_npc_changed_on_create ... ok
+test handler_tests::appraise_success ... ok
+test handler_tests::appraise_npc_not_found ... ok
+test handler_tests::broadcast_npc_changed_on_delete ... ok
+test handler_tests::broadcast_situation_changed_on_put ... ok
+test handler_tests::broadcast_test_report_changed_on_put ... ok
+test handler_tests::full_pipeline_appraise_stimulus_after_dialogue ... ok
+test handler_tests::llm_health_모니터_없으면_501 ... ok
+test handler_tests::llm_metrics_모니터_없으면_501 ... ok
+test handler_tests::full_state_machine_workflow ... ok
+test handler_tests::llm_slots_모니터_없으면_501 ... ok
+test handler_tests::llm_status_모니터_없으면_501 ... ok
+test handler_tests::load_result_returns_turn_history ... ok
+test handler_tests::load_scenario_clears_turn_history_and_sets_loaded_path ... ok
+test handler_tests::loaded_path_not_changed_on_result_save ... ok
+test handler_tests::loaded_path_updated_on_scenario_save ... ok
+test handler_tests::mcp_endpoints_reachable ... ok
+test handler_tests::llm_status_mock_서버_통합 ... ok
+test handler_tests::mcp_tool_call_logic ... ok
+test handler_tests::memory_endpoints::apply_world_event_creates_canonical ... ok
+test handler_tests::memory_endpoints::by_topic_returns_history_including_superseded ... ok
+test handler_tests::memory_endpoints::invalid_seed_is_reported_in_warnings ... ok
+test handler_tests::memory_endpoints::consecutive_scenario_loads_clear_previous_seeds ... ok
+test handler_tests::memory_endpoints::load_scenario_rumor_without_origin_defaults_to_seeded ... ok
+test handler_tests::memory_endpoints::load_scenario_seeds_memory_and_rumor_into_stores ... ok
+test handler_tests::memory_endpoints::manual_entry_seed_appears_in_by_npc ... ok
+test handler_tests::memory_endpoints::load_scenario_without_seed_sections_leaves_stores_empty ... ok
+test handler_tests::memory_endpoints::tell_creates_memory_entry_and_emits_sse ... ok
+test handler_tests::no_receivers_does_not_panic ... ok
+test handler_tests::object_crud_lifecycle ... ok
+test handler_tests::npc_crud_lifecycle ... ok
+test handler_tests::phase1_5_reflection_tests::chat_end_clears_turn_buffer_even_without_after_dialogue ... ok
+test handler_tests::memory_endpoints::seed_then_spread_rumor_creates_recipient_memories ... ok
+test handler_tests::phase1_5_reflection_tests::dispatch_v2_appraise_triggers_sse_appraised_via_bridge ... ok
+test handler_tests::phase1_5_reflection_tests::chitchat_reflection_preserves_axes_and_emits_sse ... ok
+test handler_tests::phase1_5_reflection_tests::no_reflection_attached_is_legacy_path ... ok
+test handler_tests::projection_drift::emotion_projection_empty_before_any_command ... ok
+test handler_tests::projection_drift::appstate_projection_handle_shares_arc_with_dispatcher ... ok
+test handler_tests::projection_drift::emotion_projection_matches_appraise_response ... ok
+test handler_tests::projection_drift::relationship_projection_reflects_after_dialogue ... ok
+test handler_tests::projection_drift::scene_projection_reflects_scene_start ... ok
+test handler_tests::projection_drift::scene_projection_clears_after_dialogue_end ... ok
+test handler_tests::projection_drift::trace_endpoint_returns_causal_tree ... ok
+test handler_tests::projection_drift::trace_endpoint_returns_correlation_bundle ... ok
+test handler_tests::relationship_crud_lifecycle ... ok
+test handler_tests::runtime_sync::http_sync_endpoint_without_world_store_returns_not_implemented ... ok
+test handler_tests::phase1_5_reflection_tests::significant_reflection_updates_axes_and_emits_sse ... ok
+test handler_tests::runtime_sync::http_sync_endpoint_returns_synced_count ... ok
+test handler_tests::runtime_sync::sync_filters_non_mind_eligible_kinds ... ok
+test handler_tests::runtime_sync::sync_with_no_world_store_returns_zero ... ok
+test handler_tests::save_type_result_includes_turn_history ... ok
+test handler_tests::save_type_scenario_excludes_turn_history ... ok
+test handler_tests::runtime_sync::sync_preserves_emotion_state_across_reloads ... ok
+test handler_tests::scenario_meta_empty_initially ... ok
+test handler_tests::scenario_modified_reset_after_scenario_save ... ok
+test handler_tests::scenario_modified_set_after_npc_crud ... ok
+test handler_tests::scenario_modified_set_after_object_crud ... ok
+test handler_tests::scenario_modified_set_after_npc_delete ... ok
+test handler_tests::scenario_modified_set_after_object_delete ... ok
+test handler_tests::scenario_modified_set_after_put_situation ... ok
+test handler_tests::scenario_modified_set_after_relationship_crud ... ok
+test handler_tests::scenario_modified_set_after_relationship_delete ... ok
+test handler_tests::scene_info_empty_initially ... ok
+test handler_tests::situation_panel_round_trip ... ok
+test handler_tests::stimulus_without_appraise_returns_bad_request ... ok
+test handler_tests::test_report_persistence_across_save_load ... ok
+test handler_tests::test_report_round_trip ... ok
+test handler_tests::test_studio_analysis_pipeline_integrity ... ok
+test handler_tests::v2_dispatch_scene_mismatch_returns_bad_request ... ok
+test handler_tests::v2_dispatch_to_inactive_scene_returns_not_found ... ok
+test handler_tests::v2_empty_director_lists_no_active_scenes ... ok
+test handler_tests::v2_seed_npcs_and_start_scene_returns_scene_id ... ok
+test handler_tests::v2_end_scene_removes_from_active_list ... ok
+test init_tests::build_returns_none_when_files_missing ... ok
+test init_tests::build_returns_none_when_partially_missing ... ok
+test handler_tests::v2_start_scene_duplicate_returns_conflict ... ok
+test init_tests::build_returns_some_for_valid_data_dir ... ok
+test studio_service::tests::resolve_pad_pad_hint_short_circuits_conversion ... ok
+test studio_service::tests::resolve_pad_converter_failure_falls_back ... ok
+test studio_service::tests::resolve_pad_with_converter_and_embedding_inverts ... ok
+test studio_service::tests::resolve_pad_without_converter_returns_speaker_pad ... ok
+test handler_tests::v2_dispatch_appraise_to_active_scene_emits_events ... ok
+
+test result: ok. 90 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.93s
+

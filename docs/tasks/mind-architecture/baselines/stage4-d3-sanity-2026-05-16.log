@@ -1,0 +1,31 @@
+warning: unused imports: `DeclarativeEventPlaceholder` and `PartnershipEventPlaceholder`
+  --> src/application/reflection_service.rs:30:5
+   |
+30 |     DeclarativeEventPlaceholder, PartnershipEventPlaceholder, ReflectionResult, TurnSnapshot,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (lib) generated 1 warning (run `cargo fix --lib -p npc-mind` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.16s
+     Running tests/phase1_chitchat_test.rs (target/debug/deps/phase1_chitchat_test-77dde8684c4d6f12)
+
+running 1 test
+test chitchat_skips_outer_loop_emits_three_events_and_preserves_axes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase1_daily_training_test.rs (target/debug/deps/phase1_daily_training_test-2200bb7f475752fb)
+
+running 1 test
+test daily_training_enters_outer_loop_emits_four_events_and_updates_axes ... ignored, Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 no-op (이벤트 발행은 OK, 값 변화 0)
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/phase1_shanshenmiao_test.rs (target/debug/deps/phase1_shanshenmiao_test-8a9039d9b84e6d19)
+
+running 1 test
+test shanshenmiao_high_band_emits_four_events_and_reverses_axes_strongly ... ignored, Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 axes 갱신 no-op
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
