@@ -2020,6 +2020,8 @@ fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
 
 ### Stage 5 — Narrative 시뮬레이션 검증
 
+→ **FROZEN**: [`task-rel-phase2-stage5-narrative-FROZEN.md`](task-rel-phase2-stage5-narrative-FROZEN.md) (실행 spec 정본). 회고: [`phase2-stage5-narrative.md`](phase2-stage5-narrative.md).
+
 **범위**:
 - Phase 1 narrative 3 시나리오 (chitchat-passerby/daily-training/lin-chong-shanshenmiao) 4축 시스템에서 재실행
 - S1~S4 시뮬레이션 케이스를 *Phase 2 narrative test*로 박음 (`tests/phase2_narrative_test.rs` 신설)

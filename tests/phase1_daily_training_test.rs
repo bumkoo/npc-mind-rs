@@ -7,7 +7,7 @@
 //! - RelationshipUpdated 발행 (★ outer loop 진입)
 //! - EmotionCleared, SceneEnded 항상
 //! - 최종 follow-up: 4개 (DialogueReflected + RelationshipUpdated + EmotionCleared + SceneEnded)
-//! - axes 미세 변화 (closeness/trust 약간 ↑)
+//! - axes respect 미세 ↑ (Admiration)
 
 use std::sync::{Arc, Mutex};
 
@@ -34,7 +34,6 @@ fn daily_reflection() -> ReflectionResult {
 }
 
 #[tokio::test]
-#[ignore = "Stage 2 4축 update_axes_from_emotion 매핑 도입 후 재활성화 — Stage 1은 no-op (이벤트 발행은 OK, 값 변화 0)"]
 async fn daily_training_enters_outer_loop_emits_four_events_and_updates_axes() {
     // 1. 시나리오 로드
     let repo = InMemoryRepository::from_file(SCENARIO_PATH).expect("시나리오 로드 OK");
@@ -51,22 +50,22 @@ async fn daily_training_enters_outer_loop_emits_four_events_and_updates_axes() {
     let dispatcher = CommandDispatcher::new(repo_arc.clone(), event_store, bus)
         .with_default_handlers();
 
-    // 3. emotion state 사전 설정 — 가르침 후 mild Pride
+    // 3. emotion state 사전 설정 — 가르침 후 제자 성장 인정 (Admiration)
     {
         use npc_mind::domain::emotion::{EmotionState, EmotionType};
         let mut state = EmotionState::default();
-        state.set_intensity(EmotionType::Pride, 0.4);
+        state.set_intensity(EmotionType::Admiration, 0.4);
         dispatcher
             .repository_guard()
             .save_emotion_state("yu_shulien", state);
     }
 
     // 4. 사전 axes 박제
-    let initial_closeness = {
+    let initial_respect = {
         let repo = repo_arc.lock().unwrap();
         repo.get_relationship("yu_shulien", "chunxueping")
             .unwrap()
-            .affinity()
+            .respect()
             .value()
     };
 
@@ -93,17 +92,17 @@ async fn daily_training_enters_outer_loop_emits_four_events_and_updates_axes() {
     // DialogueEndRequested(1) + DialogueReflected + RelationshipUpdated + EmotionCleared + SceneEnded = 5
     assert_eq!(output.events.len(), 5, "총 5 이벤트");
 
-    // 7. axes 변화 — significance 0.5에 Pride 0.4 영향 → 약간의 변화 기대.
+    // 7. axes 변화 — significance 0.5에 Admiration 0.4 영향 → respect 미세 ↑.
     //    구체 수치는 RelationshipPolicy 내부 계산 — 여기서는 *변화 발생*만 검증.
-    let after_closeness = {
+    let after_respect = {
         let repo = repo_arc.lock().unwrap();
         repo.get_relationship("yu_shulien", "chunxueping")
             .unwrap()
-            .affinity()
+            .respect()
             .value()
     };
     assert!(
-        (after_closeness - initial_closeness).abs() > f32::EPSILON,
-        "★ closeness 변화 (mid-significance — 미세 갱신 발생)"
+        (after_respect - initial_respect).abs() > f32::EPSILON,
+        "★ respect 변화 (제자 성장 인정 — Admiration)"
     );
 }
