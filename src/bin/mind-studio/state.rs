@@ -667,70 +667,18 @@ pub struct NpcProfile {
 /// **자동으로 `trust × 100`, `closeness × 100 → affinity`** 변환을 적용한다 (Stage 3 리뷰 H1).
 /// `power`는 폐기 (B-D4) — 값 무시. save-roundtrip 시 v0.7 4-field로 저장되며 값도 정확.
 /// v0.6 감지 시 `tracing::warn!`로 표시 — Stage 4 마이그레이션 도구 실행 권장.
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct RelationshipData {
     pub owner_id: String,
     pub target_id: String,
+    #[serde(default)]
     pub trust: f32,
+    #[serde(default)]
     pub affinity: f32,
+    #[serde(default)]
     pub respect: f32,
+    #[serde(default)]
     pub wariness: f32,
-}
-
-impl<'de> Deserialize<'de> for RelationshipData {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // 두 스키마(v0.6 / v0.7)를 모두 받기 위해 `Option<f32>` 필드로 받음.
-        // v0.6 키(`closeness`/`power`) 존재 여부로 스키마 감지 + 자동 ×100.
-        #[derive(Deserialize)]
-        struct RawRelationship {
-            owner_id: String,
-            target_id: String,
-            #[serde(default)]
-            trust: Option<f32>,
-            #[serde(default)]
-            affinity: Option<f32>,
-            #[serde(default)]
-            respect: Option<f32>,
-            #[serde(default)]
-            wariness: Option<f32>,
-            // v0.6 호환 — 본 키들이 있으면 자동 변환 트리거.
-            #[serde(default)]
-            closeness: Option<f32>,
-            #[serde(default)]
-            #[allow(dead_code)]
-            power: Option<f32>,
-        }
-
-        let raw = RawRelationship::deserialize(deserializer)?;
-        let is_v06 = raw.closeness.is_some() || raw.power.is_some();
-
-        let (trust, affinity) = if is_v06 {
-            tracing::warn!(
-                owner = %raw.owner_id,
-                target = %raw.target_id,
-                "RelationshipData v0.6 schema detected (closeness/trust/power ±1.0) — \
-                 auto-multiplying ×100 → v0.7 (±100 raw). \
-                 Run Stage 4 migration tool to upgrade the scenario JSON permanently."
-            );
-            let trust = raw.trust.unwrap_or(0.0) * 100.0;
-            let affinity = raw.closeness.unwrap_or(0.0) * 100.0;
-            (trust, affinity)
-        } else {
-            (raw.trust.unwrap_or(0.0), raw.affinity.unwrap_or(0.0))
-        };
-
-        Ok(Self {
-            owner_id: raw.owner_id,
-            target_id: raw.target_id,
-            trust,
-            affinity,
-            respect: raw.respect.unwrap_or(0.0),
-            wariness: raw.wariness.unwrap_or(0.0),
-        })
-    }
 }
 
 impl RelationshipData {
@@ -920,90 +868,5 @@ impl StateInner {
     pub fn load_from_file(path: &std::path::Path) -> Result<Self, String> {
         let json = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
         serde_json::from_str(&json).map_err(|e| e.to_string())
-    }
-}
-
-#[cfg(test)]
-mod relationship_data_tests {
-    use super::*;
-
-    #[test]
-    fn v06_schema_auto_multiplies_by_100() {
-        // v0.6: closeness/trust/power ±1.0 → auto ×100 → v0.7 ±100 raw
-        let v06_json = serde_json::json!({
-            "owner_id": "alice",
-            "target_id": "bob",
-            "closeness": 0.5,
-            "trust": -0.3,
-            "power": 0.4,
-        });
-        let rel: RelationshipData = serde_json::from_value(v06_json).unwrap();
-        assert!((rel.trust - (-30.0)).abs() < 1e-3, "trust = {}", rel.trust);
-        assert!((rel.affinity - 50.0).abs() < 1e-3, "affinity = {}", rel.affinity);
-        assert_eq!(rel.respect, 0.0, "v0.6에는 respect 없음 → 0 default");
-        assert_eq!(rel.wariness, 0.0, "v0.6에는 wariness 없음 → 0 default");
-    }
-
-    #[test]
-    fn v07_schema_passes_through_without_scaling() {
-        // v0.7: 4축 ±100 raw 그대로 보존
-        let v07_json = serde_json::json!({
-            "owner_id": "alice",
-            "target_id": "bob",
-            "trust": 50.0,
-            "affinity": -30.0,
-            "respect": 20.0,
-            "wariness": 15.0,
-        });
-        let rel: RelationshipData = serde_json::from_value(v07_json).unwrap();
-        assert_eq!(rel.trust, 50.0);
-        assert_eq!(rel.affinity, -30.0);
-        assert_eq!(rel.respect, 20.0);
-        assert_eq!(rel.wariness, 15.0);
-    }
-
-    #[test]
-    fn v06_power_alone_triggers_migration() {
-        // closeness 없이 power만 있어도 v0.6 감지 (방어적 detection)
-        let v06_json = serde_json::json!({
-            "owner_id": "alice",
-            "target_id": "bob",
-            "trust": 0.4,
-            "power": 0.2,
-        });
-        let rel: RelationshipData = serde_json::from_value(v06_json).unwrap();
-        // trust × 100 = 40, closeness 없으므로 affinity = 0 × 100 = 0
-        assert!((rel.trust - 40.0).abs() < 1e-3);
-        assert_eq!(rel.affinity, 0.0);
-    }
-
-    #[test]
-    fn save_roundtrip_v06_to_v07_preserves_semantic() {
-        // v0.6 load → auto ×100 → serialize as v0.7 → deserialize → 같은 값
-        let v06_json = serde_json::json!({
-            "owner_id": "alice",
-            "target_id": "bob",
-            "closeness": 0.5,
-            "trust": -0.3,
-            "power": 0.4,
-        });
-        let loaded: RelationshipData = serde_json::from_value(v06_json).unwrap();
-        let saved = serde_json::to_value(&loaded).unwrap();
-        let reloaded: RelationshipData = serde_json::from_value(saved).unwrap();
-        assert!((loaded.trust - reloaded.trust).abs() < 1e-3);
-        assert!((loaded.affinity - reloaded.affinity).abs() < 1e-3);
-    }
-
-    #[test]
-    fn v07_missing_optional_fields_defaults_to_zero() {
-        // v0.7 부분 입력 (trust만) — 나머지 0 default, 자동 변환 없음
-        let partial = serde_json::json!({
-            "owner_id": "alice",
-            "target_id": "bob",
-            "trust": 50.0,
-        });
-        let rel: RelationshipData = serde_json::from_value(partial).unwrap();
-        assert_eq!(rel.trust, 50.0);
-        assert_eq!(rel.affinity, 0.0);
     }
 }
