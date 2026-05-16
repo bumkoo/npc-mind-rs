@@ -1,6 +1,6 @@
 # Phase 2 — Relationship 도메인 마이그레이션 (4축 + BondKind/BondStatus/Partnership + type)
 
-**Status**: `ready` — **Stage 0 종결 (2026-05-13), v1.0 spec freeze**. Stage 1 진입 대기.
+**Status**: ✅ **COMPLETED — v1.0 spec FROZEN (Stage 0~6 종결, 2026-05-16)**. 종합 보고: [`phase2-checkpoint-report.md`](phase2-checkpoint-report.md). 후속: Phase 2.3 — KICKOFF [`PHASE2.3-KICKOFF.md`](PHASE2.3-KICKOFF.md) v1.2.
 **Owner**: Bekay + Claude
 **Parent**: `docs/tasks/mind-architecture/00-roadmap.md` §5 Phase 2 (분할 후 본 phase)
 **Sibling**: `task-rel-phase2.5-channel1.md` (별도 phase로 분리, 추후 작성)
@@ -2043,6 +2043,8 @@ fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
 
 ### Stage 6 — Bench + 회고 + Phase 2.3 KICKOFF
 
+→ **FROZEN**: [`task-rel-phase2-stage6-bench-handoff-FROZEN.md`](task-rel-phase2-stage6-bench-handoff-FROZEN.md) (Stage 6 정본 spec). 본 골격은 보존.
+
 **범위**:
 - `dispatch_v2(EndDialogue)` 재측정 (chitchat/significant/legacy) — D2 baseline 비교
 - `compute_significance` 재측정 — D4 baseline 비교
@@ -2060,9 +2062,11 @@ fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
 **게이트**:
 1. Latency ±20% 이내 (D2 baseline 비교, 4축 매핑 추가 영향 측정값 박제)
 2. Bench 재측정 완료
-3. 회귀 0건 (1095+ tests 통과 + narrative 3밴드 보존)
+3. 회귀 0건 (1095+ tests 통과 + narrative 3밴드 보존) — S6-D1 정본 재해석: `failed=0 ∧ Stage 5 종결 대비 회귀 0 ∧ narrative 3밴드 보존 ∧ 증감분 전부 설명가능`
 4. Phase 2.3 진입 준비 완료 (KICKOFF + spec 디렉토리 초안)
 5. 외부 문서 인덱스 동기화 완료
+
+**Stage 6 종결 (2026-05-16)**: 5 게이트 모두 ☑. Phase 2 종결 선언. 회고: [`phase2-stage6-bench-handoff.md`](phase2-stage6-bench-handoff.md).
 
 **산출 commit**: `phase2-stage6-bench-handoff.md` 회고 + `PHASE2.3-KICKOFF.md`
 
