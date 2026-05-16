@@ -2,8 +2,8 @@
 //!
 //! `AppState.director_v2`를 경유하여 다중 Scene 관리 API를 REST로 노출한다.
 //! 기존 v1 Mind Studio 경로와 **완전히 분리된** Repository를 쓰므로:
-//! - v2 Director 내부 Repository에 NPC/Relationship 등록 후 Scene 시작 가능
-//! - `POST /api/v2/npcs` / `POST /api/v2/relationships` 헬퍼로 Director 내부 repo 직접 편집
+//! - v2 Director 내부 Repository에 NPC 등록 후 Scene 시작 가능
+//! - `POST /api/v2/npcs` 헬퍼로 Director 내부 repo 직접 편집
 //! - v1 UI에 반영되지 않음 (shadow path)
 //!
 //! ## 엔드포인트
@@ -12,7 +12,6 @@
 //! - `POST   /api/v2/scenes/dispatch`         — Scene에 v2 커맨드 송신
 //! - `DELETE /api/v2/scenes/{npc}/{partner}`  — Scene 종료
 //! - `POST   /api/v2/npcs`                    — Director repo에 NPC 등록
-//! - `POST   /api/v2/relationships`           — Director repo에 관계 등록
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -23,7 +22,6 @@ use npc_mind::application::command::types::Command;
 use npc_mind::application::dto::{SceneFocusInput, SituationInput};
 use npc_mind::domain::personality::Npc;
 use npc_mind::domain::scene_id::SceneId;
-use npc_mind::ports::NpcWorld;
 
 use super::AppError;
 use crate::state::AppState;
@@ -230,56 +228,6 @@ pub async fn upsert_npc_v2(
         .dispatcher()
         .repository_guard()
         .add_npc(npc);
-    StatusCode::OK
-}
-
-/// v0.6 (3축) 호환 입력 — Phase 2 Stage 1 마이그레이션 자리.
-///
-/// `Relationship` 본체로 직접 `Json<Relationship>` 받으면 v0.6 클라이언트의
-/// `{closeness, trust, power}` payload가 silent drop (closeness/power) + scale
-/// 미스매치 (trust ±1.0 → AxisScore ±100 misread)로 corruption. Stage 4
-/// 마이그레이션 도구까지 자동 산술 변환으로 호환 유지.
-///
-/// `deny_unknown_fields`로 신규 4축 필드 (`affinity`/`respect`/`wariness`)는
-/// 본 경로에 박지 못하게 한다 — 호환은 *v0.6 → v0.7 자동 변환*에만 책임.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RelationshipUpsertV0_6 {
-    owner_id: String,
-    target_id: String,
-    #[serde(default)]
-    closeness: f32,
-    #[serde(default)]
-    trust: f32,
-    #[serde(default)]
-    #[allow(dead_code)]
-    power: f32,
-}
-
-/// POST /api/v2/relationships — Director 내부 Repository에 관계 등록.
-///
-/// v0.6 (3축) shape을 받아 *자동 산술 변환*으로 v0.7 (4축) Relationship으로 박는다.
-/// `memory_repository.rs::RelationshipJson::to_relationship`와 동일 패턴.
-pub async fn upsert_relationship_v2(
-    State(state): State<AppState>,
-    Json(input): Json<RelationshipUpsertV0_6>,
-) -> StatusCode {
-    use npc_mind::domain::relationship::{
-        AxisScore, RelationshipBuilder, WarinessScore,
-    };
-    let rel = RelationshipBuilder::new(&input.owner_id, &input.target_id)
-        .trust(AxisScore::new(input.trust * 100.0))
-        .affinity(AxisScore::new(input.closeness * 100.0))
-        .respect(AxisScore::NEUTRAL)
-        .wariness(WarinessScore::NEUTRAL)
-        .build();
-    let owner = rel.owner_id().to_string();
-    let target = rel.target_id().to_string();
-    state
-        .director_v2
-        .dispatcher()
-        .repository_guard()
-        .save_relationship(&owner, &target, rel);
     StatusCode::OK
 }
 

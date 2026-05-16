@@ -98,8 +98,13 @@ inner_compass:
 - `active_focus`: 현재 가장 강한 동기
 
 ### relationships
-> 본체: `relationships.md` v0.6.
+> 본체: `relationships.md` v0.7.
 > 행동 평가: `action_triggers.md` v0.1.
+>
+> **v0.7 마이그레이션 (2026-05-16, Phase 2 Stage 4)**: 3축 (`closeness`/`trust`/`power` ±1.0) →
+> 4축 (`trust`/`affinity`/`respect`/`wariness` ±100, wariness 0~100). `power` 폐기 — 위계 정보는
+> `type` 자유 텍스트로 흡수. 시나리오 JSON `relationships` 블록은 v0.7 raw 표기를 영구 사용 (v0.6
+> 자동 변환 사슬 폐기).
 
 #### key_bonds
 
@@ -324,3 +329,4 @@ joyful_seed: { description, trigger_condition }
 | v0.4 | 2026-05-04 | bond_kind enum 8 variants |
 | v0.5 | 2026-05-04 | 세 차원 직교화 (BondKind 9 + BondStatus 5 + Partnership 4) |
 | v0.6 | 2026-05-04 | **BondKind 11**: Companion·Guardian 신설. action_triggers.md 참조 추가 (행동 평가 분리). 검증 체크리스트에 Guardian/Companion 임계 + 진입 게이트 차등 + compass 자연 누적 룰 추가. relationships.md v0.6과 동기화. |
+| v0.7 | 2026-05-16 | **4축 영구 마이그레이션** (Phase 2 Stage 4): 시나리오 JSON `relationships` 블록 `closeness`/`trust`/`power` (±1.0) → `trust`/`affinity`/`respect`/`wariness` (±100, wariness 0~100). `power` 폐기 — 위계는 `type` 자유 텍스트로 흡수. v0.6 ×100 자동 변환 사슬 제거 (`memory_repository::RelationshipJson` 순수 v0.7 재작성, `state.rs` 커스텀 Deserialize 제거, `v2_scenes::RelationshipUpsertV0_6` legacy endpoint 제거). `relationships.md` v0.7과 동기화. |

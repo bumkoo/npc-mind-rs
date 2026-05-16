@@ -76,10 +76,9 @@
     "lin_chong:passerby": {
       "owner_id": "lin_chong",
       "target_id": "passerby",
-      "trust": 0,
-      "affinity": 0,
-      "respect": 0,
-      "wariness": 0
+      "closeness": 0.0,
+      "trust": 0.0,
+      "power": 0.0
     }
   },
   "objects": {},

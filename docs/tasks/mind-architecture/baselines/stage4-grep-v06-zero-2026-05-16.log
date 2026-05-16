@@ -1,0 +1,18 @@
+=== v0.6 grep zero check ===
+
+[1] closeness/power production grep (src/)
+src/adapter/memory_repository.rs:634:            "closeness": 0.7,
+src/adapter/memory_repository.rs:636:            "power": 0.1
+(end)
+
+[2] RelationshipUpsertV0_6 / upsert_relationship_v2 production grep
+(end)
+
+[3] is_v06 / auto-multiplying production grep
+(end)
+
+[4] ×100 production grep (memory_repository + v2_scenes)
+(end)
+
+[5] 4파일 closeness/power 잔존
+(end)

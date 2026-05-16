@@ -178,34 +178,34 @@ impl NpcJson {
     }
 }
 
-/// 시나리오 JSON 진입점 — v0.6 (3축) 호환 deserializer.
+/// 시나리오 JSON 진입점 — v0.7 (4축) 순수 deserializer.
 ///
-/// Stage 1: 컴파일 통과만. 자동 산술 변환 (`closeness × 100 → affinity`, `trust × 100 → trust`)
-/// 적용. `power`는 폐기 (B-D4) — 필드는 받아두지만 도메인 변환 시 무시.
-/// Stage 4 마이그레이션 도구가 시나리오 JSON 자체를 v0.7 (4축) 스키마로 변환할 때까지
-/// 본 deserializer가 *임시 자동 변환*을 담당.
+/// Phase 2 Stage 4 (v1.4, 2026-05-16): v0.6 자동 ×100 변환 사슬 제거. 시나리오 JSON은
+/// 영구히 v0.7 ±100 raw 표기 (`trust/affinity/respect/wariness`). v0.6 키
+/// (`closeness`/`power`)는 *무시*된다 (`#[serde(deny_unknown_fields)]` 미적용 — 부분 누락 호환).
+/// `respect`/`wariness`는 디자이너 부분 생략 backward compat을 위해 `#[serde(default)]` 유지.
 #[derive(Deserialize)]
 struct RelationshipJson {
     owner_id: String,
     target_id: String,
     #[serde(default)]
-    closeness: f32,
-    #[serde(default)]
     trust: f32,
     #[serde(default)]
-    #[allow(dead_code)]
-    power: f32,
+    affinity: f32,
+    #[serde(default)]
+    respect: f32,
+    #[serde(default)]
+    wariness: f32,
 }
 
 impl RelationshipJson {
     fn to_relationship(&self) -> Relationship {
         use crate::domain::relationship::{AxisScore, WarinessScore};
-        // v0.6 (±1.0) → v0.7 (±100) 자동 산술 변환 (B-D3 baseline)
         RelationshipBuilder::new(&self.owner_id, &self.target_id)
-            .trust(AxisScore::new(self.trust * 100.0))
-            .affinity(AxisScore::new(self.closeness * 100.0))
-            .respect(AxisScore::NEUTRAL)
-            .wariness(WarinessScore::NEUTRAL)
+            .trust(AxisScore::new(self.trust))
+            .affinity(AxisScore::new(self.affinity))
+            .respect(AxisScore::new(self.respect))
+            .wariness(WarinessScore::new(self.wariness))
             .build()
     }
 }
@@ -577,5 +577,89 @@ impl SceneStore for &mut InMemoryRepository {
     }
     fn clear_scene(&mut self) {
         (**self).clear_scene()
+    }
+}
+
+#[cfg(test)]
+mod relationship_json_tests {
+    //! v0.7 4축 시나리오 deserializer 검증 (Phase 2 Stage 4 §4.3 신규).
+    //!
+    //! v0.6 자동 ×100 사슬 제거 — 입력은 ±100 raw 그대로, `closeness`/`power` 키는 무시.
+
+    use super::RelationshipJson;
+
+    #[test]
+    fn v07_four_axes_round_trip_preserves_values() {
+        let json = r#"{
+            "owner_id": "lin_chong",
+            "target_id": "lu_qian",
+            "trust": -30,
+            "affinity": -20,
+            "respect": -10,
+            "wariness": 15
+        }"#;
+        let rj: RelationshipJson = serde_json::from_str(json).unwrap();
+        let r = rj.to_relationship();
+        assert_eq!(r.owner_id(), "lin_chong");
+        assert_eq!(r.target_id(), "lu_qian");
+        assert_eq!(r.trust().value(), -30.0);
+        assert_eq!(r.affinity().value(), -20.0);
+        assert_eq!(r.respect().value(), -10.0);
+        assert_eq!(r.wariness().value(), 15.0);
+    }
+
+    #[test]
+    fn missing_optional_axes_default_to_zero() {
+        let json = r#"{
+            "owner_id": "a",
+            "target_id": "b",
+            "trust": 50,
+            "affinity": 40
+        }"#;
+        let rj: RelationshipJson = serde_json::from_str(json).unwrap();
+        let r = rj.to_relationship();
+        assert_eq!(r.trust().value(), 50.0);
+        assert_eq!(r.affinity().value(), 40.0);
+        assert_eq!(r.respect().value(), 0.0);
+        assert_eq!(r.wariness().value(), 0.0);
+    }
+
+    #[test]
+    fn legacy_v06_keys_are_silently_ignored() {
+        // v0.6 키 (`closeness`/`power`) 입력 시 명시 동작: 무시.
+        // 새 키 (trust/affinity/respect/wariness)는 빠져있으면 0으로 fallback.
+        let json = r#"{
+            "owner_id": "a",
+            "target_id": "b",
+            "closeness": 0.7,
+            "trust": 80,
+            "power": 0.1
+        }"#;
+        let rj: RelationshipJson = serde_json::from_str(json).unwrap();
+        let r = rj.to_relationship();
+        // trust는 v0.7 raw ±100으로 직독 (×100 사슬 폐기됨)
+        assert_eq!(r.trust().value(), 80.0);
+        // closeness는 무시되어 affinity는 default 0
+        assert_eq!(r.affinity().value(), 0.0);
+        assert_eq!(r.respect().value(), 0.0);
+        assert_eq!(r.wariness().value(), 0.0);
+    }
+
+    #[test]
+    fn neutral_all_zeros_round_trip() {
+        let json = r#"{
+            "owner_id": "a",
+            "target_id": "b",
+            "trust": 0,
+            "affinity": 0,
+            "respect": 0,
+            "wariness": 0
+        }"#;
+        let rj: RelationshipJson = serde_json::from_str(json).unwrap();
+        let r = rj.to_relationship();
+        assert_eq!(r.trust().value(), 0.0);
+        assert_eq!(r.affinity().value(), 0.0);
+        assert_eq!(r.respect().value(), 0.0);
+        assert_eq!(r.wariness().value(), 0.0);
     }
 }

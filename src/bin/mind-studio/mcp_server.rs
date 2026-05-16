@@ -239,7 +239,7 @@ impl MindMcpService {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "save_path": { "type": "string", "description": "저장 경로 (data/ 하위, 예: treasure_island/ch01/session_001/scenario.json)" },
+                        "save_path": { "type": "string", "description": "저장 경로 (data/ 하위, 예: wuxia_world/confession/session_001/scenario.json)" },
                         "scenario": { "type": "object", "description": "{ scenario: {name,description,notes}, npcs: {id: NpcProfile}, relationships: {key: RelData}, objects: {id: ObjEntry}, scene: SceneRequest }" }
                     },
                     "required": ["save_path", "scenario"]
