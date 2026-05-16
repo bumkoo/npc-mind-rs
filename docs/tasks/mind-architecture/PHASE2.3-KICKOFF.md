@@ -157,7 +157,7 @@ Stage 3 후의 `RelationshipMemoryHandler::dominant_delta` 라벨:
 | D2 latency chitchat / significant / legacy (debug 빌드) | 7 / 10 / 8 µs (release N=50) | — | **15.70 / 26.68 / 20.89 µs** (Stage 6, 임계값 29/42/35.2 전부 이내) |
 | D4 10turn×10000 avg | — | — | **9.77 µs/call** (임계값 ~10 µs ±20% 이내) |
 | D3 3밴드 calibration | 0.000 / 0.461 / 0.980 (exact) | (chitchat 1 pass, 나머지 ignored) | **0.000 / 0.461 / 0.980** (exact, Stage 1 baseline 동치 사슬 C-3 보존) |
-| git HEAD | — | — | `e3df875` (Stage 6 FROZEN spec) / Stage 5 종결 = `5b2b798` (PR #92) |
+| git HEAD | — | — | **Phase 2 종결 = `9339909` (PR #93 머지)**. 참고: Stage 6 진입/FROZEN = `e3df875`, Stage 5 종결 = `5b2b798` (PR #92) |
 
 ### Phase 2.3 진입 시 재측정 권장 항목
 
