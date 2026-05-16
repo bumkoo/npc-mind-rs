@@ -327,6 +327,12 @@ B 카테고리 14개 항목. **Phase 2 본체 12개 전부 확정 ✅**. B-D7/B-
 | B-D12 | Shame/Pride (`agent_id=None`) 처리 | ✅ **확정 — 4축 변동 0, PAD만 영향** (v0.7 §4.2 표의 Shame/Pride 행은 4축 자동 갱신에서 무시) |
 | B-D13 | 1회 변동 상한 | ✅ **확정 — 별도 cap 없음** (HEXACO 보정자 + intensity 곱 + axis_modulation ±5가 자연 한계 형성) |
 | B-D14 | Well-being/Prospect 10 OCC 4축 매핑 누락 | ✅ **확정 — 의도된 누락 채택** (Joy/Distress/Hope/Fear/Satisfaction/Disappointment/Relief/FearsConfirmed/Remorse/Gratification 10개는 4축 변동 0, PAD만 영향. Compound 감정(Anger/Gratitude)이 간접 흡수) |
+| B-D-A | wire format scale (event payload + DTO) — Stage 3 결정 | ✅ **확정 — (b) ±100 raw 전송**: `RelationshipUpdatedPayload` 8 필드 + `RelationshipValues` 4 필드 모두 ±100 (wariness 0~100) raw 값 전송. ÷100 정규화 layer 5 위치 *완전 제거* (emit 2 + orchestrator 1 + domain_sync 2). frontend 임계값 `> 0.001` → `> 0.1` 재조정, `toFixed(2)` → `toFixed(0)`, Slider min/max ±100으로 갱신. domain ↔ wire ↔ scenario JSON ±100 일관 (B-D2 + B-D8과 정합). 근거: (1) Stage 2 회고 §게이트 #5 ⚠️ "정규화 layer 정리" Stage 3 위임 (2) B-D2 시나리오 JSON `"trust": 75` 정수 표기 ↔ wire ±100 자연 정합 (3) B-D8 Stage 4 마이그레이션 도구 ×100 변환과 결합. **B-D-A2 (도메인 내부 read-side modifiers / RelationshipLevel contract)는 별 결정** — wire 결정과 직교. |
+| B-D-A2 | 도메인 내부 read-side contract (modifiers + RelationshipLevel) — Stage 3 결정 | ✅ **확정 — (ii) ±1.0 유지**: `Relationship::modifiers()` 메서드 + `RelationshipLevel::from_score(±1.0)` API 시그니처 변경 0. 도메인 내부 ÷100 layer 2 위치 (`relationship/mod.rs:172-173` + `guide/snapshot.rs:316-317`) *유지*. modifier 5 사용처 (emotion/stimulus/scene policy + situation_service + memory_repository) 변경 0. 튜닝 프로필 가중치 (`rel_closeness_intensity_weight` 등) 변경 0. W1 회귀 가드 expected 값 (`0.286`/`0.158`) 그대로. **Phase 2.3로 명시적 위임**: `RelationshipModifiers` 정밀화 시 *modifier 시그니처 재검토*. W1 회귀 가드가 *그 시점 깨지는 게 정상* — 재독 트리거. 근거: (1) Phase 2.3 신설 결정에 *RelationshipModifiers 정밀화*가 그 단계 책임으로 *이미 박힘* (2) modifier 5 사용처 + 튜닝 weights = narrative 검증값 (D3 baseline 보존 = Stage 5 게이트 통과) (3) Stage 3 boundary를 wire/DTO/frontend까지로 *닫음*. 잔존 ÷100 layer 카탈로그 (Phase 2.3 인계): `src/domain/relationship/mod.rs:172-173`, `src/domain/guide/snapshot.rs:316-317`. ★ **B-D-A2의 부산물**: B-D-test-cleanup이 *자동 흡수*됨 (W1 회귀 가드 expected 값 그대로). |
+| B-D-B | closeness → affinity 필드명 이행 + 4축 식별자 확정 — Stage 3 결정 | ✅ **확정**: `closeness` 필드/변수명 *완전 폐기* (event payload + DTO + frontend 타입 모두). 4축 식별자: `trust` / `affinity` / `respect` / `wariness` (도메인 시그니처와 정합, v0.7 §4.2 표 순서). 필드 순서 (event payload + DTO 양쪽): `trust` → `affinity` → `respect` → `wariness`. `power` 필드 *완전 제거* (B-D4 폐기 결정 그대로, 호출처 0건 확인). B-D-A (b) ±100 결정의 자연 정합. anchor 효과로 *형식 확정만*. |
+| B-D-C | power 폐기 후 UI 처리 (4축 표시) — Stage 3 결정 | ✅ **확정 — (a) 4축 동일 표시**: RelModal Slider 4개 (trust/affinity/respect ±100 + wariness 0~100), Slider 컴포넌트가 `min`/`max` props 받도록 시그니처 확장 — **A4 검증 결과 props 이미 존재** (Slider 변경 0). ReflectionView AxisRow 4개 (동일 컴포넌트, min/max props 다름). Sidebar 요약 4 필드 박음. EmotionView 4 필드 표시. 새 컴포넌트 신설 0. wariness의 magnitude-only 의미는 *slider min/max props*로 *TS 타입 보호*. 시각적 비대칭 (0~100 slider vs ±100 slider)은 *수용* — Mind Studio = 디자이너 도구라 단순성 우선. (b)/(c) UI 정밀화는 Phase 3+ 별 작업으로 위임. |
+| B-D-D | 한글 라벨 (4축) — Stage 3 결정 | ✅ **확정 — (γ) 혼합 + affinity = 호감/호**: 단어 라벨 (RelModal Slider / ReflectionView AxisRow / EmotionView): `신뢰` / `호감` / `존중` / `경계`. 한 글자 라벨 (Sidebar 요약): `신:X 호:Y 존:Z 경:W` (4자 한자 *信/好/尊/警*). closeness (`친밀` 의미)와 분리 명확 — spec B-D3 "affinity = 심리적 끌림" 정합. 현재 패턴 (`친밀도/신뢰도/상하` + `친/신/상`) 형태 보존, 4축으로 확장. |
+| B-D-helper | helper 추출 패턴 (relationship_policy 2 위치 통합) — Stage 3 결정 | ✅ **확정 — (i) RelationshipPolicy 내부 private method**: helper `RelationshipPolicy::apply_emotions_to_relationship(npc, &relationship, emotion) -> Relationship`. 시그니처: `&Relationship` 입력 + `Relationship` 반환 (clone 안에 박힘). B-D12 guard 마커 + doc 참조 *helper 안* 1 위치 (호출 측 책임 보존). 2 호출 위치 (`handle_relationship_update_with_cause` / `handle_dialogue_end`) → helper 호출 1줄 + 8 필드 raw payload. stimulus_policy::process_beat_transition은 *inline 유지* (Beat 전환 특수 — `beat_rel.modifiers()` 보존 패턴). **W4 doc § "호출자 인덱스" 갱신** (Stage 3 § 3.2에서): `RelationshipPolicy::apply_emotions_to_relationship` (helper, 2 use sites) + `stimulus_policy::process_beat_transition`. **W4 회귀 가드 보존**: `update_axes_from_emotion_does_not_filter_pride_or_shame_internally` 그대로 통과 — Pride/Shame은 *helper에서 차단*, *내부 함수는 차단 안 함* 의미 보존. 근거: (1) W4 결정 (호출 측 책임) *frozen* 보존 (2) Stage 2 회귀 가드 5개 (W1/W2/W4 × 3) 그대로 통과 (3) spec §7 Stage 3 "helper 추출" 의도 정합 (4) stimulus_policy 특수성 (`beat_rel.modifiers()` 보존) 인정. |
 
 ### ★ Phase 2.3 신설 결정
 
@@ -373,6 +379,48 @@ B 카테고리 14개 항목. **Phase 2 본체 12개 전부 확정 ✅**. B-D7/B-
 
 - 표 값 *방향성*은 S1~S4 검증 통과. *정량값* 미세조정 가능성 존재.
 - 완화: Phase 2.3에서 시나리오 set 기반 정량 미세조정 (Phase 2 본체에선 v0.7 §4.2 표 그대로 박음)
+
+### R-3a — Frontend TS 타입 *수동 매핑* 누락 위험 (Stage 3 특유)
+
+- A4 발견: `mind-studio-ui/src/types/index.ts`가 *Rust DTO와 수동 매핑*. Rust `RelationshipValues` 변경 시 *TS 타입 자동 동기화 안 됨*
+- 영향: types/index.ts 갱신 누락 → frontend 런타임에 *필드 undefined* (TS 컴파일은 통과)
+- 완화: § 3.6 첫 작업이 `types/index.ts` 갱신. `npm run build` (또는 `tsc --noEmit`) 먼저 실행하여 *모든 .tsx 사용처 컴파일 에러로 식별*. 그 후 컴포넌트 5 위치 + 테스트 2 위치 차례로 수정.
+
+### R-3b — `dominant_delta` 라벨 변경으로 인한 Memory content 라벨 혼재
+
+- A1 발견: `relationship_memory_handler.rs:148`의 `dominant_delta(6 인자) -> (delta, axis)`. axis 라벨이 memory content `[{axis} Δ={delta:.2}]`에 박힘. Stage 3에서 4축 라벨로 확장 (`affinity` / `respect` / `wariness` 신설, `closeness`/`power` 폐기)
+- 영향: 기존 memory entry는 *옛 라벨* (`closeness`/`power`)로 색인됨. 새 entry는 *새 라벨*. Memory 검색 시 *혼재* — 단 *기능적 결함 X* (텍스트 표시 차이만)
+- 완화: § 3.4에서 dominant_delta 재작성 + memory_projector delta 계산 함께 갱신. *기존 memory entry는 재마이그레이션 안 함* (overhead 대비 효과 작음). Stage 5 narrative 시뮬레이션에서 *혼재 영향 시각적 확인*. Phase 2.3 memory 정리 시 일괄 처리 검토.
+
+### R-3c — ÷100 layer 도메인 내부 잔존 (B-D-A2 (ii) 결정 수반)
+
+- A5 발견 + B-D-A2 (ii) 결정: domain 내부 ÷100 layer 2 위치 (`relationship/mod.rs:172-173` + `guide/snapshot.rs:316-317`) 유지. wire layer 5 위치 → 도메인 내부 2 위치
+- 영향: 디버깅 시 *wire ±100 vs domain modifier ±1.0* 단위 혼동. 특히 narrative 시뮬레이션 trace 분석 시 *어느 layer 값인지* 매번 확인 필요
+- 완화: W3 `tracing::debug!` (mapping.rs:252) 활용 + Phase 2.3 KICKOFF 문서에 *잔존 2 위치 카탈로그* 명시. Stage 6 회고에 *±100 vs ±1.0 boundary diagram* 박음.
+
+### R-3d — `event_bridge` 변경 0 (spec 가정 정정으로 §7 본문 재작성)
+
+- A2 발견: 원 spec §7 Stage 3 범위에 "`event_bridge` SSE 매핑 갱신 — RelationshipUpdated 페이로드 8 필드 반영" 명시. 실제 면적 0 (event_bridge가 axes 안 봄)
+- 영향: Claude Code가 *spec 본문 가정대로 작업*하면 *불필요한 변경 시도* 또는 *혼동* ("매핑 갱신할 게 없는데?"). spec 정합성 깨짐
+- 완화: Stage 3 spec § 3.* 분할 시 *event_bridge 항목 명시적 제거*. §7 본문에 *변경 0 확인 grep 게이트* 박음 (Stage 1 1.8 자동 흡수 검증 패턴 동일). v1.3 변경 이력에 정정 사례 명시.
+
+### R-3e — W1 회귀 가드 expected 값 ±1.0 가정 (Phase 2.3 트리거 보존)
+
+- A6 발견 + B-D-A2 (ii) 결정: `mapping.rs:814~839` W1 회귀 가드 3개 expected 값 (`affinity 28.6/100 = 0.286`, `trust 15.8/100 = 0.158`, Admiration no-leak)이 *±1.0 정규화 modifier* 기준
+- 영향: Phase 2.3 진입 시 *RelationshipModifiers 정밀화*로 *이 테스트가 깨지는 게 정상*. Stage 3 진입 시점에는 *그대로 통과*해야 함 — Stage 3 변경이 *modifier API에 닿지 않음* 검증
+- 완화: § 3.7 게이트에 *W1 회귀 가드 3개 통과 명시*. 만약 깨지면 *Stage 3 boundary 위반*. W1③ `admiration_no_leak_until_phase_2_3` 테스트 doc 그대로 유지 — Phase 2.3 시작 신호 trigger 보존.
+
+### R-3f — ~100 테스트 호출 시그니처 변경 회귀 면적
+
+- Stage 1/2와 유사 패턴. RelationshipBuilder + Relationship::new + 3축 직접 호출 (`.closeness()`/`.power()`) 사용처가 ~100건 (A1 자동 흡수 카탈로그)
+- 영향: 컴파일 에러 다수 발생 — *컴파일러가 대부분 식별*하지만, *3축 후속 호출 패턴 변형* (e.g., `format!("closeness = {}", r.closeness())`) 누락 가능
+- 완화: § 3.2~3.5 각 단계마다 *cargo check 즉시 실행* (단계 게이트). Stage 1 1.8 자동 흡수 검증 패턴 동일 — 컴파일 에러 위치가 *후속 호출 위치 자동 식별*. baseline log: `baselines/stage3-cargo-check-2026-MM-DD.log`.
+
+### R-3g — `memory_relationship_delta_threshold` 재조정 narrative 영향
+
+- A5에서 정규화 layer 카탈로그 시 *threshold 값 단위*까지 보지 못함. § 3.5 작성 중 발견 — ±1.0 → ±100 contract로 *threshold 단위 100배 차이*
+- 영향: memory entry *생성률* 변경 → narrative 검색 결과 미세 차이. D3 3밴드 calibration 직접 영향 0 (significance 별 logic)
+- 완화: Stage 3 § 3.5에서 threshold 0.05 → 5.0 갱신 (α 옵션). Phase 2.3 narrative 시뮬에서 *기록률 정밀화* 권장. § 3.7 게이트에 *narrative 시뮬 기록률 비교* 추가.
 
 ---
 
@@ -437,6 +485,37 @@ Phase 2 회귀 검증의 기준점. Phase 1 종결 시점 (2026-05-11 baseline) 
 ### Stage 1 진입 직전 재측정 작업
 
 Stage 1 시작 첫 작업: 위 수치 *재측정*하여 `baselines/cargo-test-2026-MM-DD-PASS.log` 패턴으로 박제. Phase 2 진행 중 비교 기준.
+
+### Stage 3 진입 baseline (Stage 2 종결 + W1~W4 처리 후)
+
+| 항목 | Stage 2 종결 baseline | 출처 |
+|---|---|---|
+| `cargo test --lib` (default features) | **545 passed**, 0 failed | Stage 2 회고 §컴파일+테스트 게이트 |
+| `cargo test --features chat --lib --tests` | **866 passed** / 0 failed / 5 ignored | `baselines/stage2-cargo-test-2026-05-15-chat-PASS.log` |
+| `cargo check --all-features` | ✅ (1 warning: pre-existing reflection_service.rs:30) | Stage 2 회고 |
+| `cargo test --all-features` | ⚠️ Windows CRT 충돌 (embed + ort 정적 링크) | Stage 2 회고 (`--lib --tests`로 우회) |
+
+**W1~W4 처리 후 재측정**: Stage 3 진입 직전 *6 신규 테스트* (W1 3 + W4 1 + W2 1 + BondStatus 회귀 1)가 합쳐져 **866 → 872** 추정. Stage 3 § 3.1 작업 직전 Bekay 별도 측정:
+
+```powershell
+cd C:\Users\bumko\projects\npc-mind-rs
+cargo test --lib --tests --features chat 2>&1 | 
+  Tee-Object -FilePath "baselines\stage3-prep-cargo-test-2026-05-16-chat-PASS.log"
+```
+
+이 수치가 *Stage 3 진입 baseline*. **게이트**: Stage 3 종결 후 *Stage 3 진입 baseline + Stage 3 신규 테스트 수* 통과. 회귀 0건.
+
+### Stage 3 → Phase 2.3 메트릭 회귀 카탈로그
+
+| 메트릭 | Stage 2 종결 | Stage 3 target |
+|---|---|---|
+| ÷100 production 위치 | **5** (emit 2 + orchestrator 1 + domain_sync 1 + domain 2) | **2** (domain modifiers + RelationshipLevel — B-D-A2 (ii) 잔존) |
+| ×100 production 위치 | 3 (scenario JSON load) | **3 그대로** (Stage 4 마이그레이션 책임) |
+| W4 마커 위치 | **3** (relationship_policy × 2 + stimulus_policy) | **2** (helper 안 1 + stimulus_policy 1) |
+| W4 doc § 호출자 인덱스 | 3 항목 | **2 항목** |
+| `closeness`/`power` production 잔존 | 11+ 위치 | **0** (도메인 + wire + DTO + frontend 모두 폐기) |
+| domain tokio 참조 | 0 | 0 (변경 0) |
+| ports.rs tokio 참조 | 1 | 1 (변경 0 — 별 migration) |
 
 ---
 
@@ -1589,33 +1668,253 @@ commit: phase2-stage1-domain.md 회고
 
 ---
 
-### Stage 3 — RelationshipUpdater (대화 끝 batch 갱신)
+### Stage 3 — Domain + Wire + Frontend 4축 확장 (✅ spec frozen 2026-05-16 v1.3)
 
-**범위**:
-- `relationship_policy.rs` 재작성:
-  - 기존 closeness 1축 자동 갱신 코드 제거
-  - 4축 자동 갱신 코드 신설 (`update_axes_from_emotion` 호출)
-  - T1 시점 유지 (대화 끝 + 게이트 통과 시 1번)
-  - 매핑 호출 2곳 중복 → helper 추출
-- `RelationshipUpdatedPayload` 6→8 필드:
-  - `closeness_before/after, trust_before/after, power_before/after` 제거
-  - `trust_before/after, affinity_before/after, respect_before/after, wariness_before/after` 추가
-  - `cause` 그대로 (변경 0)
-- `RelationshipChangeCause` 변경 0 (A3 결론)
-- `event_bridge` SSE 매핑 갱신 — `RelationshipUpdated` 페이로드 8 필드 반영
-- Mind Studio frontend `domain_sync.rs` 4축 DTO 변환 갱신
-- Reflection schema에 `axis_modulation` 필드 *placeholder* 추가 (Phase 2.5 활성화 대기 — 일단 모두 "default" 박힘 가정)
-- `outer_loop_entry()` 게이트 변경 0 (Phase 2/2.5/3 진입 자리 그대로)
-- 통합 테스트
+**Status**: ✅ v1.3 spec freeze. Claude Code 인계 대기.
+**Spec 작성 베이스**: v1.2 회고 (Stage 2 종결 + W1~W4 처리 완료) → A1~A6 사실 조사 → B-D-A ~ B-D-helper 6 결정 → R-3a~R-3g 7 위험 → 3.1~3.7 세부 spec.
 
-**게이트**:
-1. **1095+ tests 통과** (시그니처 변경 ~100 호출 모두 갱신)
-2. `dispatch_v2(EndDialogue)` latency ±20% 이내 (D2 baseline 비교)
-3. `event_bridge` SSE 발행 8 필드 확인
-4. Mind Studio frontend 4축 표시 동작 확인
-5. `outer_loop_entry()` 게이트 작동 (chitchat skip / significant 진입)
+**범위 (상위 골격)**:
+- `RelationshipUpdatedPayload` 6→8 필드 (closeness/power 폐기, affinity/respect/wariness 신설, ±100 raw)
+- `RelationshipPolicy::apply_emotions_to_relationship` helper 추출 (2 emit 위치 중복 → 1 helper)
+- ÷100 정규화 layer 5 위치 → 2 위치 감소 (wire 3 제거, domain 내부 2 유지 — B-D-A2 결정)
+- `RelationshipValues` DTO + 변환 **4** 위치 (orchestrator + domain_sync × 3) ÷100 제거 — A5 새 발견 (3→4 정정)
+- `dominant_delta` 8 인자 + 4축 라벨 (closeness/power 폐기, affinity/respect/wariness 신설)
+- `projection.rs` 4 튜플 + `memory_projector` 4축 delta 합산 + `memory_relationship_delta_threshold` 0.05→5.0
+- Frontend `types/index.ts` + 컴포넌트 5 위치 + Slider props 명시 (Slider 컴포넌트 자체 변경 0)
+- W4 컨벤션 helper 안 1 곳 자연 통합 (3 → 2 마커 위치)
 
-**산출 commit**: `phase2-stage3-updater.md` 회고
+**비포함 (spec 가정 정정 4건)**:
+- ~~`event_bridge` SSE 매핑 갱신~~ — A2 발견: event_bridge가 axes 안 봄 (SceneEnded 트리거만). **변경 0** (R-3d)
+- ~~`dialogue_test_service.rs` DTO 변환 갱신~~ — A3 발견: DTO 재사용 모듈, 변환 코드 없음. **변경 0**
+- ~~Slider 컴포넌트 시그니처 확장~~ — A4 검증: `min`/`max`/`step?` props 이미 존재. **변경 0** (props 명시만)
+- ~~domain 내부 modifiers / RelationshipLevel API 갱신~~ — B-D-A2 (ii) 결정: ±1.0 유지, Phase 2.3 위임
+
+**위험**: 중. 경계 4겹 (domain → application → adapter → frontend) 잇기. Frontend TS 수동 매핑 누락 위험 핵심 (R-3a). 회귀 면적 ~200~250 라인.
+
+세부 항목 3.1~3.7:
+
+#### 3.1 — `RelationshipUpdatedPayload` 4축 8 필드 갱신 (anchor)
+
+**목적**: event payload struct를 3축 6 필드 → 4축 8 필드 + ±100 raw로 갱신.
+
+**위치**: `src/domain/event.rs:174`
+
+```rust
+// Before: before_closeness/before_trust/before_power + after_* (6 필드) + cause
+// After:
+pub struct RelationshipUpdatedPayload {
+    pub owner_id: String,
+    pub target_id: String,
+    pub before_trust:    f32,  // ±100 (B-D-A 결정)
+    pub before_affinity: f32,  // ±100
+    pub before_respect:  f32,  // ±100
+    pub before_wariness: f32,  // 0~100 (WarinessScore 정합)
+    pub after_trust:     f32,
+    pub after_affinity:  f32,
+    pub after_respect:   f32,
+    pub after_wariness:  f32,
+    pub cause: RelationshipChangeCause,
+}
+```
+
+**설계 의도**: ① 필드 순서 trust→affinity→respect→wariness (v0.7 §4.2 + B-D6) / ② f32 ±100 raw (÷100 제거, B-D-A) / ③ wariness 음수 없음 명시 / ④ cause 그대로 (A3).
+
+**도메인 matching 3 위치 변경 0** (A1): event.rs:571 payload_type / :672 kind / :725 aggregate_key — 필드 접근 없음, 변경 0.
+
+**단위 테스트**: serde round-trip 8 필드 / closeness 키 거부 (missing field) / AggregateKey 보존.
+
+**종결 게이트**: cargo check 통과 / event.rs 단위 테스트 / matching 3 위치 grep 변경 0 / 다른 면적 컴파일 에러 다수 발생 (3.2~3.5에서 해결).
+
+---
+
+#### 3.2 — `RelationshipPolicy::apply_emotions_to_relationship` helper + emit 2 위치
+
+**목적**: relationship_policy 2 emit 위치 중복 → helper 1 위치 통합. ÷100 layer 제거. W4 컨벤션 helper 안 1 곳 자연 통합.
+
+**위치**: helper 신설 `relationship_policy.rs impl RelationshipPolicy {}` / emit 갱신 `:152~177` + `:243~276`
+
+```rust
+impl RelationshipPolicy {
+    /// B-D12 guard (Pride/Shame skip) + BondStatus 차단 통합. 2 emit 위치에서 공유.
+    /// stimulus_policy::process_beat_transition은 inline 유지 (Beat 전환 beat_rel.modifiers() 보존).
+    /// W4 doc § "호출자 인덱스" — 본 helper도 호출자로 등재 (mapping.rs:226).
+    fn apply_emotions_to_relationship(
+        npc: &Npc, relationship: &Relationship, emotion: &EmotionState,
+    ) -> Relationship {
+        let mut updated = relationship.clone();
+        let hexaco = npc.personality();
+        for (emotion_type, intensity, _context) in emotion.iter_active() {
+            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+            // If this loop is duplicated to a new caller, this guard MUST be copied.
+            // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
+            if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) { continue; }
+            update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
+        }
+        updated
+    }
+}
+```
+
+호출 측 (2 위치 동일): 정규화 6 라인 + 3축 payload → `let updated = Self::apply_emotions_to_relationship(npc, relationship, emotion);` + 8 필드 raw payload (`before_trust: relationship.trust().value()` 등) + `ctx.save_relationship(updated)` 마지막.
+
+**설계 의도**: ① `&Relationship → Relationship` (clone) / ② struct method / ③ B-D12 guard helper 안 1 곳 / ④ ÷100 완전 제거 / ⑤ save_relationship 마지막.
+
+**W4 doc § "호출자 인덱스" 갱신**: 3 항목 → 2 항목 (helper 2 use sites + stimulus_policy::process_beat_transition).
+
+**단위 테스트**: helper 직접 (Pride skip + Gratitude 적용) / 2 emit 동등성 / Stage 2.7 기존 5 테스트 4 필드 갱신.
+
+**종결 게이트**: cargo check / 기존 5 + helper 테스트 / `B-D12 guard` production 2 위치 (3→2) / W4 doc 2 항목.
+
+---
+
+#### 3.3 — `RelationshipValues` DTO 4 필드 + 변환 *4* 위치 ÷100 제거
+
+**목적**: wire format DTO 4축 ±100 raw 갱신. 변환 위치 ÷100 제거.
+
+★ **변환 위치 *4 곳* (Stage 0 spec 가정 정정)** — A5에서 domain_sync.rs:70-71 별도 발견 (3→4).
+
+**위치**: DTO `dto/relationship.rs:26` / 변환 ① dialogue_orchestrator.rs:806~822 (repo→DTO, event payload 무시) / ② domain_sync.rs:63~74 (A5 새 발견) / ③ domain_sync.rs:471~485 (event payload→DTO) / ④ domain_sync.rs:487~499 (chitchat zero fallback)
+
+```rust
+// DTO Before: closeness/trust/power (3) → After: trust/affinity/respect/wariness (4, ±100/0~100)
+// 4 변환 위치 공통: ÷100 제거 + 4 필드 raw
+//   Before: closeness: r.affinity().value() / 100.0, trust: .../100, power: 0.0
+//   After:  trust: r.trust().value(), affinity: r.affinity().value(),
+//           respect: r.respect().value(), wariness: r.wariness().value()
+```
+
+**설계 의도**: ① 필드 순서 event payload 정합 / ② wariness 0~100 명시 / ③ ÷100 완전 제거 (4 위치) / ④ dialogue_orchestrator event payload 여전히 무시 (A3, logic 동일 필드만 갱신).
+
+**단위 테스트**: DTO serde / 변환 ① repo→DTO raw ±100 / 변환 ③ event→DTO / 변환 ④ zero fallback.
+
+**종결 게이트**: cargo check / DTO serde / 변환 4 위치 통합 / `/ 100.0` production 5→2 (4 위치 제거, 도메인 2 잔존).
+
+---
+
+#### 3.4 — `dominant_delta` 8 인자 + 4축 라벨
+
+**목적**: 4축 max 식별 + memory content 라벨 4종 신설.
+
+**위치**: relationship_memory_handler.rs:62~80 (함수) + :148~155 (호출)
+
+```rust
+// Before: dominant_delta(bc,bt,bp, ac,at,ap) — closeness/trust/power 3 라벨
+// After:
+fn dominant_delta(bt: f32, ba: f32, br: f32, bw: f32,
+                  at: f32, aa: f32, ar: f32, aw: f32) -> (f32, &'static str) {
+    let deltas = [
+        ((at - bt).abs(), "trust"), ((aa - ba).abs(), "affinity"),
+        ((ar - br).abs(), "respect"), ((aw - bw).abs(), "wariness"),
+    ];
+    deltas.into_iter().fold((0.0_f32, "trust"),
+        |acc, cur| if cur.0 > acc.0 { cur } else { acc })
+}
+```
+
+호출 측: 6 인자 → 8 인자 (p.before_trust, p.before_affinity, ...). content 라벨 `:161` 자동 흡수 (`[{axis} Δ=...]`).
+
+**설계 의도**: ① 인자 순서 payload 정합 / ② 4 라벨 payload 필드명 / ③ fold 초기 "trust" / ④ 라벨 memory text 박힘 — R-3b 혼재 (재마이그레이션 안 함).
+
+**단위 테스트**: 4축 max 식별 / 라벨 4종 / cause 분기 5 variant 회귀.
+
+**종결 게이트**: cargo check / 기존 cause tests / dominant_delta 신규 / `closeness|power` 0 매치.
+
+---
+
+#### 3.5 — `projection.rs` 4 튜플 + memory_projector 4축 delta + threshold 재조정
+
+**목적**: consume 측 inline delta + projection 튜플 4축 확장. threshold 재조정.
+
+**위치**: ① projection.rs:94~100 / ② memory_projector.rs:151~158 / ③ tuning/profile.rs
+
+```rust
+// ① projection.rs: (f32,f32,f32) (closeness,trust,power)
+//    → (f32,f32,f32,f32) (trust,affinity,respect,wariness)
+//    insert(..., (p.after_trust, p.after_affinity, p.after_respect, p.after_wariness))
+// ② memory_projector: 2축 합산 → 4축 합산
+//    delta = |Δtrust| + |Δaffinity| + |Δrespect| + |Δwariness|
+// ③ memory_relationship_delta_threshold: 0.05 → 5.0 (×100, α 옵션)
+```
+
+★ **새 발견 (R-3g)**: ±1.0→±100 contract로 threshold 단위 100배 차이. 0.05 그대로면 memory 박힘률 95%+ → 5.0으로 재조정. 4축 합산 sensitivity는 Phase 2.3 정밀화.
+
+**설계 의도**: ① 튜플 유지 (struct 후속 위임) / ② inline delta (함수 추출 과잉) / ③ threshold ×100 의미 보존 / ④ index_relationship 변경 0.
+
+**단위 테스트**: projection 4 튜플 회귀 / memory_projector 4축 delta 합산 / threshold 5.0 sanity.
+
+**종결 게이트**: cargo check / projection tests / memory_projector tests / threshold 5.0 / narrative memory 양 변화 확인 (Phase 2.3 후보).
+
+---
+
+#### 3.6 — Frontend 4축 갱신 (수동 TS 매핑 — R-3a 핵심)
+
+**목적**: TS 타입 + UI 컴포넌트 4축 ±100 raw. Slider 변경 0, props 명시만.
+
+**위치**: types/index.ts:37,207~208 / RelModal.tsx:13,48~50 / EmotionView.tsx:5,22 / ReflectionView.tsx:44~46,56~58,119~121 / Sidebar.tsx:74 / __tests__ handlers+stores
+
+```typescript
+// types/index.ts: closeness/trust/power → trust/affinity/respect/wariness (wariness 0~100)
+// RelModal Slider 4개 props 명시:
+//   <Slider label="신뢰" value={data.trust}    min={-100} max={100} step={1} />
+//   <Slider label="호감" value={data.affinity} min={-100} max={100} step={1} />
+//   <Slider label="존중" value={data.respect}  min={-100} max={100} step={1} />
+//   <Slider label="경계" value={data.wariness} min={0}    max={100} step={1} />
+// ReflectionView: 4축 toFixed(0) / 임계값 0.001→0.1 / AxisRow 4개 (신뢰/호감/존중/경계)
+// Sidebar: 신:{trust} 호:{affinity} 존:{respect} 경:{wariness} toFixed(0)
+// EmotionView + __tests__: closeness→affinity 치환, '친밀도'→'호감'
+```
+
+**설계 의도**: ① Slider 컴포넌트 변경 0 (props 존재, PAD/Focus 영향 0) / ② Relationship Slider props 명시 (wariness min=0 비대칭, TS 보호) / ③ toFixed(0) 정수 / ④ 임계값 0.001→0.1 / ⑤ Sidebar 신:호:존:경: / ⑥ TS 수동 매핑 (R-3a, types/index.ts 먼저).
+
+**단위 테스트**: `npm run build` 0 에러 (R-3a 자동 검증) / handlers+stores test 4 필드 / 시각 점검.
+
+**비포함**: Slider 시그니처 변경 (props 존재 — §3.6 가정 정정) / PAD·Focus·Situation Slider / 임계값 narrative 정밀화 (Phase 2.3) / closeness 문서 잔존 (Stage 6).
+
+**종결 게이트**: npm build 0 에러 / handlers+stores / `closeness|.power` 0 매치 / 시각 점검 Slider 4 + Sidebar 신:호:존:경:.
+
+---
+
+#### 3.7 — Stage 3 종결 게이트 + Baseline 박제
+
+**목적**: Stage 3 변경 회귀 검증 + Phase 2.3 진입 baseline 박제. 신규 코드 없음 (측정+검증).
+
+**3.7.1 컴파일+테스트**: cargo check/test --features chat + npm run build/test — baseline log 박제.
+
+**3.7.2 W1/W2/W3/W4 회귀 가드 5개** (Stage 3 boundary 보존 검증):
+- W1 `..._affinity_channel_after_anger` expected 0.286 보존
+- W1 `..._trust_channel_after_anger` expected 0.158 보존
+- W1 `..._admiration_no_leak_until_phase_2_3` 4 modifier 불변 (깨지면 boundary 위반, Phase 2.3 트리거)
+- W4 `update_axes_from_emotion_does_not_filter_pride_or_shame_internally`
+- W2 `is_negative_emotion_classification_matches_affinity_sign_basis`
+- W3 tracing::debug! BondStatus 차단 로그 (manual, §3.2 통합 테스트)
+
+**3.7.3 D2 latency ±20%**: chitchat ≤29 / significant ≤42 / legacy ≤35.2 µs.
+
+**3.7.4 D3 3밴드 보존**: chitchat 0.0 / daily 0.3~0.7 / shanshenmiao ≥0.7. B-D-A2 (ii) modifier 보존이 significance 안정성 보장.
+
+**3.7.5 메트릭 회귀**: ÷100 5→2 / W4 마커 3→2 / closeness·power 잔존 0 (§6 D 카테고리 표).
+
+**3.7.6 baseline log 9개 박제**: cargo-check / cargo-test / npm-build / npm-test / d2-latency / d3-narrative / grep-100 / grep-w4-marker / grep-closeness-power.
+
+**3.7.7 회고**: `phase2-stage3-domain-wire-frontend.md` (컴파일+테스트 / 회귀 가드 5 / 메트릭 / Phase 2.3 인계 위험).
+
+**3.7.8 Phase 2.3 KICKOFF**: `PHASE2.3-KICKOFF.md` (잔존 ÷100 2 위치 / W1 깨지는 트리거 / W1 expected 재조정 표 / R-3b memory 혼재 / R-3g threshold 정밀화).
+
+**3.7 종결 게이트 (메타)**: 8 조건 (3.7.1~3.7.8) 모두 만족 → Stage 3 종결.
+
+---
+
+**Stage 3 종합 게이트** (3.1~3.7 모두 통과):
+1. cargo check --features chat 통과
+2. cargo test --features chat Stage 3 진입 baseline + 신규 테스트 통과
+3. npm run build (frontend) 0 에러
+4. Stage 2 회귀 가드 5개 통과
+5. D2 latency ±20% / D3 3밴드 보존
+6. 메트릭 회귀 (÷100 5→2 / W4 3→2 / closeness·power 0)
+7. baseline log 9개 박제
+8. 회고 + Phase 2.3 KICKOFF 박음
+
+**산출 commit**: `phase2-stage3-domain-wire-frontend.md` 회고 + `PHASE2.3-KICKOFF.md`
 
 ---
 
@@ -1720,3 +2019,5 @@ commit: phase2-stage1-domain.md 회고
 | 0.9 | 2026-05-13 | **★ §6 Baseline (D 카테고리) 작성**. Phase 1 종결 시점 baseline 인용: 1095 tests passed / dispatch_v2 latency 24/35/29µs / narrative 3밴드 0.000/0.461/0.980 / compute_significance 8.36µs / EventKind 31개. D1~D6 항목. Stage 1 진입 직전 재측정 작업 명시. |
 | 1.0 | 2026-05-13 | **★ Stage 0 종결**. §7 Stages 작성 — 6 stage 분할 (Stage 1 Type/Domain → Stage 2 Mapping → Stage 3 Updater → Stage 4 Migration → Stage 5 Narrative → Stage 6 Bench/Handoff). 각 stage 범위·게이트·산출 commit 명시. Phase 2 본체 spec 작성 완료, Stage 1 진입 준비. |
 | 1.1 | 2026-05-14 | **★ Stage 1 spec 작성 완료 (freeze)**. 1.1 디렉토리 구조 (모듈 분할 채택), 1.2 AxisScore + WarinessScore + AxisDelta + AxisKind, 1.3 BondKind 11 variants + 영역 헬퍼 5개 (is_zhiji 무협 도메인 용어 보존), 1.4 BondStatus 5 variants + accepts_live_input (Reactivating → true), 1.5 Partnership 4 variants, 1.6 Relationship 본체 재작성 (4축 + bond_* + partnership + type/type_history, power 폐기, apply_delta 메서드, modifiers closeness_* → affinity_*), 1.7 RelationshipBuilder 4축 fluent API, 1.8 neutral() 자동 흡수 검증 (22곳 호출, 19곳 변경 0 예상), 1.9 단위 테스트 (~38 신규, 모듈 내부 패턴). Claude Code에 코딩 인계. |
+| 1.2 | 2026-05-15 | **★ Stage 2 spec freeze (간소 — 세부는 `phase2-stage2-mapping.md` 회고 참조)**. 2.1~2.7 OCC → 4축 매핑 작업 완료: base_delta 48셀 + HEXACO 보정 6 룰 + `update_axes_from_emotion` 단일 진입점 + 정책 3 위치 표준 호출 + 단위 테스트 +44. `cargo test --features chat` 866 passed / 0 failed. Stage 2 종결 후 W1~W4 처리 (회귀 가드 5개 = W1 ×3 + W2 ×1 + W4 ×1) Stage 2 회고 §2.5~§2.7에 박힘. 변경 이력 v1.2 박는 것을 v1.3 작성 시점에 보강. |
+| 1.3 | 2026-05-16 | **★ Stage 3 spec 작성 완료 (freeze)**. Stage 3 진입 prep A 카테고리 사실 조사 (A1~A6: `RelationshipUpdatedPayload` 카탈로그 / `event_bridge` 변경 0 / `RelationshipValues` 변환 4 위치 / Frontend 수동 TS 매핑 / 정규화 layer 5→2 / `update_axes_from_emotion` 호출자 인덱스). B-D 6 결정 (B-D-A ±100 raw / B-D-A2 도메인 내부 ±1.0 유지 + Phase 2.3 위임 / B-D-B closeness→affinity / B-D-C 4축 동일 표시 / B-D-D 한글 라벨 `호감`/`호` / B-D-helper `RelationshipPolicy` 내부 method). R-3a~R-3g 7 위험. 3.1~3.7 세부 spec (Payload anchor / helper + emit / DTO + 변환 4 / `dominant_delta` / projection + threshold / frontend / 종결 게이트 + baseline). spec 가정 정정 4건 (`event_bridge` 변경 0 / `dialogue_test_service` 변경 0 / 변환 3→4 / Slider 변경 0). Claude Code에 코딩 인계. |
