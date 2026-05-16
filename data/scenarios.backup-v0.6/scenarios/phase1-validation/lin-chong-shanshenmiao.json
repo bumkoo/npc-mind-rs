@@ -10,7 +10,7 @@
     "llm_reasoning_pattern": "OCC peak ≥ 0.95 (Anger), PAD trajectory 큼 (분노→공허), beat 전환 (도착→처단)"
   },
   "_expected_events": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
-  "_expected_axes_delta": "큼 — lin_chong↔lu_qian affinity/trust 극단 음수",
+  "_expected_axes_delta": "큼 — lin_chong↔lu_qian closeness/trust 극단 음수",
   "npcs": {
     "lin_chong": {
       "id": "lin_chong",
@@ -77,20 +77,16 @@
     "lin_chong:lu_qian": {
       "owner_id": "lin_chong",
       "target_id": "lu_qian",
-      "trust": 50,
-      "affinity": 40,
-      "respect": 20,
-      "wariness": 0,
-      "type": "옛 친구"
+      "closeness": 0.4,
+      "trust": 0.5,
+      "power": 0.0
     },
     "lu_qian:lin_chong": {
       "owner_id": "lu_qian",
       "target_id": "lin_chong",
-      "trust": -30,
-      "affinity": -20,
-      "respect": -10,
-      "wariness": 15,
-      "type": "암살 음모의 표적"
+      "closeness": -0.2,
+      "trust": -0.3,
+      "power": -0.4
     }
   },
   "objects": {},

@@ -63,20 +63,16 @@
     "shu_lien:mu_baek": {
       "owner_id": "shu_lien",
       "target_id": "mu_baek",
-      "trust": 80,
-      "affinity": 70,
-      "respect": 35,
-      "wariness": 0,
-      "type": "의형제 약혼자의 동료, 절제된 사모"
+      "closeness": 0.7,
+      "trust": 0.8,
+      "power": -0.1
     },
     "mu_baek:shu_lien": {
       "owner_id": "mu_baek",
       "target_id": "shu_lien",
-      "trust": 80,
-      "affinity": 70,
-      "respect": 35,
-      "wariness": 0,
-      "type": "의형제의 약혼녀, 절제된 사모"
+      "closeness": 0.7,
+      "trust": 0.8,
+      "power": 0.1
     }
   },
   "objects": {},

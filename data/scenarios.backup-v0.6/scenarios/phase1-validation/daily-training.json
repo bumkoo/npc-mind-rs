@@ -9,7 +9,7 @@
     "summary_pattern": "수련이 춘설병에게 호흡 중심 검법을 가르치고 격려"
   },
   "_expected_events": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
-  "_expected_axes_delta": "미세 (affinity/trust 약간 ↑)",
+  "_expected_axes_delta": "미세 (closeness/trust 약간 ↑)",
   "npcs": {
     "yu_shulien": {
       "id": "yu_shulien",
@@ -76,20 +76,16 @@
     "yu_shulien:chunxueping": {
       "owner_id": "yu_shulien",
       "target_id": "chunxueping",
-      "trust": 50,
-      "affinity": 40,
-      "respect": 20,
-      "wariness": 0,
-      "type": "어린 제자"
+      "closeness": 0.4,
+      "trust": 0.5,
+      "power": 0.7
     },
     "chunxueping:yu_shulien": {
       "owner_id": "chunxueping",
       "target_id": "yu_shulien",
-      "trust": 80,
-      "affinity": 60,
-      "respect": 30,
-      "wariness": 0,
-      "type": "사부"
+      "closeness": 0.6,
+      "trust": 0.8,
+      "power": -0.7
     }
   },
   "objects": {},
