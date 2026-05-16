@@ -75,11 +75,12 @@ impl EmotionProjection {
 // RelationshipProjection — 관계 수치 추적
 // ---------------------------------------------------------------------------
 
-/// (owner, target) 쌍의 관계 수치 뷰
+/// (owner, target) 쌍의 관계 수치 뷰 (Stage 3 — 4축 ±100 raw)
 #[derive(Debug, Default)]
 pub struct RelationshipProjection {
-    /// (owner_id, target_id) → (closeness, trust, power)
-    values: HashMap<(String, String), (f32, f32, f32)>,
+    /// (owner_id, target_id) → (trust, affinity, respect, wariness)
+    /// 필드 순서는 `RelationshipUpdatedPayload`와 정합.
+    values: HashMap<(String, String), (f32, f32, f32, f32)>,
 }
 
 impl RelationshipProjection {
@@ -87,7 +88,7 @@ impl RelationshipProjection {
         Self::default()
     }
 
-    pub fn get_values(&self, owner: &str, target: &str) -> Option<(f32, f32, f32)> {
+    pub fn get_values(&self, owner: &str, target: &str) -> Option<(f32, f32, f32, f32)> {
         self.values
             .get(&(owner.to_string(), target.to_string()))
             .copied()
@@ -97,7 +98,7 @@ impl RelationshipProjection {
         if let EventPayload::RelationshipUpdated(p) = &event.payload {
             self.values.insert(
                 (p.owner_id.clone(), p.target_id.clone()),
-                (p.after_closeness, p.after_trust, p.after_power),
+                (p.after_trust, p.after_affinity, p.after_respect, p.after_wariness),
             );
         }
     }

@@ -1,0 +1,6 @@
+chitchat 시나리오 significance: 0.000 (target < 0.3)
+daily 시나리오 significance: 0.461 (target 0.3~0.7)
+shanshenmiao 시나리오 significance: 0.980 (target >= 0.7)
+
+=== D3 3밴드 calibration — exact match with Stage 2 baseline ===
+chitchat 0.000 / daily 0.461 / shanshenmiao 0.980

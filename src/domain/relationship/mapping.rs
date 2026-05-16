@@ -234,12 +234,14 @@ fn is_negative_emotion(emotion: EmotionType) -> bool {
 /// update_axes_from_emotion(&mut rel, emotion_type, intensity, hexaco);
 /// ```
 ///
-/// 현재 호출자 (4번째 추가 시 본 리스트 갱신 + 호출 측 마커 복사):
-/// - `application::command::policies::relationship_policy::handle_relationship_update_with_cause`
-/// - `application::command::policies::relationship_policy::handle_dialogue_end`
+/// 현재 호출자 (새 위치 추가 시 본 리스트 갱신 + 호출 측 마커 복사):
+/// - `application::command::policies::relationship_policy::apply_emotions_to_relationship`
+///   (helper) — 2 emit 위치 (`handle_relationship_update_with_cause`, `handle_dialogue_end`)
+///   에서 공유.
 /// - `application::command::policies::stimulus_policy::process_beat_transition`
+///   (Beat 전환 inline — `beat_rel.modifiers()` 보존 위해 helper 사용 안 함).
 ///
-/// 회고 §W4 + spec §7 참조.
+/// 회고 §W4 + spec §7 (Stage 3 §3.2 helper 추출) 참조.
 pub fn update_axes_from_emotion(
     rel: &mut Relationship,
     emotion: EmotionType,

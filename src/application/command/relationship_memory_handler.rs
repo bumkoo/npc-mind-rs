@@ -14,10 +14,10 @@
 //! | `Rumor { rumor_id }` | Rumor | `None` | "소문({rumor_id}) 여파로 {target} 관련 변화" |
 //! | `Unspecified` | Experienced | `None` | 일반 cause 미표기 변화 |
 //!
-//! **threshold 필터**: `profile().memory_relationship_delta_threshold`(default 0.05)보다 변화량 작으면 no-op.
-//! 한 이벤트로 3축(closeness/trust/power) 모두의 Δ 중 **최대값**이 threshold 미만이면 의미
+//! **threshold 필터**: `profile().memory_relationship_delta_threshold`(default 5.0)보다 변화량 작으면 no-op.
+//! 한 이벤트로 4축(trust/affinity/respect/wariness) 모두의 Δ 중 **최대값**이 threshold 미만이면 의미
 //! 없는 미세 변동으로 간주하고 기억을 남기지 않는다. 어떤 축이 주도한 변화인지
-//! content에 추적용 라벨("[closeness Δ=0.34]" 등)로 포함한다 (리뷰 H4).
+//! content에 추적용 라벨("[affinity Δ=34.0]" 등)로 포함한다 (리뷰 H4).
 //!
 //! **관점 분리 (TODO step-f)**: 현재 owner → target 관점의 엔트리만 만든다. target 관점
 //! 엔트리는 target의 RelationshipPolicy가 따로 `RelationshipUpdated`를 발행하는 경우에만
@@ -56,21 +56,23 @@ impl RelationshipMemoryHandler {
         format!("rel-{event_id:012}-{owner}")
     }
 
-    /// 세 축 중 가장 큰 변화량 + 그 축 이름 반환 (리뷰 H4).
+    /// 네 축 중 가장 큰 변화량 + 그 축 이름 반환 (리뷰 H4, Stage 3 — 4축 확장).
     ///
-    /// 모두 동률이면 closeness → trust → power 순으로 선점 (안정 정렬).
+    /// 모두 동률이면 trust → affinity → respect → wariness 순으로 선점 (안정 정렬).
+    /// 인자 순서는 `RelationshipUpdatedPayload` 필드 순서와 정합.
     fn dominant_delta(
-        bc: f32, bt: f32, bp: f32,
-        ac: f32, at: f32, ap: f32,
+        bt: f32, ba: f32, br: f32, bw: f32,
+        at: f32, aa: f32, ar: f32, aw: f32,
     ) -> (f32, &'static str) {
         let deltas = [
-            ((ac - bc).abs(), "closeness"),
             ((at - bt).abs(), "trust"),
-            ((ap - bp).abs(), "power"),
+            ((aa - ba).abs(), "affinity"),
+            ((ar - br).abs(), "respect"),
+            ((aw - bw).abs(), "wariness"),
         ];
         deltas
             .into_iter()
-            .fold((0.0_f32, "closeness"), |acc, cur| {
+            .fold((0.0_f32, "trust"), |acc, cur| {
                 if cur.0 > acc.0 {
                     cur
                 } else {
@@ -152,12 +154,14 @@ impl EventHandler for RelationshipMemoryHandler {
 
         // 미세 변동은 기록하지 않음. 또한 주도 축 라벨을 content에 포함해 추적성 확보.
         let (delta, axis) = Self::dominant_delta(
-            p.before_closeness,
             p.before_trust,
-            p.before_power,
-            p.after_closeness,
+            p.before_affinity,
+            p.before_respect,
+            p.before_wariness,
             p.after_trust,
-            p.after_power,
+            p.after_affinity,
+            p.after_respect,
+            p.after_wariness,
         );
         if delta < profile().memory_relationship_delta_threshold {
             return Ok(HandlerResult::default());
@@ -337,7 +341,7 @@ mod tests {
         event_id: u64,
         owner: &str,
         target: &str,
-        delta_close: f32,
+        delta_affinity: f32,
         cause: RelationshipChangeCause,
     ) -> DomainEvent {
         DomainEvent::new(
@@ -348,12 +352,14 @@ mod tests {
                 crate::domain::event::RelationshipUpdatedPayload {
                     owner_id: owner.into(),
                     target_id: target.into(),
-                    before_closeness: 0.0,
                     before_trust: 0.0,
-                    before_power: 0.0,
-                    after_closeness: delta_close,
+                    before_affinity: 0.0,
+                    before_respect: 0.0,
+                    before_wariness: 0.0,
                     after_trust: 0.0,
-                    after_power: 0.0,
+                    after_affinity: delta_affinity,
+                    after_respect: 0.0,
+                    after_wariness: 0.0,
                     cause,
                 },
             )),
@@ -373,7 +379,7 @@ mod tests {
                     10,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::SceneInteraction {
                         scene_id: SceneId::new("alice", "bob"),
                     },
@@ -402,7 +408,7 @@ mod tests {
                     11,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::InformationTold {
                         origin_chain: vec!["sage".into()],
                     },
@@ -416,7 +422,7 @@ mod tests {
                     12,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::InformationTold {
                         origin_chain: vec!["relay".into(), "witness".into()],
                     },
@@ -444,7 +450,7 @@ mod tests {
                     13,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::WorldEventOverlay {
                         topic: Some("leader-change".into()),
                     },
@@ -472,7 +478,7 @@ mod tests {
                     14,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::Rumor {
                         rumor_id: "r-007".into(),
                     },
@@ -500,7 +506,7 @@ mod tests {
                     15,
                     "alice",
                     "bob",
-                    0.3,
+                    30.0,
                     RelationshipChangeCause::Unspecified,
                 ),
             )
@@ -518,7 +524,7 @@ mod tests {
         let handler = RelationshipMemoryHandler::new(store.clone());
         let mut harness = HandlerTestHarness::new();
 
-        // 0.01 변화 → MEMORY_RELATIONSHIP_DELTA_THRESHOLD=0.05 미만 → skip
+        // 0.01 변화 → MEMORY_RELATIONSHIP_DELTA_THRESHOLD=5.0 (±100 scale) 미만 → skip
         harness
             .dispatch(
                 &handler,

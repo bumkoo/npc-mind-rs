@@ -119,8 +119,8 @@ mod defaults {
     pub const RUMOR_HOP_CONFIDENCE_DECAY: f32 = 0.8;
     pub const RUMOR_MIN_CONFIDENCE: f32 = 0.1;
 
-    // Memory 저장 필터
-    pub const MEMORY_RELATIONSHIP_DELTA_THRESHOLD: f32 = 0.05;
+    // Memory 저장 필터 (Stage 3 — 4축 ±100 raw scale, 0.05 × 100)
+    pub const MEMORY_RELATIONSHIP_DELTA_THRESHOLD: f32 = 5.0;
 
     // 컴파일타임 invariants — 기본값에 대해 빌드 시점 검증.
     // 사용자 지정 프로파일은 `install()` 안에서 동일한 검증을 debug_assert로 수행.
@@ -483,8 +483,11 @@ impl TuningProfile {
         if self.memory_prompt_token_budget == 0 {
             return Err("memory_prompt_token_budget must be > 0");
         }
-        if !in_open_unit(self.memory_relationship_delta_threshold) {
-            return Err("memory_relationship_delta_threshold must be in (0, 1)");
+        // Stage 3 — 4축 ±100 raw scale로 contract 전환. (0, 100) 허용.
+        if !(self.memory_relationship_delta_threshold > 0.0
+            && self.memory_relationship_delta_threshold < 100.0)
+        {
+            return Err("memory_relationship_delta_threshold must be in (0, 100)");
         }
 
         // ── Rumor ──

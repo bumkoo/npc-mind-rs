@@ -21,12 +21,16 @@ pub struct AfterDialogueResponse {
     pub reflection: Option<ReflectionResult>,
 }
 
-/// 관계 상태 요약 값
+/// 관계 상태 요약 값 (Stage 3 — 4축 ±100 raw)
+///
+/// 필드 순서 — `RelationshipUpdatedPayload`와 정합 (trust → affinity → respect → wariness).
+/// 값 contract — trust/affinity/respect: ±100, wariness: 0~100.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct RelationshipValues {
-    pub closeness: f32,
     pub trust: f32,
-    pub power: f32,
+    pub affinity: f32,
+    pub respect: f32,
+    pub wariness: f32,
 }
 
 /// 대화/Beat 종료 후 관계 갱신 요청

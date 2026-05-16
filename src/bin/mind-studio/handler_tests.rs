@@ -538,9 +538,9 @@ async fn full_pipeline_appraise_stimulus_after_dialogue() {
         .unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
     let after_json = body_json(resp).await;
-    // 관계 변동 전후 값이 존재해야 함
-    assert!(after_json["before"]["closeness"].as_f64().is_some());
-    assert!(after_json["after"]["closeness"].as_f64().is_some());
+    // 관계 변동 전후 값이 존재해야 함 (Stage 3 — 4축, `affinity`로 갱신)
+    assert!(after_json["before"]["affinity"].as_f64().is_some());
+    assert!(after_json["after"]["affinity"].as_f64().is_some());
 
     // 4. 턴 히스토리에 3건 기록
     let resp = app.clone().oneshot(get("/api/history")).await.unwrap();
@@ -1362,9 +1362,10 @@ async fn mcp_tool_call_logic() {
         inner.relationships.insert("mu_baek:player".into(), RelationshipData {
             owner_id: "mu_baek".into(),
             target_id: "player".into(),
-            closeness: 0.0,
             trust: 0.0,
-            power: 0.0,
+            affinity: 0.0,
+            respect: 0.0,
+            wariness: 0.0,
         });
     }
     // B5.2 (3/3): inner 직접 조작 후 공유 repo 재구성 필요 (REST CRUD 경로가 아니므로)
@@ -1414,7 +1415,7 @@ async fn test_studio_analysis_pipeline_integrity() {
         inner.relationships.insert("mu_baek:gyo_ryong".into(), RelationshipData {
             owner_id: "mu_baek".into(),
             target_id: "gyo_ryong".into(),
-            closeness: 0.0, trust: 0.0, power: 0.0,
+            trust: 0.0, affinity: 0.0, respect: 0.0, wariness: 0.0,
         });
         // appraise 상태 생성
         inner.emotions.insert("mu_baek".into(), npc_mind::domain::emotion::EmotionState::default());
@@ -1756,6 +1757,8 @@ fn npc_json_gyoryong() -> serde_json::Value {
 }
 
 fn rel_json_neutral(owner: &str, target: &str) -> serde_json::Value {
+    // v0.6 shape — `/api/v2/relationships` deserializes via RelationshipUpsertV0_6
+    // (deny_unknown_fields, ×100 자동 변환). v1 `/api/relationships`도 alias로 호환.
     serde_json::json!({
         "owner_id": owner,
         "target_id": target,
@@ -2080,9 +2083,10 @@ mod memory_endpoints {
         let rel = serde_json::json!({
             "owner_id": "mu_baek",
             "target_id": "gyo_ryong",
-            "closeness": 0.3,
-            "trust": 0.2,
-            "power": 0.1
+            "trust": 20.0,
+            "affinity": 30.0,
+            "respect": 0.0,
+            "wariness": 10.0
         });
         let resp = app.clone().oneshot(json_post("/api/relationships", rel)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
@@ -2866,7 +2870,7 @@ mod projection_drift {
     }
 
     /// Relationship projection drift: after_dialogue 후 닫힌 값을 /api/projection/relationship이 반환.
-    /// drift가 발생하면 `closeness=null`이 돌아오므로 즉시 실패한다.
+    /// drift가 발생하면 `affinity=null`이 돌아오므로 즉시 실패한다 (Stage 3 — 4축).
     #[tokio::test]
     async fn relationship_projection_reflects_after_dialogue() {
         let (app, _state) = app_with_state();
@@ -2905,9 +2909,9 @@ mod projection_drift {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let after_body = body_json(resp).await;
-        let expected_closeness = after_body["after"]["closeness"]
+        let expected_affinity = after_body["after"]["affinity"]
             .as_f64()
-            .expect("after.closeness must exist") as f32;
+            .expect("after.affinity must exist") as f32;
         let expected_trust = after_body["after"]["trust"]
             .as_f64()
             .expect("after.trust must exist") as f32;
@@ -2919,9 +2923,9 @@ mod projection_drift {
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
         let body = body_json(resp).await;
-        let proj_closeness = body["closeness"]
+        let proj_affinity = body["affinity"]
             .as_f64()
-            .expect("projection closeness must be populated after RelationshipUpdated")
+            .expect("projection affinity must be populated after RelationshipUpdated")
             as f32;
         let proj_trust = body["trust"]
             .as_f64()
@@ -2929,8 +2933,8 @@ mod projection_drift {
             as f32;
 
         assert!(
-            (expected_closeness - proj_closeness).abs() < 1e-5,
-            "closeness drift: after_dialogue={expected_closeness}, projection={proj_closeness}"
+            (expected_affinity - proj_affinity).abs() < 1e-5,
+            "affinity drift: after_dialogue={expected_affinity}, projection={proj_affinity}"
         );
         assert!(
             (expected_trust - proj_trust).abs() < 1e-5,
@@ -3549,9 +3553,10 @@ mod phase1_5_reflection_tests {
         let rel = RelationshipData {
             owner_id: "mu_baek".into(),
             target_id: "gyo_ryong".into(),
-            closeness: -0.3,
-            trust: -0.5,
-            power: 0.4,
+            trust: -50.0,
+            affinity: -30.0,
+            respect: 0.0,
+            wariness: 0.0,
         };
         inner.relationships.insert(rel.key(), rel);
         drop(inner);
@@ -3609,10 +3614,11 @@ mod phase1_5_reflection_tests {
         assert!(refl.is_chitchat, "is_chitchat=true");
 
         // chitchat 시 RelationshipPolicy 게이트가 RelationshipUpdated 미발행 →
-        // build_after_dialogue_from_output이 (0,0,0) 사용. axes 변화 0이어야 함.
-        assert_eq!(resp.before.closeness, resp.after.closeness, "closeness 보존");
+        // build_after_dialogue_from_output이 4축 zero 사용. axes 변화 0이어야 함 (Stage 3 4축).
         assert_eq!(resp.before.trust, resp.after.trust, "trust 보존");
-        assert_eq!(resp.before.power, resp.after.power, "power 보존");
+        assert_eq!(resp.before.affinity, resp.after.affinity, "affinity 보존");
+        assert_eq!(resp.before.respect, resp.after.respect, "respect 보존");
+        assert_eq!(resp.before.wariness, resp.after.wariness, "wariness 보존");
 
         // Phase 1.6 — SSE는 bridge가 도메인 이벤트(`SceneEnded`/`DialogueReflected`)에서
         // 자동 발행. bridge task에 yield해서 broadcast 처리 시간을 확보.

@@ -71,7 +71,8 @@ export default function Sidebar({
               <div key={r.owner_id + ':' + r.target_id} className="item-card" onClick={() => onEditRel(r)}>
                 <div>
                   <div className="name">{r.owner_id} ↔ {r.target_id}</div>
-                  <div className="sub">친:{r.closeness.toFixed(1)} 신:{r.trust.toFixed(1)} 상:{r.power.toFixed(1)}</div>
+                  {/* Stage 3 — 4축 ±100 raw. toFixed(0) 정수 표시. */}
+                  <div className="sub">신:{r.trust.toFixed(0)} 호:{r.affinity.toFixed(0)} 존:{r.respect.toFixed(0)} 경:{r.wariness.toFixed(0)}</div>
                 </div>
               </div>
             ))}

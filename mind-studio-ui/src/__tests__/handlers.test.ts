@@ -143,7 +143,11 @@ describe('handleGuide', () => {
 // --- handleAfterDialogue ---
 describe('handleAfterDialogue', () => {
   it('성공 시 afterDialogue 플래그 포함한 결과 설정', async () => {
-    const respData = { relationship: { closeness: 0.5, trust: 0.6 } }
+    // Stage 3 — 4축 ±100 raw shape의 mock response (실제 AfterDialogueResponse 형태 부분).
+    const respData = {
+      before: { trust: 50, affinity: 30, respect: 0, wariness: 10 },
+      after: { trust: 60, affinity: 40, respect: 0, wariness: 5 },
+    }
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(respData), { status: 200 }),
     )
@@ -155,7 +159,7 @@ describe('handleAfterDialogue', () => {
     const result = updater(null)
     expect(result.afterDialogue).toBe(true)
     expect(result.npc_id).toBe('npc1')
-    expect(result.relationship.closeness).toBe(0.5)
+    expect(result.after.affinity).toBe(40)
   })
 })
 

@@ -1,0 +1,10 @@
+warning: unused imports: `DeclarativeEventPlaceholder` and `PartnershipEventPlaceholder`
+  --> src/application/reflection_service.rs:30:5
+   |
+30 |     DeclarativeEventPlaceholder, PartnershipEventPlaceholder, ReflectionResult, TurnSnapshot,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `npc-mind` (lib) generated 1 warning (run `cargo fix --lib -p npc-mind` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.17s

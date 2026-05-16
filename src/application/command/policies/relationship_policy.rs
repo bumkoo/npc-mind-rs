@@ -8,10 +8,11 @@ use crate::application::command::handler_v2::{
     DeliveryMode, DynamicHandlerContext, EventHandler, HandlerError, HandlerInterest, HandlerResult,
 };
 use crate::application::command::priority;
-use crate::domain::emotion::EmotionType;
+use crate::domain::emotion::{EmotionState, EmotionType};
 use crate::domain::event::{DomainEvent, EventKind, EventPayload};
+use crate::domain::personality::Npc;
 use crate::domain::reflection::ReflectionResult;
-use crate::domain::relationship::update_axes_from_emotion;
+use crate::domain::relationship::{update_axes_from_emotion, Relationship};
 use crate::domain::scene_id::SceneId;
 use crate::domain::tuning::profile;
 
@@ -104,6 +105,34 @@ impl EventHandler for RelationshipPolicy {
 
 // Helper methods for RelationshipPolicy's EventHandler impl.
 impl RelationshipPolicy {
+    /// EmotionState를 기반으로 관계 4축을 갱신한 *새 Relationship*을 반환.
+    ///
+    /// Stage 3 §3.2에서 추출 — `handle_relationship_update_with_cause`와 `handle_dialogue_end`
+    /// 가 동일한 base_delta × intensity × hexaco_modifier 루프 + B-D12 가드를 공유했었다.
+    /// `stimulus_policy::process_beat_transition`은 inline 유지 (Beat 전환 시
+    /// `beat_rel.modifiers()` 보존 컨텍스트 다름).
+    ///
+    /// W4 doc `mapping.rs::update_axes_from_emotion` § "호출자 인덱스"에 본 helper가 2 위치를
+    /// 묶어 호출한다고 등재.
+    fn apply_emotions_to_relationship(
+        npc: &Npc,
+        relationship: &Relationship,
+        emotion: &EmotionState,
+    ) -> Relationship {
+        let mut updated = relationship.clone();
+        let hexaco = npc.personality();
+        for (emotion_type, intensity, _context) in emotion.iter_active() {
+            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+            // If this loop is duplicated to a new caller, this guard MUST be copied.
+            // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
+            if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
+                continue;
+            }
+            update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
+        }
+        updated
+    }
+
     /// 공용 관계 갱신 로직 — `RelationshipUpdateRequested` (cause 미확정) 경로용.
     fn handle_relationship_update(
         &self,
@@ -135,34 +164,7 @@ impl RelationshipPolicy {
         let npc = ctx.get_npc(npc_id)?;
         let _ = significance;
 
-        // Stage 2: base_delta × intensity × hexaco_modifier 적용 — 4축 자동 갱신 활성.
-        // B-D12 — Pride/Shame는 자기 평가라 상대 관계 갱신 안 함 (호출 측 가드).
-        let mut updated = relationship.clone();
-        let hexaco = npc.personality();
-        for (emotion_type, intensity, _context) in emotion.iter_active() {
-            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
-            // If this loop is duplicated to a new caller, this guard MUST be copied.
-            // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
-            if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
-                continue;
-            }
-            update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
-        }
-        // Stage 1 ±1.0 contract 보존 — payload schema가 ±1.0이고 downstream
-        // (memory_projector RELATIONSHIP_CHANGE_THRESHOLD=0.05, relationship_memory_handler
-        // dominant_delta, frontend toFixed 등)이 ±1.0 가정. 4축 ±100 값을 ÷100으로 정규화.
-        // Stage 3에서 payload 6→8 + scale 명시 시 정리. power는 0.0 (B-D4 폐기).
-        let (bc, bt, bp) = (
-            relationship.affinity().value() / 100.0,
-            relationship.trust().value() / 100.0,
-            0.0_f32,
-        );
-        let (ac, at, ap) = (
-            updated.affinity().value() / 100.0,
-            updated.trust().value() / 100.0,
-            0.0_f32,
-        );
-        ctx.save_relationship(updated);
+        let updated = Self::apply_emotions_to_relationship(&npc, &relationship, &emotion);
 
         let follow_up = DomainEvent::new(
             0,
@@ -172,16 +174,19 @@ impl RelationshipPolicy {
                 crate::domain::event::RelationshipUpdatedPayload {
                     owner_id: npc_id.to_string(),
                     target_id: partner_id.to_string(),
-                    before_closeness: bc,
-                    before_trust: bt,
-                    before_power: bp,
-                    after_closeness: ac,
-                    after_trust: at,
-                    after_power: ap,
+                    before_trust: relationship.trust().value(),
+                    before_affinity: relationship.affinity().value(),
+                    before_respect: relationship.respect().value(),
+                    before_wariness: relationship.wariness().value(),
+                    after_trust: updated.trust().value(),
+                    after_affinity: updated.affinity().value(),
+                    after_respect: updated.respect().value(),
+                    after_wariness: updated.wariness().value(),
                     cause,
                 },
             )),
         );
+        ctx.save_relationship(updated);
         Ok(HandlerResult {
             follow_up_events: vec![follow_up],
         })
@@ -234,30 +239,9 @@ impl RelationshipPolicy {
             let emotion = ctx.get_emotion_state(npc_id)?;
             let npc = ctx.get_npc(npc_id)?;
             let _ = sig;
-            // Stage 2: base_delta × intensity × hexaco_modifier 적용 + B-D12 가드 (위 cause 분기와 동일 패턴).
-            let mut updated = relationship.clone();
-            let hexaco = npc.personality();
-            for (emotion_type, intensity, _context) in emotion.iter_active() {
-                // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
-                // If this loop is duplicated to a new caller, this guard MUST be copied.
-                // See mapping.rs::update_axes_from_emotion doc § "호출자 인덱스".
-                if matches!(emotion_type, EmotionType::Pride | EmotionType::Shame) {
-                    continue;
-                }
-                update_axes_from_emotion(&mut updated, emotion_type, intensity, hexaco);
-            }
-            // Stage 1 ±1.0 contract 보존 — affinity/trust를 ÷100으로 정규화 (위 cause 분기와 동일).
-            let (bc, bt, bp) = (
-                relationship.affinity().value() / 100.0,
-                relationship.trust().value() / 100.0,
-                0.0_f32,
-            );
-            let (ac, at, ap) = (
-                updated.affinity().value() / 100.0,
-                updated.trust().value() / 100.0,
-                0.0_f32,
-            );
-            ctx.save_relationship(updated);
+
+            let updated = Self::apply_emotions_to_relationship(&npc, &relationship, &emotion);
+
             follow_ups.push(DomainEvent::new(
                 0,
                 npc_id.to_string(),
@@ -266,16 +250,19 @@ impl RelationshipPolicy {
                     crate::domain::event::RelationshipUpdatedPayload {
                         owner_id: npc_id.to_string(),
                         target_id: partner_id.to_string(),
-                        before_closeness: bc,
-                        before_trust: bt,
-                        before_power: bp,
-                        after_closeness: ac,
-                        after_trust: at,
-                        after_power: ap,
+                        before_trust: relationship.trust().value(),
+                        before_affinity: relationship.affinity().value(),
+                        before_respect: relationship.respect().value(),
+                        before_wariness: relationship.wariness().value(),
+                        after_trust: updated.trust().value(),
+                        after_affinity: updated.affinity().value(),
+                        after_respect: updated.respect().value(),
+                        after_wariness: updated.wariness().value(),
                         cause: crate::domain::event::RelationshipChangeCause::Unspecified,
                     },
                 )),
             ));
+            ctx.save_relationship(updated);
         }
 
         // 3. EmotionCleared + 4. SceneEnded — Scene 종료는 항상 (감정 초기화 / Scene 정리).
@@ -690,11 +677,11 @@ mod handler_v2_tests {
     }
 
     fn extract_axes_after(payload: &EventPayload) -> (f32, f32) {
-        // (after_closeness/affinity, after_trust) — Stage 1 ±1.0 contract (×100 후 비교).
+        // (after_affinity, after_trust) — Stage 3 ±100 raw (정규화 제거).
         let EventPayload::RelationshipUpdated(p) = payload else {
             panic!("expected RelationshipUpdated")
         };
-        (p.after_closeness, p.after_trust)
+        (p.after_affinity, p.after_trust)
     }
 
     #[test]
@@ -724,16 +711,16 @@ mod handler_v2_tests {
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
         // Gratitude × 1.0 × default modifier = { trust: +20, affinity: +10 }
-        // before: trust 20→40, affinity 10→20 (÷100 정규화 후 0.4, 0.2)
+        // before: trust 20→40, affinity 10→20 (±100 raw — Stage 3 정규화 제거).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(
-            (after_trust - 0.4).abs() < 1e-4,
-            "after_trust = {} (expected 0.4 — trust 20→40)",
+            (after_trust - 40.0).abs() < 1e-3,
+            "after_trust = {} (expected 40 — trust 20→40)",
             after_trust
         );
         assert!(
-            (after_affinity - 0.2).abs() < 1e-4,
-            "after_affinity = {} (expected 0.2 — affinity 10→20)",
+            (after_affinity - 20.0).abs() < 1e-3,
+            "after_affinity = {} (expected 20 — affinity 10→20)",
             after_affinity
         );
     }
@@ -767,15 +754,15 @@ mod handler_v2_tests {
             .iter()
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
-        // Pride/Shame skip → 변동 0. before == after.
+        // Pride/Shame skip → 변동 0. before == after (±100 raw).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(
-            (after_trust - 0.5).abs() < 1e-4,
+            (after_trust - 50.0).abs() < 1e-3,
             "after_trust = {} (Pride/Shame skip — trust 50 보존)",
             after_trust
         );
         assert!(
-            (after_affinity - 0.4).abs() < 1e-4,
+            (after_affinity - 40.0).abs() < 1e-3,
             "after_affinity = {} (Pride/Shame skip — affinity 40 보존)",
             after_affinity
         );
@@ -811,16 +798,16 @@ mod handler_v2_tests {
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
         // Anger × 0.5 × default = { trust: -12.5, affinity: -5, respect: 0, wariness: +12.5 }
-        // before: trust 50→37.5 (÷100=0.375), affinity 40→35 (÷100=0.35)
+        // before: trust 50→37.5, affinity 40→35 (±100 raw).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(
-            (after_trust - 0.375).abs() < 1e-4,
-            "after_trust = {} (expected 0.375 — Anger only, Pride skip)",
+            (after_trust - 37.5).abs() < 1e-3,
+            "after_trust = {} (expected 37.5 — Anger only, Pride skip)",
             after_trust
         );
         assert!(
-            (after_affinity - 0.35).abs() < 1e-4,
-            "after_affinity = {} (expected 0.35)",
+            (after_affinity - 35.0).abs() < 1e-3,
+            "after_affinity = {} (expected 35)",
             after_affinity
         );
     }
@@ -852,15 +839,15 @@ mod handler_v2_tests {
             .iter()
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
-        // Deceased → 차단. before/after 동일.
+        // Deceased → 차단. before/after 동일 (±100 raw).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(
-            (after_trust - 0.7).abs() < 1e-4,
+            (after_trust - 70.0).abs() < 1e-3,
             "after_trust = {} (Deceased — preserved)",
             after_trust
         );
         assert!(
-            (after_affinity - 0.6).abs() < 1e-4,
+            (after_affinity - 60.0).abs() < 1e-3,
             "after_affinity = {} (Deceased — preserved)",
             after_affinity
         );
@@ -889,8 +876,8 @@ mod handler_v2_tests {
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
-        assert!((after_trust - 0.5).abs() < 1e-4);
-        assert!((after_affinity - 0.4).abs() < 1e-4);
+        assert!((after_trust - 50.0).abs() < 1e-3);
+        assert!((after_affinity - 40.0).abs() < 1e-3);
     }
 
     #[test]
