@@ -91,8 +91,8 @@ pub struct AppState {
     /// 제공. Mind Studio UI는 여전히 v1 경로를 사용하며, v2는 외부 호출자(Claude API
     /// 등) 전용 proof-of-concept 노출.
     ///
-    /// NPC/Relationship은 Director 내부 Repository에 별도 등록해야 동작 — 이를 위해
-    /// `POST /api/v2/npcs` / `POST /api/v2/relationships` 헬퍼 엔드포인트 제공 또는
+    /// NPC는 Director 내부 Repository에 별도 등록해야 동작 — 이를 위해
+    /// `POST /api/v2/npcs` 헬퍼 엔드포인트 제공 또는
     /// Director.sync_from_app_state (Session 4+) 로 스냅샷 동기화 가능.
     pub director_v2: Arc<Director<InMemoryRepository>>,
 

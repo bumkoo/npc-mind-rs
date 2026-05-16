@@ -313,10 +313,6 @@ fn build_api_router(state: AppState) -> Router {
             delete(handlers::v2_scenes::end_scene),
         )
         .route("/api/v2/npcs", post(handlers::v2_scenes::upsert_npc_v2))
-        .route(
-            "/api/v2/relationships",
-            post(handlers::v2_scenes::upsert_relationship_v2),
-        )
         .route("/api/v2/scene-ids", get(handlers::v2_scenes::list_all_scene_ids));
 
     // chat feature 활성 시 대화 테스트 + LLM 모니터링 엔드포인트 추가

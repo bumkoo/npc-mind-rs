@@ -200,12 +200,15 @@ fn gyo_ryong_profile() -> serde_json::Value {
 }
 
 fn relationship_data() -> serde_json::Value {
+    // v0.7 4축 (±100 raw). v0.6 shape (closeness/trust/power ±1.0)에서
+    // 산술 변환: affinity = closeness × 100, trust = trust × 100, power 폐기.
     serde_json::json!({
         "owner_id": "mu_baek",
         "target_id": "gyo_ryong",
-        "closeness": -0.3,
-        "trust": -0.5,
-        "power": 0.4
+        "trust": -50.0,
+        "affinity": -30.0,
+        "respect": -15.0,
+        "wariness": 25.0
     })
 }
 
@@ -1756,16 +1759,14 @@ fn npc_json_gyoryong() -> serde_json::Value {
     })
 }
 
-fn rel_json_neutral(owner: &str, target: &str) -> serde_json::Value {
-    // v0.6 shape — `/api/v2/relationships` deserializes via RelationshipUpsertV0_6
-    // (deny_unknown_fields, ×100 자동 변환). v1 `/api/relationships`도 alias로 호환.
-    serde_json::json!({
-        "owner_id": owner,
-        "target_id": target,
-        "closeness": 0.0,
-        "trust": 0.0,
-        "power": 0.0,
-    })
+fn seed_neutral_relationship_v2(state: &AppState, owner: &str, target: &str) {
+    use npc_mind::domain::relationship::Relationship;
+    use npc_mind::ports::NpcWorld;
+    state
+        .director_v2
+        .dispatcher()
+        .repository_guard()
+        .save_relationship(owner, target, Relationship::neutral(owner, target));
 }
 
 #[tokio::test]
@@ -1790,13 +1791,8 @@ async fn v2_seed_npcs_and_start_scene_returns_scene_id() {
         let resp = app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
     }
-    // 2. 중립 관계 등록
-    let resp = app
-        .clone()
-        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
-        .await
-        .unwrap();
-    assert_eq!(resp.status(), StatusCode::OK);
+    // 2. 중립 관계 등록 (Director repo 직접 — endpoint 제거됨, Stage 4)
+    seed_neutral_relationship_v2(&state, "mu_baek", "gyo_ryong");
 
     // 3. Scene 시작 (Initial focus 1개)
     let start_body = serde_json::json!({
@@ -1850,10 +1846,7 @@ async fn v2_dispatch_appraise_to_active_scene_emits_events() {
     for npc in [npc_json_muback(), npc_json_gyoryong()] {
         app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
     }
-    app.clone()
-        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
-        .await
-        .unwrap();
+    seed_neutral_relationship_v2(&state, "mu_baek", "gyo_ryong");
     app.clone()
         .oneshot(json_post(
             "/api/v2/scenes/start",
@@ -1914,10 +1907,7 @@ async fn v2_end_scene_removes_from_active_list() {
     for npc in [npc_json_muback(), npc_json_gyoryong()] {
         app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
     }
-    app.clone()
-        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
-        .await
-        .unwrap();
+    seed_neutral_relationship_v2(&state, "mu_baek", "gyo_ryong");
     app.clone()
         .oneshot(json_post(
             "/api/v2/scenes/start",
@@ -1989,10 +1979,7 @@ async fn v2_start_scene_duplicate_returns_conflict() {
     for npc in [npc_json_muback(), npc_json_gyoryong()] {
         app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
     }
-    app.clone()
-        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
-        .await
-        .unwrap();
+    seed_neutral_relationship_v2(&state, "mu_baek", "gyo_ryong");
     let start_body = serde_json::json!({
         "npc_id": "mu_baek",
         "partner_id": "gyo_ryong",
@@ -2020,10 +2007,7 @@ async fn v2_dispatch_scene_mismatch_returns_bad_request() {
     for npc in [npc_json_muback(), npc_json_gyoryong()] {
         app.clone().oneshot(json_post("/api/v2/npcs", npc)).await.unwrap();
     }
-    app.clone()
-        .oneshot(json_post("/api/v2/relationships", rel_json_neutral("mu_baek", "gyo_ryong")))
-        .await
-        .unwrap();
+    seed_neutral_relationship_v2(&state, "mu_baek", "gyo_ryong");
     app.clone()
         .oneshot(json_post(
             "/api/v2/scenes/start",
