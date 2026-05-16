@@ -161,9 +161,11 @@ Spec 추정 ~42에 근접 (+44 박음).
 
 4. **Worktree에 baselines/ 폴더 없음**: spec D1 baseline 1220은 main 브랜치 또는 별도 환경 기준. 본 Stage에서는 default + chat features 기준 baseline 별도 박제.
 
-## 알려진 위험 (push 후 Stage 3에서 정리)
+## 알려진 위험 (W1~W4 해결 — 2026-05-16)
 
 ### W1 — Beat 후 appraise modifier에 *간접 의미 변경* 발생 (회귀 가드 부재)
+
+> **✅ 해결 (2026-05-16)** — `task-rel-phase2-stage2-retrospective-cleanup.md` §4 Stage W1: 회귀 가드 3개 박제 (mapping.rs §2.5 — `beat_rel_modifiers_affinity_channel_after_anger` + `..._trust_channel_after_anger` + `..._admiration_no_leak_until_phase_2_3`). cargo test +3.
 
 [stimulus_policy.rs:69~95](../../../src/application/command/policies/stimulus_policy.rs:69)의 `process_beat_transition`에서:
 - Stage 1: `beat_rel = relationship.clone()` (변동 0) → `beat_rel.modifiers()`은 *원본 affinity/trust*로 산정 → appraise에 전달
@@ -177,6 +179,8 @@ Spec 추정 ~42에 근접 (+44 박음).
 
 ### W2 — Pity의 부정 감정 분류 — spec §4.3 본문 모호
 
+> **✅ 해결 (2026-05-16)** — `task-rel-phase2-stage2-retrospective-cleanup.md` §5 Stage W2: doc 4단락 + living spec test (mapping.rs §2.7 — `is_negative_emotion_classification_matches_affinity_sign_basis`) + `relationships.md` v0.7 §4.3 inline blockquote clarification 박제. cargo test +1.
+
 `is_negative_emotion` 헬퍼 (mapping.rs:179~)에서 *Pity 제외* 박았으나, spec §4.3 본문이 *"부정 감정"의 정확한 enumeration*을 명시하지 않음. *OCC valence 부정*으로 본다면 Pity 포함되어야 하고, *4축 base_delta가 음 우세*로 본다면 Pity는 affinity +10이라 제외. 본 구현은 **affinity 부호 기준** (4축 효과 우선).
 
 - `is_negative_emotion` 함수 doc에 정의 박제 (commit 시점).
@@ -184,11 +188,29 @@ Spec 추정 ~42에 근접 (+44 박음).
 
 ### W3 — `update_axes_from_emotion` BondStatus 차단 silent return
 
+> **✅ 해결 (2026-05-16)** — `task-rel-phase2-stage2-retrospective-cleanup.md` §6 Stage W3: `tracing::debug!` 7줄 구조화 로그 박힘 (mapping.rs:~253). 기존 BondStatus 4 variants 회귀 가드(`update_axes_bond_status_*`) 재사용으로 §6.3.2 보강 skip.
+
 [mapping.rs:217~219](../../../src/domain/relationship/mapping.rs:217). Deceased/Resolved/Dormant 시 *조용히 return* — 이벤트/로그 부재. 의도된 동작이지만 *디버깅 추적 단서 없음*. Phase 2.3 진입 시 `tracing::debug!` 1줄 추가 검토 (비용 0).
 
 ### W4 — B-D12 가드의 호출 측 분산 (3 위치 동일 패턴)
+
+> **✅ 해결 (2026-05-16)** — `task-rel-phase2-stage2-retrospective-cleanup.md` §7 Stage W4: doc "호출자 인덱스" 단락 + 3 호출 측 동일 마커 주석 + living spec test (mapping.rs §2.6 — `update_axes_from_emotion_does_not_filter_pride_or_shame_internally`) 박제. 4번째 호출자 등장 시 옵션 B(`accepts_axis_update_for`) escalate 트리거 명시. cargo test +1.
 
 [relationship_policy.rs:143, 238](../../../src/application/command/policies/relationship_policy.rs:143) + [stimulus_policy.rs:78](../../../src/application/command/policies/stimulus_policy.rs:78) — *`matches!(Pride|Shame) continue`* 3 위치 박힘. spec §4 결정대로 *"호출 측 책임"* 일관이지만 DRY 위반.
 
 - **4번째 호출자** (Phase 3a/3b에서 `Channel 2 Temporal` / `Channel 3 External` 추가 시) 누락 위험.
 - Phase 2.3 또는 3a 진입 시 `Relationship::accepts_axis_update_for(emotion_type)` 같은 헬퍼로 통합 검토 (현재 호출 측 명시 패턴 유지).
+
+---
+
+## W1~W4 해결 박제 (2026-05-16)
+
+§"알려진 위험" 4개 위험을 후속 task `task-rel-phase2-stage2-retrospective-cleanup.md` v1.0.1로 정리. 신규 테스트 +5 (W1 ×3 + W2 ×1 + W4 ×1, W3는 debug 로그 + 기존 가드 재사용). `cargo test --lib` 866 → 871 예상.
+
+진행 기록:
+- 순서: W1 → W4 → W2 → W3 (위험 무게 + 디버깅 인프라 우선순위 기준)
+- v1.0 → v1.0.1 정정 1건: 필드 이름 (`_multiplier` ↔ `_modifier`, W1 진입 시 발견)
+- v1.0.2 정정 후보 1건 미반영: §5.3.1/§5.3.3 정의를 "affinity ≤ 0 + OCC valence 부정"으로 정밀화 — W2 진입 시 발견 (`relationships.md` §4.3에는 이미 정확한 정의 박힘)
+- §5.6 v0.7 frozen 위험: `relationships.md` §4.3 inline blockquote clarification 패턴으로 자연 해소 (version bump 불필요)
+
+Stage 3 진입 전제 §5 (±1.0 contract)는 본 정리에 *포함 안 됨* — Stage 3 본 작업에서 정리 예정.
