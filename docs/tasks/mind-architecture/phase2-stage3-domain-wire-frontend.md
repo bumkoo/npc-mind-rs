@@ -12,7 +12,7 @@
 |---|---|---|
 | `cargo check --features chat` | ✅ | ✅ (`baselines/stage3-cargo-check-2026-05-16-PASS.log`) |
 | `cargo test --features chat --lib --tests` | 866 passed | **871 passed** / 0 failed / 5 ignored (`baselines/stage3-cargo-test-2026-05-16-chat-PASS.log`) |
-| Mind Studio bin tests (`--bin npc-mind-studio`) | 72 passed | **72 passed** / 0 failed |
+| Mind Studio bin tests (`--bin npc-mind-studio`) | 72 passed | **77 passed** / 0 failed (리뷰 H1 5 신규) |
 | `npm run build` (frontend) | ✅ | ✅ (`baselines/stage3-npm-build-2026-05-16-PASS.log`) |
 | `npm test -- --run` (vitest) | 100 passed | **100 passed** (`baselines/stage3-npm-test-2026-05-16-PASS.log`) |
 
@@ -96,16 +96,24 @@ Spec inventory에 포함되지 않은 ÷100 사이트. 신뢰도 정규화 `(t +
 
 `state.rs:801`은 ÷100/×100 양쪽 모두 제거 — `RelationshipData` 필드 contract 변경의 자연스러운 결과.
 
-### `RelationshipData` v0.6 호환 (serde alias)
+### `RelationshipData` v0.6 호환 (커스텀 Deserialize + 자동 ×100, 리뷰 H1 반영)
 
-v0.6 시나리오 JSON 로드 시점에 `RelationshipData` deserialize 호환 필요. 적용한 패턴:
-- `#[serde(alias = "closeness")]` on `affinity`
-- `#[serde(default)]` on `respect` / `wariness`
-- `power` 필드는 단순 무시 (serde 기본: unknown field 허용)
+v0.6 시나리오 JSON 로드 시점에 `RelationshipData` deserialize 호환 + **값 의미 보존** 필요. Stage 3 리뷰 H1 (save-roundtrip data loss) 반영해 커스텀 `Deserialize` impl 도입:
 
-**알려진 transient bug**: v0.6 JSON (closeness=0.5 등 ±1.0 값)이 ±100 RelationshipData 필드로 로드되면 의미가 어긋남 (0.5가 affinity=0.5로 박혀 거의 중립 상태로 표시). Stage 4 마이그레이션 도구가 시나리오 JSON 자체를 ±100으로 변환하면 해소.
+- v0.6 키 (`closeness` 또는 `power`) 존재 감지
+- 감지 시 `trust × 100`, `closeness × 100 → affinity` **자동 변환** (값 의미 보존)
+- `power`는 폐기 (B-D4) — 값 무시
+- `tracing::warn!` 로그로 자동 변환 알림 + Stage 4 마이그레이션 권장 표시
+- v0.7 입력은 그대로 통과 (자동 변환 없음)
 
-Mind Studio 자체 통합 테스트는 `relationships: {}` (빈 객체) 또는 `rel_json_neutral` (값 0.0) 사용으로 영향 없음.
+5개 단위 테스트 신규 (`state::relationship_data_tests` 모듈):
+- `v06_schema_auto_multiplies_by_100` — closeness=0.5 → affinity=50 검증
+- `v07_schema_passes_through_without_scaling` — ±100 raw 그대로 보존
+- `v06_power_alone_triggers_migration` — closeness 없이 power만 있어도 감지
+- `save_roundtrip_v06_to_v07_preserves_semantic` — v0.6 load → save → reload 의미 보존
+- `v07_missing_optional_fields_defaults_to_zero` — 부분 입력 default 0
+
+**결과**: v0.6 시나리오 JSON 로드 시점에 ±100 raw로 자동 마이그레이션됨. Stage 4 마이그레이션 도구는 JSON 파일 자체를 v0.7 4-필드 스키마로 변환하는 작업 (코드 경로는 자동 변환 제거) 담당.
 
 ---
 
@@ -168,11 +176,15 @@ Phase 2.3 시작 시 modifier ±100 native 전환하면 expected 값 ±100 스�
 
 Stage 3 → threshold 0.05 → 5.0 (×100 일대일 매핑). 4축 합산 sensitivity는 Phase 2.3에서 narrative 시뮬 결과 보고 재조정 (예: ÷4 평균? 가장 큰 축 1개? 가중치 합?).
 
-### E) v0.6 시나리오 JSON 로드 transient bug
+### E) v0.6 시나리오 JSON 로드 (리뷰 H1 반영으로 해소됨)
 
-Mind Studio `load_scenario` 경로에서 v0.6 JSON 로드 시 `RelationshipData.affinity` 등 필드에 ±1.0 값이 박혀 UI 표시가 어긋남 (예: 0.5 vs 50). Stage 4 마이그레이션 도구로 시나리오 JSON 자체를 ±100으로 변환해야 정합 회복.
+원래 transient bug였으나 Stage 3 리뷰 H1 반영 → `RelationshipData` 커스텀 Deserialize impl이
+v0.6 스키마 자동 감지 + `trust × 100`, `closeness × 100 → affinity` 자동 변환 적용. v0.6
+시나리오 JSON 그대로 로드해도 의미 보존됨. `tracing::warn!`로 자동 변환 표시.
 
-워크어라운드 (Stage 3~4 사이): Mind Studio 시나리오는 빈 relationships(`{}`)로 시작하거나 UI CRUD로 직접 생성. 기존 v0.6 시나리오 JSON 직접 로드 비권장.
+**Stage 4 마이그레이션 도구의 책임 변경**: 코드 경로는 더 이상 ÷100 layer 가지지 않음.
+Stage 4는 *시나리오 JSON 파일 자체*를 v0.7 4-필드 스키마로 영구 변환 + `RelationshipData`
+의 v0.6 자동 변환 코드 제거 담당.
 
 ---
 
