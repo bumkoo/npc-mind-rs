@@ -41,9 +41,11 @@ export default function ReflectionView() {
         <br />
         Mind Studio가 chat feature + ReflectionService와 함께 빌드되어야 박제됩니다.
         <br />
-        Axes — closeness {before.closeness.toFixed(2)} → {after.closeness.toFixed(2)},
-        trust {before.trust.toFixed(2)} → {after.trust.toFixed(2)},
-        power {before.power.toFixed(2)} → {after.power.toFixed(2)}
+        {/* Stage 3 — 4축 ±100 raw, toFixed(0) 정수 표시. */}
+        Axes — 신뢰 {before.trust.toFixed(0)} → {after.trust.toFixed(0)},
+        호감 {before.affinity.toFixed(0)} → {after.affinity.toFixed(0)},
+        존중 {before.respect.toFixed(0)} → {after.respect.toFixed(0)},
+        경계 {before.wariness.toFixed(0)} → {after.wariness.toFixed(0)}
       </div>
     )
   }
@@ -52,10 +54,12 @@ export default function ReflectionView() {
   const band = sig < 0.3 ? '낮음 (잡담)' : sig < 0.7 ? '중간 (일상)' : '높음 (결단)'
   const bandColor = sig < 0.3 ? '#888' : sig < 0.7 ? '#a07f3f' : '#a04040'
 
+  // Stage 3 — 4축 ±100 raw scale. 변화 감지 임계값 0.001 → 0.1 (정수 표시 정합).
   const axesChanged =
-    Math.abs(before.closeness - after.closeness) > 0.001 ||
-    Math.abs(before.trust - after.trust) > 0.001 ||
-    Math.abs(before.power - after.power) > 0.001
+    Math.abs(before.trust - after.trust) > 0.1 ||
+    Math.abs(before.affinity - after.affinity) > 0.1 ||
+    Math.abs(before.respect - after.respect) > 0.1 ||
+    Math.abs(before.wariness - after.wariness) > 0.1
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 12, padding: 8 }}>
@@ -116,9 +120,11 @@ export default function ReflectionView() {
             </tr>
           </thead>
           <tbody>
-            <AxisRow label="closeness" before={before.closeness} after={after.closeness} />
-            <AxisRow label="trust" before={before.trust} after={after.trust} />
-            <AxisRow label="power" before={before.power} after={after.power} />
+            {/* Stage 3 — 4축 ±100 raw. trust → affinity → respect → wariness. */}
+            <AxisRow label="신뢰 (trust)" before={before.trust} after={after.trust} />
+            <AxisRow label="호감 (affinity)" before={before.affinity} after={after.affinity} />
+            <AxisRow label="존중 (respect)" before={before.respect} after={after.respect} />
+            <AxisRow label="경계 (wariness)" before={before.wariness} after={after.wariness} />
           </tbody>
         </table>
       </div>
@@ -133,14 +139,15 @@ export default function ReflectionView() {
 
 function AxisRow({ label, before, after }: { label: string; before: number; after: number }) {
   const delta = after - before
-  const deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(3)
+  // Stage 3 — ±100 raw, toFixed(0) 정수 표시. 임계값 0.001 → 0.1.
+  const deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(0)
   const color =
-    Math.abs(delta) < 0.001 ? 'var(--fg3)' : delta > 0 ? '#5a8' : '#c66'
+    Math.abs(delta) < 0.1 ? 'var(--fg3)' : delta > 0 ? '#5a8' : '#c66'
   return (
     <tr>
       <td style={{ padding: '2px 8px', color: 'var(--fg2)' }}>{label}</td>
-      <td style={{ padding: '2px 8px', textAlign: 'right' }}>{before.toFixed(3)}</td>
-      <td style={{ padding: '2px 8px', textAlign: 'right' }}>{after.toFixed(3)}</td>
+      <td style={{ padding: '2px 8px', textAlign: 'right' }}>{before.toFixed(0)}</td>
+      <td style={{ padding: '2px 8px', textAlign: 'right' }}>{after.toFixed(0)}</td>
       <td style={{ padding: '2px 8px', textAlign: 'right', color }}>{deltaStr}</td>
     </tr>
   )

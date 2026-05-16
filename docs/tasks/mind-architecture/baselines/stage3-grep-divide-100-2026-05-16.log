@@ -1,0 +1,9 @@
+src/application/command/telling_ingestion_handler.rs:80:            .map(|r| (r.trust().value() / 100.0 + 1.0) / 2.0)
+src/domain/relationship/mod.rs:172:        let affinity_norm = self.affinity.value() / 100.0; // -1.0..1.0 정규화
+src/domain/relationship/mod.rs:173:        let trust_norm = self.trust.value() / 100.0;
+src/domain/guide/snapshot.rs:316:            closeness_level: RelationshipLevel::from_score(rel.affinity().value() / 100.0),
+src/domain/guide/snapshot.rs:317:            trust_level: RelationshipLevel::from_score(rel.trust().value() / 100.0),
+
+=== Lines: ===
+5
+=== Logical sites: 2 (domain modifiers + RelationshipLevel) + telling_ingestion (uncatalogued) ===

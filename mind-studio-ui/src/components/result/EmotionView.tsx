@@ -1,10 +1,12 @@
 import type { AppraiseResult } from '../../types'
 import { emotionColor } from '../../utils/emotionColor'
 
+// Stage 3 — 4축 ±100 raw.
 interface RelMetrics {
-  closeness: number
   trust: number
-  power: number
+  affinity: number
+  respect: number
+  wariness: number
 }
 
 interface EmotionViewResult extends AppraiseResult {
@@ -19,11 +21,14 @@ interface EmotionViewProps {
 export default function EmotionView({ result }: EmotionViewProps) {
   const hasEmotions = result.emotions && result.emotions.length > 0
   const relMetrics = [
-    { key: 'closeness' as const, label: '친밀도', color: 'var(--accent2)' },
-    { key: 'trust' as const, label: '신뢰도', color: 'var(--accent)' },
-    { key: 'power' as const, label: '상하관계', color: 'var(--purple)' },
+    { key: 'trust' as const, label: '신뢰', color: 'var(--accent)' },
+    { key: 'affinity' as const, label: '호감', color: 'var(--accent2)' },
+    { key: 'respect' as const, label: '존중', color: 'var(--purple)' },
+    { key: 'wariness' as const, label: '경계', color: 'var(--err)' },
   ]
-  const toPercent = (v: number) => ((v + 1) / 2) * 100
+  // ±100 raw scale → bar percentage. wariness는 0~100이라 단순 v; 나머지는 (v+100)/2.
+  const toPercent = (v: number, key: string) =>
+    key === 'wariness' ? Math.max(0, Math.min(100, v)) : ((v + 100) / 200) * 100
   return (
     <div>
       {result.beat_changed && (
@@ -122,18 +127,18 @@ export default function EmotionView({ result }: EmotionViewProps) {
                 <div className="rc-label">
                   <span>{m.label}</span>
                   <span style={{ fontFamily: 'monospace' }}>
-                    {before.toFixed(3)} → {after.toFixed(3)}
+                    {before.toFixed(0)} → {after.toFixed(0)}
                   </span>
                 </div>
                 <div className="rc-bar">
                   <div
                     className="rc-fill rc-before"
-                    style={{ width: `${toPercent(before)}%` }}
+                    style={{ width: `${toPercent(before, m.key)}%` }}
                   />
                   <div
                     className="rc-fill rc-after"
                     style={{
-                      width: `${toPercent(after)}%`,
+                      width: `${toPercent(after, m.key)}%`,
                       background: m.color,
                     }}
                   />
@@ -149,7 +154,7 @@ export default function EmotionView({ result }: EmotionViewProps) {
                           : 'var(--fg3)',
                   }}
                 >
-                  {delta > 0 ? '+' : ''}{delta.toFixed(3)}
+                  {delta > 0 ? '+' : ''}{delta.toFixed(0)}
                 </div>
               </div>
             )

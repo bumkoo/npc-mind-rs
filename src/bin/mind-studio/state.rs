@@ -657,14 +657,27 @@ pub struct NpcProfile {
     pub unconventionality: f32,
 }
 
-/// 관계 데이터
+/// 관계 데이터 (Stage 3 — 4축 ±100 raw, `RelationshipUpdatedPayload`와 정합)
+///
+/// 필드 순서 — trust → affinity → respect → wariness.
+/// 값 contract — trust/affinity/respect: ±100, wariness: 0~100.
+///
+/// **v0.6 시나리오 JSON 호환**:
+/// - `#[serde(alias = "closeness")]` — v0.6 `closeness` 필드를 `affinity`로 흡수
+/// - `power` 필드는 deserialize 시 단순 무시 (serde 기본 동작 — `deny_unknown_fields` 없음)
+/// - v0.6 값은 ±1.0 스케일이라 `to_relationship` 호출 시 의미가 어긋남. Stage 4 마이그레이션
+///   도구가 시나리오 JSON 자체를 v0.7 (±100) 스키마로 변환할 때 정합 회복.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RelationshipData {
     pub owner_id: String,
     pub target_id: String,
-    pub closeness: f32,
     pub trust: f32,
-    pub power: f32,
+    #[serde(alias = "closeness")]
+    pub affinity: f32,
+    #[serde(default)]
+    pub respect: f32,
+    #[serde(default)]
+    pub wariness: f32,
 }
 
 impl RelationshipData {
@@ -793,15 +806,17 @@ impl NpcProfile {
 impl RelationshipData {
     /// Relationship 도메인 객체로 변환.
     ///
-    /// Stage 1 4축 swap: `closeness × 100 → affinity`, `trust × 100 → trust`.
-    /// `power`는 폐기 (B-D4) — Stage 3에서 UI 필드 자체 정리 예정.
+    /// Stage 3 — 필드가 이미 ±100 raw 스케일이므로 산술 변환 없음. v0.6 시나리오 JSON
+    /// (closeness/trust ±1.0)은 alias로 deserialize되지만 값이 ±1.0 그대로 박혀
+    /// AxisScore에 들어가면 *거의 중립*에 가까운 값. Stage 4 마이그레이션 도구가
+    /// 시나리오 JSON 자체를 v0.7 (±100) 스키마로 변환할 때 정합 회복.
     pub fn to_relationship(&self) -> Relationship {
         use npc_mind::domain::relationship::{AxisScore, WarinessScore};
         RelationshipBuilder::new(&self.owner_id, &self.target_id)
-            .trust(AxisScore::new(self.trust * 100.0))
-            .affinity(AxisScore::new(self.closeness * 100.0))
-            .respect(AxisScore::NEUTRAL)
-            .wariness(WarinessScore::NEUTRAL)
+            .trust(AxisScore::new(self.trust))
+            .affinity(AxisScore::new(self.affinity))
+            .respect(AxisScore::new(self.respect))
+            .wariness(WarinessScore::new(self.wariness))
             .build()
     }
 }

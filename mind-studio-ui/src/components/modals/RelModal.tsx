@@ -10,7 +10,10 @@ interface RelModalProps {
   onClose: () => void
 }
 
-const emptyRel: Relationship = { owner_id: '', target_id: '', closeness: 0, trust: 0, power: 0 }
+const emptyRel: Relationship = {
+  owner_id: '', target_id: '',
+  trust: 0, affinity: 0, respect: 0, wariness: 0,
+}
 
 export default function RelModal({ rel, npcIds, onSave, onDelete, onClose }: RelModalProps) {
   const [data, setData] = useState<Relationship>(rel || emptyRel)
@@ -45,9 +48,12 @@ export default function RelModal({ rel, npcIds, onSave, onDelete, onClose }: Rel
             </select>
           </div>
         </div>
-        <Slider label="친밀도" value={data.closeness} onChange={(v) => set('closeness', v)} />
-        <Slider label="신뢰도" value={data.trust} onChange={(v) => set('trust', v)} />
-        <Slider label="상하" value={data.power} onChange={(v) => set('power', v)} />
+        {/* Stage 3 — 4축 ±100 raw. Slider default(±1/0.05)는 PAD/Focus용이라 props 명시.
+            wariness 0~100 (음수 의미 없음 — TS 보호). */}
+        <Slider label="신뢰" value={data.trust} onChange={(v) => set('trust', v)} min={-100} max={100} step={1} />
+        <Slider label="호감" value={data.affinity} onChange={(v) => set('affinity', v)} min={-100} max={100} step={1} />
+        <Slider label="존중" value={data.respect} onChange={(v) => set('respect', v)} min={-100} max={100} step={1} />
+        <Slider label="경계" value={data.wariness} onChange={(v) => set('wariness', v)} min={0} max={100} step={1} />
         <div className="btn-row" style={{ marginTop: 12 }}>
           <button className="btn primary" onClick={() => { if (!data.owner_id || !data.target_id) return alert('양쪽 ID 필수'); onSave(data) }}>저장</button>
           {rel && <button className="btn danger" onClick={() => onDelete(rel.owner_id, rel.target_id)}>삭제</button>}

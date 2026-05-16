@@ -39,7 +39,9 @@ const mockNpc: Npc = {
 }
 
 const mockRel: Relationship = {
-  owner_id: 'mu_baek', target_id: 'player', closeness: 0.3, trust: 0.5, power: 0,
+  // Stage 3 — 4축 ±100 raw.
+  owner_id: 'mu_baek', target_id: 'player',
+  trust: 50, affinity: 30, respect: 0, wariness: 0,
 }
 
 const mockObj: GameObject = { id: 'sword', description: '낡은 검', category: '무기' }
@@ -205,8 +207,9 @@ describe('useResultStore', () => {
     expect(useResultStore.getState().lastAfterDialogue).toBeNull()
 
     useResultStore.getState().setLastAfterDialogue({
-      before: { closeness: 0.0, trust: 0.0, power: 0.0 },
-      after: { closeness: 0.0, trust: 0.0, power: 0.0 },
+      // Stage 3 — 4축 ±100 raw.
+      before: { trust: 0.0, affinity: 0.0, respect: 0.0, wariness: 0.0 },
+      after: { trust: 0.0, affinity: 0.0, respect: 0.0, wariness: 0.0 },
       reflection: {
         is_chitchat: true,
         summary: '지나가는 인사',
@@ -220,7 +223,7 @@ describe('useResultStore', () => {
     expect(a?.reflection?.is_chitchat).toBe(true)
     expect(a?.reflection?.significance_score).toBeCloseTo(0.05)
     // chitchat → axes 보존
-    expect(a?.before.closeness).toBe(a?.after.closeness)
+    expect(a?.before.affinity).toBe(a?.after.affinity)
 
     useResultStore.getState().setLastAfterDialogue(null)
     expect(useResultStore.getState().lastAfterDialogue).toBeNull()

@@ -28,8 +28,8 @@ use futures::{Stream, StreamExt};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
-/// 관계 변화 유의미 판단 임계값
-const RELATIONSHIP_CHANGE_THRESHOLD: f32 = 0.05;
+/// 관계 변화 유의미 판단 임계값 (Stage 3 — 4축 ±100 raw scale)
+const RELATIONSHIP_CHANGE_THRESHOLD: f32 = 5.0;
 
 /// 기억 인덱싱 프로젝터
 ///
@@ -149,8 +149,11 @@ impl MemoryProjector {
             }
 
             EventPayload::RelationshipUpdated(p) => {
-                let delta = (p.after_closeness - p.before_closeness).abs()
-                    + (p.after_trust - p.before_trust).abs();
+                // Stage 3 — 4축 합산 (±100 scale). Phase 2.3에서 sensitivity 정밀화 예정 (R-3g).
+                let delta = (p.after_trust - p.before_trust).abs()
+                    + (p.after_affinity - p.before_affinity).abs()
+                    + (p.after_respect - p.before_respect).abs()
+                    + (p.after_wariness - p.before_wariness).abs();
                 if delta > RELATIONSHIP_CHANGE_THRESHOLD {
                     self.index_relationship(event, &p.owner_id, &p.target_id, delta);
                 }

@@ -800,14 +800,16 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         }) {
             return Ok(AfterDialogueResponse {
                 before: RelationshipValues {
-                    closeness: rel_payload.before_closeness,
                     trust: rel_payload.before_trust,
-                    power: rel_payload.before_power,
+                    affinity: rel_payload.before_affinity,
+                    respect: rel_payload.before_respect,
+                    wariness: rel_payload.before_wariness,
                 },
                 after: RelationshipValues {
-                    closeness: rel_payload.after_closeness,
                     trust: rel_payload.after_trust,
-                    power: rel_payload.after_power,
+                    affinity: rel_payload.after_affinity,
+                    respect: rel_payload.after_respect,
+                    wariness: rel_payload.after_wariness,
                 },
                 reflection,
             });
@@ -833,17 +835,16 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
             repo.get_relationship(&npc_id, &partner_id)
                 .or_else(|| repo.get_relationship(&partner_id, &npc_id))
                 .map(|r| RelationshipValues {
-                    // Stage 1 ±1.0 contract 보존 — RelationshipValues DTO가 ±1.0 가정
-                    // (frontend `ReflectionView.tsx` toFixed(2) 등 downstream).
-                    // 4축 ±100을 ÷100으로 정규화. Stage 3 DTO 4축 확장 시 정리.
-                    closeness: r.affinity().value() / 100.0,
-                    trust: r.trust().value() / 100.0,
-                    power: 0.0,
+                    trust: r.trust().value(),
+                    affinity: r.affinity().value(),
+                    respect: r.respect().value(),
+                    wariness: r.wariness().value(),
                 })
                 .unwrap_or(RelationshipValues {
-                    closeness: 0.0,
                     trust: 0.0,
-                    power: 0.0,
+                    affinity: 0.0,
+                    respect: 0.0,
+                    wariness: 0.0,
                 })
         };
 

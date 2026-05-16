@@ -60,16 +60,16 @@ pub fn sync_from_repo(repo: &InMemoryRepository, inner: &mut StateInner) {
         .collect();
     for (key, owner, target) in existing_keys {
         if let Some(rel) = repo.get_relationship(&owner, &target) {
-            // Stage 1 4축 → UI 3축 매핑: affinity / 100 → closeness, trust / 100 → trust.
-            // power는 폐기 (B-D4) — Stage 3에서 UI 필드 정리.
+            // Stage 3 — 4축 ±100 raw (정규화 제거, `RelationshipUpdatedPayload` 정합).
             inner.relationships.insert(
                 key,
                 RelationshipData {
                     owner_id: owner,
                     target_id: target,
-                    closeness: rel.affinity().value() / 100.0,
-                    trust: rel.trust().value() / 100.0,
-                    power: 0.0,
+                    trust: rel.trust().value(),
+                    affinity: rel.affinity().value(),
+                    respect: rel.respect().value(),
+                    wariness: rel.wariness().value(),
                 },
             );
         }
@@ -482,14 +482,16 @@ fn build_after_dialogue_from_output(
     if let Some(p) = rel_payload {
         return Ok(AfterDialogueResponse {
             before: RelationshipValues {
-                closeness: p.before_closeness,
                 trust: p.before_trust,
-                power: p.before_power,
+                affinity: p.before_affinity,
+                respect: p.before_respect,
+                wariness: p.before_wariness,
             },
             after: RelationshipValues {
-                closeness: p.after_closeness,
                 trust: p.after_trust,
-                power: p.after_power,
+                affinity: p.after_affinity,
+                respect: p.after_respect,
+                wariness: p.after_wariness,
             },
             reflection,
         });
@@ -498,14 +500,16 @@ fn build_after_dialogue_from_output(
     // 3. RelationshipUpdated 미발행 (chitchat skip) → axes 보존 + reflection만
     Ok(AfterDialogueResponse {
         before: RelationshipValues {
-            closeness: 0.0,
             trust: 0.0,
-            power: 0.0,
+            affinity: 0.0,
+            respect: 0.0,
+            wariness: 0.0,
         },
         after: RelationshipValues {
-            closeness: 0.0,
             trust: 0.0,
-            power: 0.0,
+            affinity: 0.0,
+            respect: 0.0,
+            wariness: 0.0,
         },
         reflection,
     })

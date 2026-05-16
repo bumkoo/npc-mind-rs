@@ -57,13 +57,16 @@ pub async fn get_emotion(
 // Relationship
 // ---------------------------------------------------------------------------
 
+/// Stage 3 — 4축 ±100 raw (`RelationshipUpdatedPayload` 정합).
+/// 필드 순서 trust → affinity → respect → wariness. `Option<f32>`는 projection 미초기화 시 `None`.
 #[derive(Serialize)]
 pub struct RelationshipView {
     pub owner: String,
     pub target: String,
-    pub closeness: Option<f32>,
     pub trust: Option<f32>,
-    pub power: Option<f32>,
+    pub affinity: Option<f32>,
+    pub respect: Option<f32>,
+    pub wariness: Option<f32>,
 }
 
 pub async fn get_relationship(
@@ -75,13 +78,15 @@ pub async fn get_relationship(
         .lock()
         .map_err(|_| AppError::Internal("relationship projection mutex poisoned".into()))?;
 
+    // (trust, affinity, respect, wariness) tuple — RelationshipProjection §3.5
     let values = proj.get_values(&owner, &target);
     Ok(Json(RelationshipView {
         owner,
         target,
-        closeness: values.map(|v| v.0),
-        trust: values.map(|v| v.1),
-        power: values.map(|v| v.2),
+        trust: values.map(|v| v.0),
+        affinity: values.map(|v| v.1),
+        respect: values.map(|v| v.2),
+        wariness: values.map(|v| v.3),
     }))
 }
 

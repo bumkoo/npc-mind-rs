@@ -1,0 +1,5 @@
+src/application/command/policies/relationship_policy.rs:125:            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+src/application/command/policies/stimulus_policy.rs:83:            // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+src/domain/relationship/mapping.rs:229:/// // B-D12 guard: Pride/Shame are self-emotions, no target-relationship semantics.
+
+=== Production markers (excluding doc): 2 (target met) ===

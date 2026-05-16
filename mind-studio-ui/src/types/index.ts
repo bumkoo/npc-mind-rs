@@ -31,12 +31,15 @@ export interface Npc {
 }
 
 // --- Relationship ---
+// Stage 3 — 4축 ±100 raw (`RelationshipUpdatedPayload` 정합).
+// trust/affinity/respect: ±100, wariness: 0~100.
 export interface Relationship {
   owner_id: string
   target_id: string
-  closeness: number
   trust: number
-  power: number
+  affinity: number
+  respect: number
+  wariness: number
 }
 
 // --- GameObject ---
@@ -202,10 +205,10 @@ export interface ReflectionResult {
   llm_reasoning?: string | null
 }
 
-// AfterDialogueResponse — /api/after-dialogue 응답.
+// AfterDialogueResponse — /api/after-dialogue 응답 (Stage 3 — 4축 ±100 raw).
 export interface AfterDialogueResponse {
-  before: { closeness: number; trust: number; power: number }
-  after: { closeness: number; trust: number; power: number }
+  before: { trust: number; affinity: number; respect: number; wariness: number }
+  after: { trust: number; affinity: number; respect: number; wariness: number }
   reflection?: ReflectionResult | null
 }
 

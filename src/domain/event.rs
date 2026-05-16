@@ -169,17 +169,23 @@ pub struct MemoryEntryCreatedPayload {
     pub source_event_id: u64,
 }
 
-/// 관계 갱신 이벤트 페이로드
+/// 관계 갱신 이벤트 페이로드 (Stage 3 — 4축 ±100 raw)
+///
+/// 필드 순서 — `relationships.md` v0.7 §4.2 + Phase 2 B-D6: trust → affinity → respect → wariness.
+/// 값 contract — trust/affinity/respect: ±100, wariness: 0~100 (`WarinessScore` 정합).
+/// ÷100 정규화는 본 페이로드 *외부*에서 발생 안 함 (Stage 3 §3.3 ÷100 layer 제거).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipUpdatedPayload {
     pub owner_id: String,
     pub target_id: String,
-    pub before_closeness: f32,
     pub before_trust: f32,
-    pub before_power: f32,
-    pub after_closeness: f32,
+    pub before_affinity: f32,
+    pub before_respect: f32,
+    pub before_wariness: f32,
     pub after_trust: f32,
-    pub after_power: f32,
+    pub after_affinity: f32,
+    pub after_respect: f32,
+    pub after_wariness: f32,
     pub cause: RelationshipChangeCause,
 }
 
@@ -892,12 +898,14 @@ mod tests {
                 EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
                     owner_id: "a".into(),
                     target_id: "b".into(),
-                    before_closeness: 0.0,
                     before_trust: 0.0,
-                    before_power: 0.0,
-                    after_closeness: 0.0,
+                    before_affinity: 0.0,
+                    before_respect: 0.0,
+                    before_wariness: 0.0,
                     after_trust: 0.0,
-                    after_power: 0.0,
+                    after_affinity: 0.0,
+                    after_respect: 0.0,
+                    after_wariness: 0.0,
                     cause: RelationshipChangeCause::Unspecified,
                 })),
                 EventKind::RelationshipUpdated,
@@ -1085,12 +1093,14 @@ mod tests {
             RelationshipUpdatedPayload {
                 owner_id: "a".into(),
                 target_id: "b".into(),
-                before_closeness: 0.0,
                 before_trust: 0.0,
-                before_power: 0.0,
-                after_closeness: 0.0,
+                before_affinity: 0.0,
+                before_respect: 0.0,
+                before_wariness: 0.0,
                 after_trust: 0.0,
-                after_power: 0.0,
+                after_affinity: 0.0,
+                after_respect: 0.0,
+                after_wariness: 0.0,
                 cause: RelationshipChangeCause::Unspecified,
             },
         )));

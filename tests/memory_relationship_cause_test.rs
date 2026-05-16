@@ -135,12 +135,15 @@ fn run_cause(
         EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "alice".into(),
             target_id: "bob".into(),
-            before_closeness: 0.0,
             before_trust: 0.0,
-            before_power: 0.0,
-            after_closeness: 0.3,
+            before_affinity: 0.0,
+            before_respect: 0.0,
+            before_wariness: 0.0,
             after_trust: 0.0,
-            after_power: 0.0,
+            // Stage 3 — ±100 raw, 30.0 > threshold(5.0)
+            after_affinity: 30.0,
+            after_respect: 0.0,
+            after_wariness: 0.0,
             cause,
         })),
     );

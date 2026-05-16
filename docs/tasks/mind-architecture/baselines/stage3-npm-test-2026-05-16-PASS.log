@@ -1,0 +1,10 @@
+
+
+ RUN  v4.1.4 /home/user/npc-mind-rs/mind-studio-ui
+
+
+ Test Files  6 passed (6)
+      Tests  100 passed (100)
+   Start at  04:24:40
+   Duration  3.23s (transform 544ms, setup 1.20s, import 449ms, tests 338ms, environment 6.14s)
+

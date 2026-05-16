@@ -302,12 +302,14 @@ mod tests {
         let event = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "alice".into(),
             target_id: "bob".into(),
-            before_closeness: 0.1,
-            before_trust: 0.2,
-            before_power: 0.3,
-            after_closeness: 0.4,
-            after_trust: 0.5,
-            after_power: 0.6,
+            before_trust: 10.0,
+            before_affinity: 20.0,
+            before_respect: 30.0,
+            before_wariness: 40.0,
+            after_trust: 50.0,
+            after_affinity: 60.0,
+            after_respect: 70.0,
+            after_wariness: 80.0,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         })));
 
@@ -315,7 +317,8 @@ mod tests {
 
         let p = handler.projection();
         let p = p.lock().unwrap();
-        assert_eq!(p.get_values("alice", "bob"), Some((0.4, 0.5, 0.6)));
+        // Stage 3 — (trust, affinity, respect, wariness) 순서
+        assert_eq!(p.get_values("alice", "bob"), Some((50.0, 60.0, 70.0, 80.0)));
     }
 
     #[test]
@@ -327,23 +330,27 @@ mod tests {
         let ev1 = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "a".into(),
             target_id: "b".into(),
-            before_closeness: 0.0,
             before_trust: 0.0,
-            before_power: 0.0,
-            after_closeness: 0.1,
-            after_trust: 0.1,
-            after_power: 0.1,
+            before_affinity: 0.0,
+            before_respect: 0.0,
+            before_wariness: 0.0,
+            after_trust: 10.0,
+            after_affinity: 10.0,
+            after_respect: 10.0,
+            after_wariness: 10.0,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         })));
         let ev2 = make_event(EventPayload::RelationshipUpdated(Box::new(RelationshipUpdatedPayload {
             owner_id: "a".into(),
             target_id: "b".into(),
-            before_closeness: 0.1,
-            before_trust: 0.1,
-            before_power: 0.1,
-            after_closeness: 0.7,
-            after_trust: 0.8,
-            after_power: 0.9,
+            before_trust: 10.0,
+            before_affinity: 10.0,
+            before_respect: 10.0,
+            before_wariness: 10.0,
+            after_trust: 70.0,
+            after_affinity: 80.0,
+            after_respect: 90.0,
+            after_wariness: 50.0,
             cause: crate::domain::event::RelationshipChangeCause::Unspecified,
         })));
 
@@ -352,7 +359,7 @@ mod tests {
 
         let p = handler.projection();
         let p = p.lock().unwrap();
-        assert_eq!(p.get_values("a", "b"), Some((0.7, 0.8, 0.9)));
+        assert_eq!(p.get_values("a", "b"), Some((70.0, 80.0, 90.0, 50.0)));
     }
 
     #[test]
