@@ -74,15 +74,32 @@ Phase 2.3 narrative 시뮬 결과 보고 결정.
 | `trust_channel_after_anger` | `0.158` | `15.8` | 단위만 변경 |
 | `admiration_no_leak_until_phase_2_3` | 4 modifier 불변 | — | Admiration이 더 이상 *no-leak* 이 아닌 경우 (modifier 변경) 시 *제거 가능 정상* |
 
-### E) v0.6 시나리오 JSON 로드 transient bug 청소
+### E) v0.6 시나리오 JSON 로드 — 커스텀 Deserialize (리뷰 H1 반영해 해소됨, Stage 4 제거 대상)
 
-Stage 3에서 `RelationshipData`에 `#[serde(alias = "closeness")]` 추가로 v0.6 JSON 호환 *deserialize*만 가능. 값 의미는 어긋남 (closeness=0.5가 affinity=0.5로 박힘). Stage 4 migration 후 Phase 2.3 진입 시 시나리오 JSON이 ±100 schema이므로 이 alias 제거 검토:
+Stage 3 리뷰 H1 (save-roundtrip data loss) 반영 → `RelationshipData`에 **커스텀 `Deserialize` impl** 도입 (`state.rs:680~`). serde alias가 아니라 스키마 감지 + 값 의미 보존:
 
 ```rust
-// Stage 4 migration 완료 후 Phase 2.3에서 제거 검토:
-#[serde(alias = "closeness")]
-pub affinity: f32,
+// state.rs:680~ 실제 구현:
+impl<'de> Deserialize<'de> for RelationshipData {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> { ... }
+}
+// :708  let is_v06 = raw.closeness.is_some() || raw.power.is_some();
+// :714  tracing::warn!("RelationshipData v0.6 schema detected ...")
+// :719  let affinity = raw.closeness.unwrap_or(0.0) * 100.0;  // 값 의미 보존
 ```
+
+- v0.6 키(`closeness`/`power`) 감지 시 `trust × 100`, `closeness × 100 → affinity` **자동 변환** (closeness=0.5 → affinity=50, 값 의미 보존 — KICKOFF v1.0 초안의 "값 의미 어긋남"은 H1 반영 전 상태, 정정됨)
+- `power`는 폐기 (B-D4) — 값 무시
+- `tracing::warn!`로 자동 변환 표시 + Stage 4 마이그레이션 권장 로그
+- v0.7 입력 (trust/affinity 키 + ±100)은 그대로 통과 (자동 변환 없음)
+- 5 신규 단위 테스트 (`state.rs:927 mod relationship_data_tests`): `v06_schema_auto_multiplies_by_100` / `v07_schema_passes_through_without_scaling` / `v06_power_alone_triggers_migration` / `save_roundtrip_v06_to_v07_preserves_semantic` / `v07_missing_optional_fields_defaults_to_zero`
+
+**결과**: v0.6 시나리오 JSON 그대로 로드해도 ±100 raw로 자동 마이그레이션 + 값 의미 보존. save-roundtrip data loss 위험 해소.
+
+**Stage 4 책임 (회고 §7-E와 일치)**:
+1. 시나리오 JSON 파일 자체를 v0.7 4-필드 스키마로 **영구 변환** (원 B-D8 책임)
+2. **`RelationshipData` 커스텀 `Deserialize` impl (`state.rs:680~`) + 5 테스트 제거** (신규 책임 — H1이 만든 것). ★ 제거 대상은 *serde alias가 아니라 커스텀 Deserialize impl 전체* — v1.0 초안의 `#[serde(alias = "closeness")]` 제거 서술은 코드와 불일치 (그런 alias 없음), 본 항목으로 정정됨
+3. Stage 4 완료 게이트에 *v0.6 자동 변환 코드 완전 제거 검증* 추가 (dead code 영구 잔존 방지)
 
 `#[serde(default)]` on respect/wariness는 v0.7 JSON에도 *backward compat* 보장 차원에서 유지 권장 (디자이너가 일부 axes 생략한 경우).
 
@@ -147,3 +164,4 @@ Stage 3 후의 `RelationshipMemoryHandler::dominant_delta` 라벨:
 | 버전 | 날짜 | 변경 |
 |---|---|---|
 | 1.0 | 2026-05-16 | Stage 3 종결 시점 작성. 잔존 ÷100 3 위치 / W1 깨지는 트리거 / W1 expected 재조정 표 / R-3b memory 혼재 / R-3g threshold 정밀화 / v0.6 transient bug 청소 / Phase 2.3 작업 순서 권장. |
+| 1.1 | 2026-05-16 | §1-E 정정: 실제 코드는 `#[serde(alias)]`가 아니라 커스텀 `Deserialize` impl (state.rs:680~) — 값 의미 보존 (closeness 0.5 → affinity 50). 회고 §5/§7-E와 일치. Stage 4 제거 대상 = 커스텀 Deserialize impl 전체 + 5 테스트 (존재하지 않는 serde alias 아님). 코드 검증으로 확정. |
