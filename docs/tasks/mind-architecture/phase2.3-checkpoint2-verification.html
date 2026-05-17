@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2.3 · 확인② — 실행 검증 / 종결·정정 판정</title>
+<style>
+  :root{
+    --bg:#0d1117;--panel:#141b24;--panel2:#1a232e;--line:#26303d;
+    --ink:#d6dde6;--dim:#8b97a6;--faint:#5d6875;
+    --ok:#3fb950;--warn:#d29922;--crit:#f85149;--info:#58a6ff;--acc:#7ee787;
+    --mono:'SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',-apple-system,sans-serif;line-height:1.62;padding:38px 22px 90px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:22px;font-weight:650;margin-bottom:4px}
+  h2{font-size:16px;font-weight:650;margin:36px 0 13px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--acc)}
+  h3{font-size:14px;font-weight:650;margin:18px 0 8px;color:var(--info)}
+  p{margin:9px 0}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:24px}
+  code,.m{font-family:var(--mono);font-size:.85em;background:#0a0e13;padding:1.5px 6px;border-radius:4px;color:#cdd6e0;border:1px solid #232c38}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:13px 0}
+  .ok-card{border-left:3px solid var(--ok)}
+  .crit-card{border-left:3px solid var(--crit)}
+  .warn-card{border-left:3px solid var(--warn)}
+  .info-card{border-left:3px solid var(--info)}
+  table{width:100%;border-collapse:collapse;margin:11px 0;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;font-family:var(--mono)}
+  .t-ok{background:rgba(63,185,80,.13);color:var(--ok)}
+  .t-warn{background:rgba(210,153,34,.14);color:var(--warn)}
+  .t-crit{background:rgba(248,81,73,.14);color:var(--crit)}
+  .lead{color:var(--faint);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+  ul{margin:7px 0 7px 4px;list-style:none}
+  li{margin:5px 0;padding-left:17px;position:relative}
+  li::before{content:'▸';position:absolute;left:0;color:var(--faint)}
+  .hl{color:var(--acc);font-weight:600}.bad{color:var(--crit);font-weight:600}.good{color:var(--ok);font-weight:600}
+  .verdict{font-size:18px;font-weight:700;padding:16px 20px;border-radius:10px;margin:14px 0}
+  .v-ok{background:rgba(63,185,80,.1);border:1px solid var(--ok);color:var(--ok)}
+  .foot{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phase 2.3 · 확인② — 실행 검증 / 종결·정정 판정</h1>
+  <div class="sub">npc-mind-rs · Claude Code 실행 산출물 코드·실측 검증 · 2026-05-17 · HEAD <span class="m">0e6c258</span> (PR #94 merge)</div>
+
+  <div class="verdict v-ok">판정: 조건부 종결 — G1·G2·G3 PASS (회귀 0 실측 확정), G4 정정 1건 후 종결</div>
+
+  <div class="card info-card">
+    <div class="lead">검증 방법</div>
+    <p>"완료됐겠지" 불신, 전수 실측: <span class="m">git log/show</span> + <span class="m">grep</span> + <span class="m">cargo test</span>. 추론 0 — Stage 0 교훈 적용. 커밋 구조 spec 정합 확인: <span class="m">c7af34f</span>(2.3-A 원자) → <span class="m">5549950</span>(2.3-B) → <span class="m">33a34bd</span>(2.3-C) → <span class="m">0e6c258</span>(PR#94 merge).</p>
+  </div>
+
+  <h2>§1. G1 (2.3-A §A 0-델타 리팩터) — <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>결정</th><th>실측 검증</th><th>판정</th></tr>
+    <tr><td>P-D-2 ÷100 제거</td><td><span class="m">mod.rs</span> ÷100 코드 0건 (L169는 설명 주석)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-2 weight rescale</td><td><span class="m">REL_AFFINITY_INTENSITY=0.005</span> / EMPATHY·HOSTILITY·TRUST_EMOTION=<span class="m">0.003</span> — 정확히 1/100</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-2 modifiers 공식</td><td><span class="m">affinity * rel_affinity_*_weight</span> raw 직접 곱 (L175-178), ÷100 없음</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-2 rename 전파</td><td><span class="m">rel_closeness_*_weight</span> src 전체 잔존 0 → affinity 전파 완료</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-3 dead field 제거</td><td><span class="m">closeness_update_rate</span> src 전체 <span class="hl">0건</span> (완전 제거)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-3 L154 치환</td><td><span class="m">assert!(MEMORY_RELATIONSHIP_DELTA_THRESHOLD &gt; 0.0)</span> — 삭제 아닌 치환, live 가드 보존</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-4 presentation 4축</td><td><span class="m">affinity_level/respect_level/wariness_level</span> 신설, <span class="m">closeness_level</span> 소멸, <span class="m">power_level</span> 폐기(grep 0)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-6 W1 가드 1·2</td><td>literal <span class="m">28.6</span>/<span class="m">15.8</span> 재조정(L818/842, ±100 native 주석), 테스트 <span class="good">ok</span></td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-6 W1 가드 3</td><td><span class="m">admiration_no_leak</span>(L852) 존재·보존, 테스트 <span class="good">ok</span> (제거 안 함 — 정확)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>C-6 원자 커밋</td><td><span class="m">c7af34f</span> 단일 커밋에 §A 전부</td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+  <p><strong>회귀 신호 (정본 정의):</strong> <span class="m">cargo test --lib</span> = <span class="hl">554 passed / 0 failed / 0 ignored</span>, panic 0, 빌드 에러 0. 도메인 코어 회귀 <span class="good">0 실측 확정</span>. W1 가드 3개 전부 ok (1·2 재조정후 PASS, 3 GREEN — P-D-6 정확).</p>
+
+  <h2>§2. G2 (2.3-B 정리) — <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>결정</th><th>실측</th><th>판정</th></tr>
+    <tr><td>P-D-9 고아 주석</td><td><span class="m">state.rs:664-668</span> 커스텀 Deserialize 묘사 주석 제거 확인 (grep 0)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-9 situation.rs</td><td><span class="m">closeness</span> 잔존 0 (affinity로 정정 완료)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-7 backup/discarded 삭제</td><td><span class="m">_discarded-v0.6</span> / <span class="m">scenarios.backup-v0.6</span> 부재, 잔존 디렉토리 0</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>코드 동작 0</td><td>lib 554P 무결 (2.3-B는 주석/파일만, 코드 무변경 정합)</td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+
+  <h2>§3. G3 (2.3-C narrative) — <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>항목</th><th>실측</th><th>판정</th></tr>
+    <tr><td>S1~S4 박제</td><td><span class="m">appraise-validation/</span> S1.json 2285B / S2 2929B / S3 2426B / S4 2465B + README 6125B</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>P-D-C1 / 확인② 산출</td><td><span class="m">phase2.3-stage-C-checkpoint2.html</span> 생성 (Claude Code 자체 보고)</td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+  <p>P-D-C1 결정(content-projection a/b/c)·intensity 0.4·S1~S3 narrative 타당성의 <strong>최종 디자이너 판단</strong>은 Claude Code가 박제한 S1~S4 + checkpoint2 보고를 Bekay가 검토 후 확정 — 본 검증은 산출물 존재·정합까지. (디자이너 판단 항목이라 Claude 검증 범위 밖, §6 참조)</p>
+
+  <h2 style="color:var(--crit)">§4. G4 (외부문서 동기화) — <span class="tag t-crit">정정 필요 ★</span></h2>
+  <div class="card crit-card">
+    <div class="lead">유일 정정 항목 — P-D-9가 경고한 doc-drift 재발 (C-5)</div>
+    <p>코드·spec은 무결하나, <strong>외부 인덱스 문서가 해소된 부채를 여전히 미해결로 서술</strong>:</p>
+    <table>
+      <tr><th>위치</th><th>현 (stale)</th><th>실제</th></tr>
+      <tr><td><span class="m">CLAUDE.md</span> L622</td><td>"state.rs:666~671 커스텀 Deserialize (Stage 4 미처리, KICKOFF §1-E)" / "closeness/power 12파일/69매치" / "÷100 잔존" 부채로 명시</td><td>전부 Phase 2.3에서 <span class="good">해소 완료</span> (실측 확정)</td></tr>
+      <tr><td><span class="m">CLAUDE.md</span> L953</td><td>spec "🟡 DRAFT (헤더+골격만)"</td><td>🟢 FROZEN + Phase 2.3 종결</td></tr>
+      <tr><td><span class="m">00-roadmap.md</span> L277~293</td><td>Phase 2.3 = 인계 시점 서술, 종결 표기 없음</td><td>2.3-A/B/C 완료</td></tr>
+    </table>
+    <p><strong>왜 정정 필수:</strong> 이건 P-D-9가 명시 경고하고 C-5로 봉쇄하려던 <span class="bad">바로 그 doc-drift</span> — 해소된 부채를 문서가 미해결로 서술 → 다음 인계자(Phase 2.5) 재오독. ①§E 전례(Stage 6이 stale 주석을 impl로 오독)와 동형. G4 = "외부문서 Phase 2.3 행 동기화"가 종결 게이트에 명시돼 있으므로 <strong>미충족 = 미종결</strong>.</p>
+    <p><strong>정정 범위 (코드 0, 문서만):</strong> ⑴ CLAUDE.md L622 Phase 2 부채 4항(Deserialize/closeness·power/÷100/result.json 중 해소분) → "Phase 2.3에서 해소" 갱신 ⑵ L952-953 spec DRAFT→FROZEN + KICKOFF 정정 포인터 반영 ⑶ 00-roadmap.md Phase 2.3 행 종결 표기 + Stage 2.3-A/B/C 결과 + 디자이너 잔여 상태.</p>
+  </div>
+
+  <h2>§5. 비회귀 확정 — world_load_fk_negative hang</h2>
+  <div class="card warn-card">
+    <p>검증 중 <span class="m">tests/world_load_fk_negative*</span> 4개 integration 묶음이 테스트 실행 단계에서 hang(컴파일 완료 후 정지) 발견. <strong>Phase 2.3 회귀 아님 — 실측 2중 확정:</strong></p>
+    <ul>
+      <li>git: <span class="m">c7af34f~1..HEAD</span>에서 해당 테스트·<span class="m">src/worldbuilding/</span> 변경 <span class="hl">0건</span> (Phase 2.3 미변경 묶음)</li>
+      <li>Stage 0 진입 baseline 로그(843P)도 마지막이 <span class="m">running 0 tests</span>로 종료, <span class="m">world_load_fk_negative</span> 매치 0 — <span class="hl">진입 때부터 동일하게 미실행/hang</span> (기존 환경 부채, Phase 2.3 무관)</li>
+    </ul>
+    <p>→ 회귀 신호는 <span class="m">--lib</span>(도메인 코어) 554P/0F로 판정. integration hang은 Phase 2.3 종결과 독립된 <strong>별도 환경 이슈</strong>(권고: 별도 추적 — DB/파일 FK 음수 케이스 타임아웃 의심, 본 Phase 비스코프).</p>
+  </div>
+
+  <h2>§6. 종결 판정 + Bekay 결정 요청</h2>
+  <div class="card ok-card">
+    <p><strong>코드·spec 무결</strong>: G1·G2·G3 전부 PASS, 회귀 0(lib 554P/0F) 실측 확정. §A 값 동치·dead field 제거·comment-drift sweep·backup 삭제·S1~S4 박제 모두 spec 정합. <strong>구현 품질 = 종결 가능 수준.</strong></p>
+  </div>
+  <div class="card crit-card">
+    <p><strong>종결 차단 1건</strong>: G4 외부문서 doc-drift(§4) — 종결 게이트 명시 항목이라 미충족 시 미종결. <span class="hl">코드 0·문서만 정정</span>이라 작업 극소.</p>
+  </div>
+  <p><strong>결정 요청:</strong></p>
+  <ul>
+    <li><strong>D1</strong> — G4 doc-drift 정정(CLAUDE.md L622/952-953 + 00-roadmap.md)을 <span class="hl">지금 Claude가 수행</span>하고 커밋 후 <strong>Phase 2.3 종결 선언</strong>? (권고)</li>
+    <li><strong>D2</strong> — P-D-C1 / intensity 0.4 / S1~S3 narrative 타당성: Claude Code의 <span class="m">phase2.3-stage-C-checkpoint2.html</span>를 Bekay가 별도 검토하실지, 아니면 그 결정도 본 종결에 포함할지</li>
+    <li><strong>D3</strong> — world_load_fk_negative hang: 별도 이슈로 분리 추적 동의? (Phase 2.3 비스코프 확정)</li>
+  </ul>
+
+  <div class="foot">
+    확인② — Claude Code 실행 검증 완료. 판정: G1·G2·G3 PASS / G4 정정 1건 후 종결.<br>
+    근거: git c7af34f·5549950·33a34bd·0e6c258 / cargo test --lib 554P·0F / grep 전수 / 진입 baseline 대조<br>
+    본 보고 HTML. 정정 시 코드 0·문서만. git 커밋은 Claude 직접(2026-05-17 지시).
+  </div>
+</div>
+</body>
+</html>

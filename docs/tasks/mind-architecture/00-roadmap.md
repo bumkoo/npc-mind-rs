@@ -294,6 +294,15 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 
 **부채 (Phase 2.3 인계)**: ÷100 잔존 (telling_ingestion + modifiers + RelationshipLevel) + closeness/power src 12 파일/69 매치 재카탈로그 + state.rs:666~671 커스텀 Deserialize 잔존 (Stage 4 미처리) + B-D9 result.json 자동 dump 인프라 부재.
 
+> 🟢 **Phase 2.3 종결 (2026-05-17, 확인② 실측 검증)** — 위 "부채/디자이너 잔여" Phase 2 시점 서술은 이력 보존용. 실제 처리 결과:
+> - **Stage 2.3-A** (`c7af34f`, 원자 1커밋): §A 값 동치 ±100 native — ÷100 제거 + weight 1/100(`REL_AFFINITY_*=0.005/0.003`) + `closeness_update_rate` dead field 완전 제거(L154는 `>0.0` 치환) + closeness→affinity rename + presentation 4축 + `power_level` 폐기 + W1 가드 1·2 literal `28.6/15.8` 재조정(가드 3 GREEN 유지).
+> - **Stage 2.3-B** (`5549950`): comment-drift sweep(고아 Deserialize 주석 제거 등) + `_discarded-v0.6`/`scenarios.backup-v0.6` 영구 삭제.
+> - **Stage 2.3-C** (`33a34bd`): S1~S4 narrative 박제(`appraise-validation/`) + P-D-C1 측정.
+> - **정정 (FROZEN spec §0.5)**: KICKOFF v1.2 §1-C("§C 4축 합산")·§1-E("커스텀 Deserialize Stage 4 미처리")는 Stage 0 사실조사로 정정 — §C는 `dominant_delta` max 단일축(합산 아님), §E는 Stage 4(`81777e0`)에서 이미 제거였고 stale doc 주석을 오독한 것.
+> - **회귀 0**: `cargo test --lib` 554 passed / 0 failed. (`world_load_fk_negative*` integration hang은 Phase 2.3 미변경·진입 baseline 때부터 동일 — 별도 환경 이슈로 분리.)
+> - **Phase 2.5 이관**: `axis_modulation` + S4 시간분산(구조 의존) + B-D9 result.json dump.
+> - 정본: [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md) 🟢 FROZEN, 검증: [`phase2.3-checkpoint2-verification.html`](phase2.3-checkpoint2-verification.html).
+
 **산출물 spec**: [`task-rel-phase2-domain-migration.md`](task-rel-phase2-domain-migration.md) **v1.0 FROZEN**. 종합 보고: [`phase2-checkpoint-report.md`](phase2-checkpoint-report.md). 회고: `phase2-stage{1~6}-*.md` 6종.
 
 ### Phase 2.3 — appraise 정비 (★ 신설 2026-05-13)

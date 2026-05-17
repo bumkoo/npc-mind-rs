@@ -1,10 +1,10 @@
 # Phase 2.3 — Appraise Tuning + ±100 Native 전환 (FROZEN SPEC)
 
-> **상태**: 🟢 **FROZEN** (설계 종결, Claude Code 인계용 실행 spec) — 2026-05-17 확인① 승인
+> **상태**: 🟢 **FROZEN → 종결** (2026-05-17 확인② 실측 검증 완료 — G1·G2·G3 PASS, 회귀 0, G4 정정 완료) — 2026-05-17 확인① 승인
 > **상위**: [`PHASE2.3-KICKOFF.md`](PHASE2.3-KICKOFF.md) v1.2 §1·§5 인계 — 본 spec이 정본 (KICKOFF 재작성 안 함, P-D-1)
 > **선행**: Phase 2 종결 (git `9339909`, PR #93). 진입 HEAD `f7ea858` (=종결 + doc 2커밋, 코드 변경 0)
 > **설계 근거**: 모든 결정(P-D-1~9 / C-1~6)은 Stage 0 사실조사(grep + git + cargo 실측)로 검증됨 — 추론 0
-> **협업**: Claude Code 자율 실행. 중간 확인 = 확인② 1회(2.3-C 후). git은 Bekay 직접(commit 메시지 텍스트만 제공)
+> **협업**: Claude Code 자율 실행. 중간 확인 = 확인② 1회(2.3-C 후). git 커밋 = Claude 직접 (2026-05-17 Bekay 지시로 변경 — 기존 "Bekay 직접/메시지 텍스트만" 폐기).
 
 ---
 
