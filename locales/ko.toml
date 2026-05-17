@@ -173,9 +173,10 @@ directive_behavior = "행동 경향: {behavior}"            # 행동 경향 포�
 restriction_item = "- {restriction}"                   # 금지 사항 항목 포맷
 section_relationship = "[상대와의 관계]"                # 관계 섹션 헤더 (파트너 없을 때)
 section_relationship_with_partner = "[상대와의 관계: {partner_name} — 사용자가 이 역할로 대화합니다]"  # 관계 섹션 헤더 (파트너 있을 때)
-relationship_closeness = "친밀도: {level}"              # 친밀도 포맷
+relationship_affinity = "친화도: {level}"               # 친화도 포맷
 relationship_trust = "신뢰도: {level}"                  # 신뢰도 포맷
-relationship_power = "상하 관계: {level}"               # 상하 관계 포맷
+relationship_respect = "존경도: {level}"                # 존경도 포맷
+relationship_wariness = "경계심: {level}"               # 경계심 포맷
 section_response_rules = "[응답 규칙]"                  # 응답 규칙 섹션 헤더
 response_rule_length = "- 2~3문장으로 간결하게 답한다. 길게 늘어놓지 않는다."
 response_rule_no_repetition = "- 같은 의미의 문장을 반복하지 않는다."
@@ -183,34 +184,46 @@ response_rule_dialogue_only = "- 지문(*행동 묘사*)은 쓰지 않고, 대�
 
 
 # ---------------------------------------------------------------------------
-# 관계 수준 라벨 — 친밀도 (closeness)
+# 관계 수준 라벨 — 친화도 (affinity, Phase 2.3 4축 §A)
+# 임계값은 ±100 native: VeryHigh > 60, High > 20, Neutral > -20, Low > -60.
 # ---------------------------------------------------------------------------
-[closeness_level]
-VeryHigh = "매우 깊은"          # > 0.6
-High = "가까운"                # > 0.2
-Neutral = "보통"               # > -0.2
-Low = "소원한"                 # > -0.6
-VeryLow = "적대적인"           # <= -0.6
+[affinity_level]
+VeryHigh = "매우 깊은"
+High = "가까운"
+Neutral = "보통"
+Low = "소원한"
+VeryLow = "적대적인"
 
 # ---------------------------------------------------------------------------
 # 관계 수준 라벨 — 신뢰도 (trust)
 # ---------------------------------------------------------------------------
 [trust_level]
-VeryHigh = "매우 높은 신뢰"     # > 0.6
-High = "신뢰하는"              # > 0.2
-Neutral = "보통"               # > -0.2
-Low = "의심하는"               # > -0.6
-VeryLow = "불신하는"           # <= -0.6
+VeryHigh = "매우 높은 신뢰"
+High = "신뢰하는"
+Neutral = "보통"
+Low = "의심하는"
+VeryLow = "불신하는"
 
 # ---------------------------------------------------------------------------
-# 상하 관계 수준 라벨
+# 관계 수준 라벨 — 존경도 (respect, Phase 2.3 신설)
 # ---------------------------------------------------------------------------
-[power_level]
-VeryHigh = "절대 상위자 — 극존칭 사용, 함부로 말을 꺼내지 못함"
-High = "상위자 — 존대하되, 개인적 교류와 의견 제시 가능"
-Neutral = "대등한 관계 — 편하게 대화하며 자유롭게 의견 교환"
-Low = "하위자 — 가르치는 어조, 지시와 훈계가 자연스러움"
-VeryLow = "절대 하위자 — 명령조, 상대의 체면을 크게 고려하지 않음"
+[respect_level]
+VeryHigh = "깊이 존경하는"
+High = "존경하는"
+Neutral = "보통"
+Low = "낮춰보는"
+VeryLow = "경멸하는"
+
+# ---------------------------------------------------------------------------
+# 관계 수준 라벨 — 경계심 (wariness, Phase 2.3 신설). wariness는 0~100 단방향이라
+# 음수 영역은 사용되지 않는다 (Neutral 이하는 from_score 분기로 도달 가능하나 실값 0~100).
+# ---------------------------------------------------------------------------
+[wariness_level]
+VeryHigh = "극도로 경계하는"
+High = "경계하는"
+Neutral = "보통"
+Low = "안심하는"
+VeryLow = "전적으로 신뢰하는"
 
 # ---------------------------------------------------------------------------
 # Memory Step B — 기억 블록 주입 라벨

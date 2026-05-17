@@ -67,10 +67,6 @@ impl_variant_name!(RelationshipLevel, {
     VeryHigh, High, Neutral, Low, VeryLow,
 });
 
-impl_variant_name!(PowerLevel, {
-    VeryHigh, High, Neutral, Low, VeryLow,
-});
-
 impl_variant_name!(PersonalityTrait, {
     HonestAndModest, CunningAndAmbitious, EmotionalAndAnxious,
     BoldAndIndependent, ConfidentAndSociable, IntrovertedAndQuiet,
@@ -112,12 +108,14 @@ pub struct LocaleBundle {
     pub personality_trait: HashMap<String, String>,
     /// 말투 스타일 번역 (SpeechStyle variant name → 번역)
     pub speech_style: HashMap<String, String>,
-    /// 친밀도 수준 번역 (RelationshipLevel variant name → 번역)
-    pub closeness_level: HashMap<String, String>,
+    /// 친화도 수준 번역 (RelationshipLevel variant name → 번역)
+    pub affinity_level: HashMap<String, String>,
     /// 신뢰도 수준 번역 (RelationshipLevel variant name → 번역)
     pub trust_level: HashMap<String, String>,
-    /// 상하 관계 수준 번역 (PowerLevel variant name → 번역)
-    pub power_level: HashMap<String, String>,
+    /// 존경도 수준 번역 (RelationshipLevel variant name → 번역)
+    pub respect_level: HashMap<String, String>,
+    /// 경계심 수준 번역 (RelationshipLevel variant name → 번역)
+    pub wariness_level: HashMap<String, String>,
     /// 폴백 텍스트 (특성/말투가 없을 때)
     pub fallback: FallbackLabels,
     /// 프롬프트 템플릿 (섹션 헤더, 포맷 패턴)
@@ -211,12 +209,14 @@ pub struct TemplateStrings {
     pub section_relationship: String,
     /// 관계 섹션 (파트너 있을 때): "[상대와의 관계: {partner_name} — ...]"
     pub section_relationship_with_partner: String,
-    /// 친밀도: "친밀도: {level}"
-    pub relationship_closeness: String,
+    /// 친화도: "친화도: {level}"
+    pub relationship_affinity: String,
     /// 신뢰도: "신뢰도: {level}"
     pub relationship_trust: String,
-    /// 상하 관계: "상하 관계: {level}"
-    pub relationship_power: String,
+    /// 존경도: "존경도: {level}"
+    pub relationship_respect: String,
+    /// 경계심: "경계심: {level}"
+    pub relationship_wariness: String,
     /// 응답 규칙 섹션: "[응답 규칙]"
     pub section_response_rules: String,
     /// 응답 규칙 — 길이
@@ -326,9 +326,9 @@ impl LocaleBundle {
         self.lookup(&self.speech_style, s)
     }
 
-    /// RelationshipLevel → 친밀도 번역
-    pub fn closeness_level_label(&self, level: &RelationshipLevel) -> &str {
-        self.lookup(&self.closeness_level, level)
+    /// RelationshipLevel → 친화도 번역
+    pub fn affinity_level_label(&self, level: &RelationshipLevel) -> &str {
+        self.lookup(&self.affinity_level, level)
     }
 
     /// RelationshipLevel → 신뢰도 번역
@@ -336,9 +336,14 @@ impl LocaleBundle {
         self.lookup(&self.trust_level, level)
     }
 
-    /// PowerLevel → 번역된 설명
-    pub fn power_level_label(&self, level: &PowerLevel) -> &str {
-        self.lookup(&self.power_level, level)
+    /// RelationshipLevel → 존경도 번역
+    pub fn respect_level_label(&self, level: &RelationshipLevel) -> &str {
+        self.lookup(&self.respect_level, level)
+    }
+
+    /// RelationshipLevel → 경계심 번역
+    pub fn wariness_level_label(&self, level: &RelationshipLevel) -> &str {
+        self.lookup(&self.wariness_level, level)
     }
 
     /// 성격 특성 목록을 번역된 문장으로 조합

@@ -173,18 +173,19 @@ directive_behavior = "Behavioral tendency: {behavior}"        # 행동 경향 �
 restriction_item = "- {restriction}"                         # 금지 사항 항목 포맷
 section_relationship = "[Relationship]"                       # 관계 섹션 헤더 (파트너 없을 때)
 section_relationship_with_partner = "[Relationship with {partner_name} — user plays this role]"  # 관계 섹션 헤더 (파트너 있을 때)
-relationship_closeness = "Closeness: {level}"                 # 친밀도 포맷
+relationship_affinity = "Affinity: {level}"                   # 친화도 포맷
 relationship_trust = "Trust: {level}"                         # 신뢰도 포맷
-relationship_power = "Power dynamic: {level}"                 # 상하 관계 포맷
+relationship_respect = "Respect: {level}"                     # 존경도 포맷
+relationship_wariness = "Wariness: {level}"                   # 경계심 포맷
 section_response_rules = "[Response Rules]"                   # 응답 규칙 섹션 헤더
 response_rule_length = "- Keep it to 2-3 concise sentences. Do not ramble."
 response_rule_no_repetition = "- Do not repeat the same idea with different wording."
 response_rule_dialogue_only = "- Output dialogue only. No stage directions or action descriptions. Express emotion through tone and word choice."
 
 # ---------------------------------------------------------------------------
-# Closeness level labels
+# Affinity level labels (Phase 2.3 4-axis §A; thresholds ±100 native)
 # ---------------------------------------------------------------------------
-[closeness_level]
+[affinity_level]
 VeryHigh = "very close"
 High = "close"
 Neutral = "neutral"
@@ -201,12 +202,25 @@ Neutral = "neutral"
 Low = "suspicious"
 VeryLow = "distrusted"
 
-[power_level]
-VeryHigh = "absolute superior — use extreme honorifics, do not speak unless spoken to"
-High = "superior — speak respectfully, but personal exchange and opinions are allowed"
-Neutral = "equal — speak comfortably and exchange opinions freely"
-Low = "subordinate — instructive tone, giving orders and corrections is natural"
-VeryLow = "absolute subordinate — commanding tone, little regard for the other's dignity"
+# ---------------------------------------------------------------------------
+# Respect level labels (Phase 2.3 new)
+# ---------------------------------------------------------------------------
+[respect_level]
+VeryHigh = "deeply respected"
+High = "respected"
+Neutral = "neutral"
+Low = "looked down upon"
+VeryLow = "despised"
+
+# ---------------------------------------------------------------------------
+# Wariness level labels (Phase 2.3 new; values are 0~100 one-sided)
+# ---------------------------------------------------------------------------
+[wariness_level]
+VeryHigh = "extremely wary"
+High = "wary"
+Neutral = "neutral"
+Low = "at ease"
+VeryLow = "wholly trusting"
 
 # ---------------------------------------------------------------------------
 # Memory Step B — memory block injection labels

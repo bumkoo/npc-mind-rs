@@ -164,20 +164,18 @@ impl Relationship {
 
     /// 감정 평가에 필요한 modifier 값을 사전 계산.
     ///
-    /// **Phase 2 Stage 1 — F1 흡수 정책**: `RelationshipModifiers` 4 필드
-    /// (intensity/trust/empathy/hostility)는 Phase 2.3 정밀화 대기.
-    /// 본 메서드는 *closeness 입력만 affinity로 swap* — 시맨틱 보존.
-    /// tuning profile `rel_closeness_*_weight` 필드 이름도 그대로 유지 (Phase 2.3 rename).
+    /// **Phase 2.3 §A**: ÷100 제거 + weight 1/100 재조정으로 ±100 raw native 동작.
+    /// 값 동치: `(v/100) × w_old ≡ v × (w_old/100)`. tuning profile field rename
+    /// `rel_closeness_*_weight → rel_affinity_*_weight` (logical 정렬).
     pub fn modifiers(&self) -> RelationshipModifiers {
-        let affinity_norm = self.affinity.value() / 100.0; // -1.0..1.0 정규화
-        let trust_norm = self.trust.value() / 100.0;
+        let affinity = self.affinity.value(); // ±100 raw
+        let trust = self.trust.value();
         let p = profile();
         RelationshipModifiers {
-            intensity_multiplier: (1.0 + affinity_norm * p.rel_closeness_intensity_weight)
-                .max(0.0),
-            trust_modifier: 1.0 + trust_norm * p.rel_trust_emotion_weight,
-            empathy_modifier: (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0),
-            hostility_modifier: (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0),
+            intensity_multiplier: (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0),
+            trust_modifier: 1.0 + trust * p.rel_trust_emotion_weight,
+            empathy_modifier: (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0),
+            hostility_modifier: (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0),
         }
     }
 }
@@ -370,13 +368,12 @@ mod tests {
         );
         let m = r.modifiers();
         let p = profile();
-        let affinity_norm = 0.8_f32;
-        let trust_norm = 0.5_f32;
-        let expected_intensity = (1.0 + affinity_norm * p.rel_closeness_intensity_weight).max(0.0);
-        let expected_trust = 1.0 + trust_norm * p.rel_trust_emotion_weight;
-        let expected_empathy = (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0);
-        let expected_hostility =
-            (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0);
+        let affinity = 80.0_f32;
+        let trust = 50.0_f32;
+        let expected_intensity = (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0);
+        let expected_trust = 1.0 + trust * p.rel_trust_emotion_weight;
+        let expected_empathy = (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0);
+        let expected_hostility = (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0);
         assert!((m.intensity_multiplier - expected_intensity).abs() < 1e-6);
         assert!((m.trust_modifier - expected_trust).abs() < 1e-6);
         assert!((m.empathy_modifier - expected_empathy).abs() < 1e-6);

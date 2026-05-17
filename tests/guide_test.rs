@@ -244,9 +244,11 @@ fn 관계_포함_가이드_프롬프트에_관계_섹션() {
         "관계 섹션 헤더: {}",
         prompt
     );
-    assert!(prompt.contains("친밀도"), "친밀도 라벨: {}", prompt);
+    // Phase 2.3 §A: presentation 4축 (P-D-4). 친밀도/상하 관계 → 친화도/존경도/경계심.
+    assert!(prompt.contains("친화도"), "친화도 라벨: {}", prompt);
     assert!(prompt.contains("신뢰도"), "신뢰도 라벨: {}", prompt);
-    assert!(prompt.contains("상하 관계"), "상하 관계 라벨: {}", prompt);
+    assert!(prompt.contains("존경도"), "존경도 라벨: {}", prompt);
+    assert!(prompt.contains("경계심"), "경계심 라벨: {}", prompt);
 
     println!("=== 의형제 배신 가이드 (관계 포함) ===\n{}", prompt);
 }
@@ -273,9 +275,11 @@ fn 관계_포함_json에_관계_데이터() {
         "JSON에 관계 데이터 포함"
     );
     assert!(parsed["relationship"]["target_name"].as_str() == Some("원수"));
-    assert!(parsed["relationship"]["closeness"].is_string());
+    // Phase 2.3 §A: 4축 (P-D-4). closeness/power → affinity/respect/wariness.
+    assert!(parsed["relationship"]["affinity"].is_string());
     assert!(parsed["relationship"]["trust"].is_string());
-    assert!(parsed["relationship"]["power"].is_string());
+    assert!(parsed["relationship"]["respect"].is_string());
+    assert!(parsed["relationship"]["wariness"].is_string());
 
     println!("=== 숙적 배신 JSON (관계 포함) ===\n{}", json);
 }
@@ -308,31 +312,5 @@ fn 관계_없으면_json에_관계_없음() {
     );
 }
 
-// ===========================================================================
-// 이슈 4: PowerLevel 5단계 분류 검증
-// ===========================================================================
-
-#[test]
-fn power_minus03은_low() {
-    assert_eq!(PowerLevel::from_score(-0.3), PowerLevel::Low);
-}
-
-#[test]
-fn power_0은_neutral() {
-    assert_eq!(PowerLevel::from_score(0.0), PowerLevel::Neutral);
-}
-
-#[test]
-fn power_05는_high() {
-    assert_eq!(PowerLevel::from_score(0.5), PowerLevel::High);
-}
-
-#[test]
-fn power_07은_very_high() {
-    assert_eq!(PowerLevel::from_score(0.7), PowerLevel::VeryHigh);
-}
-
-#[test]
-fn power_minus07은_very_low() {
-    assert_eq!(PowerLevel::from_score(-0.7), PowerLevel::VeryLow);
-}
+// Phase 2.3 §A (P-D-4): PowerLevel 폐기 — 위계 정보는 `Relationship::type_text`로 흡수.
+// 기존 PowerLevel 5단계 분류 테스트는 도메인 제거에 따라 삭제됨.

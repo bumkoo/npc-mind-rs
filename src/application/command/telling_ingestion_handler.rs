@@ -74,10 +74,10 @@ impl EventHandler for TellingIngestionHandler {
         let source = MemorySource::from_origin_chain(chain.len(), None);
 
         // confidence = stated × normalized_trust
-        // Stage 1: trust ±100 → ±1.0 정규화 후 기존 (1+t)/2 공식 보존.
+        // Phase 2.3 §A: ÷100 사슬 제거. `(t/100 + 1)/2 ≡ (t + 100)/200` 동치식 (±100 native).
         let normalized_trust = ctx
             .get_relationship(listener, speaker)
-            .map(|r| (r.trust().value() / 100.0 + 1.0) / 2.0)
+            .map(|r| (r.trust().value() + 100.0) / 200.0)
             .unwrap_or(0.5);
         let confidence = (stated_confidence * normalized_trust).clamp(0.0, 1.0);
 

@@ -1,0 +1,100 @@
+     Running tests/stimulus_test.rs (target/debug/deps/stimulus_test-0ca61e14ab07839e)
+
+running 10 tests
+test intensity_1에서도_최소_관성으로_변동 ... ok
+test 강한_감정은_약한_감정보다_변동_작음 ... ok
+test 교룡이_무백보다_부정_자극에_더_크게_반응 ... ok
+test 긍정_자극이_joy를_증폭 ... ok
+test 반대_자극_반복이면_감정_소멸 ... ok
+test 사과_자극이_anger를_감소 ... ok
+test 부정_자극_반복이면_분노_계속_증폭 ... ok
+test 자극으로_새_감정이_생기지_않음 ... ok
+test 도발_자극이_anger를_증폭 ... ok
+test 중립_자극은_감정_변동_없음 ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_e2e.rs (target/debug/deps/world_chilguk_chunchu_e2e-24b54af24e78652b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_followup_mid_era_events.rs (target/debug/deps/world_chilguk_chunchu_followup_mid_era_events-3e017b0d1f92a7c6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_person_e2e.rs (target/debug/deps/world_chilguk_chunchu_person_e2e-b1bbf6c990359d7c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_persons_batch_e2e.rs (target/debug/deps/world_chilguk_chunchu_persons_batch_e2e-66f54d80613a368b)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_phase3_checkpoint1.rs (target/debug/deps/world_chilguk_chunchu_phase3_checkpoint1-5f365a6b7562788c)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_phase3_checkpoint2.rs (target/debug/deps/world_chilguk_chunchu_phase3_checkpoint2-4d387cbd75f5dbb1)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_phase4_checkpoint1.rs (target/debug/deps/world_chilguk_chunchu_phase4_checkpoint1-1a0784d6a7d92b55)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_phase4_checkpoint2.rs (target/debug/deps/world_chilguk_chunchu_phase4_checkpoint2-d5f0321aa19d95ba)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_phase5c_e2e.rs (target/debug/deps/world_chilguk_chunchu_phase5c_e2e-54c27fdf95e063fb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_chilguk_chunchu_player_e2e.rs (target/debug/deps/world_chilguk_chunchu_player_e2e-50faafe3b859a60e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_load_fk_negative.rs (target/debug/deps/world_load_fk_negative-0901fecba0f690f6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_load_fk_negative_era.rs (target/debug/deps/world_load_fk_negative_era-6ff646faf46617bf)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_load_fk_negative_event.rs (target/debug/deps/world_load_fk_negative_event-835ee2eb4be75cc6)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/world_load_fk_negative_timeline.rs (target/debug/deps/world_load_fk_negative_timeline-183c25632b309c60)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
