@@ -103,7 +103,14 @@
   </div>
 
   <h2>§5. 비회귀 확정 — world_load_fk_negative hang</h2>
-  <div class="card warn-card">
+  <div class="card crit-card">
+    <div class="lead">★ 최종 정정 (2026-05-17 Bekay 4개 격리 + _event 재실행 — 2회 정정)</div>
+    <p><strong>정정 경위:</strong> 초판 "4개 hang = 환경 부채/FK 타임아웃"(추측) → 1차 격리에서 "<span class="m">_event</span> 단 1개 hang = 종료-단계 리소스 누수"(추측) → <span class="m">_event</span> 재실행 시 <span class="m">running 0 tests → test result: ok</span> 0.46s 정상 종료. <strong>두 추측 진단 모두 부정확 확정.</strong></p>
+    <p><strong>실측 사실(추측 배제):</strong> <span class="m">world_load_fk_negative{,_era,_event,_timeline}</span> 4개 전부 <span class="hl">테스트 함수 0개(0-test 빈 바이너리)이며 코드 레벨 hang 없음</span>. 4개 모두 단독 실행 시 정상 종료 실측됨. 단 <span class="m">_event</span> 1차 실행에서 <span class="m">running 0 tests</span> 후 정지가 <strong>1회 관측됐으나 재실행 시 미재현</strong> = 코드 원인 아닌 <span class="hl">재현 불가 transient</span>(AV의 신규 exe 첫 실행 스캔 지연 / 이전 hang 프로세스·파일락 잔존 / 터미널 I/O 일시정지 등 환경 요인 추정, 미확정).</p>
+    <p><strong>회귀 판정·Phase 2.3 종결 유효 불변:</strong> 4개 묶음 Phase 2.3 미변경(git 확정) + 회귀 신호 <span class="m">--lib</span> 554P/0F 그대로. 확인② 풀 측정 838P 정체는 이 transient에 1회 걸린 것 — 재현 안 되므로 회귀 무관, 정량 게이트는 <span class="m">--lib</span> 기준 충족. <strong>doc-integrity 주: 본 절은 추측 진단을 2회 정정한 이력 — 미확정 원인을 단정하지 않음이 결론.</strong></p>
+  </div>
+  <div class="card warn-card" style="opacity:.6">
+    <div class="lead">초판 (이력 보존 — 위 정정으로 대체됨)</div>
     <p>검증 중 <span class="m">tests/world_load_fk_negative*</span> 4개 integration 묶음이 테스트 실행 단계에서 hang(컴파일 완료 후 정지) 발견. <strong>Phase 2.3 회귀 아님 — 실측 2중 확정:</strong></p>
     <ul>
       <li>git: <span class="m">c7af34f~1..HEAD</span>에서 해당 테스트·<span class="m">src/worldbuilding/</span> 변경 <span class="hl">0건</span> (Phase 2.3 미변경 묶음)</li>
