@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2.3 · Stage 0 사실조사 — 확인⓪ 보고</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141b24; --panel2:#1a232e; --line:#26303d;
+    --ink:#d6dde6; --dim:#8b97a6; --faint:#5d6875;
+    --ok:#3fb950; --warn:#d29922; --crit:#f85149; --info:#58a6ff; --acc:#7ee787;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',-apple-system,sans-serif;
+    line-height:1.62;padding:38px 22px 90px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:22px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px}
+  h2{font-size:16px;font-weight:650;margin:38px 0 14px;padding-bottom:8px;
+    border-bottom:1px solid var(--line);color:var(--acc);letter-spacing:.01em}
+  h3{font-size:14px;font-weight:650;margin:20px 0 8px;color:var(--info)}
+  p{margin:9px 0;color:var(--ink)}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:26px}
+  code,.m{font-family:var(--mono);font-size:.86em;background:#0a0e13;
+    padding:1.5px 6px;border-radius:4px;color:#cdd6e0;border:1px solid #232c38}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    padding:18px 20px;margin:14px 0}
+  .crit-card{border-left:3px solid var(--crit)}
+  .ok-card{border-left:3px solid var(--ok)}
+  .info-card{border-left:3px solid var(--info)}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+  td{color:var(--ink)}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;
+    font-family:var(--mono);letter-spacing:.03em}
+  .t-ok{background:rgba(63,185,80,.13);color:var(--ok)}
+  .t-warn{background:rgba(210,153,34,.14);color:var(--warn)}
+  .t-crit{background:rgba(248,81,73,.14);color:var(--crit)}
+  .t-info{background:rgba(88,166,255,.14);color:var(--info)}
+  .lead{font-size:13px;color:var(--faint);font-family:var(--mono);margin-bottom:3px;
+    text-transform:uppercase;letter-spacing:.08em}
+  ul{margin:8px 0 8px 4px;list-style:none}
+  li{margin:6px 0;padding-left:18px;position:relative;color:var(--ink)}
+  li::before{content:'▸';position:absolute;left:0;color:var(--faint)}
+  .q{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    padding:14px 18px;margin:10px 0}
+  .q .ql{color:var(--warn);font-weight:650;font-size:13px;margin-bottom:5px}
+  .hl{color:var(--acc);font-weight:600}
+  .bad{color:var(--crit);font-weight:600}
+  .good{color:var(--ok);font-weight:600}
+  .foot{margin-top:46px;padding-top:18px;border-top:1px solid var(--line);
+    color:var(--faint);font-size:12.5px;font-family:var(--mono)}
+  .num{font-family:var(--mono);color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phase 2.3 · Stage 0 사실조사 — 확인⓪ 보고</h1>
+  <div class="sub">npc-mind-rs · appraise 정비 + ±100 native 전환 · 2026-05-17 · git HEAD <span class="m">f7ea858</span> · 작업트리 clean</div>
+
+  <div class="card info-card">
+    <div class="lead">요지 (먼저 읽을 것)</div>
+    <p>Stage 0 사실조사 결과 진입 baseline은 <span class="good">완전 무결</span>(KICKOFF §3 정본값과 정확 일치). 그러나
+    <span class="bad">정본 문서(KICKOFF v1.2)와 실제 코드가 어긋나는 중대 불일치 3건</span>을 발견했습니다.
+    이 중 <span class="hl">2건(§E·§C)은 Phase 2.3 작업 범위를 대폭 축소</span>시킵니다 — "spec/회고 서술 믿지 말고 grep 재확인" 원칙이
+    정확히 작동한 사례입니다. 아래 §3에서 정정안을 제시하고, §5에서 방향 확인을 요청합니다.</p>
+  </div>
+
+  <h2>§1. 진입 baseline 대조 (KICKOFF §3 정본 vs 실측)</h2>
+  <p>측정 명령 <span class="m">cargo test --lib --tests --bins</span> (S5-D5 정본 고정). 로그 박제:
+  <span class="m">baselines/phase2.3-entry-2026-05-17-0852.log</span>.</p>
+  <table>
+    <tr><th>메트릭</th><th>KICKOFF §3 정본 (Phase 2 종결)</th><th>Stage 0 진입 실측</th><th>판정</th></tr>
+    <tr><td>failed</td><td class="num">0</td><td class="num">0</td><td><span class="tag t-ok">일치</span></td></tr>
+    <tr><td>passed</td><td class="num">843</td><td class="num">843</td><td><span class="tag t-ok">일치</span></td></tr>
+    <tr><td>ignored</td><td class="num">2</td><td class="num">2</td><td><span class="tag t-ok">일치</span></td></tr>
+    <tr><td>result 묶음</td><td class="num">65</td><td class="num">65</td><td><span class="tag t-ok">일치</span></td></tr>
+    <tr><td>compile</td><td>OK</td><td>OK (panicked 0, error 0)</td><td><span class="tag t-ok">일치</span></td></tr>
+    <tr><td>git HEAD</td><td>9339909 (Phase2 종결)</td><td>f7ea858 (=종결+doc 2커밋)</td><td><span class="tag t-ok">정합</span></td></tr>
+  </table>
+  <p>9339909→f7ea858 사이 변경은 <span class="m">622cbb7</span>·<span class="m">f7ea858</span> <span class="hl">doc 커밋 2개뿐</span>(roadmap/kickoff 표기 정정), 코드·테스트 변경 0.
+  S5-D5 정본 정의(<span class="m">failed=0 ∧ 회귀0 ∧ 증감 설명가능 ∧ D3 3밴드 보존</span>) 충족. <span class="good">깨끗한 진입 — 진입 차단 사유 없음.</span>
+  잔존 부채(unused import 경고 수건)는 기존, 회귀 아님.</p>
+
+  <h2>§2. §A~§E 사실조사 실측 (grep / git)</h2>
+
+  <h3>§A — ÷100 / closeness·power 재카탈로그 (KICKOFF 명시 첫 작업)</h3>
+  <table>
+    <tr><th>대상</th><th>실측</th><th>정본 서술 대조</th></tr>
+    <tr><td>closeness/power (substring, src)</td><td class="num">69 매치 / 12 파일</td><td><span class="good">KICKOFF S6-D5 "12파일/69매치" 정확</span> · spec L508 "production 0건" <span class="bad">부정확 확정</span></td></tr>
+    <tr><td>실제 ÷100 production 로직</td><td class="num">5 사이트 / 3 파일</td><td>telling_ingestion:80 · snapshot:316·317 · mod.rs:172·173 — KICKOFF §1-A 본문 3사이트와 일치 (나머지 ÷100 4건은 주석)</td></tr>
+  </table>
+  <p><strong>변경 카테고리 분류 (12파일):</strong></p>
+  <table>
+    <tr><th>파일 (매치수)</th><th>카테고리</th><th>비고</th></tr>
+    <tr><td><span class="m">domain/tuning.rs</span> (16)</td><td><span class="tag t-info">RENAME only</span></td><td><span class="m">closeness_update_rate</span>, <span class="m">rel_closeness_*_weight</span> → <span class="m">affinity_*</span>. 값/동작 0. ⚠ <span class="m">closeness_update_rate</span> caller 미확인 (dead field 가능성)</td></tr>
+    <tr><td><span class="m">domain/relationship/mod.rs</span> (12)</td><td><span class="tag t-crit">값 재조정 핵심</span></td><td>주석 6 + <span class="m">modifiers()</span> 공식 3(L176/179/180) + 테스트 3. ÷100 제거 시 weight 1/100 재조정 필수</td></tr>
+    <tr><td><span class="m">domain/guide/snapshot.rs</span> (7)</td><td><span class="tag t-warn">폐기+rename</span></td><td><span class="m">power_level</span> B-D4 폐기 / <span class="m">closeness_level</span>→<span class="m">affinity_level</span> + 4축 확장 / from_score ÷100</td></tr>
+    <tr><td><span class="m">domain/emotion/situation.rs</span> (3)</td><td><span class="tag t-ok">doc 주석뿐</span></td><td><span class="bad">KICKOFF "별 의미(장소 인접성) 가능성" 추정 반박</span> — 실측은 affinity 개념 산문, 로직 영향 0</td></tr>
+    <tr><td><span class="m">presentation/{locale,formatter}.rs</span> (8+8)</td><td><span class="tag t-info">UI 라벨</span></td><td>3축 라벨 슬롯 → 4축 확장 (B-D-D)</td></tr>
+    <tr><td><span class="m">adapter/memory_repository.rs</span> (6)</td><td><span class="tag t-ok">테스트 문자열</span></td><td>더미 v0.6 JSON 예시, 의미 영향 0</td></tr>
+    <tr><td><span class="m">bin/mind-studio/{state,domain_sync,handler_tests}.rs</span> (4+1+2)</td><td><span class="tag t-info">UI 슬롯</span></td><td>presentation 라벨/뷰 + state.rs는 §E stale 주석 포함</td></tr>
+    <tr><td><span class="m">domain/relationship/mapping.rs</span> (1)</td><td><span class="tag t-ok">W1 가드 주석</span></td><td>§D 트리거 (아래)</td></tr>
+  </table>
+
+  <h3>§B — Appraise 입력 정밀화</h3>
+  <table>
+    <tr><th>항목</th><th>실측</th><th>대조</th></tr>
+    <tr><td><span class="m">axis_modulation</span></td><td class="num">src 전체 0건</td><td><span class="good">KICKOFF/S5-D1 정확</span> — 미존재, Phase 2.5 신설 영역 확정</td></tr>
+    <tr><td><span class="m">ReflectionResult</span> 필드</td><td class="num">정확히 7개</td><td>is_chitchat·summary·significance_score·declarative_events·partnership_event·turn_count·llm_reasoning. S5-D1 "7필드" 정확. axis_modulation 없음</td></tr>
+    <tr><td>significance 공식</td><td><span class="m">peak_occ·0.40 + pad_mag·0.30 + diversity·0.15 + beat·0.15</span></td><td>§B "Reflection 게이트 조정" 검토 대상 (현 가중치 박제)</td></tr>
+    <tr><td>HEXACO 6→24 spread</td><td>identity flat copy</td><td><span class="m">mind_sync.rs:40</span> — 6 dim을 4 facet에 동일 복사. 차등 spread 미구현 (Phase 2+ 정밀화 기회, 불일치 아님)</td></tr>
+  </table>
+
+  <h3>§C — memory_relationship_delta_threshold 4축 sensitivity</h3>
+  <table>
+    <tr><th>항목</th><th>실측</th><th>대조</th></tr>
+    <tr><td>threshold 상수</td><td><span class="m">5.0</span> (±100 scale)</td><td>tuning.rs:123, invariant (0,100)</td></tr>
+    <tr><td>delta 산출 (<span class="m">dominant_delta</span> L63)</td><td><span class="bad">MAX 1개 축</span> (sum 아님)</td><td><span class="bad">KICKOFF §1-C "4축 합산(sum) → over-trigger" 전제는 코드 오독</span> — 현 코드는 4축 |Δ| 중 최댓값 1개 반환 = <span class="hl">§1-C 옵션(a) "max 기준" 이미 구현 상태</span></td></tr>
+  </table>
+
+  <h3>§D — W1 회귀 가드 (Phase 2.3 진입 트리거)</h3>
+  <table>
+    <tr><th>가드 테스트</th><th>실측</th><th>상태</th></tr>
+    <tr><td><span class="m">..affinity_channel_after_anger</span> (L801)</td><td>expected = <span class="m">0.286</span> (±1.0)</td><td><span class="tag t-ok">armed</span></td></tr>
+    <tr><td><span class="m">..trust_channel_after_anger</span> (L828)</td><td>expected = <span class="m">0.158</span> (±1.0)</td><td><span class="tag t-ok">armed</span></td></tr>
+    <tr><td><span class="m">..admiration_no_leak_until_phase_2_3</span> (L852)</td><td>4 modifier 불변</td><td><span class="tag t-ok">armed</span></td></tr>
+  </table>
+  <p>3개 가드 전부 존재, expected 여전히 ±1.0 스케일 → <span class="good">modifier API 미변경 = Phase 2.3 진입 트리거 정상 armed</span>.
+  KICKOFF §1-D 설계대로 — modifier ±100 native 전환 착수 순간 깨지는 것이 정상 신호.</p>
+
+  <h3>§E — v0.6 커스텀 Deserialize (git 이력 추적)</h3>
+  <table>
+    <tr><th>커밋</th><th>내용</th></tr>
+    <tr><td><span class="m">b0714c0</span> (Stage 3)</td><td>RelationshipData 커스텀 Deserialize impl + 5 H1 테스트 <span class="good">추가</span></td></tr>
+    <tr><td><span class="m">81777e0</span> (Stage 4)</td><td>"4.4 책임 B — state.rs 커스텀 Deserialize + 5 H1 테스트 <span class="bad">제거</span>"</td></tr>
+    <tr><td><span class="m">9339909</span> (Phase 2 종결)</td><td><span class="m">git show</span> 확인 — 이미 plain <span class="m">#[derive(Clone,Serialize,Deserialize)]</span> (커스텀 impl 부재)</td></tr>
+    <tr><td><span class="m">f7ea858</span> (현재)</td><td>동일. src 전체 <span class="m">impl..Deserialize..RelationshipData</span> = <span class="num">0건</span>, 5 테스트명 = <span class="num">0건</span></td></tr>
+  </table>
+  <p>커스텀 Deserialize + 5 테스트는 <span class="bad">Stage 4(81777e0)에서 이미 제거 완료</span>. Phase 2 종결 전부터 부재.
+  <span class="m">#[derive(Deserialize)]</span>와 수동 <span class="m">impl</span>은 공존 시 컴파일 에러 — impl 부재 결정적.</p>
+
+  <h2 style="color:var(--crit)">§3. ★ 중대 발견 — 정본(KICKOFF v1.2) vs 코드 불일치 3건</h2>
+  <p>protocol "이미 처리됐겠지 절대 금지 — spec/회고 서술 믿지 말고 grep 재확인"이 정확히 작동. 정정안 제시:</p>
+
+  <div class="card crit-card">
+    <div class="lead">불일치 ① — §E (작업 범위 대폭 축소)</div>
+    <p><strong>KICKOFF §1-E / S6-D5 주장:</strong> "Stage 4 미처리 확정, state.rs:666~671 커스텀 Deserialize <span class="bad">잔존</span> → Phase 2.3 인계 유지(완료 표기 금지)".</p>
+    <p><strong>실측:</strong> Stage 4(81777e0)가 impl+5테스트를 <span class="good">실제 제거 완료</span>. Stage 6 S6-D5의 "재확인"이 state.rs:664~668의 <span class="hl">고아 doc 주석</span>(제거된 동작을 여전히 묘사)을 impl로 <span class="bad">오독</span> → 옳았던 Stage 4 회고 §4-C3 "제거됨"을 잘못 "정정". (KICKOFF v1.1/v1.2 "정정"이 실제 오류였음.)</p>
+    <p><strong>정정 영향:</strong> §E 잔여 작업 = <span class="bad">"impl+5테스트+게이트 제거"(대규모)</span> → <span class="good">"stale doc 주석(state.rs:664~668) 삭제 + 시나리오 JSON v0.7 영구변환(Stage 4 책임 1) 상태 확인"(극소)</span>.</p>
+  </div>
+
+  <div class="card crit-card">
+    <div class="lead">불일치 ② — §C (작업 범위 축소)</div>
+    <p><strong>KICKOFF §1-C 전제:</strong> "4축 합산은 |Δtrust|+|Δaffinity|+|Δrespect|+|Δwariness|. 4축 동시 변동 시 over-trigger 가능" → 옵션 (a)max / (b)가중합 / (c)OR 중 결정 필요.</p>
+    <p><strong>실측:</strong> <span class="m">dominant_delta</span>(L63)는 4축 |Δ| 중 <span class="bad">최댓값 1개</span>만 반환 (fold max). <span class="hl">합산 아님</span> = <span class="good">§1-C 옵션(a)가 이미 구현된 상태</span>. "합산 over-trigger" 위험은 코드상 존재하지 않음.</p>
+    <p><strong>정정 영향:</strong> §C = "3옵션 중 결정 + 구현" → <span class="good">"narrative 시뮬에서 max-single-axis@5.0 거동 검증 → 유지/변경 판단"(코드 변경 잠정 0)</span>.</p>
+  </div>
+
+  <div class="card crit-card">
+    <div class="lead">불일치 ③ — §A (추정 1건 반박, 범위 영향 소)</div>
+    <p><strong>KICKOFF §1-A 힌트:</strong> "<span class="m">domain/emotion/situation.rs</span> — closeness가 NPC↔partner 평가 함수 인자명일 *별 의미* 가능성" / "worldbuilding/markdown 별 의미(장소 인접성) 분해 필요".</p>
+    <p><strong>실측:</strong> situation.rs 3매치 전부 <span class="hl">doc 주석 산문</span>("closeness 기반 ... 가까울수록 증폭") — affinity 개념 설명일 뿐 별 의미 아님. worldbuilding/markdown closeness/power = src 매치 <span class="num">0</span> (별도 도메인 분해 불필요).</p>
+    <p><strong>정정 영향:</strong> §A 12파일 분류 단순화 — "별 의미 분리" 카테고리 <span class="good">사실상 불요</span>. 순수 rename/값재조정/폐기 3종으로 수렴.</p>
+  </div>
+
+  <h2>§4. 재형성된 Phase 2.3 설계 방향 (제안)</h2>
+  <p>발견 3건 반영 시 Phase 2.3 실제 작업 부피는 KICKOFF 추정보다 <span class="hl">상당히 작음</span>. 제안 구조:</p>
+  <table>
+    <tr><th>블록</th><th>실제 작업 (사실조사 반영)</th><th>부피</th></tr>
+    <tr><td><span class="m">§A</span> ±100 native</td><td>핵심 = <span class="m">mod.rs modifiers()</span> ÷100 제거 + <span class="m">rel_closeness_*_weight</span> 1/100 재조정 (값 동치) + telling_ingestion:80 동치식 + snapshot from_score. tuning.rs/presentation는 순수 rename·라벨 확장. 별 의미 분리 불요</td><td><span class="tag t-warn">중</span></td></tr>
+    <tr><td><span class="m">§D</span> W1 재조정</td><td>§A modifier 전환과 <span class="hl">동시</span> — expected 0.286→28.6 / 0.158→15.8 (KICKOFF §1-D 표 그대로). admiration_no_leak는 modifier 변경 시 의미 재판정</td><td><span class="tag t-ok">소</span></td></tr>
+    <tr><td><span class="m">§E</span> Deserialize</td><td><span class="good">대규모 제거 작업 소멸</span> — stale doc 주석(state.rs:664~668) 삭제 + 시나리오 JSON v0.7 영구변환(Stage 4 책임 1) 잔여 여부 확인뿐</td><td><span class="tag t-ok">극소</span></td></tr>
+    <tr><td><span class="m">§C</span> threshold</td><td><span class="good">결정·구현 소멸</span> — narrative 시뮬로 max@5.0 거동 검증, 정량 어긋날 때만 가중합/OR 진입</td><td><span class="tag t-ok">검증만</span></td></tr>
+    <tr><td><span class="m">§B</span> appraise</td><td>axis_modulation = Phase 2.5 확정(선긋기). Phase 2.3 잔여 = HEXACO 6→24 차등 spread 도입 검토 + significance 게이트(0.40/0.30/0.15/0.15) 조정 여부 — <span class="hl">narrative 시뮬 결과 의존</span></td><td><span class="tag t-warn">중·후행</span></td></tr>
+  </table>
+  <p><strong>제안 작업 순서:</strong>
+  <span class="m">①</span> KICKOFF/spec 정정 (불일치 3건 박제 — 다음 인계자 재오독 방지) →
+  <span class="m">②</span> §A modifier ÷100 제거 + weight 재조정 + §D 동시 (값 동치 검증) →
+  <span class="m">③</span> snapshot/telling/tuning/presentation 4축 정리 →
+  <span class="m">④</span> §E stale 주석·JSON 확인 →
+  <span class="m">⑤</span> narrative 시뮬 set 구축 → §C·§B 정량 검증 → baseline 재측정 → FROZEN.</p>
+
+  <div class="card info-card">
+    <div class="lead">무한 튜닝 위험 대비 (KICKOFF 명시)</div>
+    <p>§B·§C·narrative는 ground truth ±N 게이트 없으면 무한 튜닝. 제안: <span class="m">data/scenarios/appraise-validation/</span>(Stage 6 신설)에 S1~S4 박제 + <span class="hl">정량 게이트 = "각 시나리오 4축 EXPECTED ±5 (±100 scale) 이내 ∧ D3 3밴드 exact 보존 ∧ W1 재조정 후 PASS"</span>. tolerance 완화 금지(S5-D4 승계).</p>
+  </div>
+
+  <h2>§5. 방향 확인 요청 (확인⓪ — 결정 포인트)</h2>
+  <p>아래 4건만 방향 확인 부탁드립니다. 승인되면 ② FROZEN spec 직전까지 자율 진행 후 확인①에서 다시 보고합니다.</p>
+
+  <div class="q">
+    <div class="ql">Q1. 정본 정정 처리</div>
+    불일치 3건을 <span class="hl">FROZEN spec(P-D 결정)에 "사실조사 정정" 항목으로 박제</span>하고, KICKOFF v1.2 §1-C/§1-E는 그대로 두되 spec 본체에서 "v1.2 §1-E/§1-C 서술은 Stage 0 실측으로 정정됨" 포인터를 다는 방식 — 동의하십니까? (KICKOFF 자체 재작성은 정본 박제 원칙상 지양)
+  </div>
+  <div class="q">
+    <div class="ql">Q2. §A modifier 재조정 = "값 동치" 원칙 고정</div>
+    ±100 전환 시 <span class="m">rel_closeness_*_weight</span>를 정확히 1/100 스케일로만 재조정해 <span class="hl">결과 수치 완전 동치</span> 유지(W1 expected 단위만 100배) — 즉 Phase 2.3 §A는 "동작 불변 리팩터", 의미 튜닝은 §B/§C narrative 단계로 분리. 이 분리 동의하십니까?
+  </div>
+  <div class="q">
+    <div class="ql">Q3. §C 잠정 결론</div>
+    §C를 "코드 변경 없음(현 max-single-axis 유지) + narrative 시뮬에서 정량 어긋날 때만 가중합/OR 재진입" 으로 잠정 확정 — 동의하십니까? (KICKOFF §1-C 3옵션 사전 결정은 불요로 판단)
+  </div>
+  <div class="q">
+    <div class="ql">Q4. §B 범위 선긋기 + 디자이너 잔여</div>
+    axis_modulation·시간분산(S4)은 <span class="hl">Phase 2.5 확정 이관</span>, Phase 2.3 §B는 "HEXACO 차등 spread + significance 게이트"만 — 그리고 인계 5항 중 디자이너 판단 필요분(intensity 0.4 / S1~S3 narrative 타당성)은 <span class="hl">narrative 시뮬 결과를 HTML로 보고 후 그때 판단</span>하는 흐름 — 동의하십니까?
+  </div>
+
+  <div class="foot">
+    Stage 0 사실조사 종료 · 다음: 방향 확인 후 자율 진행(B-D 결정~C 위험~D baseline) → 확인① (FROZEN spec 직전)<br>
+    실측 로그: baselines/phase2.3-entry-2026-05-17-0852.log · git f7ea858 · 측정 cargo test --lib --tests --bins<br>
+    본 보고는 HTML(확인용). 정본 박제(FROZEN spec/회고)는 .md. git은 Bekay 직접.
+  </div>
+
+  <h2 style="color:var(--warn)">§3-bis. §C 재정의 (Stage 0 심층 — 디자이너 대화 반영)</h2>
+  <div class="card crit-card">
+    <div class="lead">정정 — 본 절은 §3 불일치② 및 §5 Q3의 초기 서술을 대체한다</div>
+    <p><strong>초기 서술(§3 ②, Q3):</strong> "현 코드는 max-single-axis = §1-C 옵션(a) 이미 구현 → §C 코드 변경 불요, narrative 검증만."</p>
+    <p><strong>디자이너 심층 검토로 드러난 정정:</strong> "코드 변경 불요"는 <span class="bad">게이트 로직에 한해서만</span> 옳았다.
+    실제 §C의 본질은 KICKOFF §1-C의 "sum vs max <em>threshold 산식</em>"이 아니라, 별개의 미결 정책 결정이다:</p>
+    <div class="q" style="border-color:var(--crit)">
+      <div class="ql" style="color:var(--crit)">§C 진짜 질문 (재정의)</div>
+      게이트는 <span class="m">max@5.0</span>로 두되 — 통과 후 <span class="m">MemoryEntry.content</span>에
+      <span class="hl">threshold(5.0) 초과한 축을 전부 라벨링</span>할 것인가, 현행대로 <span class="hl">dominant 1축만</span> 둘 것인가?
+    </div>
+    <p><strong>현 구현의 결함 (코드 확인):</strong> 게이트와 라벨이 단일 <span class="m">dominant_delta</span> max 연산에 뭉뚱그려져 있다.
+    trust Δ=14 ∧ wariness Δ=8 (둘 다 &gt;5.0)인 경우 — 기억은 <em>생성</em>되나 content는 <span class="m">[trust Δ=14.00]</span>만,
+    <span class="bad">유의미한 wariness Δ=8.0이 기억 텍스트에서 소실</span>. 즉 "threshold 초과 축 전부 반영"이 아니라 "초과 축 중 max 1개만".</p>
+    <p><strong>핵심 — 데이터 가용성:</strong> 핸들러는 이미 <span class="m">p</span>에 4축 before/after 8값을 전부 쥐고 있다(event.rs:178 payload).
+    max 1개만 쓰는 건 데이터 부재가 아니라 <span class="hl">포맷팅 선택</span> → 변경 시 게이트·EventStore 불변, content 문자열만 확장.</p>
+  </div>
+
+  <div class="card info-card">
+    <div class="lead">P-D-C1 — §C content-projection 정책 (FROZEN spec 결정 항목)</div>
+    <table>
+      <tr><th>옵션</th><th>내용</th><th>trade-off</th></tr>
+      <tr><td>(a) 현행 유지</td><td>dominant 1축만 라벨</td><td>기억 텍스트 간결 / 다축 동시 유의 변화 소실 (배신=trust↓+wariness↑인데 trust만 기록)</td></tr>
+      <tr><td>(b) threshold 초과 전부</td><td>≥5.0 축 전부, magnitude desc 정렬 라벨</td><td>충실한 다축 회상 / 게이트·W1·base_delta·D3 회귀 0 (순수 projection) / content 길어짐 — narrative 검증 필요</td></tr>
+      <tr><td>(c) hybrid</td><td>dominant + 부차축은 더 높은 비율 임계 시만</td><td>복잡도↑, 잠정 불요 판단</td></tr>
+    </table>
+    <p><strong>잠정 권고:</strong> 게이트는 (a)/(b) 무관하게 <span class="m">max@5.0</span> 불변. content 정책은 옵션 <span class="hl">(b) 유력</span>(게이트 수학적 동치 보존, 회귀 위험 0, 핸들러가 4축 보유)하되 <strong>최종 확정은 S1~S4 narrative 시뮬 결과로</strong>. (b) 게이트 동치: <span class="m">filter(≥thr).is_empty()</span> ⟺ <span class="m">max&lt;thr</span> — 무엇을 기억하느냐 불변, 라벨만 풍부.</p>
+  </div>
+
+  <div class="q">
+    <div class="ql">Q3 (개정) — §C 처리</div>
+    §C를 "코드 변경 불요"가 아니라 <span class="hl">P-D-C1 결정 항목(게이트 max@5.0 동결 + content 정책은 (b) 유력·narrative 확정)</span>으로 FROZEN spec에 박는다 — 동의하십니까? (초기 Q3 "변경 불요"는 본 절로 정정·폐기)
+  </div>
+
+</div>
+</body>
+</html>

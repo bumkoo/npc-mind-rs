@@ -4,6 +4,8 @@
 **전제**: Phase 2 전체 종결 — [`phase2-checkpoint-report.md`](phase2-checkpoint-report.md) (Stage 1~6 종합) + [`phase2-stage6-bench-handoff.md`](phase2-stage6-bench-handoff.md) (회고). Stage 3~6 회고가 인계 사항의 정본 소스.
 **Phase 2.3 spec**: 본 문서는 KICKOFF (인계). 정식 spec은 [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md)로 분리 작성 (Stage 6에서 초안 신설).
 
+> ⚠️ **정정 포인터 (Phase 2.3 확인①, 2026-05-17, P-D-1)**: 본 KICKOFF §1-C(§C "4축 합산")·§1-E(§E "Stage 4 미처리 커스텀 Deserialize 잔존") 서술은 Stage 0 사실조사 실측으로 **정정됨**. 정본 = FROZEN spec [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md) **§0.5**. 본 KICKOFF 원문은 이력 보존 위해 미수정 — 정정 내용은 FROZEN spec §0.5 우선.
+
 ---
 
 ## §1. Phase 2.3 범위 (상위 골격)

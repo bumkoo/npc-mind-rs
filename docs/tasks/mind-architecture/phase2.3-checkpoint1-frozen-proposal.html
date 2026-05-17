@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2.3 · 확인① — FROZEN spec 직전 동결·인계 보고</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#141b24; --panel2:#1a232e; --line:#26303d;
+    --ink:#d6dde6; --dim:#8b97a6; --faint:#5d6875;
+    --ok:#3fb950; --warn:#d29922; --crit:#f85149; --info:#58a6ff; --acc:#7ee787;
+    --mono:'SFMono-Regular',Consolas,'Liberation Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',-apple-system,sans-serif;
+    line-height:1.62;padding:38px 22px 90px;font-size:15px}
+  .wrap{max-width:1120px;margin:0 auto}
+  h1{font-size:22px;font-weight:650;letter-spacing:-.01em;margin-bottom:4px}
+  h2{font-size:16px;font-weight:650;margin:38px 0 14px;padding-bottom:8px;
+    border-bottom:1px solid var(--line);color:var(--acc);letter-spacing:.01em}
+  h3{font-size:14px;font-weight:650;margin:18px 0 8px;color:var(--info)}
+  p{margin:9px 0}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:24px}
+  code,.m{font-family:var(--mono);font-size:.85em;background:#0a0e13;
+    padding:1.5px 6px;border-radius:4px;color:#cdd6e0;border:1px solid #232c38}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:13px 0}
+  .crit-card{border-left:3px solid var(--crit)}
+  .ok-card{border-left:3px solid var(--ok)}
+  .info-card{border-left:3px solid var(--info)}
+  .warn-card{border-left:3px solid var(--warn)}
+  table{width:100%;border-collapse:collapse;margin:11px 0;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;font-family:var(--mono)}
+  .t-ok{background:rgba(63,185,80,.13);color:var(--ok)}
+  .t-warn{background:rgba(210,153,34,.14);color:var(--warn)}
+  .t-crit{background:rgba(248,81,73,.14);color:var(--crit)}
+  .t-info{background:rgba(88,166,255,.14);color:var(--info)}
+  .lead{color:var(--faint);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+  ul{margin:7px 0 7px 4px;list-style:none}
+  li{margin:5px 0;padding-left:17px;position:relative}
+  li::before{content:'▸';position:absolute;left:0;color:var(--faint)}
+  .hl{color:var(--acc);font-weight:600}
+  .bad{color:var(--crit);font-weight:600}
+  .good{color:var(--ok);font-weight:600}
+  .pd{font-family:var(--mono);color:var(--info);font-weight:700}
+  .foot{margin-top:44px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;font-family:var(--mono)}
+  .ask{background:var(--panel2);border:1px solid var(--warn);border-radius:8px;padding:14px 18px;margin:10px 0}
+  .ask .ql{color:var(--warn);font-weight:650;font-size:13px;margin-bottom:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phase 2.3 · 확인① — FROZEN spec 직전 동결·인계 보고</h1>
+  <div class="sub">npc-mind-rs · appraise 정비 + ±100 native · 2026-05-17 · git HEAD <span class="m">f7ea858</span> · Q1~Q4 승인 완료 · 협업 프로토콜 확인①</div>
+
+  <div class="card info-card">
+    <div class="lead">요지</div>
+    <p>확인⓪(Q1~Q4) 승인 후 <strong>B-D 결정 정형화 ~ C 위험 ~ D baseline</strong>을 자율 완료했습니다. 추론 0 — 전부 코드/git/실측 확정.
+    핵심: §A는 <span class="hl">출력 0-델타 증명가능 리팩터</span>로 좁혀졌고(Q2), §C·§B 의미 결정은 <span class="hl">narrative-gated P-D 항목</span>으로 격리(Q3/Q4), §E는 <span class="good">Stage 4에서 이미 완료</span> 확정(잔여 극소).
+    아래대로 <strong>FROZEN spec(.md)으로 동결하고 Claude Code에 인계</strong>하려 합니다. 승인 주시면 freeze, 보류 항목 있으면 지정해 주십시오.</p>
+  </div>
+
+  <h2>§1. 확정 결정 (P-D-1 ~ P-D-9) — freeze 대상</h2>
+  <p>선례 S6-D1~D5 패턴 계승. 각 결정은 Stage 0 실측 근거 동반. 신규 발명 최소(Q1 — 대부분 KICKOFF 재확인 + 3 정정 + Q1~Q4).</p>
+
+  <div class="card crit-card">
+    <p><span class="pd">P-D-1</span> <strong>(Q1) 문서 정정 처리.</strong> 불일치 3건 — ①§E 커스텀 Deserialize는 Stage 4(<span class="m">81777e0</span>)에서 이미 제거 완료(git 확정), ②§C는 sum 아닌 max(이미 옵션 a 구현), ③§A "별 의미"(situation.rs/worldbuilding) 부존재 — 을 FROZEN spec에 <span class="hl">"Stage 0 사실조사 정정"</span> 절로 박제. KICKOFF v1.2 §1-C/§1-E는 <span class="bad">재작성하지 않고</span> spec 포인터만(정본 박제 원칙).</p>
+  </div>
+
+  <div class="card crit-card">
+    <p><span class="pd">P-D-2</span> <strong>(Q2) §A = 값 동치 리팩터.</strong> <span class="m">mod.rs:172-173</span> ÷100 제거 + weight 1/100 재조정(수학적 항등 → 출력 0-델타). 실측 rescale 표:</p>
+    <table>
+      <tr><th>const (tuning.rs)</th><th>현재값 (±1.0 가정)</th><th>§A 후 (±100 native)</th></tr>
+      <tr><td><span class="m">REL_CLOSENESS_INTENSITY_WEIGHT</span> (L72)</td><td>0.5</td><td><span class="hl">0.005</span></td></tr>
+      <tr><td><span class="m">REL_CLOSENESS_EMPATHY_WEIGHT</span> (L74)</td><td>0.3</td><td><span class="hl">0.003</span></td></tr>
+      <tr><td><span class="m">REL_CLOSENESS_HOSTILITY_WEIGHT</span> (L75)</td><td>0.3</td><td><span class="hl">0.003</span></td></tr>
+      <tr><td><span class="m">REL_TRUST_EMOTION_WEIGHT</span> (L73)</td><td>0.3</td><td><span class="hl">0.003</span></td></tr>
+    </table>
+    <p><span class="m">telling_ingestion:80</span> = 수학 동치식 <span class="m">(t+100)/200</span>. <span class="m">snapshot:316-317 from_score</span> ±100 native(KICKOFF §1-A (a) — threshold const 동반 재조정). 의미 튜닝은 전부 §B/§C로 격리.</p>
+  </div>
+  <div class="card warn-card">
+    <p><span class="pd">P-D-3</span> <strong>§A — <span class="m">closeness_update_rate</span> dead field 완전 제거</strong> <span class="t-crit tag">A2 개정</span>. <span class="m">CLOSENESS_UPDATE_RATE=0.05</span>+동명 필드 = <span class="bad">caller 0건</span>(실측) dead. <strong>rename→제거로 변경(A2):</strong> <span class="m">TuningProfile</span>에 <span class="m">#[serde(default, deny_unknown_fields)]</span>(L172) → rename은 호환성 이득 0(옛 키 가진 config는 rename 후에도 동일 하드 에러). 활성 config 키 0건 + 라이브러리 공개 전 → 제거가 1-pass·최적 시점. dead 제거는 Q2 동작 불변 부합. <strong>제거 범위(tuning.rs 단일):</strong> 상수 L57 / 필드 L190 / Default L270 / doc L335 / 런타임 invariant L366-373 삭제 · 컴파일 invariant L133 삭제 · <span class="hl">L154는 삭제 아닌 치환</span> — <span class="m">THRESHOLD &gt;= CLOSENESS_UPDATE_RATE</span> → <span class="m">THRESHOLD &gt; 0.0</span>(live 임계값 가드를 dead 제거하며 몰래 약화 금지). 동반: <span class="m">rel_closeness_*_weight→rel_affinity_*_weight</span> rename(P-D-2 logical 정렬). 잔여 dead-code 2-pass 제거.</p>
+  </div>
+
+  <div class="card warn-card">
+    <p><span class="pd">P-D-4</span> <strong>§A presentation 4축 라벨.</strong> <span class="m">snapshot.rs:229 closeness_level→affinity_level</span> + <span class="m">respect_level/wariness_level</span> 신설(B-D-D). <span class="m">snapshot.rs:233 power_level</span> → <span class="bad">폐기 (B-D4)</span>. <span class="m">presentation/locale.rs(8)+formatter.rs(8)</span> 라벨 슬롯 4축 확장. <span class="m">adapter/memory_repository.rs(6)</span> = 테스트 doc string, 의미 0(prose 정정 선택). KICKOFF §1-A (c)/(d) 해소.</p>
+  </div>
+
+  <div class="card crit-card">
+    <p><span class="pd">P-D-5</span> <strong>(Q3) §C = P-D-C1.</strong> 게이트 <span class="m">max@5.0</span> (<span class="m">dominant_delta</span> L63 fold) <span class="hl">FROZEN</span>. content-projection (a 현행 / b threshold초과 전부 / c hybrid) = <span class="t-warn tag">UNRESOLVED</span>, (b) 잠정, S1~S4 narrative + ground-truth ±N + 디자이너 판단으로 확인②에서 확정. KICKOFF §1-C 3옵션(threshold 산식) 프레이밍은 종결(코드가 이미 max). (b) 채택 시 게이트 수학 동치 보존·회귀 0(content 문자열만).</p>
+  </div>
+
+  <div class="card crit-card">
+    <p><span class="pd">P-D-6</span> <strong>§D W1 가드 — 깨짐/안깨짐 박제(오판 방지).</strong></p>
+    <table>
+      <tr><th>가드 (mapping.rs)</th><th>§A 후 거동</th><th>처리</th></tr>
+      <tr><td><span class="m">affinity_channel_after_anger</span> L800</td><td>direction 가드 scale-invariant=<span class="good">불변</span>; quantitative literal <span class="m">0.286→28.6</span></td><td>literal 재조정, asserted 실값 bit-동일(Q2)</td></tr>
+      <tr><td><span class="m">trust_channel_after_anger</span> L827</td><td>동상; literal <span class="m">0.158→15.8</span></td><td>literal 재조정, 실값 동일</td></tr>
+      <tr><td><span class="m">admiration_no_leak_until_phase_2_3</span> L851</td><td>respect+20인데 modifiers()가 respect 미사용 → <span class="good">안 깨짐</span></td><td><span class="hl">GREEN 유지·제거 안 함</span> — respect→modifier 연결은 Q4 §B 범위 밖</td></tr>
+    </table>
+    <p>KICKOFF §1-D "admiration 제거 가능"은 respect-wiring(범위 밖 미래)에만 해당 — Phase 2.3에선 트리거 1·2만 통제된 방식으로 깨짐(=설계 신호, 회귀 아님).</p>
+  </div>
+
+  <div class="card ok-card">
+    <p><span class="pd">P-D-7</span> <strong>§E Stage 4 완료 확정 → 잔여 극소.</strong> 커스텀 Deserialize+5테스트 = <span class="m">81777e0</span> 제거 완료(git). scenario JSON v0.7 영구변환 = 활성 <span class="m">phase1-validation</span> clean 확정(유일 "closeness"는 <span class="m">_purpose</span> prose, 키 아님; trust/affinity/respect/wariness 4축 존재). §E Phase 2.3 잔여 = ⑴ stale doc 주석 <span class="m">state.rs:664-668</span> 삭제 ⑵ <span class="m">appraise-validation/README</span>의 axis_modulation 언급 정정(Q4 정합) ⑶ <span class="m">_discarded-v0.6/scenarios.backup-v0.6</span> <span class="hl">영구 폐기 → 2.3-B 편입 확정(A4)</span>. 삭제 전 활성 코드/테스트/스크립트 참조 0 확인 후 제거(추론 금지).</p>
+  </div>
+  <div class="card crit-card">
+    <p><span class="pd">P-D-8</span> <strong>(Q4) §B 범위 선긋기.</strong> <span class="m">axis_modulation</span>(src 0건 + ReflectionResult 정확히 7필드 부재 확정) + S4 시간분산(axis_mod 하드의존) = <span class="bad">Phase 2.5 확정 이관</span>(구조 의존, Phase 2.3 불가). §B Phase 2.3 = ⑴ HEXACO 6→24 차등 spread(<span class="m">mind_sync.rs:40</span> 현 identity flat copy; <span class="m">Person.extras["hexaco_facets"]</span> 경로) ⑵ significance 게이트(<span class="m">reflection.rs:100</span> = 0.40/0.30/0.15/0.15) 조정 — 둘 다 <span class="t-warn tag">narrative-gated</span>(바꿀지 여부 S1~S4 의존). 디자이너 판단(intensity 0.4 §5.2 / S1~S3 §5.3) = P-D-C1과 동일 확인② HTML 생애주기.</p>
+  </div>
+
+  <div class="card warn-card">
+    <p><span class="pd">P-D-9</span> <strong>comment-drift sweep (신규 소작업).</strong> 3축→4축 마이그레이션이 코드는 옮겼으나 주석/prose 미동반 = 체계적 부채. 실측 4건: ①<span class="m">state.rs:664-668</span>(고아 Deserialize doc) ③<span class="m">situation.rs:36/40/42</span>("closeness 기반"→affinity) + <span class="m">tuning.rs</span> 주석 + <span class="m">lin-chong-shanshenmiao.json _purpose</span> "closeness". <strong>①이 실제로 Stage 6을 §E 오독시킴</strong> → Phase 2.3에 "옛 3축 어휘 주석/prose 일소" 소작업 포함(코드 동작 0, 다음 인계자 재오독 방지).</p>
+  </div>
+
+  <h2>§2. C 위험 (Phase 2.3 = KICKOFF "중간 위험" phase)</h2>
+  <table>
+    <tr><th>ID</th><th>위험</th><th>봉쇄</th></tr>
+    <tr><td><span class="pd">C-1</span></td><td>통로 A 회귀 — §A가 base_delta 흔듦</td><td>Q2 값 동치 → 0-델타. 부동소수 재정렬 미세오차는 tolerance 1e-3(W1 기존 패턴). 게이트 = S5-D5 정본(failed=0 ∧ 회귀0 ∧ D3 3밴드 exact ∧ 증감 설명가능)</td></tr>
+    <tr><td><span class="pd">C-2</span></td><td>W1 깨짐 회귀 오판</td><td>P-D-6 깨짐/안깨짐 표 박제. 1·2=설계 신호(literal), 3=안 깨짐(범위 밖). exact assert 강화 금지</td></tr>
+    <tr><td><span class="pd">C-3</span></td><td>무한 튜닝 (§B/§C/narrative)</td><td>S1~S4 박제 + 정량 게이트 "<span class="m">4축 EXPECTED ±5(±100) ∧ D3 3밴드 exact ∧ W1 재조정후 PASS</span>". tolerance 완화 금지(S5-D4 승계)</td></tr>
+    <tr><td><span class="pd">C-4</span></td><td>dead field rename 부작용</td><td>invariant 동반 누락 시 컴파일 에러(빌드가 잡음=안전). serde 키 변경 silent 무시 위험 → 활성 scenario clean 확정이라 영향 0; backup/discarded 비활성</td></tr>
+    <tr><td><span class="pd">C-5</span></td><td>doc-drift 재오독 재발</td><td>P-D-9 sweep 필수. 미실행 시 Phase 2.5 인계자 ①형 재오독(Stage 6 전례)</td></tr>
+    <tr><td><span class="pd">C-6</span></td><td>§A 단계 비원자성</td><td>rename+weight rescale+W1 literal+÷100 제거는 <span class="bad">한 커밋 원자</span> 필수(stage-split 시 중간 빌드/W1 깨짐 — stream-migration "stages 1+2 together" 선례 동형)</td></tr>
+  </table>
+
+  <h2>§3. D baseline (S5-D5 정본 고정)</h2>
+  <table>
+    <tr><th>항목</th><th>값</th><th>비고</th></tr>
+    <tr><td>측정 명령</td><td><span class="m">cargo test --lib --tests --bins</span></td><td>S5-D5/S6-D1 정본 고정</td></tr>
+    <tr><td>진입 실측 (Stage 0)</td><td><span class="hl">843 P / 0 F / 2 I / 65 묶음</span></td><td>KICKOFF §3 정본과 정확 일치 · log 박제</td></tr>
+    <tr><td>정본 정의</td><td>failed=0 ∧ 회귀0 ∧ D3 3밴드 exact ∧ 증감 설명가능</td><td>절대수 baseline 부적합(S5-D5/S6-D1 승계)</td></tr>
+    <tr><td>§A 후 예상</td><td>passed 불변(rename/literal/sweep 테스트수 0변동) · P-D-C1 narrative 시 +N</td><td>핵심 = D3 3밴드 exact + W1 재조정후 PASS + 미스터리 증감 0</td></tr>
+  </table>
+  <h2>§4. 작업 분해 — Phase 2.3 = 3 Stage (다중 Stage 권고)</h2>
+  <p>§A(0-델타 게이트)와 §C/§B(narrative 게이트)는 검증 성격이 달라 분리. Q2 분리 원칙의 Stage 구조화.</p>
+  <table>
+    <tr><th>Stage</th><th>내용</th><th>게이트</th><th>커밋</th></tr>
+    <tr><td><strong>2.3-A</strong></td><td>P-D-2/3/4/6 — §A ÷100 제거 + weight 1/100 rescale + closeness→affinity rename + presentation 4축/power_level 폐기 + W1 literal 재조정</td><td><span class="hl">0-델타</span>: 843 P 유지 ∧ D3 3밴드 exact ∧ W1 1·2 재조정후 PASS ∧ 3 GREEN 유지 ∧ 미스터리 증감 0</td><td><span class="bad">원자 1커밋</span>(C-6)</td></tr>
+    <tr><td><strong>2.3-B</strong></td><td>P-D-9 comment-drift sweep + P-D-7 §E stale 주석/README 정정 + <span class="hl">_discarded-v0.6/scenarios.backup-v0.6 영구 삭제(A4, 참조 0 확인 후)</span></td><td>코드 동작 0 · 빌드 PASS · grep 옛어휘 잔존 0 · 삭제 후 빌드/테스트 PASS</td><td>1커밋(코드 0)</td></tr>
+    <tr><td><strong>2.3-C</strong></td><td>S1~S4 narrative 시나리오 박제 + §C(P-D-C1)·§B(spread/significance)·디자이너판단(intensity/S1~S3) 검증 → 확인②</td><td><span class="t-warn tag">narrative ±N</span>: C-3 정량 게이트 + 디자이너 HTML 판단</td><td>narrative 결과별</td></tr>
+  </table>
+  <p>순서: 2.3-A(0-델타 확정) → 2.3-B(주석 일소) → 2.3-C(narrative·디자이너). 2.3-A 실패 시 2.3-B/C 진행 금지.</p>
+
+  <h2>§5. Claude Code 인계 계획</h2>
+  <div class="card info-card">
+    <p><strong>freeze 산출(.md):</strong> <span class="m">task-rel-phase2.3-appraise-tuning.md</span> DRAFT→FROZEN 승격 — P-D-1~9 + C-1~6 + D baseline + 3 Stage 분해 + 종결 게이트 + "Stage 0 사실조사 정정"(불일치 3건) 박제. KICKOFF v1.2엔 spec 포인터 1줄만(P-D-1).</p>
+    <p><strong>Claude Code 실행 단위:</strong> Stage 2.3-A(원자 커밋) → 2.3-B → 2.3-C. 각 Stage 게이트 실패 시 중단·보고. git은 Bekay 직접(commit 메시지 텍스트만 제공). 코드 변경은 Claude Code, 디자이너 판단은 확인② HTML.</p>
+    <p><strong>확인② 트리거:</strong> 2.3-C 완료 후 — P-D-C1/intensity 0.4/S1~S3 narrative 타당성 실측 출력 + 권고를 HTML 보고 → Bekay 종결/정정 판단.</p>
+  </div>
+
+  <h2>§6. 종결 게이트</h2>
+  <ul>
+    <li>☐ G1 (2.3-A) — §A 0-델타: 843 P ∧ D3 3밴드 exact ∧ W1 1·2 재조정후 PASS ∧ 3 GREEN ∧ 미스터리 증감 0 ∧ 원자 1커밋</li>
+    <li>☐ G2 (2.3-B) — comment-drift 옛 3축 어휘 grep 잔존 0 ∧ §E stale 주석 제거 ∧ 빌드 PASS ∧ 코드 동작 0</li>
+    <li>☐ G3 (2.3-C) — S1~S4 박제 ∧ C-3 정량 게이트 통과 ∧ P-D-C1/디자이너판단 확인② 보고·판단 완료</li>
+    <li>☐ G4 — KICKOFF 포인터 1줄 + spec FROZEN + 외부문서(00-roadmap/CLAUDE.md) Phase 2.3 행 동기화</li>
+  </ul>
+
+  <h2 style="color:var(--warn)">§7. 승인 요청 (확인①)</h2>
+  <div class="ask">
+    <div class="ql">A1. 동결 승인</div>
+    P-D-1~9 + C-1~6 + D baseline + 3 Stage 분해를 위 그대로 <span class="hl">FROZEN spec(.md)으로 동결</span>하고 Claude Code 인계 — 승인하십니까?
+  </div>
+  <div class="ask" style="border-color:var(--ok)">
+    <div class="ql" style="color:var(--ok)">A2. P-D-3 — 해소됨 (제거로 확정)</div>
+    <span class="m">closeness_update_rate</span> dead field = <strong>완전 제거</strong>로 확정(A2 대화). <span class="m">deny_unknown_fields</span>로 rename은 호환성 이득 0 → rename-only은 순수 2-pass 낭비. 제거 1-pass, Q2 동작 불변 부합. <span class="m">L154</span>만 삭제 아닌 <span class="m">&gt; 0.0</span> 치환(live 가드 보존). P-D-3에 반영 완료 — 추가 확인 불요.
+  </div>
+  <div class="ask">
+    <div class="ql">A3. P-D-9 신규 소작업 승인</div>
+    comment-drift sweep를 Phase 2.3 Stage 2.3-B로 <span class="hl">신규 편입</span>(KICKOFF 미명시 항목) — 승인하십니까? (제외 시 §E stale 주석만 처리)
+  </div>
+  <div class="ask" style="border-color:var(--ok)">
+    <div class="ql" style="color:var(--ok)">A4. _discarded-v0.6 / scenarios.backup-v0.6 — 해소됨 (2.3-B 폐기 확정)</div>
+    영구 폐기 = <strong>Stage 2.3-B 편입 확정</strong>(A4 대화). KICKOFF "디자이너 결정 비스코프" → Bekay 결정 완료. 삭제 전 활성 코드/테스트/스크립트 참조 0 확인 후 제거(추론 금지). P-D-7 / Stage 2.3-B / 게이트 G2 반영 완료 — 추가 확인 불요.
+  </div>
+
+  <div class="foot">
+    확인① — B-D 결정~C 위험~D baseline 자율 완료. 승인 시 spec freeze(.md) → Claude Code 인계 → 실행 → 확인②.<br>
+    근거: Stage 0 grep/git/실측 (phase2.3-stage0-checkpoint0.html) · baseline log 2026-05-17-0852 · git f7ea858<br>
+    본 보고 HTML(확인용). 정본 박제(FROZEN spec)는 .md — 승인 후 작성. git은 Bekay 직접.
+  </div>
+</div>
+</body>
+</html>
