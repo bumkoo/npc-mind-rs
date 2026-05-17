@@ -1,0 +1,71 @@
+{
+  "case": "S2",
+  "title": "임충 → 육겸 (Reproach + Hate + Anger)",
+  "_narrative": "산신묘에서 임충이 육겸의 음모를 직접 듣고 처단. 옛 친구의 배신 → 완전 단절. (OCC peak ≥ 0.9 + 결단 beat)",
+  "_band": "high+ (결단·단절)",
+  "_phase": "Phase 2.3 appraise-validation",
+  "_spec_link": "task-rel-phase2.3-appraise-tuning.md §4 Stage 2.3-C",
+
+  "owner": {
+    "id": "lin_chong",
+    "name": "임충",
+    "description": "팔십만금군 교두 출신 — 결단 직전",
+    "inner_compass": "체제의 법도와 의리를 지킨다 — 단, 의리 없는 자는 더 이상 신의의 대상이 아니다",
+    "hexaco_active_facets": {
+      "sincerity": 0.6,
+      "fairness": 0.7,
+      "anxiety": 0.4,
+      "patience": 0.3,
+      "prudence": 0.4
+    },
+    "_modifier_rules_fired": "sincerity 0.6 → trust × 1.2. forgiveness=0.0 not <-0.5 → A− Forgiveness 미발동."
+  },
+  "partner": {
+    "id": "lu_qian",
+    "name": "육겸",
+    "description": "임충의 옛 친구 — 고구의 명령으로 암살 음모"
+  },
+  "initial_relationship": {
+    "trust": 50.0,
+    "affinity": 40.0,
+    "respect": 20.0,
+    "wariness": 0.0,
+    "type": "옛 친구"
+  },
+  "emotion_state": {
+    "Reproach": 0.8,
+    "Hate": 0.8,
+    "Anger": 0.9
+  },
+  "reflection": {
+    "is_chitchat": false,
+    "significance_score": 0.92,
+    "turn_count": 9,
+    "summary": "임충이 산신묘에서 육겸을 처단 — 옛 친구의 배신·결단",
+    "llm_reasoning": "OCC peak 0.9+ (Anger·Hate·Reproach), PAD trajectory 큼, beat=처단"
+  },
+
+  "_expected_axes_delta": {
+    "trust": "-46.2 (Reproach -9.6 + Hate -9.6 + Anger -27; sincerity ×1.2 적용)",
+    "affinity": "-37 (Reproach -8 + Hate -20 + Anger -9)",
+    "respect": "-24 (Reproach -20 + Hate -4 + Anger 0)",
+    "wariness": "+42.5 (Reproach +8 + Hate +12 + Anger +22.5)"
+  },
+  "_expected_final_axes": {
+    "trust": 3.8,
+    "affinity": 3.0,
+    "respect": -4.0,
+    "wariness": 42.5
+  },
+  "_expected_event_kinds": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
+  "_tolerance_pm": 5.0,
+  "_test_link": "tests/phase2_narrative_test.rs::s2_lin_chong_breaks_with_lu_qian_reproach_hate_anger (tol ±0.5; Stage 2.3-C 게이트 ±5)",
+
+  "_pd_c1_anchor_case": {
+    "summary": "본 케이스 = P-D-C1 content-projection 정책의 *핵심 anchor* (Stage 0 §3-bis).",
+    "delta_above_threshold_axes": ["trust(-46.2)", "affinity(-37)", "respect(-24)", "wariness(+42.5)"],
+    "delta_below_threshold_axes": [],
+    "current_dominant_label_only": "[trust Δ=-46.20]",
+    "discussion": "4축 |Δ| 모두 > 5.0 임계값. 현행 (a)는 dominant 1축(trust)만 라벨링 → wariness +42.5(50% 도달)·affinity -37·respect -24 모두 기억 텍스트에서 소실. (b) 채택 시 라벨 = '[trust Δ=-46.20, wariness Δ=+42.50, affinity Δ=-37.00, respect Δ=-24.00]' (magnitude desc)."
+  }
+}

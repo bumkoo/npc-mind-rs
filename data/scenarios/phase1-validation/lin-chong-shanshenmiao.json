@@ -2,7 +2,7 @@
   "format": "mind-studio/scenario",
   "current_situation": null,
   "_phase1_band": "high",
-  "_purpose": "Phase 1 narrative validation 3/3 — 결단 케이스. 임충이 산신묘에서 육겸을 처단. 분노 격발 + 결심 + 행위. 게이트 모든 조건 통과 (significance ≥ 0.85, !is_chitchat). RelationshipUpdated 발행, axes 큰 변화 (육겸 trust/closeness 극단 음수).",
+  "_purpose": "Phase 1 narrative validation 3/3 — 결단 케이스. 임충이 산신묘에서 육겸을 처단. 분노 격발 + 결심 + 행위. 게이트 모든 조건 통과 (significance ≥ 0.85, !is_chitchat). RelationshipUpdated 발행, axes 큰 변화 (육겸 trust/affinity 극단 음수).",
   "_expected_reflection": {
     "is_chitchat": false,
     "significance_score": "≥ 0.85",

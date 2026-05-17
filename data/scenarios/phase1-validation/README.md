@@ -8,8 +8,8 @@
 | 밴드 | 시나리오 | 기대 reflection | 기대 follow-up | axes |
 |---|---|---|---|---|
 | **낮음 (잡담)** | [chitchat-passerby.json](chitchat-passerby.json) — 임충이 길에서 행인과 의례적 인사 | `is_chitchat=true`, `significance < 0.2` | 3 (DialogueReflected + EmotionCleared + SceneEnded) | **변화 0 (보존)** |
-| **중간 (일상)** | [daily-training.json](daily-training.json) — 수련이 춘설병에게 호흡 검법 가르침 | `is_chitchat=false`, `significance ~ 0.4-0.6` | 4 (+ RelationshipUpdated) | 미세 (closeness/trust 약간 ↑) |
-| **높음 (결단)** | [lin-chong-shanshenmiao.json](lin-chong-shanshenmiao.json) — 임충이 산신묘에서 육겸 처단 | `is_chitchat=false`, `significance ≥ 0.85` | 4 (+ RelationshipUpdated) | 큼 (closeness 양수→음수 큰 변화) |
+| **중간 (일상)** | [daily-training.json](daily-training.json) — 수련이 춘설병에게 호흡 검법 가르침 | `is_chitchat=false`, `significance ~ 0.4-0.6` | 4 (+ RelationshipUpdated) | 미세 (affinity/trust 약간 ↑) |
+| **높음 (결단)** | [lin-chong-shanshenmiao.json](lin-chong-shanshenmiao.json) — 임충이 산신묘에서 육겸 처단 | `is_chitchat=false`, `significance ≥ 0.85` | 4 (+ RelationshipUpdated) | 큼 (affinity 양수→음수 큰 변화) |
 
 ## 자동 검증 — Mock LLM (CI)
 
@@ -72,7 +72,7 @@ Mind Studio에서 수동 검증. spec §4.4의 narrative validation:
 - [ ] 8 turn 가르침 진행
 - [ ] `reflection.is_chitchat = false` 확인
 - [ ] `reflection.significance_score 0.3~0.7` 확인
-- [ ] axes 미세 변화 (closeness 약간 ↑) 확인
+- [ ] axes 미세 변화 (affinity 약간 ↑) 확인
 - [ ] memory: summary 저장 확인
 
 ### 시나리오 3 (결단) — `lin-chong-shanshenmiao.json`
@@ -80,7 +80,7 @@ Mind Studio에서 수동 검증. spec §4.4의 narrative validation:
 - [ ] `reflection.is_chitchat = false` 확인
 - [ ] `reflection.significance_score >= 0.7` 확인
 - [ ] `reflection.llm_reasoning`이 *왜 이 점수*인지 합리적 설명 (OCC peak / PAD / beat)
-- [ ] axes 큰 변화 (lin_chong→lu_qian closeness 양수→음수 강하게) 확인
+- [ ] axes 큰 변화 (lin_chong→lu_qian affinity 양수→음수 강하게) 확인
 - [ ] memory: summary + 결단 인용 저장 확인
 
 ### Robustness

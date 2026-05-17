@@ -54,7 +54,6 @@ mod defaults {
 
     // 관계 갱신
     pub const TRUST_UPDATE_RATE: f32 = 0.1;
-    pub const CLOSENESS_UPDATE_RATE: f32 = 0.05;
     pub const SIGNIFICANCE_SCALE: f32 = 3.0;
 
     // PAD
@@ -68,17 +67,18 @@ mod defaults {
     pub const EMOTION_THRESHOLD: f32 = 0.2;
     pub const TRAIT_THRESHOLD: f32 = 0.3;
 
-    // 관계 변조
-    pub const REL_CLOSENESS_INTENSITY_WEIGHT: f32 = 0.5;
-    pub const REL_TRUST_EMOTION_WEIGHT: f32 = 0.3;
-    pub const REL_CLOSENESS_EMPATHY_WEIGHT: f32 = 0.3;
-    pub const REL_CLOSENESS_HOSTILITY_WEIGHT: f32 = 0.3;
+    // 관계 변조 — Phase 2.3 §A: ±100 native 전환 (Relationship::modifiers의 ÷100 제거에 동반)
+    // 기존 ±1.0 가정 weight × 1/100. 값 동치: (raw/100) × w_old ≡ raw × (w_old/100).
+    pub const REL_AFFINITY_INTENSITY_WEIGHT: f32 = 0.005;
+    pub const REL_TRUST_EMOTION_WEIGHT: f32 = 0.003;
+    pub const REL_AFFINITY_EMPATHY_WEIGHT: f32 = 0.003;
+    pub const REL_AFFINITY_HOSTILITY_WEIGHT: f32 = 0.003;
 
-    // Level 임계값
-    pub const LEVEL_VERY_HIGH_THRESHOLD: f32 = 0.6;
-    pub const LEVEL_HIGH_THRESHOLD: f32 = 0.2;
-    pub const LEVEL_LOW_THRESHOLD: f32 = -0.2;
-    pub const LEVEL_VERY_LOW_THRESHOLD: f32 = -0.6;
+    // Level 임계값 — Phase 2.3 §A: ±100 native (RelationshipSnapshot::from_score 입력 ±100 직통)
+    pub const LEVEL_VERY_HIGH_THRESHOLD: f32 = 60.0;
+    pub const LEVEL_HIGH_THRESHOLD: f32 = 20.0;
+    pub const LEVEL_LOW_THRESHOLD: f32 = -20.0;
+    pub const LEVEL_VERY_LOW_THRESHOLD: f32 = -60.0;
 
     // LLM 파라미터
     pub const LLM_BASE_TEMPERATURE: f32 = 0.8;
@@ -130,7 +130,6 @@ mod defaults {
         assert!(STIMULUS_MIN_INERTIA > 0.0 && STIMULUS_MIN_INERTIA < 1.0);
         assert!(BEAT_MERGE_THRESHOLD > 0.0 && BEAT_MERGE_THRESHOLD < 1.0);
 
-        assert!(CLOSENESS_UPDATE_RATE < TRUST_UPDATE_RATE);
         assert!(1.0 + 1.0 * SIGNIFICANCE_SCALE == 4.0);
 
         assert!(LEVEL_VERY_HIGH_THRESHOLD > LEVEL_HIGH_THRESHOLD);
@@ -152,7 +151,7 @@ mod defaults {
         assert!(RUMOR_HOP_CONFIDENCE_DECAY > 0.0 && RUMOR_HOP_CONFIDENCE_DECAY < 1.0);
         assert!(RUMOR_MIN_CONFIDENCE > 0.0 && RUMOR_MIN_CONFIDENCE < 1.0);
 
-        assert!(MEMORY_RELATIONSHIP_DELTA_THRESHOLD >= CLOSENESS_UPDATE_RATE);
+        assert!(MEMORY_RELATIONSHIP_DELTA_THRESHOLD > 0.0);
         assert!(MEMORY_RETENTION_CUTOFF > 0.0 && MEMORY_RETENTION_CUTOFF < 1.0);
         assert!(MEMORY_PUSH_TOP_K > 0);
         assert!(MEMORY_PROMPT_TOKEN_BUDGET > 0);
@@ -187,7 +186,6 @@ pub struct TuningProfile {
 
     // === 관계 갱신 ===
     pub trust_update_rate: f32,
-    pub closeness_update_rate: f32,
     pub significance_scale: f32,
 
     // === PAD ===
@@ -202,10 +200,10 @@ pub struct TuningProfile {
     pub trait_threshold: f32,
 
     // === 관계 변조 ===
-    pub rel_closeness_intensity_weight: f32,
+    pub rel_affinity_intensity_weight: f32,
     pub rel_trust_emotion_weight: f32,
-    pub rel_closeness_empathy_weight: f32,
-    pub rel_closeness_hostility_weight: f32,
+    pub rel_affinity_empathy_weight: f32,
+    pub rel_affinity_hostility_weight: f32,
 
     // === Level 임계값 ===
     pub level_very_high_threshold: f32,
@@ -267,7 +265,6 @@ impl Default for TuningProfile {
             beat_default_significance: BEAT_DEFAULT_SIGNIFICANCE,
 
             trust_update_rate: TRUST_UPDATE_RATE,
-            closeness_update_rate: CLOSENESS_UPDATE_RATE,
             significance_scale: SIGNIFICANCE_SCALE,
 
             pad_d_scale_weight: PAD_D_SCALE_WEIGHT,
@@ -279,10 +276,10 @@ impl Default for TuningProfile {
             emotion_threshold: EMOTION_THRESHOLD,
             trait_threshold: TRAIT_THRESHOLD,
 
-            rel_closeness_intensity_weight: REL_CLOSENESS_INTENSITY_WEIGHT,
+            rel_affinity_intensity_weight: REL_AFFINITY_INTENSITY_WEIGHT,
             rel_trust_emotion_weight: REL_TRUST_EMOTION_WEIGHT,
-            rel_closeness_empathy_weight: REL_CLOSENESS_EMPATHY_WEIGHT,
-            rel_closeness_hostility_weight: REL_CLOSENESS_HOSTILITY_WEIGHT,
+            rel_affinity_empathy_weight: REL_AFFINITY_EMPATHY_WEIGHT,
+            rel_affinity_hostility_weight: REL_AFFINITY_HOSTILITY_WEIGHT,
 
             level_very_high_threshold: LEVEL_VERY_HIGH_THRESHOLD,
             level_high_threshold: LEVEL_HIGH_THRESHOLD,
@@ -332,7 +329,7 @@ impl TuningProfile {
     /// 위반 시 release 빌드에선 `Err` 반환 (`InstallError::Invalid`로 래핑).
     ///
     /// 검증 정책:
-    /// - **부등식 invariant** (`closeness_update_rate < trust_update_rate` 등): 도메인
+    /// - **부등식 invariant** (`level_*_threshold` 엄격 내림차순 등): 도메인
     ///   로직이 가정하는 순서·관계를 보장.
     /// - **range 검증**: 명백히 비정상적인 값(음수, 0, 폭주 가능 값)을 차단.
     /// - 검증되지 않은 필드는 도메인이 모든 실수 값을 의미 있게 받아들일 수 있는 경우
@@ -363,14 +360,8 @@ impl TuningProfile {
         }
 
         // ── 관계 갱신 ──
-        if self.closeness_update_rate >= self.trust_update_rate {
-            return Err("closeness_update_rate must be < trust_update_rate");
-        }
         if !in_open_unit(self.trust_update_rate) {
             return Err("trust_update_rate must be in (0, 1)");
-        }
-        if !in_open_unit(self.closeness_update_rate) {
-            return Err("closeness_update_rate must be in (0, 1)");
         }
         if !strictly_positive(self.significance_scale) {
             return Err("significance_scale must be > 0");
@@ -401,10 +392,10 @@ impl TuningProfile {
 
         // ── 관계 변조 weight (음수 들어가면 modifier가 0으로 floored되어 무력화) ──
         for w in [
-            self.rel_closeness_intensity_weight,
+            self.rel_affinity_intensity_weight,
             self.rel_trust_emotion_weight,
-            self.rel_closeness_empathy_weight,
-            self.rel_closeness_hostility_weight,
+            self.rel_affinity_empathy_weight,
+            self.rel_affinity_hostility_weight,
         ] {
             if !non_negative(w) {
                 return Err("rel_*_weight must all be >= 0");
@@ -624,9 +615,10 @@ mod tests {
 
     #[test]
     fn validate_catches_inverted_levels() {
-        // level_high_threshold > level_very_high_threshold(0.6) → invariant 위반
+        // Phase 2.3 §A: level_*_threshold ±100 native 전환.
+        // level_high_threshold > level_very_high_threshold(60.0) → invariant 위반
         let p = TuningProfile {
-            level_high_threshold: 0.8,
+            level_high_threshold: 80.0,
             ..Default::default()
         };
         assert!(p.validate().is_err());

@@ -813,9 +813,9 @@ mod tests {
         assert!(after.empathy_modifier < before.empathy_modifier);
         assert!(after.hostility_modifier > before.hostility_modifier);
 
-        // (2) 정량 회귀 — 회고 §S2 affinity 28.6 / 100 = 0.286
+        // (2) 정량 회귀 — 회고 §S2 affinity 28.6 (±100 native, Phase 2.3 §D 재조정)
         let p = profile();
-        let expected = (1.0 + 0.286 * p.rel_closeness_intensity_weight).max(0.0);
+        let expected = (1.0 + 28.6 * p.rel_affinity_intensity_weight).max(0.0);
         assert!(
             (after.intensity_multiplier - expected).abs() < 1e-3,
             "drift: got {}, expected {}",
@@ -837,9 +837,9 @@ mod tests {
 
         assert!(after.trust_modifier < before.trust_modifier);
 
-        // 회고 §S2 trust 15.8 / 100 = 0.158
+        // 회고 §S2 trust 15.8 (±100 native, Phase 2.3 §D 재조정)
         let p = profile();
-        let expected = 1.0 + 0.158 * p.rel_trust_emotion_weight;
+        let expected = 1.0 + 15.8 * p.rel_trust_emotion_weight;
         assert!(
             (after.trust_modifier - expected).abs() < 1e-3,
             "drift: got {}, expected {}",

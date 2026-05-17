@@ -1,0 +1,62 @@
+{
+  "case": "S1",
+  "title": "임충 → 노지심 (Admiration + Gratitude)",
+  "_narrative": "노지심이 야저림에서 임충을 구하고 떠남. 임충의 사후 감정 — 우러르는 인정(Admiration) + 보은 의지(Gratitude). 의리·은혜 갚음 흐름.",
+  "_band": "high (감사·존경)",
+  "_phase": "Phase 2.3 appraise-validation",
+  "_spec_link": "task-rel-phase2.3-appraise-tuning.md §4 Stage 2.3-C",
+
+  "owner": {
+    "id": "lin_chong",
+    "name": "임충",
+    "description": "팔십만금군 교두 출신 — 결단 직전",
+    "inner_compass": "체제의 법도와 의리를 지킨다 — 단, 의리 없는 자는 더 이상 신의의 대상이 아니다",
+    "hexaco_active_facets": {
+      "sincerity": 0.6,
+      "fairness": 0.7,
+      "anxiety": 0.4,
+      "patience": 0.3,
+      "prudence": 0.4
+    },
+    "_modifier_rules_fired": "sincerity 0.6 → trust × 1.2 (HIGH_THRESHOLD 0.5 초과). 나머지 미발동."
+  },
+  "partner": {
+    "id": "lu_zhishen",
+    "name": "노지심",
+    "description": "화화상 노지심 — 임충의 결의 형제"
+  },
+  "initial_relationship": {
+    "trust": 50.0,
+    "affinity": 40.0,
+    "respect": 20.0,
+    "wariness": 0.0,
+    "type": "결의 형제"
+  },
+  "emotion_state": {
+    "Admiration": 0.6,
+    "Gratitude": 0.6
+  },
+  "reflection": {
+    "is_chitchat": false,
+    "significance_score": 0.78,
+    "turn_count": 7,
+    "summary": "노지심이 야저림에서 임충을 구하고 떠남 — 임충의 깊은 감사·존경",
+    "llm_reasoning": "우러르는 인정(Admiration) + 보은 의지(Gratitude). beat=구원"
+  },
+
+  "_expected_axes_delta": {
+    "trust": "+14.4 (Gratitude 0.6 × +20 × 1.2)",
+    "affinity": "+6 (Gratitude 0.6 × +10 × 1.0)",
+    "respect": "+12 (Admiration 0.6 × +20 × 1.0)",
+    "wariness": "-6 raw → clamp 0 (Gratitude 0.6 × -10 × 1.0, WarinessScore [0,100])"
+  },
+  "_expected_final_axes": {
+    "trust": 64.4,
+    "affinity": 46.0,
+    "respect": 32.0,
+    "wariness": 0.0
+  },
+  "_expected_event_kinds": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
+  "_tolerance_pm": 5.0,
+  "_test_link": "tests/phase2_narrative_test.rs::s1_lin_chong_admires_lu_zhishen_admiration_gratitude (tol ±0.5; Stage 2.3-C 게이트 ±5)"
+}

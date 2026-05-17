@@ -219,68 +219,42 @@ impl EmotionSnapshot {
 
 /// 관계의 구조화된 요약 — 도메인 데이터
 ///
-/// Score 값(-1.0~1.0)을 라벨 인덱스로 변환하여
+/// Score 값(±100 raw)을 라벨 인덱스로 변환하여
 /// presentation 레이어에서 다국어 렌더링을 가능하게 한다.
+///
+/// **Phase 2.3 §A (P-D-4)**: 4축 presentation (affinity/trust/respect/wariness).
+/// 위계 정보는 `Relationship.type_text` 자유 텍스트로 흡수 (B-D4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipSnapshot {
     /// 상대방 이름/ID
     pub target_name: String,
-    /// 친밀도 라벨 인덱스
-    pub closeness_level: RelationshipLevel,
+    /// 친화도 라벨 인덱스
+    pub affinity_level: RelationshipLevel,
     /// 신뢰도 라벨 인덱스
     pub trust_level: RelationshipLevel,
-    /// 상하 관계 라벨 인덱스
-    pub power_level: PowerLevel,
+    /// 존경도 라벨 인덱스 (Phase 2.3 신설)
+    pub respect_level: RelationshipLevel,
+    /// 경계심 라벨 인덱스 (Phase 2.3 신설)
+    pub wariness_level: RelationshipLevel,
 }
 
-/// 관계 강도 수준 (closeness, trust 공용)
+/// 관계 강도 수준 (4축 공용)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RelationshipLevel {
-    /// > 0.6: 매우 높음
+    /// > LEVEL_VERY_HIGH_THRESHOLD: 매우 높음
     VeryHigh,
-    /// > 0.2: 높음
+    /// > LEVEL_HIGH_THRESHOLD: 높음
     High,
-    /// > -0.2: 중립
+    /// > LEVEL_LOW_THRESHOLD: 중립
     Neutral,
-    /// > -0.6: 낮음
+    /// > LEVEL_VERY_LOW_THRESHOLD: 낮음
     Low,
-    /// <= -0.6: 매우 낮음
-    VeryLow,
-}
-
-/// 상하 관계 수준
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum PowerLevel {
-    /// > 0.6: 절대 상위자 (문주, 장문인 등)
-    VeryHigh,
-    /// > 0.2: 상위자 (사부 등)
-    High,
-    /// > -0.2: 대등
-    Neutral,
-    /// > -0.6: 하위자 (제자 등)
-    Low,
-    /// <= -0.6: 절대 하위자 (하인, 종 등)
+    /// <= LEVEL_VERY_LOW_THRESHOLD: 매우 낮음
     VeryLow,
 }
 
 impl RelationshipLevel {
-    pub fn from_score(value: f32) -> Self {
-        let p = profile();
-        if value > p.level_very_high_threshold {
-            Self::VeryHigh
-        } else if value > p.level_high_threshold {
-            Self::High
-        } else if value > p.level_low_threshold {
-            Self::Neutral
-        } else if value > p.level_very_low_threshold {
-            Self::Low
-        } else {
-            Self::VeryLow
-        }
-    }
-}
-
-impl PowerLevel {
+    /// 입력은 ±100 raw scale (Phase 2.3 §A: threshold const도 ±100 native).
     pub fn from_score(value: f32) -> Self {
         let p = profile();
         if value > p.level_very_high_threshold {
@@ -310,12 +284,11 @@ impl RelationshipSnapshot {
         };
         Self {
             target_name: name,
-            // Stage 1: closeness_level은 affinity 값으로 매핑 (시맨틱 보존).
-            // ±100 → ±1.0 정규화하여 기존 임계값 (level_*_threshold) 호환.
-            // power_level은 0.0 fallback (B-D4 폐기, Stage 3에서 type_text 라벨로 교체 검토).
-            closeness_level: RelationshipLevel::from_score(rel.affinity().value() / 100.0),
-            trust_level: RelationshipLevel::from_score(rel.trust().value() / 100.0),
-            power_level: PowerLevel::from_score(0.0),
+            // Phase 2.3 §A: ±100 raw 직통 (level_*_threshold도 ±100 native).
+            affinity_level: RelationshipLevel::from_score(rel.affinity().value()),
+            trust_level: RelationshipLevel::from_score(rel.trust().value()),
+            respect_level: RelationshipLevel::from_score(rel.respect().value()),
+            wariness_level: RelationshipLevel::from_score(rel.wariness().value()),
         }
     }
 }

@@ -150,9 +150,10 @@ impl GuideFormatter for LocaleFormatter {
                 .as_ref()
                 .map(|rel| LocaleRelationshipOutput {
                     target_name: rel.target_name.clone(),
-                    closeness: l.closeness_level_label(&rel.closeness_level).to_string(),
+                    affinity: l.affinity_level_label(&rel.affinity_level).to_string(),
                     trust: l.trust_level_label(&rel.trust_level).to_string(),
-                    power: l.power_level_label(&rel.power_level).to_string(),
+                    respect: l.respect_level_label(&rel.respect_level).to_string(),
+                    wariness: l.wariness_level_label(&rel.wariness_level).to_string(),
                 }),
         };
 
@@ -236,16 +237,20 @@ impl LocaleFormatter {
             lines.push(l.render_template(&t.section_relationship, &[]));
         }
         lines.push(l.render_template(
-            &t.relationship_closeness,
-            &[("level", l.closeness_level_label(&rel.closeness_level))],
+            &t.relationship_affinity,
+            &[("level", l.affinity_level_label(&rel.affinity_level))],
         ));
         lines.push(l.render_template(
             &t.relationship_trust,
             &[("level", l.trust_level_label(&rel.trust_level))],
         ));
         lines.push(l.render_template(
-            &t.relationship_power,
-            &[("level", l.power_level_label(&rel.power_level))],
+            &t.relationship_respect,
+            &[("level", l.respect_level_label(&rel.respect_level))],
+        ));
+        lines.push(l.render_template(
+            &t.relationship_wariness,
+            &[("level", l.wariness_level_label(&rel.wariness_level))],
         ));
     }
 }
@@ -292,7 +297,8 @@ struct LocaleDirectiveOutput {
 #[derive(Serialize)]
 struct LocaleRelationshipOutput {
     target_name: String,
-    closeness: String,
+    affinity: String,
     trust: String,
-    power: String,
+    respect: String,
+    wariness: String,
 }

@@ -181,8 +181,8 @@ impl NpcJson {
 /// 시나리오 JSON 진입점 — v0.7 (4축) 순수 deserializer.
 ///
 /// Phase 2 Stage 4 (v1.4, 2026-05-16): v0.6 자동 ×100 변환 사슬 제거. 시나리오 JSON은
-/// 영구히 v0.7 ±100 raw 표기 (`trust/affinity/respect/wariness`). v0.6 키
-/// (`closeness`/`power`)는 *무시*된다 (`#[serde(deny_unknown_fields)]` 미적용 — 부분 누락 호환).
+/// 영구히 v0.7 ±100 raw 표기 (`trust/affinity/respect/wariness`). 옛 3축 키는 *무시*된다
+/// (`#[serde(deny_unknown_fields)]` 미적용 — 부분 누락 호환).
 /// `respect`/`wariness`는 디자이너 부분 생략 backward compat을 위해 `#[serde(default)]` 유지.
 #[derive(Deserialize)]
 struct RelationshipJson {
@@ -584,7 +584,7 @@ impl SceneStore for &mut InMemoryRepository {
 mod relationship_json_tests {
     //! v0.7 4축 시나리오 deserializer 검증 (Phase 2 Stage 4 §4.3 신규).
     //!
-    //! v0.6 자동 ×100 사슬 제거 — 입력은 ±100 raw 그대로, `closeness`/`power` 키는 무시.
+    //! v0.6 자동 ×100 사슬 제거 — 입력은 ±100 raw 그대로, 옛 3축 키는 무시.
 
     use super::RelationshipJson;
 

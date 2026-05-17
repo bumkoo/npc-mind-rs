@@ -147,7 +147,7 @@ pub struct AppState {
     // `/api/projection/*`는 shared_dispatcher 경로만 반영 (task 명세 §10).
     /// NPC별 mood / dominant / snapshot 뷰 (EmotionAppraised·StimulusApplied·EmotionCleared 구독).
     pub emotion_projection: Arc<StdMutex<EmotionProjection>>,
-    /// (owner, target) 쌍의 closeness/trust/power 뷰 (RelationshipUpdated 구독).
+    /// (owner, target) 쌍의 4축 (trust/affinity/respect/wariness) 뷰 (RelationshipUpdated 구독).
     pub relationship_projection: Arc<StdMutex<RelationshipProjection>>,
     /// 활성 Scene 상태 뷰 (SceneStarted·BeatTransitioned·SceneEnded 구독).
     pub scene_projection: Arc<StdMutex<SceneProjection>>,
@@ -662,11 +662,8 @@ pub struct NpcProfile {
 /// 필드 순서 — trust → affinity → respect → wariness.
 /// 값 contract — trust/affinity/respect: ±100, wariness: 0~100.
 ///
-/// **v0.6 시나리오 JSON 호환 (자동 ×100 변환)**:
-/// 커스텀 `Deserialize` impl이 v0.6 키(`closeness` 또는 `power`) 존재를 감지하면
-/// **자동으로 `trust × 100`, `closeness × 100 → affinity`** 변환을 적용한다 (Stage 3 리뷰 H1).
-/// `power`는 폐기 (B-D4) — 값 무시. save-roundtrip 시 v0.7 4-field로 저장되며 값도 정확.
-/// v0.6 감지 시 `tracing::warn!`로 표시 — Stage 4 마이그레이션 도구 실행 권장.
+/// Stage 4 마이그레이션으로 시나리오 JSON은 영구히 4축 ±100 raw 표기.
+/// 옛 v0.6 호환 자동 변환은 폐기됨 (Phase 2 Stage 4).
 #[derive(Clone, Serialize, Deserialize)]
 pub struct RelationshipData {
     pub owner_id: String,
@@ -807,8 +804,8 @@ impl NpcProfile {
 impl RelationshipData {
     /// Relationship 도메인 객체로 변환.
     ///
-    /// Stage 3 — 필드가 ±100 raw 스케일. 산술 변환 없음. v0.6 시나리오 JSON은
-    /// `Deserialize` impl에서 자동 ×100 변환되므로 본 메서드 진입 시점에는 항상 ±100.
+    /// Stage 3 — 필드가 ±100 raw 스케일. 산술 변환 없음.
+    /// (Stage 4 이후 시나리오 JSON 자체가 4축 ±100 표기로 영구 전환됨.)
     pub fn to_relationship(&self) -> Relationship {
         use npc_mind::domain::relationship::{AxisScore, WarinessScore};
         RelationshipBuilder::new(&self.owner_id, &self.target_id)

@@ -200,8 +200,7 @@ fn gyo_ryong_profile() -> serde_json::Value {
 }
 
 fn relationship_data() -> serde_json::Value {
-    // v0.7 4축 (±100 raw). v0.6 shape (closeness/trust/power ±1.0)에서
-    // 산술 변환: affinity = closeness × 100, trust = trust × 100, power 폐기.
+    // v0.7 4축 (±100 raw, trust/affinity/respect/wariness).
     serde_json::json!({
         "owner_id": "mu_baek",
         "target_id": "gyo_ryong",

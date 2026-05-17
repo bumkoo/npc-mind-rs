@@ -1,7 +1,8 @@
 //! NPC 관계 모델 — 4축 + BondKind + BondStatus + Partnership + type.
 //!
-//! relationships.md v0.7. Phase 2 Stage 1 마이그레이션 산출 — 3축 (closeness/trust/power)
-//! → 4축 (trust/affinity/respect/wariness) + 신규 분류/상태/형식 enum 도입. `power` 폐기 (B-D4).
+//! relationships.md v0.7. Phase 2 Stage 1 마이그레이션 산출 — 구 3축에서
+//! 4축 (trust/affinity/respect/wariness) + 신규 분류/상태/형식 enum 도입.
+//! 위계 정보는 `type_text` 자유 텍스트로 흡수 (B-D4).
 //!
 //! ## DDD 분류: Aggregate (Value Object → Aggregate 승격)
 //!
@@ -33,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 /// NPC와 상대(NPC 또는 플레이어) 사이의 관계 — 4축 + bond_* + partnership + type.
 ///
-/// `power` 폐기 (Phase 2 B-D4) — 위계 정보는 `type_text` 자유 텍스트로 흡수.
+/// B-D4: 위계 축 폐기 — 위계 정보는 `type_text` 자유 텍스트로 흡수.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Relationship {
     /// 관계 소유자 ID (누구의 관계인가)
@@ -60,7 +61,7 @@ pub struct Relationship {
     #[serde(default)]
     partnership: Option<Partnership>,
 
-    // 자유 텍스트 (B-D4: power 흡수)
+    // 자유 텍스트 (B-D4: 위계 흡수)
     #[serde(rename = "type", default)]
     type_text: String,
     #[serde(default)]
@@ -164,20 +165,17 @@ impl Relationship {
 
     /// 감정 평가에 필요한 modifier 값을 사전 계산.
     ///
-    /// **Phase 2 Stage 1 — F1 흡수 정책**: `RelationshipModifiers` 4 필드
-    /// (intensity/trust/empathy/hostility)는 Phase 2.3 정밀화 대기.
-    /// 본 메서드는 *closeness 입력만 affinity로 swap* — 시맨틱 보존.
-    /// tuning profile `rel_closeness_*_weight` 필드 이름도 그대로 유지 (Phase 2.3 rename).
+    /// **Phase 2.3 §A**: ±100 raw native 동작. tuning profile의 `rel_affinity_*_weight`
+    /// + `rel_trust_emotion_weight`가 1/100 스케일이므로 raw 값과 직접 곱.
     pub fn modifiers(&self) -> RelationshipModifiers {
-        let affinity_norm = self.affinity.value() / 100.0; // -1.0..1.0 정규화
-        let trust_norm = self.trust.value() / 100.0;
+        let affinity = self.affinity.value(); // ±100 raw
+        let trust = self.trust.value();
         let p = profile();
         RelationshipModifiers {
-            intensity_multiplier: (1.0 + affinity_norm * p.rel_closeness_intensity_weight)
-                .max(0.0),
-            trust_modifier: 1.0 + trust_norm * p.rel_trust_emotion_weight,
-            empathy_modifier: (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0),
-            hostility_modifier: (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0),
+            intensity_multiplier: (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0),
+            trust_modifier: 1.0 + trust * p.rel_trust_emotion_weight,
+            empathy_modifier: (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0),
+            hostility_modifier: (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0),
         }
     }
 }
@@ -370,13 +368,12 @@ mod tests {
         );
         let m = r.modifiers();
         let p = profile();
-        let affinity_norm = 0.8_f32;
-        let trust_norm = 0.5_f32;
-        let expected_intensity = (1.0 + affinity_norm * p.rel_closeness_intensity_weight).max(0.0);
-        let expected_trust = 1.0 + trust_norm * p.rel_trust_emotion_weight;
-        let expected_empathy = (1.0 + affinity_norm * p.rel_closeness_empathy_weight).max(0.0);
-        let expected_hostility =
-            (1.0 - affinity_norm * p.rel_closeness_hostility_weight).max(0.0);
+        let affinity = 80.0_f32;
+        let trust = 50.0_f32;
+        let expected_intensity = (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0);
+        let expected_trust = 1.0 + trust * p.rel_trust_emotion_weight;
+        let expected_empathy = (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0);
+        let expected_hostility = (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0);
         assert!((m.intensity_multiplier - expected_intensity).abs() < 1e-6);
         assert!((m.trust_modifier - expected_trust).abs() < 1e-6);
         assert!((m.empathy_modifier - expected_empathy).abs() < 1e-6);
