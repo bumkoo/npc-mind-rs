@@ -1,0 +1,39 @@
+{
+  "case": "S4",
+  "title": "임충 → 고구 (정성 케이스, Phase 2.5 이관)",
+  "_narrative": "임충의 對고구 감정 — *체제 정점에 대한 누적 분노*. 단일 시점 EmotionState mock으로 박제 어려움 (시간 분산 + 권력 거리). '3 layer separation' (서사·인지·정서)이 4축 변동에 자연스럽게 반영되는지 *서사 직관*과 정합 검증.",
+  "_band": "qualitative (정량 박제 보류)",
+  "_phase": "Phase 2.5 이관 (P-D-8 확정)",
+  "_spec_link": "task-rel-phase2.3-appraise-tuning.md §4 Stage 2.3-C / KICKOFF §5.4 / S5-D2",
+
+  "owner": {
+    "id": "lin_chong",
+    "name": "임충",
+    "_note": "S1/S2와 동일 HEXACO 프로파일 가정"
+  },
+  "partner": {
+    "id": "gao_qiu",
+    "name": "고구",
+    "description": "북송 태위 — 체제 정점, 임충의 누적 적의 대상"
+  },
+
+  "_quantitative_status": "BLOCKED",
+  "_blocking_reasons": [
+    "axis_modulation 부재: src 0건 + ReflectionResult 정확히 7필드 (is_chitchat/summary/significance_score/declarative_events/partnership_event/turn_count/llm_reasoning). axis_modulation 신설 = Phase 2.5 LLM 기반.",
+    "시간 분산 미모델: 단일 시점 EmotionState mock으로 누적 분노 박제 불가. Phase 2.5+ 시간 분산 모델 + B-D6 axis_modulation 활성화 시 정량 가능.",
+    "권력 거리 변수: 임충/고구는 직접 대면 부재 — 매개된 분노. Phase 2.3 dispatch_v2의 직접 4축 변동 모델로 표현 불가."
+  ],
+
+  "_designer_handoff_note": {
+    "qualitative_expected_trajectory": "trust 양수→음수 / affinity 양수→음수 / respect 양수→음수 / wariness 0→높음. 단 *시점 분산* — 단일 dispatch가 아니라 N개 dispatch 누적의 *추세*.",
+    "narrative_check_axes": [
+      "체제 정점에 대한 분노가 4축 변동의 어느 축에 가장 강하게 투영되어야 하나? (trust↓? respect↓? wariness↑?)",
+      "권력 거리가 modifier에 별도 보정으로 들어가야 하나, 아니면 시간 분산만으로 충분?",
+      "B-D11 stage-progression (incident → resolution) 모델이 임충→고구 누적 표현에 자연스러운가?"
+    ],
+    "phase_2_5_entry_point": "ReflectionResult에 axis_modulation 필드 추가 + 시간 분산 모델 활성화. Phase 2.5 spec 진입 시 본 S4가 1차 검증 케이스."
+  },
+
+  "_tolerance_pm": null,
+  "_test_link": "(없음 — phase2_narrative_test.rs §S4 자리만 표기)"
+}

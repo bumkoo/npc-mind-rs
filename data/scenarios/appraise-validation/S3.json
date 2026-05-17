@@ -1,0 +1,67 @@
+{
+  "case": "S3",
+  "title": "수련 → 옥교룡 (Pity + Reproach + Anger)",
+  "_narrative": "수련이 교만한 제자 옥교룡의 폭주를 마주함 — 안타까움(Pity) + 책망(Reproach) + 분노(Anger). 사부의 체념과 한.",
+  "_band": "mid+ (사부의 한)",
+  "_phase": "Phase 2.3 appraise-validation",
+  "_spec_link": "task-rel-phase2.3-appraise-tuning.md §4 Stage 2.3-C",
+
+  "owner": {
+    "id": "yu_shulien",
+    "name": "수련",
+    "description": "청명검 전수자 — 절제와 인내의 화신",
+    "inner_compass": "공성명수신퇴(功成名遂身退) — 공을 이루었으니 물러난다",
+    "hexaco_active_facets": {
+      "sincerity": 0.7,
+      "patience": 0.9,
+      "forgiveness": 0.6,
+      "prudence": 0.8,
+      "diligence": 0.8
+    },
+    "_modifier_rules_fired": "3 rules: sincerity 0.7 (trust × 1.2) + patience 0.9 (all × 0.7) + prudence 0.8 (all × 0.8). forgiveness=0.6 not <-0.5 → A− Forgiveness 미발동."
+  },
+  "partner": {
+    "id": "yu_qiaolong",
+    "name": "옥교룡",
+    "description": "교만한 제자 — 사부의 가르침을 거부"
+  },
+  "initial_relationship": {
+    "trust": 40.0,
+    "affinity": 30.0,
+    "respect": 10.0,
+    "wariness": 20.0,
+    "type": "교만한 제자"
+  },
+  "emotion_state": {
+    "Pity": 0.7,
+    "Reproach": 0.7,
+    "Anger": 0.6
+  },
+  "reflection": {
+    "is_chitchat": false,
+    "significance_score": 0.72,
+    "turn_count": 8,
+    "summary": "수련이 옥교룡의 폭주를 직시 — 안타까움·책망·분노",
+    "llm_reasoning": "Pity (제자의 길 vs 폭주) + Reproach + Anger (사부의 한)"
+  },
+
+  "_modifier_compound": {
+    "trust": "1.2 × 0.7 × 0.8 = 0.672",
+    "others": "0.7 × 0.8 = 0.56"
+  },
+  "_expected_axes_delta": {
+    "trust": "-14.784 (Pity 0 + Reproach -4.704 + Anger -10.08)",
+    "affinity": "-3.36 (Pity +3.92 + Reproach -3.92 + Anger -3.36)",
+    "respect": "-11.76 (Pity -1.96 + Reproach -9.8 + Anger 0)",
+    "wariness": "+12.32 (Pity 0 + Reproach +3.92 + Anger +8.4)"
+  },
+  "_expected_final_axes": {
+    "trust": 25.216,
+    "affinity": 26.64,
+    "respect": -1.76,
+    "wariness": 32.32
+  },
+  "_expected_event_kinds": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
+  "_tolerance_pm": 5.0,
+  "_test_link": "tests/phase2_narrative_test.rs::s3_yu_shulien_pities_yu_qiaolong_pity_reproach_anger (tol ±0.5; Stage 2.3-C 게이트 ±5)"
+}
