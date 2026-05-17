@@ -311,7 +311,7 @@ mod tests {
             "pupil",
             "sage",
             AxisScore::new(60.0), // trust ±100 (Stage 1 4축 swap: trust 0.6 → 60)
-            AxisScore::NEUTRAL,   // affinity (구 closeness 0.0)
+            AxisScore::NEUTRAL,   // affinity
             AxisScore::NEUTRAL,   // respect
             WarinessScore::NEUTRAL,
         );

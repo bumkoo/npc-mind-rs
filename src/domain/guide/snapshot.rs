@@ -222,14 +222,13 @@ impl EmotionSnapshot {
 /// Score 값(±100 raw)을 라벨 인덱스로 변환하여
 /// presentation 레이어에서 다국어 렌더링을 가능하게 한다.
 ///
-/// **Phase 2.3 §A (P-D-4)**: 4축 presentation. `closeness_level → affinity_level`,
-/// `respect_level`/`wariness_level` 신설, `power_level` 폐기 (B-D4 — 위계 정보는
-/// `Relationship.type_text` 자유 텍스트로 흡수).
+/// **Phase 2.3 §A (P-D-4)**: 4축 presentation (affinity/trust/respect/wariness).
+/// 위계 정보는 `Relationship.type_text` 자유 텍스트로 흡수 (B-D4).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RelationshipSnapshot {
     /// 상대방 이름/ID
     pub target_name: String,
-    /// 친화도 라벨 인덱스 (구 closeness_level → affinity_level)
+    /// 친화도 라벨 인덱스
     pub affinity_level: RelationshipLevel,
     /// 신뢰도 라벨 인덱스
     pub trust_level: RelationshipLevel,

@@ -46,7 +46,7 @@ use npc_mind::domain::relationship::Relationship;
 /// `dispatch_v2` 이후 수정된 공유 repo 상태를 `StateInner`로 반영.
 ///
 /// 동기화 대상:
-/// - Relationships (갱신된 closeness/trust/power)
+/// - Relationships (갱신된 4축 trust/affinity/respect/wariness)
 /// - Emotions (전수 교체)
 /// - Scene (active_focus 등)
 ///

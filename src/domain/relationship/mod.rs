@@ -1,7 +1,8 @@
 //! NPC 관계 모델 — 4축 + BondKind + BondStatus + Partnership + type.
 //!
-//! relationships.md v0.7. Phase 2 Stage 1 마이그레이션 산출 — 3축 (closeness/trust/power)
-//! → 4축 (trust/affinity/respect/wariness) + 신규 분류/상태/형식 enum 도입. `power` 폐기 (B-D4).
+//! relationships.md v0.7. Phase 2 Stage 1 마이그레이션 산출 — 구 3축에서
+//! 4축 (trust/affinity/respect/wariness) + 신규 분류/상태/형식 enum 도입.
+//! 위계 정보는 `type_text` 자유 텍스트로 흡수 (B-D4).
 //!
 //! ## DDD 분류: Aggregate (Value Object → Aggregate 승격)
 //!
@@ -33,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 /// NPC와 상대(NPC 또는 플레이어) 사이의 관계 — 4축 + bond_* + partnership + type.
 ///
-/// `power` 폐기 (Phase 2 B-D4) — 위계 정보는 `type_text` 자유 텍스트로 흡수.
+/// B-D4: 위계 축 폐기 — 위계 정보는 `type_text` 자유 텍스트로 흡수.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Relationship {
     /// 관계 소유자 ID (누구의 관계인가)
@@ -60,7 +61,7 @@ pub struct Relationship {
     #[serde(default)]
     partnership: Option<Partnership>,
 
-    // 자유 텍스트 (B-D4: power 흡수)
+    // 자유 텍스트 (B-D4: 위계 흡수)
     #[serde(rename = "type", default)]
     type_text: String,
     #[serde(default)]
@@ -164,9 +165,8 @@ impl Relationship {
 
     /// 감정 평가에 필요한 modifier 값을 사전 계산.
     ///
-    /// **Phase 2.3 §A**: ÷100 제거 + weight 1/100 재조정으로 ±100 raw native 동작.
-    /// 값 동치: `(v/100) × w_old ≡ v × (w_old/100)`. tuning profile field rename
-    /// `rel_closeness_*_weight → rel_affinity_*_weight` (logical 정렬).
+    /// **Phase 2.3 §A**: ±100 raw native 동작. tuning profile의 `rel_affinity_*_weight`
+    /// + `rel_trust_emotion_weight`가 1/100 스케일이므로 raw 값과 직접 곱.
     pub fn modifiers(&self) -> RelationshipModifiers {
         let affinity = self.affinity.value(); // ±100 raw
         let trust = self.trust.value();

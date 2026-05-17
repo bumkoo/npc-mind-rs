@@ -33,13 +33,13 @@ use serde::{Deserialize, Serialize};
 /// `Relationship::modifiers()`로 생성한다.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RelationshipModifiers {
-    /// 감정 반응 배율 — closeness 기반 (가까울수록 감정 반응 강화)
+    /// 감정 반응 배율 — affinity 기반 (가까울수록 감정 반응 강화)
     pub intensity_multiplier: f32,
     /// 신뢰도 감정 배율 — trust 기반 (신뢰할수록 감정 증폭)
     pub trust_modifier: f32,
-    /// 공감 관계 배율 — closeness 기반 (가까울수록 공감 증폭)
+    /// 공감 관계 배율 — affinity 기반 (가까울수록 공감 증폭)
     pub empathy_modifier: f32,
-    /// 적대 관계 배율 — closeness 기반 (적대적일수록 적대감 증폭)
+    /// 적대 관계 배율 — affinity 기반 (적대적일수록 적대감 증폭)
     pub hostility_modifier: f32,
 }
 
