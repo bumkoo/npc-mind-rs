@@ -1,17 +1,17 @@
 /* ============================================================
    감정 발생 파이프라인 문서 — 공유 스타일
-   컨셉: 무협 비급(秘笈) · 먹(墨) + 주사(朱) · 다크
+   기술 문서 · 다크 테마
    ============================================================ */
-@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
 
 :root{
-  --ink:#14110d; --surface:#1c1813; --surface-2:#221d16;
-  --border:#322a20; --hair:#2a2419;
-  --text:#e9e1d2; --muted:#9a8d77; --faint:#6f6553;
-  --zhu:#cf4a36; --zhu-hi:#e6604a;        /* 주사 朱 */
-  --jade:#5fae8c; --jade-hi:#7cc7a5;      /* 비취 翠 */
-  --gold:#c8a24a;
-  --code-bg:#100e0a; --code-text:#d8cfbd;
+  --ink:#0f1115; --surface:#161922; --surface-2:#1c2029;
+  --border:#2a2f3a; --hair:#232833;
+  --text:#dfe3ea; --muted:#8b93a3; --faint:#5f6776;
+  --zhu:#5b9bd5; --zhu-hi:#7db4e6;        /* accent (primary) */
+  --jade:#56b486; --jade-hi:#74c79f;      /* accent (secondary) */
+  --gold:#c0a44e;
+  --code-bg:#0c0e13; --code-text:#cdd3de;
   --r:6px; --maxw:1080px;
 }
 
@@ -22,14 +22,14 @@ body{
   color:var(--text);
   font-family:'Noto Sans KR',-apple-system,'Malgun Gothic',sans-serif;
   font-weight:300; line-height:1.75; font-size:16px;
-  background-image:radial-gradient(circle at 20% -10%,rgba(207,74,54,.06),transparent 45%),
-                   radial-gradient(circle at 90% 110%,rgba(95,174,140,.05),transparent 45%);
+  background-image:radial-gradient(circle at 20% -10%,rgba(91,155,213,.05),transparent 45%),
+                   radial-gradient(circle at 90% 110%,rgba(86,180,134,.04),transparent 45%);
   background-attachment:fixed;
 }
 .wrap{max-width:var(--maxw);margin:0 auto;padding:56px 28px 120px}
 
 /* ---- 타이포 ---- */
-h1,h2,h3,.disp{font-family:'Gowun Batang','Nanum Myeongjo','Malgun Gothic',serif}
+h1,h2,h3,.disp{font-family:'Noto Sans KR',-apple-system,'Malgun Gothic',sans-serif}
 h1{font-size:2.5rem;font-weight:700;line-height:1.25;letter-spacing:-.01em}
 h1 .han{color:var(--zhu);font-weight:400}
 h2{font-size:1.62rem;font-weight:700;margin:64px 0 18px;padding-bottom:10px;
@@ -86,11 +86,10 @@ code{font-family:'JetBrains Mono',Consolas,monospace;font-size:.86em;
 .tbl{width:100%;border-collapse:collapse;margin:22px 0;font-size:.88rem;
   background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
 .tbl th{background:var(--surface-2);color:var(--gold);text-align:left;
-  padding:11px 14px;font-weight:500;border-bottom:1px solid var(--border);
-  font-family:'Gowun Batang',serif}
+  padding:11px 14px;font-weight:500;border-bottom:1px solid var(--border)}
 .tbl td{padding:10px 14px;border-bottom:1px solid var(--hair);color:#d6cdba;vertical-align:top}
 .tbl tr:last-child td{border-bottom:0}
-.tbl tr:hover td{background:rgba(207,74,54,.04)}
+.tbl tr:hover td{background:rgba(91,155,213,.05)}
 .tbl code{background:transparent;border:0;padding:0;color:var(--jade-hi)}
 .pos{color:var(--jade-hi)} .neg{color:var(--zhu-hi)}
 .mono{font-family:'JetBrains Mono',monospace;font-size:.85rem}
@@ -134,9 +133,9 @@ code{font-family:'JetBrains Mono',Consolas,monospace;font-size:.86em;
 /* ---- 예시 박스 ---- */
 .ex{background:var(--surface);border:1px dashed var(--border);border-radius:var(--r);
   padding:20px 22px;margin:22px 0}
-.ex .h{font-family:'Gowun Batang',serif;color:var(--gold);font-weight:700;
+.ex .h{color:var(--gold);font-weight:700;
   font-size:1.02rem;margin-bottom:10px}
-.ex .h::before{content:"劍 ";color:var(--zhu);font-size:.9em}
+.ex .h::before{content:"";color:var(--zhu);font-size:.9em}
 .ex .calc{font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#cfc6b3;
   background:var(--code-bg);border-radius:5px;padding:12px 16px;margin:10px 0;line-height:1.9}
 .ex .calc b{color:var(--zhu-hi)} .ex .calc .r{color:var(--jade-hi);font-weight:600}
