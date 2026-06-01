@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>02 · OCC Action 분기 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>02 ACTION</b></span>
+    <span>domain/emotion/appraisal/action.rs</span>
+  </div>
+
+  <h1>OCC · Action 분기 <span class="han">行爲</span></h1>
+  <p class="lead">"누군가가 무엇을 했음." 행위자가 자기 자신인지 타인인지에 따라
+  귀인(Attribution) 감정이 갈린다. 타인 행동에만 관계 배율이 곱해진다.</p>
+
+  <h2><span class="seal">1</span>입력 설정값 — ActionFocus</h2>
+  <p class="path">domain/emotion/situation.rs · struct ActionFocus</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>타입</th><th>의미</th><th>작가 입력?</th></tr>
+    <tr><td class="mono">praiseworthiness</td><td class="mono">f32</td><td>−1.0 비난 ~ +1.0 칭찬</td><td><span class="pos">✅ 작가</span></td></tr>
+    <tr><td class="mono">agent_id</td><td class="mono">Option&lt;String&gt;</td><td><strong>None = 자기 자신</strong>, Some = 타인</td><td><span class="pos">✅ 작가</span></td></tr>
+    <tr><td class="mono">modifiers</td><td class="mono">Option&lt;RelationshipModifiers&gt;</td><td>행위자와의 관계 배율. 자기 행동·대화 상대=행위자면 None(→ dialogue_modifiers fallback), 제3자 행위자면 Some</td><td><span class="neg">❌ 호출 측</span></td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">modifiers는 작가 입력이 아니다</span>
+    작가가 쓰는 <code>ActionInput</code>에는 <code>modifiers</code> 필드가 <strong>없다</strong>(<code>description</code>·<code>agent_id</code>·<code>praiseworthiness</code> 3개뿐).
+    <code>ActionInput::into_domain</code>이 받는 <code>agent_modifiers</code> 인자가 그대로 <code>ActionFocus.modifiers</code>로 들어간다.
+    자기 행동이면 None(관계 무의미), 타인 행동이면 호출 측(MindService)이 그 행위자 관계 배율을 채운다.
+    <br><br>※ Event의 modifiers는 <code>EventFocus</code> 최상위가 아니라 <code>desirability_for_other</code> 안에 중첩되며,
+    그쪽은 <code>Option</code>이 아니라 <strong>필수</strong>(없으면 에러 거부)다 — Action과 정반대.
+  </div>
+
+  <div class="note zhu">
+    <span class="tag">agent_id 정규화 (DTO 경계)</span>
+    시나리오 JSON은 자연스럽게 <code>agent_id: npc_id</code>로 쓴다. 그러나 OCC 엔진에서
+    <strong>자기 행동은 <code>agent_id == None</code></strong> 규약이다. 그래서
+    <code>ActionInput::into_domain</code>에서 <code>agent_id == npc_id</code>이면 <code>None</code>으로 자동 정규화한다.
+    이 처리가 없으면 Pride/Shame이 Admiration/Reproach로 잘못 분류된다.
+  </div>
+
+  <h2><span class="seal">2</span>생성 감정 · 강도</h2>
+  <table class="tbl">
+    <tr><th>agent_id</th><th>생성 감정 (부호)</th><th>강도 공식</th></tr>
+    <tr><td><code>None</code> · 자기 행동</td><td>pw&gt;0 <span class="pos">Pride</span> / pw&lt;0 <span class="neg">Shame</span></td><td class="mono">|pw| × pw_weight(self) × 1.0</td></tr>
+    <tr><td><code>Some</code> · 타인 행동</td><td>pw&gt;0 <span class="pos">Admiration</span> / pw&lt;0 <span class="neg">Reproach</span></td><td class="mono">|pw| × pw_weight(other) × (intensity_mult × trust_mod)</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">관계 배율</span>
+    <strong>타인 행동에만</strong> <code>modifier = intensity_multiplier × trust_modifier</code>가 곱해진다.
+    같은 비난받을 행동이라도 <em>신뢰하던 자</em>가 했을 때 Reproach가 더 크다.
+    자기 행동(Pride/Shame)은 상대 관계와 무관하므로 modifier=1.0 고정.
+    제3자 행동이면 <code>action.modifiers</code>(Some)를, 대화 상대 행동이면 <code>dialogue_modifiers</code>를 쓴다.
+  </div>
+
+  <h2><span class="seal">3</span>무협 워크드 예시</h2>
+  <p>weight=1.0 가정.</p>
+  <div class="ex">
+    <div class="h">신뢰하던 사형제가 나를 밀고했다 (타인 · 비난)</div>
+    <p><code>agent_id=Some</code>, <code>pw=−0.8</code>, trust_modifier=1.3, intensity_multiplier=1.0</p>
+    <div class="calc">Reproach = |−0.8| × 1.0 × (1.0 × 1.3) = <span class="r">1.04</span> <span style="color:var(--faint)">→ clamp 시 1.0</span></div>
+  </div>
+  <div class="ex">
+    <div class="h">곽정이 스스로 비겁한 짓을 했다 자책 (자기 · 비난)</div>
+    <p><code>agent_id=None</code>, <code>pw=−0.6</code></p>
+    <div class="calc">Shame = |−0.6| × pw_weight(self) × 1.0 <span style="color:var(--faint)">// 관계 무관</span></div>
+  </div>
+
+  <h2><span class="seal">4</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> appraisal/action.rs — appraise() <span class="src">domain/emotion/appraisal/action.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">appraise</span>&lt;P: AppraisalWeights&gt;(p: &amp;P, state: &amp;<span class="kw">mut</span> EmotionState,
+    dialogue_modifiers: &amp;RelationshipModifiers, action: &amp;ActionFocus) {
+    <span class="kw">let</span> pw = action.praiseworthiness;
+    <span class="kw">let</span> ctx = &amp;action.description;
+
+    <span class="kw">match</span> (&amp;action.agent_id, &amp;action.modifiers) {
+        (<span class="ty">None</span>, _) =&gt; {
+            <span class="cm">// 자기 행동 (Pride, Shame)</span>
+            <span class="kw">let</span> w = p.<span class="fn">praiseworthiness_weight</span>(<span class="kw">true</span>, pw);
+            <span class="fn">add_valence</span>(state, EmotionType::Pride, EmotionType::Shame,
+                        pw, w, <span class="nu">1.0</span>, ctx);
+        }
+        (<span class="ty">Some</span>(_), mods) =&gt; {
+            <span class="cm">// 타인 행동 (Admiration, Reproach)</span>
+            <span class="kw">let</span> mods = mods.<span class="fn">as_ref</span>().<span class="fn">unwrap_or</span>(dialogue_modifiers);
+            <span class="kw">let</span> w = p.<span class="fn">praiseworthiness_weight</span>(<span class="kw">false</span>, pw);
+            <span class="kw">let</span> modifier = mods.intensity_multiplier * mods.trust_modifier;
+            <span class="fn">add_valence</span>(state, EmotionType::Admiration, EmotionType::Reproach,
+                        pw, w, modifier, ctx);
+        }
+    }
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> dto/emotion.rs — ActionInput::into_domain() 정규화 <span class="src">application/dto/emotion.rs</span></summary>
+<pre><span class="kw">let</span> normalized_agent_id = <span class="kw">match</span> self.agent_id {
+    <span class="ty">Some</span>(id) <span class="kw">if</span> id == npc_id =&gt; <span class="ty">None</span>,   <span class="cm">// 자기 행동 정규화</span>
+    other =&gt; other,
+};</pre>
+  </details>
+
+  <div class="pager">
+    <a href="01-event.html"><span class="dir">◀ PREV</span>01 · Event 분기</a>
+    <a class="next" href="03-object.html"><span class="dir">NEXT ▶</span>03 · Object 분기</a>
+  </div>
+  <div class="foot">npc-mind-rs · OCC Action 분기 · action.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

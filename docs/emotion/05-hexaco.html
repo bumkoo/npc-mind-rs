@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>05 · HEXACO 반영 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>05 HEXACO</b></span>
+    <span>domain/personality.rs · AppraisalWeights</span>
+  </div>
+
+  <h1>HEXACO 반영 — weight <span class="han">性格</span></h1>
+  <p class="lead">보편 공식 <code>|기준값| × weight × modifier</code>에서 <em>weight</em>의 정체.
+  상수가 아니라 <strong>HEXACO 성격이 만드는 함수</strong>다. 같은 자극을 인물마다 다르게 느끼게 한다.</p>
+
+  <h2><span class="seal">1</span>보편 골격</h2>
+  <p>7개 weight 함수가 모두 같은 골격을 쓴다. <code>Score::effect(w) = 점수 × w</code>, <code>finalize_weight</code>는 clamp.</p>
+  <div class="formula">
+    <span class="lbl">personality.rs · finalize_weight</span>
+    weight = clamp( <b>기저값</b> + Σ( <em>성격 facet</em> × 영향계수 ) , 범위 )
+  </div>
+
+  <h3>영향계수 (W_*)</h3>
+  <table class="tbl">
+    <tr><th>상수</th><th>값</th><th>용도</th></tr>
+    <tr><td class="mono">W_MILD</td><td class="mono">0.2</td><td>약함 — 전망/확인의 신중함</td></tr>
+    <tr><td class="mono">W_STANDARD</td><td class="mono">0.3</td><td>표준 — 대부분</td></tr>
+    <tr><td class="mono">W_STRONG</td><td class="mono">0.4</td><td>강함 — 공감 H/A/감상성, 적대 A, 인내</td></tr>
+    <tr><td class="mono">W_DOMINANT</td><td class="mono">0.7</td><td>지배적 — 적대의 정직성(Resentment)</td></tr>
+  </table>
+  <h3>기저값 · clamp 범위</h3>
+  <table class="tbl">
+    <tr><th>상수</th><th>값</th><th>의미</th></tr>
+    <tr><td class="mono">BASE_SELF</td><td class="mono">1.0</td><td>자기 감정은 기본 발동</td></tr>
+    <tr><td class="mono">BASE_EMPATHY</td><td class="mono">0.5</td><td>타인의 운은 자기보다 약하게 시작</td></tr>
+    <tr><td class="mono">BASE_HOSTILITY</td><td class="mono"><span class="neg">0.0</span></td><td><strong>적대는 성격이 나빠야만 발동</strong></td></tr>
+    <tr><td class="mono">CLAMP_STANDARD</td><td class="mono">(0.5, 1.5)</td><td>표준 — 폭주 방지</td></tr>
+    <tr><td class="mono">CLAMP_OPTIONAL</td><td class="mono">(0.0, 1.5)</td><td>미발동 가능 (empathy/hostility)</td></tr>
+  </table>
+
+  <h2><span class="seal">2</span>7개 weight 함수</h2>
+  <p>HEXACO 6차원 평균(H·E·X·A·C·O) 또는 개별 facet을, 기준값 부호에 따라 다르게 조합한다.</p>
+  <table class="tbl">
+    <tr><th>함수 · 생성 감정</th><th>구성 (부호별 분기)</th><th>기저·범위</th></tr>
+    <tr>
+      <td><span class="mono">desirability_self_weight</span><br>Joy / Distress</td>
+      <td>항상 <code>E×0.3</code><br>d≥0: <code>+ X×0.3</code><br>d&lt;0: <code>− A×0.3 − 신중함×0.3</code></td>
+      <td class="mono">1.0 · [0.5,1.5]</td>
+    </tr>
+    <tr>
+      <td><span class="mono">desirability_prospect_weight</span><br>Hope / Fear</td>
+      <td>항상 <code>E×0.3</code><br>d≥0: <code>+ X×0.3 − 신중함×0.2</code><br>d&lt;0: <code>+ 두려움×0.3</code></td>
+      <td class="mono">1.0 · [0.5,1.5]</td>
+    </tr>
+    <tr>
+      <td><span class="mono">desirability_confirmation_weight</span><br>Satisfaction/Disap./Relief/FearsConf.</td>
+      <td><code>E×0.3 − 신중함×0.2</code><br><span class="mono">// 신중하면 충격↓ (마음의 준비)</span></td>
+      <td class="mono">1.0 · [0.5,1.5]</td>
+    </tr>
+    <tr>
+      <td><span class="mono">empathy_weight</span><br>HappyFor / Pity</td>
+      <td>d≥0(HappyFor): <code>H×0.4 + A×0.4</code><br>d&lt;0(Pity): <code>A×0.4 + 감상성×0.4</code></td>
+      <td class="mono">0.5 · <span class="neg">[0.0,1.5]</span></td>
+    </tr>
+    <tr>
+      <td><span class="mono">hostility_weight</span><br>Resentment / Gloating</td>
+      <td>d≥0(Resentment): <code>−H×0.7</code><br>d&lt;0(Gloating): <code>−H×0.4 − A×0.4</code></td>
+      <td class="mono"><span class="neg">0.0</span> · [0.0,1.5]</td>
+    </tr>
+    <tr>
+      <td><span class="mono">praiseworthiness_weight</span><br>Pride/Shame/Admir./Reproach</td>
+      <td>항상 <code>C×0.3</code><br>자기+칭찬: <code>−겸손×0.3</code> · 자기+비난: <code>+겸손×0.3</code><br>타인+칭찬: <code>+온화×0.3</code> · 타인+비난: <code>−온화×0.3</code></td>
+      <td class="mono">1.0 · [0.5,1.5]</td>
+    </tr>
+    <tr>
+      <td><span class="mono">appealingness_weight</span><br>Love / Hate</td>
+      <td><code>심미안(aesthetic)×0.3</code> 단일</td>
+      <td class="mono">1.0 · [0.5,1.5]</td>
+    </tr>
+  </table>
+
+  <h2><span class="seal">3</span>3가지 설계 원칙</h2>
+  <ul class="clean">
+    <li><strong>부호 분기</strong> — 같은 입력값이라도 좋은 일/나쁜 일에서 <em>다른 facet</em>이 작동한다. (Joy는 X로 증폭, Distress는 A·신중함으로 억제)</li>
+    <li><strong>하한 게이트</strong> — empathy/hostility는 clamp 하한이 0. 성격이 감정을 <em>원천 차단</em>할 수 있다.</li>
+    <li><strong>clamp</strong> — 표준 범위 [0.5,1.5]로 묶여, 아무리 극단 성격이라도 강도 3배(0.5→1.5)를 못 넘는다. 감정 폭주 방지.</li>
+  </ul>
+
+  <h2><span class="seal">4</span>무협 워크드 예시</h2>
+  <div class="ex">
+    <div class="h">곽정 vs 양강 — 같은 −0.7 배신, 다른 Distress</div>
+    <p>곽정(원만·신중 高)은 <code>desirability_self_weight</code>에서 d&lt;0 분기의 <code>−A×0.3 −신중함×0.3</code>이 크게 깎여
+    weight가 하한 0.5에 가까워진다. 양강(원만·신중 低)은 덜 깎여 weight가 높다. 같은 사건, 다른 고통.</p>
+  </div>
+  <div class="ex">
+    <div class="h">대협은 시기하지 않는다 — hostility_weight = 0</div>
+    <p>정직성(H)이 높으면 Resentment 식 <code>−H×0.7</code>이 음수 → 기저 0과 합쳐 clamp 하한 0 →
+    <strong>감정 자체가 생성 안 됨</strong>. 단위 테스트 <code>hostility_weight_zero_for_high_honesty</code>가 이를 박제.
+    곽정·임충은 시기·고소함이 구조적으로 0, 육겸·양강만 발동한다.</p>
+    <div class="calc">H=+1.0 → e = −1.0 × 0.7 = −0.70
+weight = clamp(<b>0.0</b> + (−0.70), 0.0, 1.5) = <span class="r">0.0</span>  <span style="color:var(--faint)">// 미발동</span></div>
+  </div>
+  <div class="ex">
+    <div class="h">겸손의 비대칭 — 같은 facet이 Pride는 깎고 Shame은 키운다</div>
+    <p>리무바이가 자기 공을 내세우지 않으면서(Pride 억제) 자책은 깊은 것(Shame 증폭)이
+    <code>praiseworthiness_weight</code>의 <code>자기+칭찬 −겸손 / 자기+비난 +겸손</code> 비대칭으로 모델링된다.</p>
+  </div>
+
+  <h2><span class="seal">5</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> personality.rs — 상수 + Score 헬퍼 <span class="src">domain/personality.rs</span></summary>
+<pre><span class="kw">const</span> W_STANDARD: f32 = <span class="nu">0.3</span>;  <span class="kw">const</span> W_STRONG: f32 = <span class="nu">0.4</span>;
+<span class="kw">const</span> W_DOMINANT: f32 = <span class="nu">0.7</span>;  <span class="kw">const</span> W_MILD:  f32 = <span class="nu">0.2</span>;
+<span class="kw">const</span> BASE_SELF: f32 = <span class="nu">1.0</span>;  <span class="kw">const</span> BASE_EMPATHY: f32 = <span class="nu">0.5</span>;
+<span class="kw">const</span> BASE_HOSTILITY: f32 = <span class="nu">0.0</span>;
+<span class="kw">const</span> CLAMP_STANDARD: (f32,f32) = (<span class="nu">0.5</span>,<span class="nu">1.5</span>);
+<span class="kw">const</span> CLAMP_OPTIONAL: (f32,f32) = (<span class="nu">0.0</span>,<span class="nu">1.5</span>);
+
+<span class="kw">impl</span> Score {
+    <span class="kw">pub fn</span> <span class="fn">effect</span>(&amp;<span class="kw">self</span>, weight: f32) -&gt; f32 { <span class="kw">self</span>.<span class="nu">0</span> * weight }
+}
+<span class="kw">fn</span> <span class="fn">finalize_weight</span>(base: f32, effects: f32, range: (f32,f32)) -&gt; f32 {
+    (base + effects).<span class="fn">clamp</span>(range.<span class="nu">0</span>, range.<span class="nu">1</span>)
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> impl AppraisalWeights — self / empathy / hostility / praiseworthiness <span class="src">domain/personality.rs</span></summary>
+<pre><span class="kw">fn</span> <span class="fn">desirability_self_weight</span>(&amp;<span class="kw">self</span>, d: f32) -&gt; f32 {
+    <span class="kw">let</span> avg = <span class="kw">self</span>.<span class="fn">dimension_averages</span>();
+    <span class="kw">let mut</span> e = avg.e.<span class="fn">effect</span>(W_STANDARD);
+    e += <span class="kw">if</span> d &gt;= <span class="nu">0.0</span> { avg.x.<span class="fn">effect</span>(W_STANDARD) }
+          <span class="kw">else</span> { -avg.a.<span class="fn">effect</span>(W_STANDARD)
+                 - <span class="kw">self</span>.conscientiousness.prudence.<span class="fn">effect</span>(W_STANDARD) };
+    <span class="fn">finalize_weight</span>(BASE_SELF, e, CLAMP_STANDARD)
+}
+
+<span class="kw">fn</span> <span class="fn">empathy_weight</span>(&amp;<span class="kw">self</span>, d: f32) -&gt; f32 {
+    <span class="kw">let</span> avg = <span class="kw">self</span>.<span class="fn">dimension_averages</span>();
+    <span class="kw">let</span> e = <span class="kw">if</span> d &gt;= <span class="nu">0.0</span> { avg.h.<span class="fn">effect</span>(W_STRONG) + avg.a.<span class="fn">effect</span>(W_STRONG) }
+             <span class="kw">else</span> { avg.a.<span class="fn">effect</span>(W_STRONG)
+                    + <span class="kw">self</span>.emotionality.sentimentality.<span class="fn">effect</span>(W_STRONG) };
+    <span class="fn">finalize_weight</span>(BASE_EMPATHY, e, CLAMP_OPTIONAL)
+}
+
+<span class="kw">fn</span> <span class="fn">hostility_weight</span>(&amp;<span class="kw">self</span>, d: f32) -&gt; f32 {
+    <span class="kw">let</span> avg = <span class="kw">self</span>.<span class="fn">dimension_averages</span>();
+    <span class="kw">let</span> e = <span class="kw">if</span> d &gt;= <span class="nu">0.0</span> { -avg.h.<span class="fn">effect</span>(W_DOMINANT) }
+             <span class="kw">else</span> { -avg.h.<span class="fn">effect</span>(W_STRONG) - avg.a.<span class="fn">effect</span>(W_STRONG) };
+    <span class="fn">finalize_weight</span>(BASE_HOSTILITY, e, CLAMP_OPTIONAL)
+}
+
+<span class="kw">fn</span> <span class="fn">praiseworthiness_weight</span>(&amp;<span class="kw">self</span>, is_self: <span class="ty">bool</span>, pw: f32) -&gt; f32 {
+    <span class="kw">let</span> avg = <span class="kw">self</span>.<span class="fn">dimension_averages</span>();
+    <span class="kw">let mut</span> e = avg.c.<span class="fn">effect</span>(W_STANDARD);
+    e += <span class="kw">if</span> is_self {
+        <span class="kw">if</span> pw &gt; <span class="nu">0.0</span> { -<span class="kw">self</span>.honesty_humility.modesty.<span class="fn">effect</span>(W_STANDARD) }
+        <span class="kw">else</span>          {  <span class="kw">self</span>.honesty_humility.modesty.<span class="fn">effect</span>(W_STANDARD) }
+    } <span class="kw">else</span> {
+        <span class="kw">if</span> pw &lt; <span class="nu">0.0</span> { -<span class="kw">self</span>.agreeableness.gentleness.<span class="fn">effect</span>(W_STANDARD) }
+        <span class="kw">else</span>          {  <span class="kw">self</span>.agreeableness.gentleness.<span class="fn">effect</span>(W_STANDARD) }
+    };
+    <span class="fn">finalize_weight</span>(BASE_SELF, e, CLAMP_STANDARD)
+}</pre>
+  </details>
+
+  <div class="pager">
+    <a href="04-compound.html"><span class="dir">◀ PREV</span>04 · 복합 Case</a>
+    <a class="next" href="06-relationship.html"><span class="dir">NEXT ▶</span>06 · 관계 반영</a>
+  </div>
+  <div class="foot">npc-mind-rs · HEXACO 반영 · personality.rs AppraisalWeights 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

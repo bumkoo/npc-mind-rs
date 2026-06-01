@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>03 · OCC Object 분기 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>03 OBJECT</b></span>
+    <span>domain/emotion/appraisal/object.rs</span>
+  </div>
+
+  <h1>OCC · Object 분기 <span class="han">對象</span></h1>
+  <p class="lead">"무언가를 접함." 대상의 존재 자체에 대한 호불호 — 사물(명검), 장소(절벽·밀실),
+  사람의 특성(카리스마) 등. 3개 분기 중 가장 단순하다.</p>
+
+  <h2><span class="seal">1</span>입력 설정값 — ObjectFocus</h2>
+  <p class="path">domain/emotion/situation.rs · struct ObjectFocus</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>타입</th><th>의미</th></tr>
+    <tr><td class="mono">target_id</td><td class="mono">String</td><td>대상 식별자 (게임 참조용 — 엔진은 사용 안 함)</td></tr>
+    <tr><td class="mono">target_description</td><td class="mono">String</td><td>대상 설명 (LLM 프롬프트에 포함)</td></tr>
+    <tr><td class="mono">appealingness</td><td class="mono">f32</td><td>−1.0 혐오 ~ +1.0 매력</td></tr>
+  </table>
+
+  <h2><span class="seal">2</span>생성 감정 · 강도</h2>
+  <table class="tbl">
+    <tr><th>조건</th><th>생성 감정 (부호)</th><th>강도 공식</th></tr>
+    <tr><td>단일</td><td>ap&gt;0 <span class="pos">Love</span> / ap&lt;0 <span class="neg">Hate</span></td><td class="mono">|ap| × appealingness_weight × 1.0</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">최단 경로</span>
+    전망도 관계 배율도 없다. 매력도 한 값과 성격 weight만으로 결정된다. modifier는 항상 1.0 —
+    사물·장소에 대한 감정은 상대와의 관계와 무관하기 때문. weight는 심미안(aesthetic_appreciation) 한 facet만 작용한다(05 문서).
+  </div>
+
+  <h2><span class="seal">3</span>무협 워크드 예시</h2>
+  <p>weight=1.0 가정.</p>
+  <div class="ex">
+    <div class="h">명검을 손에 든 순간 (매력)</div>
+    <p><code>appealingness = +0.9</code></p>
+    <div class="calc">Love = |+0.9| × 1.0 × 1.0 = <span class="r">0.90</span></div>
+  </div>
+  <div class="ex">
+    <div class="h">독약이 든 그릇을 마주함 (혐오)</div>
+    <p><code>appealingness = −0.7</code></p>
+    <div class="calc">Hate = |−0.7| × 1.0 × 1.0 = <span class="r">0.70</span></div>
+  </div>
+  <div class="note gold">
+    <span class="tag">복합과의 차이</span>
+    같은 "독약" 장면이라도 — 독에 <em>당한 사건</em>은 Event(Distress), 독을 <em>탄 행동</em>은 Action(Reproach),
+    독약이라는 <em>대상 자체</em>의 혐오가 여기 Object(Hate)다. 세 분기가 한 장면에 동시에 채워질 수 있고,
+    그때 복합 감정이 자동 생성된다(04 문서).
+  </div>
+
+  <h2><span class="seal">4</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> appraisal/object.rs — appraise() 전문 <span class="src">domain/emotion/appraisal/object.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">appraise</span>&lt;P: AppraisalWeights&gt;(p: &amp;P, state: &amp;<span class="kw">mut</span> EmotionState,
+    object: &amp;ObjectFocus) {
+    <span class="kw">let</span> ap = object.appealingness;
+    <span class="kw">let</span> w = p.<span class="fn">appealingness_weight</span>(ap);
+    <span class="kw">let</span> ctx = &amp;object.target_description;
+
+    <span class="fn">add_valence</span>(state, EmotionType::Love, EmotionType::Hate, ap, w, <span class="nu">1.0</span>, ctx);
+}</pre>
+  </details>
+
+  <div class="pager">
+    <a href="02-action.html"><span class="dir">◀ PREV</span>02 · Action 분기</a>
+    <a class="next" href="04-compound.html"><span class="dir">NEXT ▶</span>04 · 복합 Case</a>
+  </div>
+  <div class="foot">npc-mind-rs · OCC Object 분기 · object.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

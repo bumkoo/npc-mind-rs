@@ -1,0 +1,158 @@
+/* ============================================================
+   감정 발생 파이프라인 문서 — 공유 스타일
+   컨셉: 무협 비급(秘笈) · 먹(墨) + 주사(朱) · 다크
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap');
+
+:root{
+  --ink:#14110d; --surface:#1c1813; --surface-2:#221d16;
+  --border:#322a20; --hair:#2a2419;
+  --text:#e9e1d2; --muted:#9a8d77; --faint:#6f6553;
+  --zhu:#cf4a36; --zhu-hi:#e6604a;        /* 주사 朱 */
+  --jade:#5fae8c; --jade-hi:#7cc7a5;      /* 비취 翠 */
+  --gold:#c8a24a;
+  --code-bg:#100e0a; --code-text:#d8cfbd;
+  --r:6px; --maxw:1080px;
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--ink);
+  color:var(--text);
+  font-family:'Noto Sans KR',-apple-system,'Malgun Gothic',sans-serif;
+  font-weight:300; line-height:1.75; font-size:16px;
+  background-image:radial-gradient(circle at 20% -10%,rgba(207,74,54,.06),transparent 45%),
+                   radial-gradient(circle at 90% 110%,rgba(95,174,140,.05),transparent 45%);
+  background-attachment:fixed;
+}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:56px 28px 120px}
+
+/* ---- 타이포 ---- */
+h1,h2,h3,.disp{font-family:'Gowun Batang','Nanum Myeongjo','Malgun Gothic',serif}
+h1{font-size:2.5rem;font-weight:700;line-height:1.25;letter-spacing:-.01em}
+h1 .han{color:var(--zhu);font-weight:400}
+h2{font-size:1.62rem;font-weight:700;margin:64px 0 18px;padding-bottom:10px;
+   border-bottom:1px solid var(--border);position:relative}
+h2 .seal{display:inline-grid;place-items:center;width:30px;height:30px;
+   border:1.5px solid var(--zhu);color:var(--zhu);border-radius:5px;
+   font-size:.85rem;font-weight:700;margin-right:12px;vertical-align:2px;
+   font-family:'JetBrains Mono',monospace}
+h3{font-size:1.18rem;font-weight:700;margin:36px 0 12px;color:var(--gold)}
+p{margin:14px 0;color:#ddd4c2}
+strong{color:#fff;font-weight:500}
+em{color:var(--jade-hi);font-style:normal;font-weight:400}
+a{color:var(--zhu-hi);text-decoration:none;border-bottom:1px solid transparent}
+a:hover{border-bottom-color:var(--zhu-hi)}
+code{font-family:'JetBrains Mono',Consolas,monospace;font-size:.86em;
+  background:var(--code-bg);color:var(--jade-hi);padding:2px 6px;border-radius:4px;
+  border:1px solid var(--hair)}
+.lead{font-size:1.08rem;color:var(--muted);font-weight:300}
+.path{font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--faint)}
+
+/* ---- 상단 헤더 / 네비 ---- */
+.topbar{display:flex;justify-content:space-between;align-items:center;
+  font-family:'JetBrains Mono',monospace;font-size:.78rem;color:var(--faint);
+  border-bottom:1px solid var(--hair);padding-bottom:14px;margin-bottom:48px;
+  text-transform:uppercase;letter-spacing:.12em}
+.topbar a{color:var(--muted);border:0}
+.topbar a:hover{color:var(--zhu-hi)}
+.crumb b{color:var(--zhu)}
+
+/* ---- 카드(허브) ---- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;margin:32px 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:24px 22px;display:block;color:inherit;transition:.18s;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--zhu);
+  transform:scaleY(0);transform-origin:top;transition:.22s}
+.card:hover{border-color:var(--zhu);transform:translateY(-3px);background:var(--surface-2)}
+.card:hover::before{transform:scaleY(1)}
+.card .n{font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--zhu);letter-spacing:.15em}
+.card h3{margin:8px 0 6px;color:var(--text);font-size:1.22rem}
+.card p{font-size:.9rem;color:var(--muted);margin:6px 0 0}
+.card .fn{font-family:'JetBrains Mono',monospace;font-size:.74rem;color:var(--faint);margin-top:14px}
+
+/* ---- 콜아웃 ---- */
+.note{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--jade);
+  border-radius:var(--r);padding:16px 20px;margin:22px 0;font-size:.95rem}
+.note.zhu{border-left-color:var(--zhu)}
+.note.gold{border-left-color:var(--gold)}
+.note .tag{font-family:'JetBrains Mono',monospace;font-size:.7rem;text-transform:uppercase;
+  letter-spacing:.14em;color:var(--jade);display:block;margin-bottom:6px}
+.note.zhu .tag{color:var(--zhu)}
+.note.gold .tag{color:var(--gold)}
+
+/* ---- 표 ---- */
+.tbl{width:100%;border-collapse:collapse;margin:22px 0;font-size:.88rem;
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.tbl th{background:var(--surface-2);color:var(--gold);text-align:left;
+  padding:11px 14px;font-weight:500;border-bottom:1px solid var(--border);
+  font-family:'Gowun Batang',serif}
+.tbl td{padding:10px 14px;border-bottom:1px solid var(--hair);color:#d6cdba;vertical-align:top}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr:hover td{background:rgba(207,74,54,.04)}
+.tbl code{background:transparent;border:0;padding:0;color:var(--jade-hi)}
+.pos{color:var(--jade-hi)} .neg{color:var(--zhu-hi)}
+.mono{font-family:'JetBrains Mono',monospace;font-size:.85rem}
+
+/* ---- 공식 박스 ---- */
+.formula{background:linear-gradient(180deg,var(--surface-2),var(--surface));
+  border:1px solid var(--border);border-radius:var(--r);padding:24px 26px;margin:24px 0;
+  text-align:center;font-family:'JetBrains Mono',monospace;font-size:1.05rem;color:var(--text);
+  position:relative}
+.formula .lbl{position:absolute;top:10px;left:16px;font-size:.66rem;color:var(--faint);
+  letter-spacing:.16em;text-transform:uppercase}
+.formula b{color:var(--zhu-hi)} .formula em{color:var(--jade-hi);font-style:normal}
+.formula .big{font-size:1.25rem;display:block;margin-top:8px}
+
+/* ---- 흐름도 ---- */
+.flow{margin:24px 0;font-family:'JetBrains Mono',monospace;font-size:.84rem;
+  background:var(--code-bg);border:1px solid var(--border);border-radius:var(--r);
+  padding:22px 24px;color:var(--code-text);line-height:1.95;white-space:pre;overflow-x:auto}
+.flow .k{color:var(--zhu-hi)} .flow .e{color:var(--jade-hi)} .flow .c{color:var(--faint)}
+
+/* ---- 코드 접기/펼치기 ---- */
+.code{margin:20px 0;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;
+  background:var(--code-bg)}
+.code summary{cursor:pointer;list-style:none;padding:12px 18px;background:var(--surface-2);
+  font-family:'JetBrains Mono',monospace;font-size:.8rem;color:var(--muted);
+  display:flex;align-items:center;gap:10px;user-select:none;transition:.15s}
+.code summary::-webkit-details-marker{display:none}
+.code summary:hover{color:var(--zhu-hi)}
+.code summary .chev{color:var(--zhu);transition:transform .2s;display:inline-block}
+.code[open] summary .chev{transform:rotate(90deg)}
+.code summary .src{margin-left:auto;color:var(--faint);font-size:.74rem}
+.code pre{margin:0;padding:20px;overflow-x:auto;font-family:'JetBrains Mono',monospace;
+  font-size:.8rem;line-height:1.7;color:var(--code-text)}
+.code pre .cm{color:var(--faint);font-style:italic}
+.code pre .kw{color:var(--zhu-hi)}
+.code pre .fn{color:var(--gold)}
+.code pre .ty{color:var(--jade-hi)}
+.code pre .st{color:#bda;}
+.code pre .nu{color:var(--jade)}
+
+/* ---- 예시 박스 ---- */
+.ex{background:var(--surface);border:1px dashed var(--border);border-radius:var(--r);
+  padding:20px 22px;margin:22px 0}
+.ex .h{font-family:'Gowun Batang',serif;color:var(--gold);font-weight:700;
+  font-size:1.02rem;margin-bottom:10px}
+.ex .h::before{content:"劍 ";color:var(--zhu);font-size:.9em}
+.ex .calc{font-family:'JetBrains Mono',monospace;font-size:.84rem;color:#cfc6b3;
+  background:var(--code-bg);border-radius:5px;padding:12px 16px;margin:10px 0;line-height:1.9}
+.ex .calc b{color:var(--zhu-hi)} .ex .calc .r{color:var(--jade-hi);font-weight:600}
+
+/* ---- 푸터 / 페이지 이동 ---- */
+.pager{display:flex;justify-content:space-between;gap:16px;margin-top:80px;
+  border-top:1px solid var(--border);padding-top:28px}
+.pager a{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+  padding:16px 20px;font-size:.9rem;transition:.15s}
+.pager a:hover{border-color:var(--zhu);background:var(--surface-2)}
+.pager .dir{font-family:'JetBrains Mono',monospace;font-size:.7rem;color:var(--faint);
+  letter-spacing:.12em;display:block;margin-bottom:4px}
+.pager .next{text-align:right}
+.foot{margin-top:40px;color:var(--faint);font-size:.78rem;text-align:center;
+  font-family:'JetBrains Mono',monospace;letter-spacing:.08em}
+ul.clean{margin:14px 0 14px 4px;list-style:none}
+ul.clean li{padding:6px 0 6px 22px;position:relative;color:#d6cdba;font-size:.95rem}
+ul.clean li::before{content:"▸";position:absolute;left:0;color:var(--zhu)}
+@media(max-width:680px){.wrap{padding:36px 18px 90px}h1{font-size:1.9rem}.pager{flex-direction:column}}

@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>09 · 대사 → PAD 변환 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>09 UTTERANCE→PAD</b></span>
+    <span>domain/listener_perspective/ · ports/analysis.rs</span>
+  </div>
+
+  <h1>대사 → PAD 변환 <span class="han">聽者</span></h1>
+  <p class="lead">08의 입력 <code>stimulus</code>가 어디서 오는가. Player 대사 한 줄이
+  임베딩 → 화자 PAD → <strong>청자 PAD</strong>로 바뀌어 자극이 된다. 화자가 한 말 ≠ NPC가 받는 자극.</p>
+
+  <div class="note zhu">
+    <span class="tag">왜 청자 변환이 필요한가</span>
+    Player가 "미안해"라고 하면 화자 기준 PAD는 <em>후회</em>(pleasure 음수). 그러나 그 말을 <em>듣는 NPC</em>에게는
+    사과를 받는 자극이라 의미가 다르다. 화자 PAD를 그대로 쓰면 감정이 거꾸로 움직인다. 그래서 변환 단계가 필수.
+  </div>
+
+  <h2><span class="seal">1</span>전체 파이프라인</h2>
+  <div class="flow">Player 대사 텍스트
+   │  <span class="c">TextEmbedder.embed() — BGE-M3 ONNX</span>
+   ▼
+대사 임베딩 벡터 (고차원 f32)
+   │  <span class="c">UtteranceAnalyzer.analyze() — 화자 PAD 추출</span>
+   ▼
+화자 PAD (speaker_pad)
+   │  <span class="c">EmbeddedConverter.convert() — 청자 변환 ★</span>
+   ▼
+<span class="e">청자 PAD (listener_pad)</span>
+   │  <span class="c">StimulusApplyRequested.pad 로 주입</span>
+   ▼
+08 StimulusPolicy → apply_stimulus</div>
+  <p>08 문서는 마지막 화살표만 다룬다. 이 문서는 그 앞 3단계 — 특히 <strong>청자 변환</strong>.</p>
+  <div class="note">
+    <span class="tag">feature 게이트</span>
+    <code>listener_perspective</code> 모듈. Cargo.toml에서 현재 default-ON
+    (<code>default = ["listener_perspective"]</code>). 미적용 빌드에서는 화자 PAD를 그대로 passthrough.
+  </div>
+
+  <h2><span class="seal">2</span>핵심 변환식</h2>
+  <p class="path">domain/listener_perspective/converter.rs · build_result()</p>
+  <div class="formula">
+    <span class="lbl">화자 PAD → 청자 PAD</span>
+    P_L = <b>sign</b> × coef_p[mag] × P_S<br>
+    A_L = coef_a[mag] × A_S<br>
+    D_L = coef_d[mag] × D_S
+  </div>
+  <table class="tbl">
+    <tr><th>요소</th><th>의미</th><th>출처</th></tr>
+    <tr><td class="mono">sign</td><td>P축 부호 유지(+1)/반전(−1)</td><td>SignClassifier (2-way k-NN)</td></tr>
+    <tr><td class="mono">mag</td><td>강도 약/보통/강 → 계수 선택</td><td>MagnitudeClassifier (3-way k-NN)</td></tr>
+    <tr><td class="mono">coef_*[mag]</td><td>P/A/D축별 강도 계수</td><td><code>MagnitudeCoefTable</code> (튜닝)</td></tr>
+    <tr><td class="mono">P_S / A_S / D_S</td><td>화자 PAD 3축</td><td>UtteranceAnalyzer 산출</td></tr>
+  </table>
+  <div class="note gold">
+    <span class="tag">P축만 부호 반전</span>
+    A·D축은 강도 계수만 곱한다. <strong>P축(쾌·불쾌)만 sign으로 방향이 뒤집힌다</strong> —
+    "미안해"(화자 P 음수)가 청자에겐 P 양수가 되는 핵심. A(각성)·D(지배)는 화자·청자가 대체로 같은 방향.
+  </div>
+
+  <h2><span class="seal">3</span>2경로 — Prefilter 우선</h2>
+  <p class="path">converter.rs · convert()</p>
+  <div class="flow">대사 텍스트
+   │
+Prefilter 정규식 매칭? <span class="c">(예: "^(허허|아이고)" → 빈정)</span>
+ ├─ <span class="k">hit</span> → 카테고리의 sign·magnitude·p_s_default 즉시 사용
+ │         <span class="c">(분류기 건너뜀, P_S는 p_s_default로 대체)</span>
+ └─ <span class="k">miss</span> → SignClassifier + MagnitudeClassifier (임베딩 k-NN)
+            → sign·magnitude 추론</div>
+  <div class="note">
+    <span class="tag">Prefilter가 먼저인 이유</span>
+    "허허", "아이고" 같은 빈정·반어 표현은 임베딩 의미만으로는 부호를 자주 틀린다.
+    정규식으로 먼저 잡아 카테고리 고정값을 쓰면 분류기 오류를 우회. Prefilter hit 시
+    <code>p_s_default</code>가 화자 P를 대체(빈정은 화자 표면 PAD 신뢰 불가).
+  </div>
+
+  <h2><span class="seal">4</span>무협 워크드 예시</h2>
+  <div class="ex">
+    <div class="h">분류기 경로 — Player가 진심 어린 칭찬</div>
+    <p>임베딩이 sign_keep 프로토타입에 근접 → sign=Keep(+1). magnitude=normal. 화자 PAD P_S=+0.4</p>
+    <div class="calc">P_L = +1 × coef_p[normal] × 0.4 = <span class="r">양수 (칭찬 → NPC 쾌)</span>
+A_L = coef_a[normal] × A_S · D_L = coef_d[normal] × D_S</div>
+  </div>
+  <div class="ex">
+    <div class="h">Prefilter 경로 — "허허, 참 훌륭하시오" (반어)</div>
+    <p>정규식 <code>^(허허)</code> hit → 카테고리 sarcasm: sign=Invert(−1), mag=strong, p_s_default=0.6</p>
+    <div class="calc">P_L = −1 × coef_p[strong] × 0.6 = <span class="r">음수 (표면은 칭찬, 실제 NPC엔 모욕)</span>
+<span style="color:var(--faint)">// 화자 표면 P 무시, p_s_default 사용 — 반어라 표면 신뢰 불가</span></div>
+  </div>
+
+  <h2><span class="seal">5</span>실패 시 fallback</h2>
+  <p class="path">converter.rs · convert_or_fallback()</p>
+  <p>converter 미주입이거나 임베딩 부재거나 변환 실패 시 — <strong>화자 PAD를 그대로 반환</strong>(passthrough).
+  변환 실패는 <code>tracing::warn!</code> 남기고 silent failure 방지. DialogueOrchestrator·Mind Studio가
+  동일 분기를 갖던 drift를 이 도메인 헬퍼 하나로 통합.</p>
+
+  <h2><span class="seal">6</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> ports/analysis.rs — UtteranceAnalyzer trait <span class="src">ports/analysis.rs</span></summary>
+<pre><span class="kw">pub trait</span> TextEmbedder {
+    <span class="kw">fn</span> <span class="fn">embed</span>(&amp;<span class="kw">mut</span> <span class="kw">self</span>, texts: &amp;[&amp;<span class="ty">str</span>]) -&gt; <span class="ty">Result</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">Vec</span>&lt;f32&gt;&gt;, EmbedError&gt;;
+}
+
+<span class="kw">pub trait</span> UtteranceAnalyzer {
+    <span class="cm">/// 대사 텍스트 → PAD</span>
+    <span class="kw">fn</span> <span class="fn">analyze</span>(&amp;<span class="kw">mut</span> <span class="kw">self</span>, utterance: &amp;<span class="ty">str</span>) -&gt; <span class="ty">Result</span>&lt;Pad, EmbedError&gt;;
+
+    <span class="cm">/// PAD + 발화 임베딩 (후속 단계와 공유)</span>
+    <span class="kw">fn</span> <span class="fn">analyze_with_embedding</span>(&amp;<span class="kw">mut</span> <span class="kw">self</span>, utterance: &amp;<span class="ty">str</span>)
+        -&gt; <span class="ty">Result</span>&lt;(Pad, <span class="ty">Option</span>&lt;UtteranceEmbedding&gt;), EmbedError&gt;;
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> converter.rs — build_result() 변환식 <span class="src">domain/listener_perspective/converter.rs</span></summary>
+<pre><span class="kw">fn</span> <span class="fn">build_result</span>(&amp;<span class="kw">self</span>, sign: Sign, magnitude: Magnitude,
+    speaker_pad: &amp;Pad, p_s_override: <span class="ty">Option</span>&lt;f32&gt;, path: ConvertPath) -&gt; ConvertResult {
+    <span class="kw">let</span> p_coef = <span class="kw">self</span>.coef_table.<span class="fn">p_coef</span>(magnitude);
+    <span class="kw">let</span> a_coef = <span class="kw">self</span>.coef_table.<span class="fn">a_coef</span>(magnitude);
+    <span class="kw">let</span> d_coef = <span class="kw">self</span>.coef_table.<span class="fn">d_coef</span>(magnitude);
+
+    <span class="kw">let</span> p_s = p_s_override.<span class="fn">unwrap_or</span>(speaker_pad.pleasure);
+
+    <span class="kw">let</span> listener_pad = Pad::<span class="fn">new</span>(
+        sign.<span class="fn">as_f32</span>() * p_coef * p_s,    <span class="cm">// P축: 부호 반전 가능</span>
+        a_coef * speaker_pad.arousal,      <span class="cm">// A축: 계수만</span>
+        d_coef * speaker_pad.dominance,    <span class="cm">// D축: 계수만</span>
+    );
+    <span class="cm">// ... meta 생성 ...</span>
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> converter.rs — convert() 2경로 <span class="src">domain/listener_perspective/converter.rs</span></summary>
+<pre><span class="kw">fn</span> <span class="fn">convert</span>(&amp;<span class="kw">self</span>, utterance: &amp;<span class="ty">str</span>,
+    speaker_pad: &amp;Pad, utterance_embedding: &amp;[f32]) -&gt; <span class="ty">Result</span>&lt;ConvertResult, _&gt; {
+    <span class="cm">// 1. Prefilter 먼저</span>
+    <span class="kw">if let</span> <span class="ty">Some</span>(hit) = <span class="kw">self</span>.prefilter.<span class="fn">classify</span>(utterance) {
+        <span class="kw">return</span> <span class="ty">Ok</span>(<span class="kw">self</span>.<span class="fn">build_result</span>(hit.sign, hit.magnitude,
+            speaker_pad, <span class="ty">Some</span>(hit.p_s_default), path));   <span class="cm">// p_s_default 사용</span>
+    }
+    <span class="cm">// 2. Classifier 경로 (k-NN)</span>
+    <span class="kw">let</span> sign_result = <span class="kw">self</span>.sign_classifier.<span class="fn">classify</span>(utterance_embedding);
+    <span class="kw">let</span> mag_result = <span class="kw">self</span>.magnitude_classifier.<span class="fn">classify</span>(utterance_embedding);
+    <span class="ty">Ok</span>(<span class="kw">self</span>.<span class="fn">build_result</span>(sign_result.predicted, mag_result.predicted,
+        speaker_pad, <span class="ty">None</span>, path))            <span class="cm">// speaker_pad.pleasure 사용</span>
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> converter.rs — convert_or_fallback() <span class="src">domain/listener_perspective/converter.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">convert_or_fallback</span>(
+    converter: <span class="ty">Option</span>&lt;&amp;<span class="kw">dyn</span> ListenerPerspectiveConverter&gt;,
+    utterance: &amp;<span class="ty">str</span>, speaker_pad: Pad, embedding: <span class="ty">Option</span>&lt;&amp;[f32]&gt;) -&gt; Pad {
+    <span class="kw">let</span> (<span class="ty">Some</span>(converter), <span class="ty">Some</span>(emb)) = (converter, embedding) <span class="kw">else</span> {
+        <span class="kw">return</span> speaker_pad;          <span class="cm">// 입력 부족 → passthrough</span>
+    };
+    <span class="kw">match</span> converter.<span class="fn">convert</span>(utterance, &amp;speaker_pad, emb) {
+        <span class="ty">Ok</span>(result) =&gt; result.listener_pad,
+        <span class="ty">Err</span>(e) =&gt; { <span class="fn">tracing::warn!</span>(...); speaker_pad }  <span class="cm">// 실패 → 화자 PAD</span>
+    }
+}</pre>
+  </details>
+
+  <div class="pager">
+    <a href="08-stimulus.html"><span class="dir">◀ PREV</span>08 · PAD 자극 경로</a>
+    <a class="next" href="index.html"><span class="dir">HUB ▶</span>감정 발생 파이프라인</a>
+  </div>
+  <div class="foot">npc-mind-rs · 대사 → PAD 변환 · listener_perspective/converter.rs · ports/analysis.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>04 · 복합 Case · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>04 COMPOUND</b></span>
+    <span>domain/emotion/appraisal/compound.rs</span>
+  </div>
+
+  <h1>OCC · 복합 Case <span class="han">複合</span></h1>
+  <p class="lead">Action과 Event가 <strong>동시에</strong> 채워질 때, 엔진이 둘을 합쳐
+  Gratitude/Anger/Gratification/Remorse를 자동 생성한다. 게임이 "이건 분노야"라 지정하지 않는다.</p>
+
+  <h2><span class="seal">1</span>발동 조건</h2>
+  <p class="path">domain/emotion/appraisal/mod.rs · process()</p>
+  <p><code>situation.action</code>과 <code>situation.event</code>가 <strong>둘 다 Some</strong>일 때만 <code>compound::appraise</code>가 호출된다.
+  행위자 구분은 <code>action.agent_id.is_none()</code>으로 판정 — <code>is_self</code>.</p>
+  <div class="flow">situation.action.<span class="k">is_some()</span> <span class="k">&&</span> situation.event.<span class="k">is_some()</span>
+   └─ compound::appraise(state, <span class="e">is_self = action.agent_id.is_none()</span>, desc)</div>
+
+  <h2><span class="seal">2</span>4개 복합 감정</h2>
+  <table class="tbl">
+    <tr><th>행위자</th><th>복합 감정</th><th>= 평균( 구성1 , 구성2 )</th><th>의미</th></tr>
+    <tr><td rowspan="2">자기<br><span class="mono">is_self=true</span></td><td class="pos">Gratification</td><td class="mono">avg(Pride, Joy)</td><td>내 좋은 행동이 좋은 결과를 낳음</td></tr>
+    <tr><td class="neg">Remorse</td><td class="mono">avg(Shame, Distress)</td><td>내 나쁜 행동이 나쁜 결과를 낳음</td></tr>
+    <tr><td rowspan="2">타인<br><span class="mono">is_self=false</span></td><td class="pos">Gratitude</td><td class="mono">avg(Admiration, Joy)</td><td>타인의 좋은 행동이 나에게 좋은 결과</td></tr>
+    <tr><td class="neg">Anger</td><td class="mono">avg(Reproach, Distress)</td><td>타인의 나쁜 행동이 나에게 나쁜 결과</td></tr>
+  </table>
+
+  <div class="formula">
+    <span class="lbl">helpers.rs add_compound</span>
+    복합 강도 = ( <b>구성1 강도</b> + <b>구성2 강도</b> ) / 2 &nbsp;&nbsp;<em>(둘 다 &gt; 0 일 때만)</em>
+  </div>
+
+  <div class="note zhu">
+    <span class="tag">구성 감정은 먼저 존재해야 한다</span>
+    복합 감정은 <em>이미 계산된</em> 구성 감정의 강도를 읽어 평균한다(<code>state.intensity_of</code>).
+    그래서 <code>process()</code>에서 event·action을 먼저 appraise한 <strong>뒤</strong> compound가 호출된다.
+    구성 감정 중 하나라도 0이면 복합 감정은 생성되지 않는다.
+  </div>
+  <div class="note gold">
+    <span class="tag">누적 주의 · EmotionState.add</span>
+    같은 감정이 여러 경로로 더해지면 <code>EmotionState.add</code>가 강도를 <strong>합산 후 0~1 클램프</strong>한다.
+    예: Distress가 Well-being에서 한 번, 다른 맥락에서 또 더해지면 누적된다. 복합의 입력이 되는
+    Reproach·Distress도 이 누적된 최종값을 본다. context는 최초 1회만 기록(first-write-wins).
+  </div>
+
+  <h2><span class="seal">3</span>무협 워크드 예시</h2>
+  <div class="ex">
+    <div class="h">와호장룡 — 신뢰하던 사형제가 밀고했고(action) 그 결과 독에 당했다(event)</div>
+    <p>action: agent_id=Some, pw=−0.8, trust_mod=1.3 · event: d=−0.7 · weight=1.0 가정</p>
+    <div class="calc">Reproach = 0.8 × 1.0 × (1.0×1.3) = <b>1.04</b> → clamp <b>1.00</b>
+Distress = 0.7 × 1.0 × 1.0       = <b>0.70</b>
+is_self=false → <span class="r">Anger = (1.00 + 0.70) / 2 = 0.85</span></div>
+    <p>한 장면에서 Reproach·Distress·Anger가 각각 다른 강도로 동시에 깔린다. Reproach·Distress도
+    그대로 남고, Anger가 추가된다(별개 OCC 감정).</p>
+  </div>
+  <div class="ex">
+    <div class="h">곽정이 스스로 의로운 결단을 내려 양양을 지켰다 (자기 · 선행+호결과)</div>
+    <p>action: agent_id=None, pw=+0.9 → Pride · event: d=+0.8 → Joy</p>
+    <div class="calc">Pride = 0.9 × w · Joy = 0.8 × w
+is_self=true → <span class="r">Gratification = avg(Pride, Joy)</span></div>
+  </div>
+
+  <h2><span class="seal">4</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> appraisal/mod.rs — process() 분기 통합 <span class="src">domain/emotion/appraisal/mod.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">process</span>&lt;P: AppraisalWeights&gt;(personality: &amp;P, situation: &amp;Situation,
+    dialogue_modifiers: &amp;RelationshipModifiers) -&gt; EmotionState {
+    <span class="kw">let mut</span> state = EmotionState::<span class="fn">new</span>();
+
+    <span class="kw">if let</span> <span class="ty">Some</span>(event) = &amp;situation.event {
+        event::<span class="fn">appraise</span>(personality, &amp;<span class="kw">mut</span> state, event);
+    }
+    <span class="kw">if let</span> <span class="ty">Some</span>(action) = &amp;situation.action {
+        action::<span class="fn">appraise</span>(personality, &amp;<span class="kw">mut</span> state, dialogue_modifiers, action);
+    }
+    <span class="kw">if let</span> <span class="ty">Some</span>(object) = &amp;situation.object {
+        object::<span class="fn">appraise</span>(personality, &amp;<span class="kw">mut</span> state, object);
+    }
+    <span class="kw">if let</span> (<span class="ty">Some</span>(action), <span class="ty">Some</span>(_)) = (&amp;situation.action, &amp;situation.event) {
+        compound::<span class="fn">appraise</span>(&amp;<span class="kw">mut</span> state,
+            action.agent_id.<span class="fn">is_none</span>(), &amp;situation.description);
+    }
+    state
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> appraisal/compound.rs + helpers add_compound <span class="src">domain/emotion/appraisal/compound.rs · helpers.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">appraise</span>(state: &amp;<span class="kw">mut</span> EmotionState, is_self: <span class="ty">bool</span>, desc: &amp;<span class="ty">str</span>) {
+    <span class="kw">if</span> is_self {
+        <span class="fn">add_compound</span>(state, EmotionType::Gratification,
+                     EmotionType::Pride, EmotionType::Joy, desc);
+        <span class="fn">add_compound</span>(state, EmotionType::Remorse,
+                     EmotionType::Shame, EmotionType::Distress, desc);
+    } <span class="kw">else</span> {
+        <span class="fn">add_compound</span>(state, EmotionType::Gratitude,
+                     EmotionType::Admiration, EmotionType::Joy, desc);
+        <span class="fn">add_compound</span>(state, EmotionType::Anger,
+                     EmotionType::Reproach, EmotionType::Distress, desc);
+    }
+}
+
+<span class="cm">// helpers.rs</span>
+<span class="kw">pub fn</span> <span class="fn">add_compound</span>(state: &amp;<span class="kw">mut</span> EmotionState, target: EmotionType,
+    c1: EmotionType, c2: EmotionType, ctx: &amp;<span class="ty">str</span>) {
+    <span class="kw">let</span> v1 = state.<span class="fn">intensity_of</span>(c1);
+    <span class="kw">let</span> v2 = state.<span class="fn">intensity_of</span>(c2);
+    <span class="kw">if</span> v1 &gt; <span class="nu">0.0</span> &amp;&amp; v2 &gt; <span class="nu">0.0</span> {
+        <span class="kw">let</span> val = (v1 + v2) / <span class="nu">2.0</span>;
+        state.<span class="fn">add</span>(Emotion::<span class="fn">with_context</span>(target, val, ctx));
+    }
+}</pre>
+  </details>
+
+  <div class="pager">
+    <a href="03-object.html"><span class="dir">◀ PREV</span>03 · Object 분기</a>
+    <a class="next" href="05-hexaco.html"><span class="dir">NEXT ▶</span>05 · HEXACO 반영</a>
+  </div>
+  <div class="foot">npc-mind-rs · 복합 Case · mod.rs / compound.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

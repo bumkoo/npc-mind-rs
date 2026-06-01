@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>06 · 관계 반영 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>06 RELATIONSHIP</b></span>
+    <span>domain/relationship/mod.rs · mapping.rs</span>
+  </div>
+
+  <h1>관계 반영 <span class="han">關係</span></h1>
+  <p class="lead">"관계"는 감정에 두 번 관여한다 — ① 감정 발생 시 <em>modifier</em>로 증폭/억제하고,
+  ② 발생한 감정이 다시 관계 4축을 <em>갱신</em>한다. 둘은 완전히 다른 메커니즘이라 분리해 본다.</p>
+
+  <div class="note zhu">
+    <span class="tag">두 개념을 혼동하지 말 것</span>
+    <strong>(A) modifier 산출</strong> = <code>Relationship::modifiers()</code> — affinity·trust → 4 배율 (1단계로 투입)<br>
+    <strong>(B) 4축 갱신</strong> = <code>update_axes_from_emotion</code> — 감정 → 관계 변동 (6단계 산출)
+  </div>
+
+  <h2><span class="seal">1</span>(A) modifier 산출</h2>
+  <p class="path">domain/relationship/mod.rs · Relationship::modifiers()</p>
+  <p>1단계 공식의 <em>modifier</em>는 여기서 나온다. <strong>affinity와 trust 두 축만</strong> 쓴다(respect·wariness 미사용).
+  ±100 raw 값에 1/100 스케일 튜닝 가중치를 직접 곱한다.</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>산식</th><th>튜닝 상수 (default)</th><th>곱해지는 분기</th></tr>
+    <tr><td class="mono">intensity_multiplier</td><td class="mono">max(0, 1 + affinity × w)</td><td class="mono">0.005</td><td>타인 행동(Admir./Reproach)</td></tr>
+    <tr><td class="mono">trust_modifier</td><td class="mono">1 + trust × w</td><td class="mono">0.003</td><td>〃 (intensity와 곱)</td></tr>
+    <tr><td class="mono">empathy_modifier</td><td class="mono">max(0, 1 + affinity × w)</td><td class="mono">0.003</td><td>HappyFor / Pity</td></tr>
+    <tr><td class="mono">hostility_modifier</td><td class="mono">max(0, 1 <span class="neg">−</span> affinity × w)</td><td class="mono">0.003</td><td>Resentment / Gloating</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">부호의 묘</span>
+    hostility만 <code>1 − affinity×w</code>다. 그래서 <strong>적대 관계(affinity 음수)</strong>면
+    <code>−(−affinity)</code>가 양수가 되어 hostility_modifier &gt; 1 → 시기·고소함이 증폭된다.
+    반대로 친밀(affinity 양수)이면 hostility &lt; 1로 억제. 중립(0)이면 4필드 전부 1.0.
+  </div>
+  <div class="ex">
+    <div class="h">affinity=+80(친밀), trust=+50 · affinity=−80(원수)</div>
+    <div class="calc">친밀: intensity = 1+80×0.005 = <b>1.40</b> · empathy = 1+80×0.003 = <b>1.24</b> · hostility = 1−80×0.003 = <b>0.76</b>
+원수: intensity = 1−80×0.005 = <b>0.60</b> · empathy = <b>0.76</b> · hostility = 1+80×0.003 = <span class="r">1.24</span>
+trust_mod = 1 + 50×0.003 = <b>1.15</b></div>
+  </div>
+
+  <div class="note gold">
+    <span class="tag">Phase 2.5 검토 예정 · 개선 계획</span>
+    현 <code>modifiers()</code>는 affinity·trust 2축만 사용 — respect·wariness는 (B) 4축 갱신엔 쓰이나
+    modifier 산출엔 미반영(설계 근거 문서 부재, 코드 구조에서 역추론). 로드맵 §5 Phase 2.5
+    <code>RelationshipModifiers 정밀화</code>에서 검토 예정:
+    <ul class="clean">
+      <li><strong>① trust_modifier <code>.max(0.0)</code> 보정</strong> — 4필드 중 유일하게 하한 클램프 없음(부호 반전 가능). 동작 불변·저위험 → 우선</li>
+      <li><strong>② 상한 clamp 도입</strong> — personality weight [0.5,1.5]와 대칭. 폭주 방어 → 우선</li>
+      <li><strong>③ respect_modifier 신설</strong> — Admiration/Reproach가 존경과 직결되나 미반영(서사 정합) → spec 확정 후</li>
+      <li><strong>④ wariness 되먹임</strong> — 경계 누적→Reproach 증폭. 단 양의 피드백 루프라 안정화 장치(감쇠·히스테리시스) 동반 필수 → spec 확정 후</li>
+    </ul>
+    ①②는 로드맵 사각지대의 신규 부채(Phase 2.3 종결 후 발견), ③④는 로드맵이 이미 가리키는 Phase 2.5 예정 작업.
+  </div>
+
+  <h2><span class="seal">2</span>(B) 감정 → 4축 갱신</h2>
+  <p class="path">domain/relationship/mapping.rs · update_axes_from_emotion()</p>
+  <div class="formula">
+    <span class="lbl">mapping.rs</span>
+    4축 변동 = <b>base_delta</b>(감정) × <em>강도</em> × <b>hexaco_modifier</b>(감정, HEXACO)
+  </div>
+  <p>흐름: ① BondStatus 차단(사망/해소/휴면이면 즉시 종료) → ② <code>base_delta</code> 48셀 lookup
+  → ③ 강도·HEXACO 곱 → ④ <code>apply_delta</code> (4축 자동 clamp).</p>
+
+  <h3>base_delta — 12 OCC 명시 + 10 default</h3>
+  <p>4축 = trust / affinity / respect / wariness. Well-being·Prospect·Remorse·Gratification <strong>10종은 의도적으로 0</strong>(B-D14).</p>
+  <table class="tbl">
+    <tr><th>감정</th><th>trust</th><th>affinity</th><th>respect</th><th>wariness</th></tr>
+    <tr><td>Gratitude</td><td class="pos">+20</td><td class="pos">+10</td><td>0</td><td class="pos">−10</td></tr>
+    <tr><td>Anger</td><td class="neg">−25</td><td class="neg">−10</td><td>0</td><td class="neg">+25</td></tr>
+    <tr><td>Admiration</td><td>0</td><td>0</td><td class="pos">+20</td><td>0</td></tr>
+    <tr><td>Reproach</td><td class="neg">−10</td><td class="neg">−10</td><td class="neg">−25</td><td class="neg">+10</td></tr>
+    <tr><td>HappyFor</td><td class="pos">+5</td><td class="pos">+10</td><td>0</td><td>0</td></tr>
+    <tr><td>Resentment</td><td>0</td><td class="neg">−10</td><td class="neg">−5</td><td class="neg">+15</td></tr>
+    <tr><td>Pity</td><td>0</td><td class="pos">+10</td><td class="neg">−5</td><td>0</td></tr>
+    <tr><td>Gloating</td><td class="neg">−10</td><td class="neg">−20</td><td class="neg">−10</td><td>0</td></tr>
+    <tr><td>Pride</td><td>0</td><td class="pos">+5</td><td class="pos">+10</td><td>0</td></tr>
+    <tr><td>Shame</td><td class="neg">−5</td><td class="neg">−10</td><td class="neg">−10</td><td class="neg">+5</td></tr>
+    <tr><td>Love</td><td class="pos">+5</td><td class="pos">+20</td><td class="pos">+5</td><td class="pos">−5</td></tr>
+    <tr><td>Hate</td><td class="neg">−10</td><td class="neg">−25</td><td class="neg">−5</td><td class="neg">+15</td></tr>
+    <tr><td class="mono" style="color:var(--faint)">Joy·Distress·Hope·Fear·Satisf.·Disap.·Relief·FearsConf.·Remorse·Gratification</td><td colspan="4" style="color:var(--faint)">전부 0 (B-D14 — 의도된 누락)</td></tr>
+  </table>
+
+  <h3>hexaco_modifier — 6 보정 룰</h3>
+  <table class="tbl">
+    <tr><th>룰</th><th>조건 (임계 ±0.5)</th><th>효과</th></tr>
+    <tr><td>H+ Sincerity</td><td>sincerity &gt; 0.5</td><td>trust 변화 ×1.2</td></tr>
+    <tr><td>A+ Patience</td><td>patience &gt; 0.5</td><td>모든 축 ×0.7</td></tr>
+    <tr><td>A− Forgiveness</td><td>forgiveness &lt; −0.5 <strong>+ 부정 감정</strong></td><td>모든 축 ×1.5</td></tr>
+    <tr><td>E+ Anxiety</td><td>anxiety &gt; 0.5</td><td>wariness 변화 ×1.3</td></tr>
+    <tr><td>C+ Prudence</td><td>prudence &gt; 0.5</td><td>모든 축 ×0.8</td></tr>
+    <tr><td>O+ Unconv.</td><td>(placeholder)</td><td>적용 0 — Phase 2.3+ 정밀화 예정</td></tr>
+  </table>
+  <div class="note gold">
+    <span class="tag">"부정 감정" 분류의 비대칭</span>
+    A− Forgiveness 룰의 "부정 감정"은 OCC valence가 아니라 <strong>base_delta의 affinity 부호</strong> 기준이다.
+    그래서 <code>Pity</code>는 OCC상 부정 반응이지만 <code>affinity +10</code>이라 <em>제외</em>된다 —
+    "인색한 사람의 동정심 증폭"이라는 서사 모순을 피하기 위함(회고 §W2).
+  </div>
+
+  <h2><span class="seal">3</span>무협 워크드 예시 — 임충 산신묘</h2>
+  <div class="ex">
+    <div class="h">임충이 육겸의 음모를 듣고 Anger 0.95 (단위 테스트 실제값)</div>
+    <p>입력 관계: trust 50 · affinity 40 · respect 30 · wariness 5<br>
+    임충 HEXACO: Sincerity 0.7 / Forgiveness −0.7 / Prudence 0.8 → modifier 3단 적용:
+    ×1.2(trust) → ×1.5(전역, Anger 부정) → ×0.8(전역)</p>
+    <div class="calc">modifier = { trust 1.44, affinity 1.2, respect 1.2, wariness 1.2 }
+trust    : −25 × 0.95 × 1.44 = <b>−34.2</b> → 50−34.2 = <span class="r">15.8</span>
+affinity : −10 × 0.95 × 1.2  = <b>−11.4</b> → 40−11.4 = <span class="r">28.6</span>
+respect  :   0 × … = 0                     → <span class="r">30.0</span>
+wariness : +25 × 0.95 × 1.2  = <b>+28.5</b> → 5+28.5  = <span class="r">33.5</span></div>
+    <p>한 번의 분노가 신뢰를 절반으로 깎고 경계심을 6배로 끌어올린다. 이 값이 다시
+    <code>modifiers()</code>로 들어가 다음 대화의 감정 강도를 바꾼다 — 루프가 닫힌다.</p>
+  </div>
+  <div class="note">
+    <span class="tag">BondStatus 게이트</span>
+    상대가 사망(Deceased)·관계 해소(Resolved)·휴면(Dormant)이면 <code>accepts_live_input()</code>가 false →
+    감정이 아무리 커도 4축은 <strong>변동하지 않는다</strong>. Active·Reactivating만 통과.
+    또한 Pride/Shame는 자기 감정이라 <em>호출 측</em>에서 별도 가드(B-D12).
+  </div>
+
+  <h2><span class="seal">4</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> mod.rs — Relationship::modifiers() <span class="src">domain/relationship/mod.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">modifiers</span>(&amp;<span class="kw">self</span>) -&gt; RelationshipModifiers {
+    <span class="kw">let</span> affinity = <span class="kw">self</span>.affinity.<span class="fn">value</span>();  <span class="cm">// ±100 raw</span>
+    <span class="kw">let</span> trust = <span class="kw">self</span>.trust.<span class="fn">value</span>();
+    <span class="kw">let</span> p = <span class="fn">profile</span>();
+    RelationshipModifiers {
+        intensity_multiplier: (<span class="nu">1.0</span> + affinity * p.rel_affinity_intensity_weight).<span class="fn">max</span>(<span class="nu">0.0</span>),
+        trust_modifier:        <span class="nu">1.0</span> + trust * p.rel_trust_emotion_weight,
+        empathy_modifier:     (<span class="nu">1.0</span> + affinity * p.rel_affinity_empathy_weight).<span class="fn">max</span>(<span class="nu">0.0</span>),
+        hostility_modifier:   (<span class="nu">1.0</span> - affinity * p.rel_affinity_hostility_weight).<span class="fn">max</span>(<span class="nu">0.0</span>),
+    }
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> mapping.rs — update_axes_from_emotion() + hexaco_modifier <span class="src">domain/relationship/mapping.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">update_axes_from_emotion</span>(rel: &amp;<span class="kw">mut</span> Relationship,
+    emotion: EmotionType, intensity: f32, hexaco: &amp;HexacoProfile) {
+    <span class="kw">if</span> !rel.<span class="fn">bond_status</span>().<span class="fn">accepts_live_input</span>() { <span class="kw">return</span>; }   <span class="cm">// 게이트</span>
+
+    <span class="kw">let</span> base = <span class="fn">base_delta</span>(emotion);
+    <span class="kw">let</span> m = <span class="fn">hexaco_modifier</span>(emotion, hexaco);
+    <span class="kw">let</span> delta = AxisDelta {
+        trust:    base.trust    * intensity * m.trust,
+        affinity: base.affinity * intensity * m.affinity,
+        respect:  base.respect  * intensity * m.respect,
+        wariness: base.wariness * intensity * m.wariness,
+    };
+    rel.<span class="fn">apply_delta</span>(&amp;delta);   <span class="cm">// 4축 자동 clamp</span>
+}
+
+<span class="cm">// hexaco_modifier 핵심 룰 (임계 0.5)</span>
+<span class="kw">if</span> hexaco.honesty_humility.sincerity.<span class="fn">value</span>() &gt; <span class="nu">0.5</span> {
+    m = m.<span class="fn">scale_axis</span>(AxisKind::Trust, <span class="nu">1.2</span>); }
+<span class="kw">if</span> hexaco.agreeableness.forgiveness.<span class="fn">value</span>() &lt; -<span class="nu">0.5</span>
+   &amp;&amp; <span class="fn">is_negative_emotion</span>(emotion) {
+    m = m.<span class="fn">combine_uniform</span>(<span class="nu">1.5</span>); }
+<span class="kw">if</span> hexaco.conscientiousness.prudence.<span class="fn">value</span>() &gt; <span class="nu">0.5</span> {
+    m = m.<span class="fn">combine_uniform</span>(<span class="nu">0.8</span>); }</pre>
+  </details>
+
+  <div class="pager">
+    <a href="05-hexaco.html"><span class="dir">◀ PREV</span>05 · HEXACO 반영</a>
+    <a class="next" href="07-routing-matrix.html"><span class="dir">NEXT ▶</span>07 · 기준값 라우팅 매트릭스</a>
+  </div>
+  <div class="foot">npc-mind-rs · 관계 반영 · mod.rs / mapping.rs / tuning.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OCC 상황값 → 18감정 라우팅 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">감정 엔진</a> / <b>라우팅</b></span>
+    <span>application/dto/emotion.rs · appraisal/*.rs</span>
+  </div>
+
+  <h1>OCC 상황값 → 18감정 라우팅</h1>
+  <p class="lead">작가는 감정 종류를 직접 지목하지 않는다. OCC 상황값을 입력하면 엔진이 그 조합을
+  18개 직접 생성 감정으로 라우팅한다. 먼저 OCC 상황값이 무엇인지, 그 다음 그것이 어떻게 감정으로 변환되는지 정리한다.</p>
+
+  <h2><span class="seal">1</span>OCC 상황값 — 작가가 채우는 입력</h2>
+  <p>작가가 Scene Focus 또는 AppraiseRequest의 <code>SituationInput</code>에 채우는 값. 세 가지 요소로 구성된다.</p>
+  <table class="tbl">
+    <tr><th>요소</th><th>의미</th><th>값</th></tr>
+    <tr><td>종류</td><td>어느 입력 분기에 값을 넣는가</td><td class="mono">event / action / object</td></tr>
+    <tr><td>부호</td><td>그 값이 양수인가 음수인가 — 감정 쌍의 방향</td><td class="mono">+ / −</td></tr>
+    <tr><td>분기 입력</td><td>세부 감정을 가르는 보조 입력</td><td class="mono">prospect / agent_id / other</td></tr>
+  </table>
+  <p>실제 수치 필드는 분기별로 다르다. 모두 <code>f32</code> (−1.0 ~ +1.0).</p>
+  <table class="tbl">
+    <tr><th>종류</th><th>수치 필드</th><th>분기 입력</th></tr>
+    <tr><td class="mono">event</td><td class="mono">desirability_for_self</td><td class="mono">prospect, other</td></tr>
+    <tr><td class="mono">action</td><td class="mono">praiseworthiness</td><td class="mono">agent_id</td></tr>
+    <tr><td class="mono">object</td><td class="mono">appealingness</td><td class="mono">(없음)</td></tr>
+  </table>
+
+  <h2><span class="seal">2</span>감정 발생 — 라우팅</h2>
+  <p>위 세 요소의 조합이 감정 종류를 결정한다. 작가는 "Joy를 0.8로"라고 쓸 수 없다.
+  "종류=event, 부호=+, 분기 입력 없음"을 입력하면 엔진이 Joy로 변환한다. 작가가 적는 것은 상황의 수치, 감정 종류는 엔진의 출력이다.</p>
+  <div class="formula">
+    <span class="lbl">라우팅 선택자</span>
+    감정 종류 = OCC 상황값( 종류 · 부호 +/− · 분기 입력[전망 / 타인 영향 / 행위자 자기·타인] )
+  </div>
+  <p>강도는 별도로 계산된다(보편 공식, <a href="05-hexaco.html">HEXACO</a>·<a href="06-relationship.html">관계</a> 문서). 이 문서는 종류 결정만 다룬다.</p>
+
+  <h2><span class="seal">3</span>예시 — 한 Focus에 모두 입력</h2>
+  <div class="ex">
+<pre style="font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--code-text);background:var(--code-bg);border-radius:5px;padding:14px 16px;margin:0;line-height:1.8;overflow-x:auto"><span style="color:var(--faint)">"focus": {</span>
+  "id": "poisoned",
+  "event": {                                  <span style="color:var(--faint)">// 종류=event</span>
+    "desirability_for_self": <span style="color:var(--zhu-hi)">-0.7</span>,        <span style="color:var(--faint)">// 부호 − , 분기 입력 없음 → Distress</span>
+    "other": { "target_id": "ally", "desirability": <span style="color:var(--zhu-hi)">0.6</span> }
+                                              <span style="color:var(--faint)">// 분기 입력 = 타인 영향, 부호 + → HappyFor & Resentment</span>
+  },
+  "action": {                                 <span style="color:var(--faint)">// 종류=action</span>
+    "agent_id": "betrayer",                   <span style="color:var(--faint)">// 분기 입력 = 행위자 타인</span>
+    "praiseworthiness": <span style="color:var(--zhu-hi)">-0.8</span>             <span style="color:var(--faint)">// 부호 − → Reproach</span>
+  },
+  "object": {                                 <span style="color:var(--faint)">// 종류=object</span>
+    "target_id": "poison", "appealingness": <span style="color:var(--zhu-hi)">-0.9</span>  <span style="color:var(--faint)">// 부호 − → Hate</span>
+  }
+<span style="color:var(--faint)">}</span></pre>
+    <div class="calc">입력 → <span class="r">Distress · HappyFor · Resentment · Reproach · Hate</span> 5감정 라우팅
+action & event 동시 → <span class="r">Anger 자동 (복합)</span></div>
+  </div>
+
+  <div class="ex">
+    <p style="margin:0 0 10px;color:var(--muted)">전망(prospect)이 있는 경우 — 같은 event 종류라도 분기 입력에 따라 다른 감정으로 라우팅된다.</p>
+<pre style="font-family:'JetBrains Mono',monospace;font-size:.82rem;color:var(--code-text);background:var(--code-bg);border-radius:5px;padding:14px 16px;margin:0;line-height:1.8;overflow-x:auto"><span style="color:var(--faint)">// (1) 닥쳐올 위협 — 아직 일어나지 않음</span>
+"event": {                                    <span style="color:var(--faint)">// 종류=event</span>
+  "desirability_for_self": <span style="color:var(--zhu-hi)">-0.8</span>,           <span style="color:var(--faint)">// 부호 −</span>
+  "prospect": "anticipation"                  <span style="color:var(--faint)">// 분기 입력 = 전망 → Fear</span>
+}
+
+<span style="color:var(--faint)">// (2) 그 위협이 실제로 닥침</span>
+"event": {                                    <span style="color:var(--faint)">// 종류=event</span>
+  "desirability_for_self": <span style="color:var(--zhu-hi)">-0.8</span>,           <span style="color:var(--faint)">// 부호 무시 (prospect가 종류 결정)</span>
+  "prospect": "fear_confirmed"                <span style="color:var(--faint)">// 분기 입력 = 전망 → FearsConfirmed + Distress</span>
+}</pre>
+    <div class="calc">(1) <span class="r">Fear</span>  ·  (2) <span class="r">FearsConfirmed + Distress</span>
+같은 −0.8이지만 prospect에 따라 전망 → 확인으로 라우팅이 바뀐다.</div>
+  </div>
+
+  <h2><span class="seal">4</span>event · desirability_for_self → 8</h2>
+  <p class="path">EventInput.desirability_for_self</p>
+  <p>같은 값이 <code>prospect</code>에 따라 8갈래로 갈린다.</p>
+  <table class="tbl">
+    <tr><th>감정</th><th>prospect</th><th>부호</th></tr>
+    <tr><td class="pos">Joy</td><td>(생략)</td><td>+</td></tr>
+    <tr><td class="neg">Distress</td><td>(생략)</td><td>−</td></tr>
+    <tr><td class="pos">Hope</td><td><code>anticipation</code></td><td>+</td></tr>
+    <tr><td class="neg">Fear</td><td><code>anticipation</code></td><td>−</td></tr>
+    <tr><td class="pos">Satisfaction</td><td><code>hope_fulfilled</code></td><td>부호 무시</td></tr>
+    <tr><td class="neg">Disappointment</td><td><code>hope_unfulfilled</code></td><td>부호 무시</td></tr>
+    <tr><td class="pos">Relief</td><td><code>fear_unrealized</code></td><td>부호 무시</td></tr>
+    <tr><td class="neg">FearsConfirmed</td><td><code>fear_confirmed</code></td><td>부호 무시</td></tr>
+  </table>
+
+  <h2><span class="seal">5</span>event · other.desirability → 4</h2>
+  <p class="path">EventOtherInput.desirability — target_id의 관계 정보 필수</p>
+  <p>한 값이 공감쌍·적대쌍을 동시에 띄운다. 어느 쪽이 살아남는지는 강도 단계의 성격·관계가 가른다.</p>
+  <table class="tbl">
+    <tr><th>감정</th><th>부호</th><th>쌍</th></tr>
+    <tr><td class="pos">HappyFor</td><td>+</td><td>공감</td></tr>
+    <tr><td class="neg">Pity</td><td>−</td><td>공감</td></tr>
+    <tr><td class="neg">Resentment</td><td>+</td><td>적대</td></tr>
+    <tr><td class="pos">Gloating</td><td>−</td><td>적대</td></tr>
+  </table>
+
+  <h2><span class="seal">6</span>action · praiseworthiness → 4</h2>
+  <p class="path">ActionInput.praiseworthiness</p>
+  <p><code>agent_id</code>가 자기/타인을 가른다 (DTO에서 <code>agent_id == npc_id</code>이면 None으로 정규화 → <a href="02-action.html">Action 문서</a>).</p>
+  <table class="tbl">
+    <tr><th>감정</th><th>agent_id</th><th>부호</th></tr>
+    <tr><td class="pos">Pride</td><td>자기</td><td>+</td></tr>
+    <tr><td class="neg">Shame</td><td>자기</td><td>−</td></tr>
+    <tr><td class="pos">Admiration</td><td>타인</td><td>+</td></tr>
+    <tr><td class="neg">Reproach</td><td>타인</td><td>−</td></tr>
+  </table>
+
+  <h2><span class="seal">7</span>object · appealingness → 2</h2>
+  <p class="path">ObjectInput.appealingness</p>
+  <table class="tbl">
+    <tr><th>감정</th><th>부호</th></tr>
+    <tr><td class="pos">Love</td><td>+</td></tr>
+    <tr><td class="neg">Hate</td><td>−</td></tr>
+  </table>
+
+  <div class="note">
+    <span class="tag">집계 — 4개 입력 → 18개 출력</span>
+    event 8 + other 4 + action 4 + object 2 = <strong>18 직접 생성</strong>.
+    여기에 복합 4종(Anger·Gratitude·Gratification·Remorse, action+event 동시 시 엔진 자동) = OCC 22 전부.
+    복합은 입력 필드가 없다 → <a href="04-compound.html">복합 문서</a>.
+  </div>
+
+  <h2><span class="seal">8</span>주의할 점 3가지</h2>
+  <div class="note">
+    <span class="tag">① 확인 4종은 부호가 감정을 안 고른다</span>
+    <code>add_confirmation</code>은 <code>base_val.abs()</code>를 쓰고, 감정 종류는 <code>prospect</code> 문자열이 전적으로 결정한다.
+    <code>+0.7</code>에 <code>fear_confirmed</code>를 써도 FearsConfirmed가 나온다.
+    다만 자연 부호를 맞추는 것이 가독성상 옳다 — <code>hope_*</code>는 +(바람직했던 것), <code>fear_*</code>는 −(두려웠던 것).
+  </div>
+  <div class="note">
+    <span class="tag">② other는 한 값이 2감정을 동시 발생</span>
+    부호가 +이면 HappyFor와 Resentment가 둘 다 계산된다(공감쌍·적대쌍 항상 평가). 생존자는 강도 단계의 성격·관계가 가른다.
+    또한 <code>other</code>를 쓰면 <code>target_id</code>의 관계 정보가 필수 — 없으면 <code>InvalidSituation</code> 에러로 거부된다.
+  </div>
+  <div class="note">
+    <span class="tag">③ 18개를 18번 설정하는 것이 아니다</span>
+    Scene Focus 하나에 <code>event/action/object</code> + <code>prospect/agent_id/other</code>를 채우면 그 조합으로 감정이 자동 라우팅된다.
+    작가는 감정을 지목하지 않고 상황값을 입력한다.
+  </div>
+
+  <h2><span class="seal">9</span>코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> dto/emotion.rs — prospect 문자열 → enum 매핑 <span class="src">application/dto/emotion.rs</span></summary>
+<pre><span class="kw">let</span> prospect = self.prospect.<span class="fn">as_deref</span>().<span class="fn">and_then</span>(|p| <span class="kw">match</span> p {
+    <span class="st">"anticipation"</span>     =&gt; <span class="ty">Some</span>(Prospect::Anticipation),
+    <span class="st">"hope_fulfilled"</span>   =&gt; <span class="ty">Some</span>(Prospect::Confirmation(ProspectResult::HopeFulfilled)),
+    <span class="st">"hope_unfulfilled"</span> =&gt; <span class="ty">Some</span>(Prospect::Confirmation(ProspectResult::HopeUnfulfilled)),
+    <span class="st">"fear_unrealized"</span>  =&gt; <span class="ty">Some</span>(Prospect::Confirmation(ProspectResult::FearUnrealized)),
+    <span class="st">"fear_confirmed"</span>   =&gt; <span class="ty">Some</span>(Prospect::Confirmation(ProspectResult::FearConfirmed)),
+    _ =&gt; <span class="ty">None</span>,
+});</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> dto/emotion.rs — 입력 필드 구조체 <span class="src">application/dto/emotion.rs</span></summary>
+<pre><span class="kw">pub struct</span> EventInput {
+    <span class="kw">pub</span> description: <span class="ty">String</span>,
+    <span class="kw">pub</span> desirability_for_self: f32,
+    <span class="kw">pub</span> other: <span class="ty">Option</span>&lt;EventOtherInput&gt;,
+    <span class="kw">pub</span> prospect: <span class="ty">Option</span>&lt;<span class="ty">String</span>&gt;,
+}
+<span class="kw">pub struct</span> EventOtherInput { <span class="kw">pub</span> target_id: <span class="ty">String</span>, <span class="kw">pub</span> desirability: f32 }
+<span class="kw">pub struct</span> ActionInput {
+    <span class="kw">pub</span> description: <span class="ty">String</span>,
+    <span class="kw">pub</span> agent_id: <span class="ty">Option</span>&lt;<span class="ty">String</span>&gt;,
+    <span class="kw">pub</span> praiseworthiness: f32,
+}
+<span class="kw">pub struct</span> ObjectInput { <span class="kw">pub</span> target_id: <span class="ty">String</span>, <span class="kw">pub</span> appealingness: f32 }</pre>
+  </details>
+
+  <div class="pager">
+    <a href="06-relationship.html"><span class="dir">◀ PREV</span>관계 반영</a>
+    <a class="next" href="08-stimulus.html"><span class="dir">NEXT ▶</span>PAD 자극 경로</a>
+  </div>
+  <div class="foot">npc-mind-rs · OCC 상황값 라우팅 · dto/emotion.rs · appraisal/*.rs</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

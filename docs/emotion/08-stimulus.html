@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>08 · PAD 자극 경로 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>08 STIMULUS</b></span>
+    <span>domain/emotion/stimulus.rs · stimulus_policy.rs</span>
+  </div>
+
+  <h1>PAD 자극 경로 <span class="han">刺戟</span></h1>
+  <p class="lead">OCC를 <strong>우회</strong>하는 두 번째 계보. 상황을 재평가하지 않고,
+  Player 발화의 PAD 3축으로 <em>기존 감정 강도만</em> 직접 증폭·약화한다. 새 감정은 생성하지 않는다.</p>
+
+  <div class="note zhu">
+    <span class="tag">OCC 경로와의 근본 차이</span>
+    01~07(OCC)은 "상황 → 성격이 감정을 <em>계산</em>". 08(PAD)은 "발화 → 감정을 <em>직접 민다</em>".
+    HEXACO weight·기준값·prospect 전부 거치지 않는다. 실시간 대화 매 턴의 경로.
+  </div>
+
+  <h2><span class="seal">1</span>입력 — Pad 3축</h2>
+  <p class="path">domain/pad.rs · struct Pad</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>타입</th><th>의미</th></tr>
+    <tr><td class="mono">pleasure</td><td class="mono">f32</td><td>쾌·불쾌</td></tr>
+    <tr><td class="mono">arousal</td><td class="mono">f32</td><td>각성·이완</td></tr>
+    <tr><td class="mono">dominance</td><td class="mono">f32</td><td>지배·복종</td></tr>
+  </table>
+  <p>OCC 경로의 <code>desirability_for_self</code> 같은 입력 필드가 <strong>존재하지 않는다</strong>.
+  Player 발화를 PAD로 분석한 값이 곧 자극이 된다. MCP <code>StimulusApplyRequested</code>로 진입.</p>
+
+  <h2><span class="seal">2</span>핵심 공식 — apply_stimulus</h2>
+  <div class="formula">
+    <span class="lbl">stimulus.rs · 감정별 루프</span>
+    Δ = <b>alignment</b> × <em>absorb</em> × impact_rate × <em>inertia</em><br>
+    <span class="big">새 강도 = clamp( 기존 강도 + Δ , 0 , 1 )</span>
+  </div>
+  <table class="tbl">
+    <tr><th>항</th><th>출처</th><th>의미</th></tr>
+    <tr><td class="mono">alignment</td><td><code>pad_dot(emotion_pad, stimulus)</code></td><td>그 감정의 PAD 좌표와 자극의 <strong>내적</strong> — 같은 방향이면 +, 반대면 −</td></tr>
+    <tr><td class="mono">absorb</td><td><code>personality.stimulus_absorb_rate(stimulus)</code></td><td>성격이 캡슐화한 "자극 수용도" (HEXACO)</td></tr>
+    <tr><td class="mono">impact_rate</td><td><code>profile().stimulus_impact_rate</code> (0.5)</td><td>한 턴 변동 제한 계수 (튜닝)</td></tr>
+    <tr><td class="mono">inertia</td><td><code>(1−i).max(stimulus_min_inertia)</code> (0.30)</td><td>이미 강한 감정일수록 덜 흔들림. 단 최소 관성 보장</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">방향 동역학</span>
+    자극과 <em>같은 방향</em> 감정 → 증폭. <em>반대 방향</em> → 감소.
+    <code>stimulus_fade_threshold</code>(0.05) 이하로 떨어진 감정은 <strong>자연 소멸</strong>(<code>remove</code>).
+    iter_active만 순회 — <strong>새 감정은 절대 생성 안 함</strong>(OCC와 결정적 차이).
+  </div>
+
+  <h3>pad_dot 두 인자의 출처</h3>
+  <p><code>alignment = pad_dot(emotion_pad, stimulus)</code> — 이 내적의 두 입력은 출처가 다르다.</p>
+  <table class="tbl">
+    <tr><th>인자</th><th>출처</th><th>성격</th></tr>
+    <tr><td class="mono">emotion_pad</td><td><code>emotion_to_pad(감정타입)</code> — pad.rs 룩업</td><td>감정별 <strong>상수</strong> 좌표 (NPC·상황 무관)</td></tr>
+    <tr><td class="mono">stimulus</td><td><code>StimulusApplyRequested.pad</code> (이벤트 입력)</td><td>대사 분석 산출 <strong>변수</strong> (임베딩→PAD→청자변환)</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">내적의 의미</span>
+    "이 감정의 <em>고정 방향</em>"(emotion_pad)과 "들어온 <em>자극 방향</em>"(stimulus)이 얼마나 정렬됐는지.
+    양수면 그 감정 증폭, 음수면 약화. <code>stimulus</code> 출처 파이프라인은 09(대사→PAD) 참조.
+  </div>
+
+  <h2><span class="seal">3</span>처리 분기 — StimulusPolicy</h2>
+  <p class="path">application/command/policies/stimulus_policy.rs</p>
+  <div class="flow"><span class="c">// StimulusApplyRequested 수신</span>
+
+apply_stimulus(personality, current, pad) → <span class="e">stimulated</span>
+        │
+Scene 있고 check_trigger(stimulated) 충족?
+ ├─ <span class="k">예</span> → process_beat_transition
+ │      ① stimulated로 임시 4축 변동(beat_rel, 저장 X)
+ │      ② beat_rel.modifiers()로 새 focus appraise
+ │      ③ merge_from_beat(stimulated, new_state)
+ │      → StimulusApplied + <span class="e">BeatTransitioned</span>
+ │
+ └─ <span class="k">아니오</span> → process_simple_stimulus
+        → stimulated 저장 · StimulusApplied (beat_triggered=false)</div>
+  <div class="note gold">
+    <span class="tag">Two-phase 관계 의미론</span>
+    Beat 전환 시 <code>beat_rel</code>은 <em>임시</em> — modifier 산정용이라 저장 안 됨(pre-merge stimulated 기준).
+    4축 <em>최종</em> 갱신은 후속 <code>RelationshipPolicy</code>가 <code>BeatTransitioned</code>를 받아
+    <em>merged</em> 감정 기준으로 1회 수행(06 문서 B). B-D12 가드: Pride/Shame은 자기 감정이라 4축 루프에서 제외.
+  </div>
+
+  <h2><span class="seal">4</span>무협 워크드 예시</h2>
+  <div class="ex">
+    <div class="h">임충이 분노(0.4) 중, Player가 도발 대사</div>
+    <p>자극 PAD = 분노 방향과 정렬(alignment&gt;0). absorb=0.8, impact=0.5 가정, inertia=(1−0.4)=0.6</p>
+    <div class="calc">Δ = alignment(+0.7) × 0.8 × 0.5 × 0.6 = <b>+0.168</b>
+새 분노 = clamp(0.4 + 0.168, 0, 1) = <span class="r">0.568</span>
+<span style="color:var(--faint)">// 같은 방향 자극 → 기존 분노 증폭. 새 감정 생성 없음</span></div>
+  </div>
+  <div class="ex">
+    <div class="h">위로 대사 (분노와 반대 방향)</div>
+    <div class="calc">Δ = alignment(−0.6) × 0.8 × 0.5 × 0.6 = <b>−0.144</b>
+새 분노 = 0.4 − 0.144 = <span class="r">0.256</span>  <span style="color:var(--faint)">// 약화</span></div>
+  </div>
+
+  <h2><span class="seal">5</span>실제 코드</h2>
+  <details class="code">
+    <summary><span class="chev">▸</span> stimulus.rs — apply_stimulus 전문 <span class="src">domain/emotion/stimulus.rs</span></summary>
+<pre><span class="kw">fn</span> <span class="fn">apply_stimulus</span>&lt;P: StimulusWeights&gt;(&amp;<span class="kw">self</span>,
+    personality: &amp;P, current_state: &amp;EmotionState, stimulus: &amp;Pad) -&gt; EmotionState {
+    <span class="kw">let</span> absorb = personality.<span class="fn">stimulus_absorb_rate</span>(stimulus);
+    <span class="kw">let</span> p = <span class="fn">profile</span>();
+    <span class="kw">let mut</span> new_state = current_state.<span class="fn">clone</span>();
+
+    <span class="kw">for</span> (t, i, _) <span class="kw">in</span> current_state.<span class="fn">iter_active</span>() {
+        <span class="kw">let</span> emotion_pad = <span class="fn">emotion_to_pad</span>(t);
+        <span class="kw">let</span> alignment = <span class="fn">pad_dot</span>(emotion_pad, *stimulus);
+        <span class="kw">let</span> inertia = (<span class="nu">1.0</span> - i).<span class="fn">max</span>(p.stimulus_min_inertia);
+        <span class="kw">let</span> delta = alignment * absorb * p.stimulus_impact_rate * inertia;
+        <span class="kw">let</span> new_intensity = (i + delta).<span class="fn">clamp</span>(<span class="nu">0.0</span>, <span class="nu">1.0</span>);
+
+        <span class="kw">if</span> new_intensity &lt; p.stimulus_fade_threshold {
+            new_state.<span class="fn">remove</span>(t);          <span class="cm">// 자연 소멸</span>
+        } <span class="kw">else</span> {
+            new_state.<span class="fn">set_intensity</span>(t, new_intensity);
+        }
+    }
+    new_state
+}</pre>
+  </details>
+  <details class="code">
+    <summary><span class="chev">▸</span> stimulus_policy.rs — handle_v2 분기 <span class="src">application/command/policies/stimulus_policy.rs</span></summary>
+<pre><span class="kw">let</span> stimulated = <span class="kw">self</span>.stimulus_processor
+    .<span class="fn">apply_stimulus</span>(npc.<span class="fn">personality</span>(), &amp;current, &amp;pad_struct);
+
+<span class="kw">let</span> scene_id = SceneId::<span class="fn">new</span>(npc_id, partner_id);
+<span class="kw">if let</span> <span class="ty">Some</span>(scene) = ctx.<span class="fn">get_scene_by_id</span>(&amp;scene_id) {
+    <span class="kw">if let</span> <span class="ty">Some</span>(focus) = scene.<span class="fn">check_trigger</span>(&amp;stimulated).<span class="fn">cloned</span>() {
+        <span class="kw">return</span> <span class="kw">self</span>.<span class="fn">process_beat_transition</span>(...);  <span class="cm">// Beat 전환</span>
+    }
+}
+<span class="kw">self</span>.<span class="fn">process_simple_stimulus</span>(...)            <span class="cm">// 단순 자극</span></pre>
+  </details>
+
+  <div class="pager">
+    <a href="07-routing-matrix.html"><span class="dir">◀ PREV</span>07 · 기준값 라우팅</a>
+    <a class="next" href="09-utterance-pad.html"><span class="dir">NEXT ▶</span>09 · 대사 → PAD 변환</a>
+  </div>
+  <div class="foot">npc-mind-rs · PAD 자극 경로 · stimulus.rs / stimulus_policy.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>

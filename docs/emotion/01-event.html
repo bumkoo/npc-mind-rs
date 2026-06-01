@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>01 · OCC Event 분기 · npc-mind-rs</title>
+<link rel="stylesheet" href="_shared.css">
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <span class="crumb"><a href="index.html">感情</a> / <b>01 EVENT</b></span>
+    <span>domain/emotion/appraisal/event.rs</span>
+  </div>
+
+  <h1>OCC · Event 분기 <span class="han">事件</span></h1>
+  <p class="lead">"누군가에게 무슨 일이 일어남." 3개 분기 중 가장 복잡하다 — 자기 복지, 타인의 운,
+  전망의 3개 하위 시스템을 품으며, <code>prospect</code> 필드가 전체 흐름을 가로챈다.</p>
+
+  <h2><span class="seal">1</span>입력 설정값 — EventFocus</h2>
+  <p class="path">domain/emotion/situation.rs · struct EventFocus</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>타입</th><th>의미</th><th>비고</th></tr>
+    <tr><td class="mono">desirability_for_self</td><td class="mono">f32</td><td>나에게 좋은가/나쁜가 (−1~1)</td><td><strong>필수</strong></td></tr>
+    <tr><td class="mono">desirability_for_other</td><td class="mono">Option&lt;…&gt;</td><td>제3자에게 좋은가/나쁜가</td><td>대상 ID·관계 배율 포함</td></tr>
+    <tr><td class="mono">prospect</td><td class="mono">Option&lt;…&gt;</td><td>전망 정보</td><td>Anticipation | Confirmation(result)</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">대상 분리</span>
+    <code>desirability_for_other</code>는 단순 숫자가 아니라 <strong>자기만의 target_id와 관계 배율</strong>을 가진 하위 객체다.
+    대화 상대와 사건의 영향을 받는 사람이 다를 수 있기 때문 — "무백이 교룡과 대화 중, 소호가 비무에서 패했다"는
+    대화 상대(무백→교룡)와 사건 대상(무백→소호) 관계가 다르다.
+  </div>
+
+  <h2><span class="seal">2</span>prospect별 발생 감정</h2>
+  <p><code>prospect</code>는 <code>Option&lt;Prospect&gt;</code> — 0층(None/Some) → 1층(Anticipation/Confirmation) → 2층(ProspectResult 4종)의 3단 중첩이다. 작가 입력으로는 최종 6종.</p>
+  <table class="tbl">
+    <tr><th>작가 입력 (JSON)</th><th>0층</th><th>1층</th><th>2층</th><th>발생 감정</th></tr>
+    <tr><td><code>prospect</code> 키 생략</td><td><code>None</code></td><td>—</td><td>—</td><td>d&gt;0 <span class="pos">Joy</span> / d&lt;0 <span class="neg">Distress</span></td></tr>
+    <tr><td><code>"anticipation"</code></td><td><code>Some</code></td><td>Anticipation</td><td>—</td><td>d&gt;0 <span class="pos">Hope</span> / d&lt;0 <span class="neg">Fear</span></td></tr>
+    <tr><td><code>"hope_fulfilled"</code></td><td><code>Some</code></td><td>Confirmation</td><td>HopeFulfilled</td><td><span class="pos">Satisfaction</span> + Joy</td></tr>
+    <tr><td><code>"hope_unfulfilled"</code></td><td><code>Some</code></td><td>Confirmation</td><td>HopeUnfulfilled</td><td><span class="neg">Disappointment</span></td></tr>
+    <tr><td><code>"fear_unrealized"</code></td><td><code>Some</code></td><td>Confirmation</td><td>FearUnrealized</td><td><span class="pos">Relief</span></td></tr>
+    <tr><td><code>"fear_confirmed"</code></td><td><code>Some</code></td><td>Confirmation</td><td>FearConfirmed</td><td><span class="neg">FearsConfirmed</span> + Distress</td></tr>
+  </table>
+
+  <h2><span class="seal">3</span>제어 흐름 — prospect 게이트</h2>
+  <p>같은 입력이라도 <code>prospect</code> 값과 조기 종료(<code>return</code>)·흘러내림(fall-through)에 따라 결과가 갈린다.</p>
+  <div class="flow"><span class="c">입력: d = desirability_for_self, prospect, desirability_for_other</span>
+
+prospect == <span class="k">Confirmation(result)</span> ?
+ ├─ 예 → Satisfaction / Disappointment / Relief / FearsConfirmed 생성
+ │        result == HopeUnfulfilled | FearUnrealized ? <span class="c">(= 사건 안 일어남)</span>
+ │         ├─ 예  → <span class="k">끝</span> · 확인 감정만 (Joy/Distress 안 만듦)
+ │         └─ 아니오 <span class="c">(HopeFulfilled|FearConfirmed = 실제 발생)</span> → 아래로 흘러내림
+
+prospect == <span class="k">Anticipation</span> ?
+ ├─ 예 → Hope(d&gt;0) / Fear(d&lt;0) 생성 · <span class="k">끝</span> · Hope/Fear만 (그 외 감정 안 만듦)
+
+└─ <span class="c">(전망 없음 또는 위에서 흘러내려옴)</span>
+     → Joy(d&gt;0) / Distress(d&lt;0)
+     → desirability_for_other 있으면 <span class="e">Fortune-of-others 추가</span></div>
+
+  <h2><span class="seal">4</span>생성 감정 · 강도</h2>
+  <table class="tbl">
+    <tr><th>조건</th><th>생성 감정 (부호)</th><th>강도 공식</th></tr>
+    <tr><td>Confirmation</td><td><span class="pos">Satisfaction</span> / <span class="neg">Disappointment</span> / <span class="pos">Relief</span> / <span class="neg">FearsConfirmed</span></td><td class="mono">|d| × confirmation_weight</td></tr>
+    <tr><td>Anticipation</td><td>d&gt;0 <span class="pos">Hope</span> / d&lt;0 <span class="neg">Fear</span></td><td class="mono">|d| × prospect_weight × 1.0</td></tr>
+    <tr><td>Well-being</td><td>d&gt;0 <span class="pos">Joy</span> / d&lt;0 <span class="neg">Distress</span></td><td class="mono">|d| × self_weight × 1.0</td></tr>
+    <tr><td>Fortune · 공감쌍</td><td>do&gt;0 <span class="pos">HappyFor</span> / do&lt;0 <span class="neg">Pity</span></td><td class="mono">|do| × empathy_weight × empathy_modifier</td></tr>
+    <tr><td>Fortune · 적대쌍</td><td>do&gt;0 <span class="neg">Resentment</span> / do&lt;0 <span class="pos">Gloating</span></td><td class="mono">|do| × hostility_weight × hostility_modifier</td></tr>
+  </table>
+  <div class="note zhu">
+    <span class="tag">핵심 비대칭</span>
+    Confirmation에서 <strong>HopeFulfilled / FearConfirmed</strong>는 사건이 <em>실제로 일어난</em> 경우라서
+    확인 감정(Satisfaction/FearsConfirmed)을 만든 뒤 <strong>fall-through</strong>하여 Joy/Distress까지 동시 생성한다.
+    반면 <strong>HopeUnfulfilled / FearUnrealized</strong>는 일어나지 않았으므로 확인 감정만 만들고 즉시 종료.
+  </div>
+
+  <h3>DesirabilityForOther 구조와 Fortune-of-others 산출</h3>
+  <p>작가 입력 <code>EventOtherInput</code>은 2필드(<code>target_id</code>, <code>desirability</code>)지만,
+  <code>EventInput::into_domain</code>이 변환 시 그 <code>target_id</code>와의 관계 배율을 추가해
+  도메인 구조 <code>DesirabilityForOther</code>(3필드)로 만든다. 관계 정보가 없으면
+  <code>InvalidSituation</code> 에러로 거부된다.</p>
+  <table class="tbl">
+    <tr><th>필드</th><th>타입</th><th>누가 채움</th></tr>
+    <tr><td class="mono">target_id</td><td class="mono">String</td><td>작가 입력에서 복사</td></tr>
+    <tr><td class="mono">desirability</td><td class="mono">f32 (do)</td><td>작가 입력에서 복사</td></tr>
+    <tr><td class="mono">modifiers</td><td class="mono">RelationshipModifiers</td><td><strong>엔진이 target_id 관계에서 산출</strong></td></tr>
+  </table>
+  <p><code>event.rs</code>의 appraise는 사건이 실제 발생한 경우(전망 없음 또는 흘러내림)에만
+  이 구조로 Fortune-of-others를 만든다. <code>do</code> 한 값으로 공감쌍·적대쌍을
+  동시에 평가하며, <code>modifiers</code>의 두 배율이 각 쌍에 따로 곱해진다:</p>
+  <table class="tbl">
+    <tr><th>쌍</th><th>생성 감정 (부호)</th><th>강도</th></tr>
+    <tr><td>공감쌍</td><td>do&gt;0 <span class="pos">HappyFor</span> / do&lt;0 <span class="neg">Pity</span></td><td class="mono">|do| × empathy_weight × modifiers.empathy_modifier</td></tr>
+    <tr><td>적대쌍</td><td>do&gt;0 <span class="neg">Resentment</span> / do&lt;0 <span class="pos">Gloating</span></td><td class="mono">|do| × hostility_weight × modifiers.hostility_modifier</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">대상 분리</span>
+    두 쌍은 <strong>항상 같이 계산</strong>되며, 어느 쪽이 살아남는지는 weight(성격)와 modifier(관계)가 가른다.
+    <code>modifiers</code>의 값은 <em>사건 대상</em>(target_id)과의 관계에서 나온 것이지 대화 상대 관계가 아니다 —
+    대화 상대와 사건 영향 대상이 다를 수 있기 때문이다.
+  </div>
+
+  <h2><span class="seal">5</span>무협 워크드 예시</h2>
+  <p>weight=1.0(중립 성격), modifier=1.0(중립 관계) 가정. 실제 weight·modifier는 05·06 문서 참조.</p>
+
+  <div class="ex">
+    <div class="h">경로 A — prospect 없음 · 곽정이 무공 비급을 얻다</div>
+    <p>그냥 일어난 일. <code>d = +0.8</code>, prospect=None</p>
+    <div class="calc">Joy = |+0.8| × 1.0 × 1.0 = <span class="r">0.80</span></div>
+  </div>
+
+  <div class="ex">
+    <div class="h">경로 B — Anticipation · 금나라 대군이 곧 양양성을 친다</div>
+    <p><code>d = −0.7</code>, prospect=Anticipation</p>
+    <div class="calc">Fear = |−0.7| × 1.0 × 1.0 = <span class="r">0.70</span>
+<span style="color:var(--faint)">// return — Distress·Fortune-of-others 전부 미생성 (아직 벌어지지 않음)</span></div>
+  </div>
+
+  <div class="ex">
+    <div class="h">경로 C — Confirmation · 두려워하던 황약사의 진노가 끝내 닥치지 않았다</div>
+    <p>prospect=Confirmation(<b>FearUnrealized</b>)</p>
+    <div class="calc">Relief = |d| × confirmation_weight = <span class="r">생성</span>
+<span style="color:var(--faint)">// return — Distress 없음 (나쁜 일이 안 일어남)</span></div>
+  </div>
+
+  <div class="ex">
+    <div class="h">경로 D — fall-through · 두려워하던 매초풍의 습격이 진짜로 들이닥쳤다</div>
+    <p><code>d = −0.8</code>, prospect=Confirmation(<b>FearConfirmed</b>)</p>
+    <div class="calc">① FearsConfirmed = 0.8 × confirmation_weight   <span style="color:var(--faint)">// return 안 함</span>
+② <b>흘러내림</b> → Distress = 0.8 × self_weight   <span class="r">→ 두 감정 동시</span></div>
+    <p>한 사건에서 "올 것이 왔다"(FearsConfirmed)와 "실제로 아프다"(Distress)가 동시에 깔린다.</p>
+  </div>
+
+  <div class="ex">
+    <div class="h">Fortune-of-others — 미워하는 자에게 경사가 났다</div>
+    <p>공감쌍·적대쌍이 <strong>항상 같이</strong> 계산되며, 관계 배율이 어느 쪽을 살릴지 가른다.</p>
+    <div class="calc">do = +0.9 (좋은 일) · 적대 관계 (hostility_modifier 큼)
+공감: HappyFor = 0.9 × empathy_weight × <b>작은 emp_mod</b>  → 미미
+적대: Resentment = 0.9 × hostility_weight × <b>큰 hos_mod</b> → <span class="r">지배</span></div>
+  </div>
+
+  <div class="note gold">
+    <span class="tag">설계 책임 분리</span>
+    엔진은 <strong>어떤 Hope가 어떤 Confirmation으로 이어지는지 추적하지 않는다.</strong>
+    게임 시스템이 "이 확인은 아까 그 Hope의 결과"라 판단해 <code>ProspectResult</code>를 넣어주면,
+    엔진은 그 enum만 보고 감정 종류를 고른다. 전망 시퀀스 연결은 게임의 책임, 엔진은 순수 함수.
+  </div>
+
+  <h2><span class="seal">6</span>실제 코드</h2>
+
+  <details class="code">
+    <summary><span class="chev">▸</span> appraisal/event.rs — appraise() <span class="src">domain/emotion/appraisal/event.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">appraise</span>&lt;P: AppraisalWeights&gt;(p: &amp;P, state: &amp;<span class="kw">mut</span> EmotionState, event: &amp;EventFocus) {
+    <span class="kw">let</span> d = event.desirability_for_self;
+    <span class="kw">let</span> ctx = &amp;event.description;
+
+    <span class="cm">// 1. 전망 확인 (Satisfaction, Disappointment, Relief, FearsConfirmed)</span>
+    <span class="kw">if let</span> <span class="ty">Some</span>(Prospect::Confirmation(result)) = &amp;event.prospect {
+        <span class="kw">let</span> w = p.<span class="fn">desirability_confirmation_weight</span>(d);
+        <span class="fn">add_confirmation</span>(state, result, d, w, ctx);
+        <span class="kw">match</span> result {
+            ProspectResult::HopeUnfulfilled | ProspectResult::FearUnrealized =&gt; <span class="kw">return</span>,
+            _ =&gt; {} <span class="cm">// HopeFulfilled, FearConfirmed → 아래 Joy/Distress 계속</span>
+        }
+    }
+
+    <span class="cm">// 2. 미래 전망 (Hope, Fear)</span>
+    <span class="kw">if let</span> <span class="ty">Some</span>(Prospect::Anticipation) = &amp;event.prospect {
+        <span class="kw">let</span> w = p.<span class="fn">desirability_prospect_weight</span>(d);
+        <span class="fn">add_valence</span>(state, EmotionType::Hope, EmotionType::Fear, d, w, <span class="nu">1.0</span>, ctx);
+        <span class="kw">return</span>;
+    }
+
+    <span class="cm">// 3. 자기 복지 (Joy, Distress)</span>
+    <span class="kw">let</span> w = p.<span class="fn">desirability_self_weight</span>(d);
+    <span class="fn">add_valence</span>(state, EmotionType::Joy, EmotionType::Distress, d, w, <span class="nu">1.0</span>, ctx);
+
+    <span class="cm">// 4. 타인의 운 (HappyFor, Pity, Resentment, Gloating)</span>
+    <span class="kw">if let</span> <span class="ty">Some</span>(other) = &amp;event.desirability_for_other {
+        <span class="kw">let</span> d_other = other.desirability;
+        <span class="kw">let</span> other_ctx = <span class="fn">format!</span>(<span class="st">"{} (대상: {})"</span>, ctx, other.target_id);
+        <span class="cm">// 공감 기반 (HappyFor, Pity)</span>
+        <span class="kw">let</span> emp_w = p.<span class="fn">empathy_weight</span>(d_other);
+        <span class="fn">add_valence</span>(state, EmotionType::HappyFor, EmotionType::Pity,
+                    d_other, emp_w, other.modifiers.empathy_modifier, &amp;other_ctx);
+        <span class="cm">// 적대 기반 (Resentment, Gloating)</span>
+        <span class="kw">let</span> hos_w = p.<span class="fn">hostility_weight</span>(d_other);
+        <span class="fn">add_valence</span>(state, EmotionType::Resentment, EmotionType::Gloating,
+                    d_other, hos_w, other.modifiers.hostility_modifier, &amp;other_ctx);
+    }
+}</pre>
+  </details>
+
+  <details class="code">
+    <summary><span class="chev">▸</span> helpers.rs — add_valence() / add_confirmation() <span class="src">domain/emotion/appraisal/helpers.rs</span></summary>
+<pre><span class="kw">pub fn</span> <span class="fn">add_valence</span>(state: &amp;<span class="kw">mut</span> EmotionState,
+    pos_type: EmotionType, neg_type: EmotionType,
+    base_val: f32, weight: f32, modifier: f32, ctx: &amp;<span class="ty">str</span>) {
+    <span class="kw">if</span> weight &lt;= <span class="nu">0.0</span> { <span class="kw">return</span>; }              <span class="cm">// ← 성격이 감정 원천 차단</span>
+    <span class="kw">if</span> base_val &gt; <span class="nu">0.0</span> {
+        <span class="kw">let</span> val = base_val * weight * modifier;
+        state.<span class="fn">add</span>(Emotion::<span class="fn">with_context</span>(pos_type, val, ctx));
+    } <span class="kw">else if</span> base_val &lt; <span class="nu">0.0</span> {
+        <span class="kw">let</span> val = base_val.<span class="fn">abs</span>() * weight * modifier;
+        state.<span class="fn">add</span>(Emotion::<span class="fn">with_context</span>(neg_type, val, ctx));
+    }
+}
+
+<span class="kw">pub fn</span> <span class="fn">add_confirmation</span>(state: &amp;<span class="kw">mut</span> EmotionState,
+    result: &amp;ProspectResult, base_val: f32, weight: f32, ctx: &amp;<span class="ty">str</span>) {
+    <span class="kw">let</span> etype = <span class="kw">match</span> result {
+        ProspectResult::HopeFulfilled  =&gt; EmotionType::Satisfaction,
+        ProspectResult::HopeUnfulfilled=&gt; EmotionType::Disappointment,
+        ProspectResult::FearUnrealized =&gt; EmotionType::Relief,
+        ProspectResult::FearConfirmed  =&gt; EmotionType::FearsConfirmed,
+    };
+    <span class="kw">let</span> val = base_val.<span class="fn">abs</span>() * weight;        <span class="cm">// modifier 없음</span>
+    state.<span class="fn">add</span>(Emotion::<span class="fn">with_context</span>(etype, val, ctx));
+}</pre>
+  </details>
+
+  <div class="pager">
+    <a href="index.html"><span class="dir">◀ HUB</span>감정 발생 파이프라인</a>
+    <a class="next" href="02-action.html"><span class="dir">NEXT ▶</span>02 · Action 분기</a>
+  </div>
+  <div class="foot">npc-mind-rs · OCC Event 분기 · event.rs / helpers.rs 검토</div>
+</div>
+<script src="_shared.js"></script>
+</body>
+</html>
