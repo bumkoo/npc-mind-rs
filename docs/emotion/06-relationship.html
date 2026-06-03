@@ -29,7 +29,7 @@
   <p>1단계 공식의 <em>modifier</em>는 여기서 나온다. <strong>affinity와 trust 두 축만</strong> 쓴다(respect·wariness 미사용).
   ±100 raw 값에 1/100 스케일 튜닝 가중치를 직접 곱한다.</p>
   <table class="tbl">
-    <tr><th>필드</th><th>산식</th><th>튜닝 상수 (default)</th><th>곱해지는 분기</th></tr>
+    <tr><th>필드</th><th>산식</th><th>w 값 (default)</th><th>곱해지는 분기</th></tr>
     <tr><td class="mono">intensity_multiplier</td><td class="mono">max(0, 1 + affinity × w)</td><td class="mono">0.005</td><td>타인 행동(Admir./Reproach)</td></tr>
     <tr><td class="mono">trust_modifier</td><td class="mono">1 + trust × w</td><td class="mono">0.003</td><td>〃 (intensity와 곱)</td></tr>
     <tr><td class="mono">empathy_modifier</td><td class="mono">max(0, 1 + affinity × w)</td><td class="mono">0.003</td><td>HappyFor / Pity</td></tr>
@@ -49,17 +49,11 @@ trust_mod = 1 + 50×0.003 = <b>1.15</b></div>
   </div>
 
   <div class="note gold">
-    <span class="tag">Phase 2.5 검토 예정 · 개선 계획</span>
+    <span class="tag">Phase 2.4 검토 예정</span>
     현 <code>modifiers()</code>는 affinity·trust 2축만 사용 — respect·wariness는 (B) 4축 갱신엔 쓰이나
-    modifier 산출엔 미반영(설계 근거 문서 부재, 코드 구조에서 역추론). 로드맵 §5 Phase 2.5
-    <code>RelationshipModifiers 정밀화</code>에서 검토 예정:
-    <ul class="clean">
-      <li><strong>① trust_modifier <code>.max(0.0)</code> 보정</strong> — 4필드 중 유일하게 하한 클램프 없음(부호 반전 가능). 동작 불변·저위험 → 우선</li>
-      <li><strong>② 상한 clamp 도입</strong> — personality weight [0.5,1.5]와 대칭. 폭주 방어 → 우선</li>
-      <li><strong>③ respect_modifier 신설</strong> — Admiration/Reproach가 존경과 직결되나 미반영(서사 정합) → spec 확정 후</li>
-      <li><strong>④ wariness 되먹임</strong> — 경계 누적→Reproach 증폭. 단 양의 피드백 루프라 안정화 장치(감쇠·히스테리시스) 동반 필수 → spec 확정 후</li>
-    </ul>
-    ①②는 로드맵 사각지대의 신규 부채(Phase 2.3 종결 후 발견), ③④는 로드맵이 이미 가리키는 Phase 2.5 예정 작업.
+    modifier 산출엔 미반영(설계 근거 문서 부재, 코드 구조에서 역추론). 비판적 검토로 도출한
+    7개 항목(문서화 ①②③④ + 신규 부채 ⑤⑥⑦)과 이를 한 번에 푸는 통합 재설계,
+    그리고 PerceivedSituation 별도 트랙은 <strong>아래 §5</strong>에 정리한다.
   </div>
 
   <h2><span class="seal">2</span>(B) 감정 → 4축 갱신</h2>
@@ -169,6 +163,90 @@ wariness : +25 × 0.95 × 1.2  = <b>+28.5</b> → 5+28.5  = <span class="r">33.5
 <span class="kw">if</span> hexaco.conscientiousness.prudence.<span class="fn">value</span>() &gt; <span class="nu">0.5</span> {
     m = m.<span class="fn">combine_uniform</span>(<span class="nu">0.8</span>); }</pre>
   </details>
+
+  <h2><span class="seal">5</span>Phase 2.4.3 개선 계획 · modifiers() 정밀화</h2>
+  <p class="path">domain/relationship/mod.rs · RelationshipModifiers · tuning.rs</p>
+  <p class="lead">(A) modifier 산출의 비판적 검토로 7개 항목을 도출했다 — 문서화된 ①②③④에
+  신규 부채 ⑤⑥⑦을 더한다. 개별 패치 대신 <strong>하나의 통합 재설계</strong>로 묶으면 ①–⑦이
+  동시에 풀린다. 코드 작성 전 설계 합의(check-in ①) 단계의 명세이며, FROZEN spec(.md)은 방향 확정 후 별도 작성한다.</p>
+
+  <div class="note zhu">
+    <span class="tag">통합 원리 — 4축을 두 기능으로 분리</span>
+    <strong>trust</strong> = 스테이크/기대 축 → <em>대칭</em>(Admiration·Reproach 양쪽 증폭, 배신감). 4축 중 유일하게 대칭.<br>
+    <strong>affinity · respect</strong> = 따뜻함/존경 <em>렌즈</em> → Admiration↑ / Reproach↓ (관대·봐줌).<br>
+    <strong>wariness</strong> = 위협 <em>렌즈</em> → Admiration↓ / Reproach↑ (의심).
+  </div>
+
+  <h3>목표 구조 (타인 행동 가지 — Admiration/Reproach)</h3>
+  <div class="formula">
+    <span class="lbl">목표</span>
+    final = base_val × weight × <b>magnitude</b>(trust) × <b>valence_tilt</b>(affinity·respect·wariness)
+  </div>
+  <div class="ex">
+    <div class="h">그룹 내 가산 · 그룹 간 1회 곱 · 그룹마다 단일 clamp</div>
+    <div class="calc">magnitude        = clamp(1 + trust·w_t,                              FLOOR, CEIL)
+tilt(Admiration) = clamp(1 + affinity·w_a + respect·w_r − wariness·w_w, FLOOR, CEIL)
+tilt(Reproach)   = clamp(1 − affinity·w_a − respect·w_r + wariness·w_w, FLOOR, CEIL)
+final            = base_val × weight × magnitude × tilt</div>
+    <p>제안 <b>FLOOR=0.5 · CEIL=1.5</b> — personality weight 범위와 대칭. 이 단일 clamp가
+    ①(하한·부호반전)과 ②(상한·폭주)를 한 번에 충족한다. 기존 <code>intensity_multiplier × trust_modifier</code>의
+    두 독립 증폭 곱(affinity·trust)을 제거하고 trust=magnitude / affinity=tilt로 역할을 가른다.</p>
+  </div>
+
+  <h3>현재 → 목표 매핑</h3>
+  <table class="tbl">
+    <tr><th>축</th><th>현재 modifier</th><th>Admir.</th><th>Reproach</th><th>목표 역할</th></tr>
+    <tr><td>trust</td><td class="mono">trust_modifier (양쪽 곱)</td><td>↑</td><td>↑</td><td>magnitude (대칭)</td></tr>
+    <tr><td>affinity</td><td class="mono">intensity_multiplier (양쪽 곱)</td><td>↑</td><td class="pos">↓</td><td>valence_tilt (렌즈)</td></tr>
+    <tr><td>respect</td><td class="mono">미사용</td><td>↑</td><td class="pos">↓</td><td>valence_tilt (렌즈)</td></tr>
+    <tr><td>wariness</td><td class="mono">미사용</td><td class="neg">↓</td><td class="neg">↑</td><td>valence_tilt (렌즈)</td></tr>
+  </table>
+
+  <h3>항목별 해소 (①–⑦)</h3>
+  <table class="tbl">
+    <tr><th>항목</th><th>문제 (실측 확인)</th><th>통합 구조에서의 해소</th><th>우선</th></tr>
+    <tr><td><b>①</b></td><td>trust_modifier만 <code>.max(0)</code> 부재 → 부호 반전 가능</td><td>magnitude·tilt 공통 단일 clamp(FLOOR=0.5)가 일괄 차단</td><td class="pos">높음</td></tr>
+    <tr><td><b>②</b></td><td>상한 clamp 부재 → 폭주</td><td>동일 clamp의 CEIL=1.5</td><td class="pos">높음</td></tr>
+    <tr><td><b>⑥</b></td><td>Admir./Reproach = base × intensity × trust 이중 곱(최대 1.95×). ①과 겹치면 <strong>음수 감정 생성</strong> 경로</td><td>곱 중첩 제거(trust=magnitude / affinity=tilt 분리)·그룹 내 가산·FLOOR≥0.5로 음수 차단. ①과 함께 처리</td><td class="pos">높음</td></tr>
+    <tr><td><b>⑤</b></td><td>4필드 중 affinity 3·trust 1로 매핑이 임의적. empathy는 trust 미사용</td><td>trust=대칭 magnitude, affinity·respect·wariness=렌즈로 역할 명확화. empathy/hostility 가지는 별도(아래 제약)</td><td>spec 후</td></tr>
+    <tr><td><b>③</b></td><td>respect가 Admir./Reproach와 직결되나 미반영</td><td>valence_tilt에 respect 편입 (Admir.↑/Reproach↓)</td><td>spec 후</td></tr>
+    <tr><td><b>④</b></td><td>wariness 미반영 + 경계→Reproach 양의 되먹임 위험</td><td>valence_tilt에 wariness 편입 (Admir.↓/Reproach↑). CEIL이 단계 게인 상한 + 감쇠·히스테리시스 동반(아래)</td><td>spec 후</td></tr>
+    <tr><td><b>⑦</b></td><td>intensity_multiplier가 valence 무지 — 친한 이의 악행이 무조건 증폭(무의식적 고정)</td><td><strong>해소</strong>: trust 대칭은 배신감으로 <em>의도적</em> 유지, affinity를 렌즈로 분리 → "봐줌"과 "배신"이 관계 프로파일에 따라 모두 가능</td><td>spec 후</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">⑦ 워크드 — 두 경우가 모두 나온다</span>
+    Reproach 배율 = (1−affinity·w)(1+trust·w)… 의 균형이 결정 (w=0.003 예시):<br>
+    따뜻한데 안 믿는 친구(aff+80/trust−20): 0.76×0.94 = <b>0.71</b> → 봐줌 ·
+    안 친한데 믿던 동료(aff+10/trust+80): 0.97×1.24 = <span class="r">1.20</span> → 부각(배신) ·
+    둘 다 높은 절친(+80/+80): 0.76×1.24 = <b>0.94</b> → 팽팽.
+  </div>
+
+  <h3>④ 안정성 — 렌즈의 비대칭 피드백</h3>
+  <div class="note">
+    <span class="tag">왜 ④만 안정화 장치가 필요한가</span>
+    동일한 tilt 구조라도 <code>base_delta</code> 부호 때문에 한쪽만 발산한다:<br>
+    <strong>respect 경로 = 음의 피드백(자기 수렴)</strong> — 높은 respect → Reproach 억제 → respect 하락폭(base_delta −25)도 작아짐 → respect 유지. 안정.<br>
+    <strong>wariness 경로 = 양의 피드백(발산 위험)</strong> — 높은 wariness → Reproach 증폭 → wariness 상승(base_delta +10)도 커짐 → 더 증폭. <em>감쇠(decay) 또는 히스테리시스 필수.</em>
+  </div>
+
+  <h3>제약 · 전제 (계획 수립 시 필독)</h3>
+  <ul class="clean">
+    <li><strong>PAD 벤치마크 영향</strong> — 감정 강도가 바뀌면 하류 PAD가 바뀐다. <code>docs/emotion/pad-anchor-score-matrix.md</code>의 잠긴 20개 기대값 재검증 필수. 신규 w/clamp는 기대값을 보존하도록 튜닝하거나, 편차 발생 시 <strong>Bekay 명시 승인 없이 기대값 변경 금지</strong>.</li>
+    <li><strong>범위 = 타인 행동 가지(Admiration/Reproach)</strong> — intensity_multiplier·trust_modifier 경로만 1차 대상. <strong>empathy_modifier·hostility_modifier(HappyFor/Pity/Resentment/Gloating)</strong>는 감정 종류가 valence를 내포하므로 별도 결정. 단 <code>RelationshipModifiers</code> struct를 공유하므로, struct 재설계 시 두 필드의 호환(현행 유지 vs 렌즈 모델 통합)을 함께 명세할 것.</li>
+    <li><strong>Pride/Shame 무영향</strong> — 자기 행동은 <code>appraisal/action.rs</code>에서 modifier=1.0 하드코딩이라 이 필드들을 쓰지 않는다.</li>
+    <li><strong>gentleness와의 이중 적용 주의</strong> — "봐줌"은 이미 <code>praiseworthiness_weight</code>에서 gentleness(성격·대상 무관)로 구현돼 있다(Admir. +Gen / Reproach −Gen). 관계 렌즈(affinity·대상별)는 그 위에 곱해진다 — 중복이 아니라 <em>대상-특이성</em> 추가. 온화한 NPC × 친한 상대면 Reproach가 과도히 눌릴 수 있으니 w 튜닝 시 합산 효과를 확인.</li>
+    <li><strong>신규 튜닝 파라미터</strong> — <code>tuning.rs</code>에 <code>rel_affinity_tilt_weight</code> / <code>rel_respect_tilt_weight</code> / <code>rel_wariness_tilt_weight</code> + <code>REL_MOD_FLOOR</code> / <code>REL_MOD_CEIL</code> 추가. 기존 <code>rel_trust_emotion_weight</code>는 magnitude로 재사용.</li>
+  </ul>
+
+  <div class="note gold">
+    <span class="tag">별도 트랙 — PerceivedSituation 층 (Phase 2.4 밖 · 신규 검토 필요)</span>
+    위 재설계는 <em>이미 정해진</em> praiseworthiness에 <em>뒤이은</em> 강도 조절이다. 다음 둘은
+    감정 발생 <em>이전</em>의 <strong>지각</strong> 단계 문제라 modifier로는 풀 수 없고, PerceivedSituation 필터 레이어의 신규 작업으로 별도 검토한다:
+    <ul class="clean">
+      <li><strong>행동 심각도 임계("큰 배신")</strong> — 현재 |praiseworthiness|는 선형으로만 들어가고(<code>praiseworthiness_weight</code>는 부호만 사용·크기 미사용), "사소한 잘못은 봐주고 큰 배신은 절친일수록 폭발"하는 비선형/임계가 코드에 없다.</li>
+      <li><strong>praiseworthiness 부호 재해석</strong> — affinity·wariness가 <em>지각된</em> praiseworthiness 자체를 보정(중립 행동을 호의적/위협적으로 재해석, 경계 시 부호 반전 가능). 강도 조절을 넘어 "어떤 감정이 발화되는가"를 바꾸는 수준.</li>
+    </ul>
+  </div>
 
   <div class="pager">
     <a href="05-hexaco.html"><span class="dir">◀ PREV</span>05 · HEXACO 반영</a>

@@ -329,6 +329,31 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 
 **산출물 spec**: [`task-rel-phase2.3-appraise-tuning.md`](task-rel-phase2.3-appraise-tuning.md) — 🟡 **DRAFT** 작성됨 (Phase 2 Stage 6 작업 6). 본체는 Phase 2.3 진입 시 작성. **KICKOFF (정본 인계)**: [`PHASE2.3-KICKOFF.md`](PHASE2.3-KICKOFF.md) v1.2 — Stage 4·5·6 인계 5항 (result.json dump / intensity 0.4 / S1~S3 narrative / S4 정성 / 메트릭 baseline) + 역대조 게이트 + closeness/power 12 파일/69 매치 재카탈로그 플래그.
 
+### Phase 2.4 (v0.8.4) — appraise/관계변환 정량 안정화 (pre-2.5 baseline)
+
+**신설 (2026-06-04)**: Phase 2.3 종결 후 발견된 *정량 튜닝 + modifier 구조* 부채를 한 phase로 묶음. 전 항목이 감정 강도/관계 변환에 작용 → **PAD 벤치 재측정을 공유**하므로 개별 task 대신 묶어 회귀 신호 1회 격리 (Phase 2.3 교훈 계승). Phase 2.5(Channel 1) 진입 전 appraise baseline 안정화가 목적.
+
+**포함** (순서 있는 sub-stage — 각 단계 후 개별 회귀 측정):
+
+- **2.4.0 HEXACO 이중 개입 검토** (선행 진단 · 게이트) — HEXACO가 ①intensity 산출(`personality.rs:608 praiseworthiness_weight`)·②4축 변환(`mapping.rs:138 hexaco_modifier`) 양쪽에 곱셈 이중 적용되는지 검증. 검토 only + 필요 시 도메인 규칙 설계 문서. 신규 3 대비군 케이스(동일 상황·성격만 다름, 작가 입력 필요) + 기존 S1~S3 intensity 엔진 도출 재구성. 결론이 2.4.1~3 튜닝 방향 결정. 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md) 말미 [HEXACO 이중 개입].
+- **2.4.1 intensity weight 튜닝** (emotion 도메인) — 정서성 weight 재검토: `desirability_self_weight`·`desirability_prospect_weight`가 부호 분기 밖 `정서성×0.3` 무조건 가산 → Joy·Hope 긍정 정서 과증폭(정서성 facet 정의↔사용처 불일치) 해소. 권장 묶음 1·2(self/prospect, 본문만), 3(confirmation) 보류. 2.4.0이 요구 시 `praiseworthiness_weight` 동반. 출처: [05-hexaco.html](../../emotion/05-hexaco.html).
+- **2.4.2 base_delta 4셀 (§4.2)** — [MOD-1·2·3] 일괄 적용: Gratitude.trust 20→15 / Reproach.wariness 10→15 / Hate.wariness 15→20 / Anger.respect 0→−10 (Anger.wariness 25 원복). 전 시나리오 박제값 재측정. 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md).
+- **2.4.3 RelationshipModifiers ①–⑦ 통합 재설계** — affinity·trust 2축 → 4축 기능 분리(trust=대칭 magnitude / affinity·respect·wariness=valence_tilt 렌즈). `intensity_multiplier × trust_modifier` 곱 제거 → `magnitude × valence_tilt` 구조 + 단일 clamp[FLOOR=0.5, CEIL=1.5]. ①(trust 하한)·②(상한)·⑤(매핑 임의)·⑥(이중곱·음수경로)·③(respect 신설)·④(wariness 편입)·⑦(valence 무지) 동시 해소. 가장 침습적 → 마지막. ④ wariness 양의 피드백 안정화(감쇠/히스테리시스) 동반. 출처: [06-relationship.html §5](../../emotion/06-relationship.html).
+
+**비스코프**: PerceivedSituation 층(행동 심각도 임계 "큰 배신" + praiseworthiness 부호 재해석) — 감정 발생 *이전* 지각 단계 신규 작업, 별도 검토(2.5 이후).
+
+**의존**: Phase 2.3 종결 (git `676185c`). 4축 도메인 안정.
+
+**위험**: 중~높음. 2.4.3이 modifier 구조 변경이라 Admiration/Reproach 전 경로 회귀. 2.4.0 진단 결과에 따라 2.4.1 범위 가변. 무한 튜닝 위험 — 각 sub-stage 게이트 명확 정의.
+
+**검증 게이트** (sub-stage별):
+1. compile + `cargo test --lib`
+2. 공식 시나리오 set 회귀 (S1~S4 + 신규 케이스, ground truth ±N 이내)
+3. **PAD 벤치 20 케이스 재측정** — `docs/emotion/pad-anchor-score-matrix.md` 잠긴 기대값 보존 확인. 편차 시 **Bekay 명시 승인 없이 기대값 변경 금지**.
+4. sub-stage 종료마다 박제값 갱신 (신호 격리)
+
+**산출물 spec**: 미작성 — Phase 2.4 진입 시 sub-stage별/통합 spec 결정 (정본 절: 2.4.1 emotion weight / 2.4.2·2.4.3 §4.2). 2.4.0은 검토 산출물(도메인 규칙 문서) 선행.
+
 ### Phase 2.5 (v0.8.5) — Channel 1 Declarative + axis_modulation
 
 **범위 변경 (2026-05-13)**: 본래 Phase 2의 Channel 1 부분이 본 phase로 *분리*. axis_modulation도 함께.
@@ -470,11 +495,22 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 | §3.1 BondKind 11종 | 지기 4 + Companion + Guardian + Mentor + 원수 4 | 2 | **100%** ✅ (enum 신설, 인스턴스 명시는 디자이너 narrative 검토 후) | Phase 2 완료 |
 | §3.5 BondStatus 5종 | Active/Resolved/Deceased/Dormant/Reactivating | 2 | **100%** ✅ (`accepts_live_input()` 게이트 활성) | Phase 2 완료 |
 | §3.6 Partnership 4종 | Spouse/Engaged/Lover/Separated | 2 | **100%** ✅ (enum 신설) | Phase 2 완료 |
-| §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1 partial: base_delta + HEXACO + BondStatus 차단 + clamp) + 3a (Ch2) + 3b (Ch3) | **Ch1 partial 60%** (Phase 2.5에서 declarative_events + axis_modulation 완성) | Phase 3b 완료 시 100% |
+| §4.1~4.4 transformation rules | 변환 임계 + delta + Channel 1/2/3 | 2 (Ch1 partial: base_delta + HEXACO + BondStatus 차단 + clamp) + **2.4 (base_delta MOD + RelationshipModifiers 재설계)** + 3a (Ch2) + 3b (Ch3) | **Ch1 partial 60%** (Phase 2.4에서 base_delta 4셀 + RelationshipModifiers ①–⑦ 재설계, Phase 2.5에서 declarative_events + axis_modulation 완성) | Phase 3b 완료 시 100% |
 | §4.5.5 추모 행동 | RecollectionAction 5종 | 3c | 0% | Phase 3c |
 | §5 LLM acting guide | ActingGuide 명세 | 부분 — PAD 기반 acting guide 코드 존재 | ~40% | Phase 2에서 풍부화 |
 | **§6 Scene Boundary Reflection** | **LLM↔Engine 분업·Reflection·is_chitchat 게이트·DialogueReflected** | **1 + 1.5 + 1.6 ✅ 완료** | **100%** | Phase 1/1.5/1.6 완료 (2026-05-11~12) |
 | §7 미정의 영역 | 후속 작업 카탈로그 | - | - | - |
+
+> **§4.2 base_delta — [Phase 2.4.2] 미적용 수정입력 4셀**: [narrative-review-mod-log.md](narrative-review-mod-log.md)에
+> S1~S4 narrative 검토로 도출한 [MOD-1·2·3] 박제 (Gratitude.trust 20→15 / Reproach.wariness 10→15 /
+> Hate.wariness 15→20 / Anger.respect 0→−10). **Phase 2.4.2**에서 일괄 적용 + 전 시나리오 박제값
+> 재측정. 적용 전까지 코드는 현행값 유지 (= 설계의도). 동 문서 말미 **[HEXACO 이중 개입]** 관찰은 **Phase 2.4.0**
+> (2.5 진입 전 선행 진단). **RelationshipModifiers ①–⑦ 재설계는 [Phase 2.4.3]** ([06-relationship.html §5](../../emotion/06-relationship.html)).
+
+> **(emotion 도메인) [Phase 2.4.1] appraise-weight 튜닝**: [05-hexaco.html](../../emotion/05-hexaco.html)의
+> *정서성 weight 재검토* — `desirability_self_weight`·`desirability_prospect_weight`가 부호 분기 밖에서 `정서성×0.3`을
+> 무조건 더해 Joy·Hope(긍정)까지 증폭(정서성 facet 정의↔사용처 불일치). 권장 묶음 1·2(self/prospect, 본문만)·3(confirmation) 보류.
+> base_delta MOD와 동일 성격(Phase 2.3 종결 후 발견·PAD 벤치 재측정 필수)이나 **emotion 도메인 weight** 소관(§4.2 아님) → **Phase 2.4.1**에 배정.
 
 ### action_triggers.md 추적 (v0.1 기준)
 
@@ -573,3 +609,4 @@ _schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F
 | v0.4 | 2026-05-10 | **§6.5 _schema.md 추적 표 ❓ 7행 → 정확한 팩트로 치환** (Phase 1 Stage 0 Findings F8.6 결과). _schema.md v0.6 vs 코드: Layer 1 (HEXACO+identity) ✅ 완료 / inner_compass ❌ → Phase 1 A-min `Option<String>` partial / 4축·BondKind·BondStatus·Partnership·type 모두 큼 갭 → Phase 2 / 행동 별도 spec → Phase 3c / Scene/Focus _schema.md 범위 외 + 코드 완료. 진척 그래프 보정 — _schema.md ~60% 추정 → ~30% verified (이전 추정 과대평가). |
 | v0.5 | 2026-05-11 | Phase 1.5 / 1.6 완료 반영. §2 Mind Studio 통합 표 신설. §5 Phase 1/1.5/1.6 ✅ 표기. §6.5 §0+§6 100% 갱신. EventKind 31개 / domain/reflection.rs / ports/reflection.rs / reflection_service.rs / adapter/reflection_via_chat.rs / event_bridge.rs 추가. |
 | v0.6 | 2026-05-13 | **Phase 2 범위 변경 — 얇은 phase 3개로 분할**: Phase 2 (도메인 마이그레이션 only) / Phase 2.3 (appraise 정비 ★ 신설) / Phase 2.5 (Channel 1 + axis_modulation). Phase 2 Stage 0 §3.6 시뮬레이션 검증 (S1~S4)의 *appraise 입력 의존성* 발견이 Phase 2.3 신설 근거. Phase 2 본문 갱신 (power 폐기 / type 흡수 / OCC → 4축 자동 갱신 T1 시점 / B-D6/D12/D13/D14 결정 박힘). Phase 2.5 본문 갱신 (axis_modulation 3지선다). 산출물 spec 파일명 변경 `task-rel-phase2-fouraxis-bondkind.md` → `task-rel-phase2-domain-migration.md`. |
+| v0.7 | 2026-06-04 | **Phase 2.4 (v0.8.4) 신설** — 2.3↔2.5 사이. Phase 2.3 종결 후 발견된 *정량 튜닝 + modifier 구조* 부채를 한 phase로 묶음 (PAD 벤치 재측정 공유 → 회귀 신호 1회 격리). 4 sub-stage: 2.4.0 HEXACO 이중 개입 검토(선행 진단) → 2.4.1 정서성 weight(05-hexaco) → 2.4.2 base_delta 4셀([MOD-1·2·3]) → 2.4.3 RelationshipModifiers ①–⑦ 통합 재설계(magnitude/tilt 렌즈, 06-relationship §5). PerceivedSituation 층("큰 배신" 임계 + praiseworthiness 부호 재해석) 비스코프. §6.5 §4.1~4.4 행 + 미적용 포인터 2건 phase 확정 (base_delta→2.4.2 / 이중개입→2.4.0 / weight→2.4.1 / modifier→2.4.3). |
