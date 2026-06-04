@@ -339,12 +339,13 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 - **2.4.1 intensity weight 튜닝** (emotion 도메인) — 정서성 weight 재검토: `desirability_self_weight`·`desirability_prospect_weight`가 부호 분기 밖 `정서성×0.3` 무조건 가산 → Joy·Hope 긍정 정서 과증폭(정서성 facet 정의↔사용처 불일치) 해소. 권장 묶음 1·2(self/prospect, 본문만), 3(confirmation) 보류. 2.4.0이 요구 시 `praiseworthiness_weight` 동반. 출처: [05-hexaco.html](../../emotion/05-hexaco.html).
 - **2.4.2 base_delta 4셀 (§4.2)** — [MOD-1·2·3] 일괄 적용: Gratitude.trust 20→15 / Reproach.wariness 10→15 / Hate.wariness 15→20 / Anger.respect 0→−10 (Anger.wariness 25 원복). 전 시나리오 박제값 재측정. 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md).
 - **2.4.3 RelationshipModifiers ①–⑦ 통합 재설계** — affinity·trust 2축 → 4축 기능 분리(trust=대칭 magnitude / affinity·respect·wariness=valence_tilt 렌즈). `intensity_multiplier × trust_modifier` 곱 제거 → `magnitude × valence_tilt` 구조 + 단일 clamp[FLOOR=0.5, CEIL=1.5]. ①(trust 하한)·②(상한)·⑤(매핑 임의)·⑥(이중곱·음수경로)·③(respect 신설)·④(wariness 편입)·⑦(valence 무지) 동시 해소. 가장 침습적 → 마지막. ④ wariness 양의 피드백 안정화(감쇠/히스테리시스) 동반. 출처: [06-relationship.html §5](../../emotion/06-relationship.html).
+- **2.4.4 listener_perspective 축별 sign 분리** — 대사→청자 PAD 변환식(`domain/listener_perspective/converter.rs`)의 약점 3 해소 중 **개선안 A**(sign 1개 → P_sign·D_sign 분리, 시그니처 유지). 반어("허허, 훌륭하시오") 시 D도 반전. **개선안 B(D 상보성)는 08 pad_dot의 D 격차 배율과 이중 적용되므로 보류** — 09는 발화 자체의 D 방향만, NPC 상태와의 격차는 08 소관으로 경계. 청자 PAD 산출 변경 → **PAD 벤치 공유**(2.4 묶음 편입 근거). 출처: [09-utterance-pad.html §7](../../emotion/09-utterance-pad.html).
 
 **비스코프**: PerceivedSituation 층(행동 심각도 임계 "큰 배신" + praiseworthiness 부호 재해석) — 감정 발생 *이전* 지각 단계 신규 작업, 별도 검토(2.5 이후).
 
 **의존**: Phase 2.3 종결 (git `676185c`). 4축 도메인 안정.
 
-**위험**: 중~높음. 2.4.3이 modifier 구조 변경이라 Admiration/Reproach 전 경로 회귀. 2.4.0 진단 결과에 따라 2.4.1 범위 가변. 무한 튜닝 위험 — 각 sub-stage 게이트 명확 정의.
+**위험**: 중~높음. 2.4.3이 modifier 구조 변경이라 Admiration/Reproach 전 경로 회귀. 2.4.0 진단 결과에 따라 2.4.1 범위 가변. 2.4.4는 위험 낮음(시그니처 유지·개선안 A only). 무한 튜닝 위험 — 각 sub-stage 게이트 명확 정의.
 
 **검증 게이트** (sub-stage별):
 1. compile + `cargo test --lib`
@@ -610,3 +611,4 @@ _schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F
 | v0.5 | 2026-05-11 | Phase 1.5 / 1.6 완료 반영. §2 Mind Studio 통합 표 신설. §5 Phase 1/1.5/1.6 ✅ 표기. §6.5 §0+§6 100% 갱신. EventKind 31개 / domain/reflection.rs / ports/reflection.rs / reflection_service.rs / adapter/reflection_via_chat.rs / event_bridge.rs 추가. |
 | v0.6 | 2026-05-13 | **Phase 2 범위 변경 — 얇은 phase 3개로 분할**: Phase 2 (도메인 마이그레이션 only) / Phase 2.3 (appraise 정비 ★ 신설) / Phase 2.5 (Channel 1 + axis_modulation). Phase 2 Stage 0 §3.6 시뮬레이션 검증 (S1~S4)의 *appraise 입력 의존성* 발견이 Phase 2.3 신설 근거. Phase 2 본문 갱신 (power 폐기 / type 흡수 / OCC → 4축 자동 갱신 T1 시점 / B-D6/D12/D13/D14 결정 박힘). Phase 2.5 본문 갱신 (axis_modulation 3지선다). 산출물 spec 파일명 변경 `task-rel-phase2-fouraxis-bondkind.md` → `task-rel-phase2-domain-migration.md`. |
 | v0.7 | 2026-06-04 | **Phase 2.4 (v0.8.4) 신설** — 2.3↔2.5 사이. Phase 2.3 종결 후 발견된 *정량 튜닝 + modifier 구조* 부채를 한 phase로 묶음 (PAD 벤치 재측정 공유 → 회귀 신호 1회 격리). 4 sub-stage: 2.4.0 HEXACO 이중 개입 검토(선행 진단) → 2.4.1 정서성 weight(05-hexaco) → 2.4.2 base_delta 4셀([MOD-1·2·3]) → 2.4.3 RelationshipModifiers ①–⑦ 통합 재설계(magnitude/tilt 렌즈, 06-relationship §5). PerceivedSituation 층("큰 배신" 임계 + praiseworthiness 부호 재해석) 비스코프. §6.5 §4.1~4.4 행 + 미적용 포인터 2건 phase 확정 (base_delta→2.4.2 / 이중개입→2.4.0 / weight→2.4.1 / modifier→2.4.3). |
+| v0.8 | 2026-06-05 | **Phase 2.4.4 신설** — listener_perspective(대사→청자 PAD 변환) 축별 sign 분리(개선안 A). 09-utterance-pad.html §7 "개선 방향" 검토에서 도출: 약점 3(D 부호복사·A 부호고정·sign P전용) 중 ③ 해소, sign 1개→P_sign·D_sign 분리(시그니처 유지). 개선안 B(D 상보성)는 08 pad_dot D 격차 배율과 이중 적용 → 보류(09=발화 D 방향 / 08=NPC 격차 경계). PAD 벤치 공유로 2.4 묶음 편입. §5 Phase 2.4 포함·위험 갱신. (별도 트랙 아님 — emotion 입력 파이프라인이나 벤치 공유로 2.4 sub-stage 편입.) |
