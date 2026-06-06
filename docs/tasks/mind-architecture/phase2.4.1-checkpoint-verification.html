@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phase 2.4.1 · intensity weight 튜닝 — 구현·검증 보고 (확인② 대기)</title>
+<style>
+  :root{
+    --bg:#0d1117;--panel:#141b24;--panel2:#1a232e;--line:#26303d;
+    --ink:#d6dde6;--dim:#8b97a6;--faint:#5d6875;
+    --ok:#3fb950;--warn:#d29922;--crit:#f85149;--info:#58a6ff;--acc:#7ee787;
+    --mono:'SFMono-Regular',Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);font-family:'Segoe UI',-apple-system,sans-serif;line-height:1.62;padding:38px 22px 90px;font-size:15px}
+  .wrap{max-width:1080px;margin:0 auto}
+  h1{font-size:22px;font-weight:650;margin-bottom:4px}
+  h2{font-size:16px;font-weight:650;margin:36px 0 13px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--acc)}
+  h3{font-size:14px;font-weight:650;margin:18px 0 8px;color:var(--info)}
+  p{margin:9px 0}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:24px}
+  code,.m{font-family:var(--mono);font-size:.85em;background:#0a0e13;padding:1.5px 6px;border-radius:4px;color:#cdd6e0;border:1px solid #232c38}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 20px;margin:13px 0}
+  .ok-card{border-left:3px solid var(--ok)}
+  .crit-card{border-left:3px solid var(--crit)}
+  .warn-card{border-left:3px solid var(--warn)}
+  .info-card{border-left:3px solid var(--info)}
+  table{width:100%;border-collapse:collapse;margin:11px 0;font-size:13px}
+  th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--dim);font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.04em}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:20px;font-family:var(--mono)}
+  .t-ok{background:rgba(63,185,80,.13);color:var(--ok)}
+  .t-warn{background:rgba(210,153,34,.14);color:var(--warn)}
+  .t-crit{background:rgba(248,81,73,.14);color:var(--crit)}
+  .lead{color:var(--faint);font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+  ul{margin:7px 0 7px 4px;list-style:none}
+  li{margin:5px 0;padding-left:17px;position:relative}
+  li::before{content:'▸';position:absolute;left:0;color:var(--faint)}
+  .hl{color:var(--acc);font-weight:600}.bad{color:var(--crit);font-weight:600}.good{color:var(--ok);font-weight:600}
+  .verdict{font-size:18px;font-weight:700;padding:16px 20px;border-radius:10px;margin:14px 0}
+  .v-ok{background:rgba(63,185,80,.1);border:1px solid var(--ok);color:var(--ok)}
+  .v-warn{background:rgba(210,153,34,.1);border:1px solid var(--warn);color:var(--warn)}
+  .foot{margin-top:42px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12px;font-family:var(--mono)}
+  .num{font-family:var(--mono);color:var(--acc)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phase 2.4.1 · intensity weight 튜닝 — 구현·검증 보고</h1>
+  <div class="sub">npc-mind-rs · Claude Code 실행 산출물 · branch <span class="m">feat/phase2.4.1-intensity-weight</span> · HEAD <span class="m">fbfd565</span> · push 보류(Bekay 지시 대기)</div>
+
+  <div class="verdict v-ok">판정: 코드·게이트 전부 PASS — 회귀 0 실측 확정. 단 <span style="color:var(--warn)">G3 PAD 벤치 잠금 재확정</span>만 Bekay 승인 대기(확인②).</div>
+
+  <div class="card info-card">
+    <div class="lead">구현 범위 · FROZEN spec</div>
+    <p><span class="m">task-rel-phase2.4.1-intensity-weight.md</span> (🟢 FROZEN). 계수·공식 동결 — 임의 변경 0. 변경 표면 = spec §8 정합:
+      <span class="m">personality.rs</span> weight 4 + <span class="m">ports/personality.rs</span> trait 1 + <span class="m">appraisal/event.rs</span> 호출 1.
+      순서 ①→②→③ 단계별 커밋. <span class="m">effect(w)=facet×w</span> 선형이라 게이트를 순수 계산으로 박제.</p>
+  </div>
+
+  <div class="card">
+    <div class="lead">커밋 구조 (단계별, 의도 파일만 스테이징)</div>
+    <table>
+      <tr><th>커밋</th><th>단계</th><th>내용</th></tr>
+      <tr><td><span class="m">36a9510</span></td><td>①</td><td>self/prospect weight — 정서성(E) 음수 분기 이동 (§3.1·3.2)</td></tr>
+      <tr><td><span class="m">bef361d</span></td><td>②</td><td>confirmation weight — fear/hope축 분기, 시그니처 변경 (§3.3·§4)</td></tr>
+      <tr><td><span class="m">0efa56e</span></td><td>① f/u</td><td>Joy/Distress weight 직접검증 테스트 기대값 갱신 (gate 1)</td></tr>
+      <tr><td><span class="m">9b691c6</span></td><td>③</td><td>praiseworthiness facet 분해 — prudence 오염 제거 (§3.4)</td></tr>
+      <tr><td><span class="m">fbfd565</span></td><td>검증</td><td>gate 3·4·5 회귀 가드 박제 (<span class="m">phase241_intensity_weight_test.rs</span>)</td></tr>
+    </table>
+  </div>
+
+  <h2>§1. Gate 1 — cargo check + cargo test --lib <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>측정</th><th>결과</th><th>판정</th></tr>
+    <tr><td>baseline (변경 전)</td><td><span class="num">554 passed / 0 failed</span></td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>① 후 / ② 후 / ③ 후</td><td>전 단계 <span class="num">554P / 0F</span> 유지</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td><span class="m">cargo check</span> (lib+bins)</td><td>Finished, 에러 0</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>weight 직접검증 unit 갱신</td><td><span class="m">test_appraisal_weights_consistency</span> — Joy E제거 반영 → personality_test <span class="num">18P/0F</span></td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>전체 통합 스위트</td><td><span class="m">cargo test --tests</span> = 65 바이너리 <span class="num">전부 ok / 0 failed</span></td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+  <p>signature 변경(②)은 API-breaking이나 <span class="m">desirability_confirmation_weight</span> 호출부가 <span class="m">event.rs</span> 1지점뿐(test mock 0) — 컴파일러가 누락 강제, <span class="m">cargo check --tests</span> 통과. <span class="m">examples/phase5b_*</span> 컴파일 실패는 <span class="m">embed</span> feature 미부여로 인한 <span class="hl">기존 이슈</span>(본 변경과 무관, <span class="m">sqlite_world</span> import).</p>
+
+  <h2>§2. Gate 2 — appraise-validation S1~S4 재측정 <span class="tag t-ok">PASS</span> <span class="tag t-warn">FINDING</span></h2>
+  <p><span class="m">phase2_narrative_test</span> = <span class="num">3P/0F</span> (S1~S3, ①②③ 전 단계 GREEN). <strong>핵심 발견:</strong> S1~S4(테스트 + <span class="m">appraise-validation/*.json</span>)는 감정 강도를 <span class="hl">preset</span> 한다 — <span class="m">state.set_intensity(Admiration, 0.6)</span> / JSON <span class="m">"emotion_state":{"Admiration":0.6}</span>. 즉 weight 함수(appraise가 상황→강도 산출)를 <span class="bad">경유하지 않고</span>, OCC강도→4축 mapping만 검증한다.</p>
+  <div class="card warn-card">
+    <p>→ gate 2 전제("praiseworthiness 변경으로 Admiration/Reproach intensity 이동분 박제 갱신")는 <strong>이 시나리오들에 성립하지 않음</strong>: 강도가 preset이라 ③ 변경이 전파되지 않아 <span class="good">S1~S4 박제값 갱신 불필요</span>(narrative 회귀 0). 시나리오를 appraise-driven으로 전환하는 것은 2.4.1 범위 밖 별도 설계 항목.</p>
+  </div>
+
+  <h2>§3. Gate 3 — PAD 벤치 (변경/불변 케이스) <span class="tag t-ok">계산 PASS</span> <span class="tag t-warn">잠금 재확정 = Bekay 승인 대기</span></h2>
+  <h3>3-A. 불변 케이스 — deviation 0 <span class="tag t-ok">확정</span></h3>
+  <table>
+    <tr><th>케이스</th><th>deviation 0 근거</th><th>박제값</th></tr>
+    <tr><td>empathy / hostility / appealingness / stimulus</td><td><span class="m">git diff main..HEAD</span> — 해당 함수 <span class="hl">미변경</span>(diff 부재)</td><td>항등</td></tr>
+    <tr><td>Distress (self d&lt;0)</td><td>공식 <span class="m">base+E−A−Pru</span> 보존</td><td>E0.8 → <span class="num">1.24</span></td></tr>
+    <tr><td>Fear (prospect d&lt;0)</td><td>공식 <span class="m">base+E+fear</span> 보존</td><td>E0.8 → <span class="num">1.48</span></td></tr>
+    <tr><td>Relief / FearsConfirmed (fear축 confirm)</td><td>공식 <span class="m">base+E−Pru</span> 보존(②에서 fear축=현행 동일)</td><td>E0.8 → <span class="num">1.24</span></td></tr>
+  </table>
+  <p>추가 보증: <span class="m">emotion_test</span> <span class="num">52P</span> + <span class="m">pad_test</span> <span class="num">24P</span> 무회귀. PAD <em>분석기</em> 벤치(<span class="m">pad_benchmark_test</span>, embed)는 임베딩 cos_sim 경로라 weight 함수와 <span class="hl">구조적으로 독립</span> → 영향 0(미실행, 잠금값 불변).</p>
+  <h3>3-B. 변경 케이스 — 실측 박제</h3>
+  <table>
+    <tr><th>감정</th><th>weight 공식</th><th>실측 (예시 프로필)</th></tr>
+    <tr><td>Joy</td><td><span class="m">base + X</span> (E 제거)</td><td>X0.8 → <span class="num">1.24</span> / E0.8 → <span class="num">1.00</span>(구 1.24)</td></tr>
+    <tr><td>Hope · Satisfaction · Disappointment</td><td><span class="m">base + X − Pru</span> (E→X)</td><td>X0.8 → <span class="num">1.24</span></td></tr>
+    <tr><td>Pride / Shame</td><td>dil×.10 + perf(−.10/+.20) + modesty분기</td><td><span class="num">0.88</span> / <span class="num">1.27</span></td></tr>
+    <tr><td>Admiration / Reproach</td><td>dil×.10 + perf(+.15/+.20) + gentleness분기</td><td><span class="num">1.245</span> / <span class="num">1.03</span></td></tr>
+  </table>
+  <div class="card warn-card">
+    <p><strong>⚠ Bekay 승인 항목:</strong> spec §6 G3 — "PAD 벤치 변경 케이스 재측정 → 잠금 재확정(Bekay 승인)". 본 보고는 <span class="hl">계산 박제까지</span>; <span class="m">pad-anchor-score-matrix.md</span> 등 잠금 기대값의 정식 갱신은 <span class="bad">임의 수행 안 함</span> — 확인②에서 승인 후 반영.</p>
+  </div>
+
+  <h2>§4. Gate 4 — 통제군 fixture 재현 <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>검증</th><th>실측 (<span class="m">phase241_intensity_weight_test</span>)</th><th>판정</th></tr>
+    <tr><td>prudence → Reproach 평탄화</td><td>prud <span class="num">+0.8 / 0 / −0.8</span> → Reproach weight <span class="num">1.0 / 1.0 / 1.0</span> (셋 다 동일)</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>(대조: 2.4.0 오염)</td><td>구 공식은 prud 0.8 → Reproach <span class="num">0.700→0.742</span> 끌어올림 — 제거됨</td><td><span class="tag t-ok">OK</span></td></tr>
+    <tr><td>정서성 인물 Joy 하락</td><td>E0.8 → Joy <span class="num">1.24 → 1.00</span> 하락, Distress <span class="num">1.24</span> 불변</td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+  <p>통제군 fixture <span class="m">appraise-test/prudence-intensity-fixtures/scenario.json</span>(prud hi/mid/lo, 나머지 facet 0)의 설계 의도(prudence 단일 변수 격리)와 정합. 본 게이트는 동일 프로필을 weight 함수로 직접 재현.</p>
+
+  <h2>§5. Gate 5 — 저-X clamp 하한 점검 <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>프로필</th><th>Hope / Satisfaction</th><th>판정</th></tr>
+    <tr><td>X <span class="num">−1.0</span> + prudence <span class="num">1.0</span></td><td>e=−0.3−0.2=−0.5 → <span class="num">0.50</span> (CLAMP_STANDARD 하한 접촉)</td><td><span class="tag t-ok">floor</span></td></tr>
+    <tr><td>X <span class="num">−1.0</span> + prudence 0 (대조)</td><td><span class="num">0.70</span> (floor 미접촉)</td><td><span class="tag t-ok">OK</span></td></tr>
+  </table>
+  <p>저-X 인물의 <span class="m">base+X−Pru</span>가 0.5 floor에 접촉하나 하회하지 않음 — clamp이 극단에서만 작동. Hope·Satisfaction(hope축 confirm) 동일 공식 → 동일값.</p>
+
+  <h2>§6. 변경 표면 정합 (spec §8) <span class="tag t-ok">PASS</span></h2>
+  <table>
+    <tr><th>파일</th><th>변경</th><th>spec §8</th></tr>
+    <tr><td><span class="m">src/domain/personality.rs</span></td><td>weight 함수 4 (self/prospect/confirmation/praiseworthiness) + 본문/주석</td><td>weight 4 ✓</td></tr>
+    <tr><td><span class="m">src/ports/personality.rs</span></td><td>trait <span class="m">desirability_confirmation_weight</span> 시그니처 1</td><td>trait 1 ✓</td></tr>
+    <tr><td><span class="m">src/domain/emotion/appraisal/event.rs</span></td><td>호출부 <span class="m">is_fear_axis</span> 매핑 1</td><td>호출 1 ✓</td></tr>
+    <tr><td><span class="m">tests/personality_test.rs</span></td><td>gate 1 weight 직접검증 기대값 갱신</td><td>(gate 1 명시 허용)</td></tr>
+    <tr><td><span class="m">tests/phase241_intensity_weight_test.rs</span></td><td>신설 — gate 3·4·5 회귀 가드 (7P)</td><td>(검증 산출)</td></tr>
+  </table>
+  <p>불변 weight 함수(empathy/hostility/appealingness/stimulus_absorb_rate) <span class="m">git diff</span> 부재 확정. 계수 변경 <span class="good">0</span>(0.10/0.20/0.15/W_STANDARD/W_MILD 전부 spec 동결값).</p>
+
+  <h2>§7. 확인② 대기 항목 (Bekay 판단)</h2>
+  <div class="card warn-card">
+    <ul>
+      <li><strong>G3 PAD 벤치 잠금 재확정</strong> — 변경 케이스(Joy/Hope/Satisfaction/Disappointment/Pride/Shame/Admiration/Reproach) 기대값 정식 갱신 승인. 불변 케이스 deviation 0은 본 보고에서 확정.</li>
+      <li><strong>G2 시나리오 성격</strong> — S1~S4가 intensity-preset임을 확인. appraise-driven 전환 필요 여부는 별도 설계 결정(2.4.1 범위 밖).</li>
+      <li><strong>push</strong> — 현재 보류. Bekay 지시 시 <span class="m">feat/phase2.4.1-intensity-weight</span> push.</li>
+      <li><strong>검증 테스트 영속화</strong> — <span class="m">phase241_intensity_weight_test.rs</span>를 영구 회귀 가드로 유지 여부(현재 커밋됨).</li>
+    </ul>
+  </div>
+
+  <div class="foot">
+    Phase 2.4.1 intensity weight 튜닝 · ①→②→③ 구현 완료 · 계수 변경 0 · 회귀 0 (lib 554P / 통합 65바이너리 0F / 검증 7P) · MCP appraise trace 검증은 재빌드 서버에서 Bekay 재현 가능(weight는 순수 선형이라 본 계산 박제가 권위) · 확인② 대기
+  </div>
+</div>
+</body>
+</html>
