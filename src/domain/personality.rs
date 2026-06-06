@@ -610,16 +610,35 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 행동 평가: Pride, Shame, Admiration, Reproach
     ///
-    /// 공통: C(성실→기준엄격)
-    /// 자기+칭찬(Pride): -Mod(겸손→자긍심억제)
-    /// 자기+비난(Shame): +Mod(겸손→수치심증폭, 내 탓이오)
-    /// 타인+칭찬(Admiration): +Gen(온화→감탄증폭)
-    /// 타인+비난(Reproach): -Gen(온화→비난억제)
+    /// 성실성 기여 (성실성 평균 경유 prudence 오염 제거 — org·prud 제외, Phase 2.4.1):
+    ///   diligence 균일(0.10) + perfectionism 비대칭
+    ///   (Pride −0.10 / Shame +0.20 / Admiration +0.15 / Reproach +0.20)
+    /// 분기항(기존 유지):
+    ///   자기+칭찬(Pride) -Mod / 자기+비난(Shame) +Mod
+    ///   타인+칭찬(Admiration) +Gen / 타인+비난(Reproach) -Gen
     fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32 {
-        let avg = self.dimension_averages();
-        let mut e = avg.c.effect(W_STANDARD);
+        let c = &self.conscientiousness;
 
-        e += if is_self {
+        // 성실성 기여 — diligence 균일(0.10)
+        let dil = c.diligence.effect(0.10);
+
+        // perfectionism 비대칭 — sign은 effect 밖 적용(modesty/gentleness 관례 일치)
+        let perf = if is_self {
+            if praiseworthiness > 0.0 {
+                -c.perfectionism.effect(0.10) // Pride −0.10
+            } else {
+                c.perfectionism.effect(0.20) // Shame +0.20
+            }
+        } else {
+            if praiseworthiness > 0.0 {
+                c.perfectionism.effect(0.15) // Admiration +0.15
+            } else {
+                c.perfectionism.effect(0.20) // Reproach +0.20
+            }
+        };
+
+        // 분기항(기존 유지) — 자기=modesty, 타인=gentleness
+        let branch = if is_self {
             if praiseworthiness > 0.0 {
                 -self.honesty_humility.modesty.effect(W_STANDARD)
             } else {
@@ -633,7 +652,7 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
             }
         };
 
-        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
+        finalize_weight(BASE_SELF, dil + perf + branch, CLAMP_STANDARD)
     }
 
     /// 대상 호불호: Love, Hate
