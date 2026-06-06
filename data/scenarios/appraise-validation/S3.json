@@ -52,14 +52,14 @@
   "_expected_axes_delta": {
     "trust": "-14.784 (Pity 0 + Reproach -4.704 + Anger -10.08)",
     "affinity": "-3.36 (Pity +3.92 + Reproach -3.92 + Anger -3.36)",
-    "respect": "-11.76 (Pity -1.96 + Reproach -9.8 + Anger 0)",
-    "wariness": "+12.32 (Pity 0 + Reproach +3.92 + Anger +8.4)"
+    "respect": "-15.12 (Pity -1.96 + Reproach -9.8 + Anger -3.36)",
+    "wariness": "+14.28 (Pity 0 + Reproach +5.88 + Anger +8.4)"
   },
   "_expected_final_axes": {
     "trust": 25.216,
     "affinity": 26.64,
-    "respect": -1.76,
-    "wariness": 32.32
+    "respect": -5.12,
+    "wariness": 34.28
   },
   "_expected_event_kinds": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
   "_tolerance_pm": 5.0,

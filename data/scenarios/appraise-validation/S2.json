@@ -48,14 +48,14 @@
   "_expected_axes_delta": {
     "trust": "-46.2 (Reproach -9.6 + Hate -9.6 + Anger -27; sincerity ×1.2 적용)",
     "affinity": "-37 (Reproach -8 + Hate -20 + Anger -9)",
-    "respect": "-24 (Reproach -20 + Hate -4 + Anger 0)",
-    "wariness": "+42.5 (Reproach +8 + Hate +12 + Anger +22.5)"
+    "respect": "-33 (Reproach -20 + Hate -4 + Anger -9)",
+    "wariness": "+50.5 (Reproach +12 + Hate +16 + Anger +22.5)"
   },
   "_expected_final_axes": {
     "trust": 3.8,
     "affinity": 3.0,
-    "respect": -4.0,
-    "wariness": 42.5
+    "respect": -13.0,
+    "wariness": 50.5
   },
   "_expected_event_kinds": ["DialogueReflected", "RelationshipUpdated", "EmotionCleared", "SceneEnded"],
   "_tolerance_pm": 5.0,
@@ -63,9 +63,9 @@
 
   "_pd_c1_anchor_case": {
     "summary": "본 케이스 = P-D-C1 content-projection 정책의 *핵심 anchor* (Stage 0 §3-bis).",
-    "delta_above_threshold_axes": ["trust(-46.2)", "affinity(-37)", "respect(-24)", "wariness(+42.5)"],
+    "delta_above_threshold_axes": ["wariness(+50.5)", "trust(-46.2)", "affinity(-37)", "respect(-33)"],
     "delta_below_threshold_axes": [],
-    "current_dominant_label_only": "[trust Δ=-46.20]",
-    "discussion": "4축 |Δ| 모두 > 5.0 임계값. 현행 (a)는 dominant 1축(trust)만 라벨링 → wariness +42.5(50% 도달)·affinity -37·respect -24 모두 기억 텍스트에서 소실. (b) 채택 시 라벨 = '[trust Δ=-46.20, wariness Δ=+42.50, affinity Δ=-37.00, respect Δ=-24.00]' (magnitude desc)."
+    "current_dominant_label_only": "[wariness Δ=50.50]",
+    "discussion": "4축 |Δ| 모두 > 5.0 임계값. 2.4.2([MOD-1·2·3]) 후 wariness +50.5가 trust -46.2를 magnitude로 추월 → dominant가 trust→wariness로 바뀜. 현행 (a)는 dominant 1축(wariness)만 라벨링 → trust -46.2·affinity -37·respect -33 모두 기억 텍스트에서 소실. (b) 채택 시 라벨 = '[wariness Δ=+50.50, trust Δ=-46.20, affinity Δ=-37.00, respect Δ=-33.00]' (magnitude desc)."
   }
 }

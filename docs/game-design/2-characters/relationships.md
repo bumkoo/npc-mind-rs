@@ -348,14 +348,14 @@ pub fn update_axes_from_emotion(rel: &mut Relationship, emotion: OccEmotion, int
 }
 ```
 
-### 4.2 base_delta 표 (v0.5 유지)
+### 4.2 base_delta 표 (v0.5 → Phase 2.4.2 [MOD-1·2·3] 4셀 수정)
 
 | OCC Emotion | trust | affinity | respect | wariness |
 |---|---|---|---|---|
-| Gratitude | +20 | +10 | 0 | -10 |
-| Anger | -25 | -10 | 0 | +25 |
+| Gratitude | +15 | +10 | 0 | -10 |
+| Anger | -25 | -10 | -10 | +25 |
 | Admiration | 0 | 0 | +20 | 0 |
-| Reproach | -10 | -10 | -25 | +10 |
+| Reproach | -10 | -10 | -25 | +15 |
 | HappyFor | +5 | +10 | 0 | 0 |
 | Resentment | 0 | -10 | -5 | +15 |
 | Pity | 0 | +10 | -5 | 0 |
@@ -363,7 +363,9 @@ pub fn update_axes_from_emotion(rel: &mut Relationship, emotion: OccEmotion, int
 | Pride | 0 | +5 | +10 | 0 |
 | Shame | -5 | -10 | -10 | +5 |
 | Love | +5 | +20 | +5 | -5 |
-| Hate | -10 | -25 | -5 | +15 |
+| Hate | -10 | -25 | -5 | +20 |
+
+> **Phase 2.4.2 [MOD-1·2·3] 적용 (2026-06-07)**: Gratitude.trust 20→15 / Reproach.wariness 10→15 / Hate.wariness 15→20 / Anger.respect 0→−10. S1~S3 narrative 검토 도출 (`docs/tasks/mind-architecture/narrative-review-mod-log.md`). 나머지 44셀 v0.5 유지.
 
 ### 4.3 HEXACO 보정자 (v0.5 유지)
 

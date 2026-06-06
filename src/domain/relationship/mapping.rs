@@ -40,7 +40,7 @@ pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
     match emotion {
         // ── 지각·평가 4 (대상 외부) ─────
         EmotionType::Gratitude => AxisDelta {
-            trust: 20.0,
+            trust: 15.0,
             affinity: 10.0,
             respect: 0.0,
             wariness: -10.0,
@@ -48,7 +48,7 @@ pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
         EmotionType::Anger => AxisDelta {
             trust: -25.0,
             affinity: -10.0,
-            respect: 0.0,
+            respect: -10.0,
             wariness: 25.0,
         },
         EmotionType::Admiration => AxisDelta {
@@ -61,7 +61,7 @@ pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
             trust: -10.0,
             affinity: -10.0,
             respect: -25.0,
-            wariness: 10.0,
+            wariness: 15.0,
         },
 
         // ── 공감 4 (Fortune-of-others) ─────
@@ -115,7 +115,7 @@ pub(crate) fn base_delta(emotion: EmotionType) -> AxisDelta {
             trust: -10.0,
             affinity: -25.0,
             respect: -5.0,
-            wariness: 15.0,
+            wariness: 20.0,
         },
 
         // ── 매핑 안된 10 OCC (B-D14 의도된 누락) ─────
@@ -296,7 +296,7 @@ mod tests {
         assert_eq!(
             base_delta(EmotionType::Gratitude),
             AxisDelta {
-                trust: 20.0,
+                trust: 15.0,
                 affinity: 10.0,
                 respect: 0.0,
                 wariness: -10.0
@@ -311,7 +311,7 @@ mod tests {
             AxisDelta {
                 trust: -25.0,
                 affinity: -10.0,
-                respect: 0.0,
+                respect: -10.0,
                 wariness: 25.0
             }
         );
@@ -338,7 +338,7 @@ mod tests {
                 trust: -10.0,
                 affinity: -10.0,
                 respect: -25.0,
-                wariness: 10.0
+                wariness: 15.0
             }
         );
     }
@@ -443,7 +443,7 @@ mod tests {
                 trust: -10.0,
                 affinity: -25.0,
                 respect: -5.0,
-                wariness: 15.0
+                wariness: 20.0
             }
         );
     }
@@ -478,8 +478,8 @@ mod tests {
             AxisDelta {
                 trust: -45.0,
                 affinity: -45.0,
-                respect: -30.0,
-                wariness: 50.0,
+                respect: -40.0,
+                wariness: 60.0,
             }
         );
     }
@@ -637,8 +637,8 @@ mod tests {
     fn update_axes_neutral_hexaco_uses_base_delta_and_intensity() {
         let mut r = Relationship::neutral("a", "b");
         update_axes_from_emotion(&mut r, EmotionType::Gratitude, 1.0, &HexacoProfile::neutral());
-        // base_delta(Gratitude) × 1.0 × default = { trust: 20, affinity: 10, respect: 0, wariness: -10 → 0 (floor) }
-        assert!((r.trust().value() - 20.0).abs() < 1e-4);
+        // base_delta(Gratitude) × 1.0 × default = { trust: 15, affinity: 10, respect: 0, wariness: -10 → 0 (floor) }
+        assert!((r.trust().value() - 15.0).abs() < 1e-4);
         assert!((r.affinity().value() - 10.0).abs() < 1e-4);
         assert!((r.respect().value() - 0.0).abs() < 1e-4);
         assert!((r.wariness().value() - 0.0).abs() < 1e-4); // WarinessScore floors at 0
@@ -669,9 +669,9 @@ mod tests {
         // modifier: { trust: 1.44, affinity: 1.2, respect: 1.2, wariness: 1.2 }
         // delta:    trust   -25 * 0.95 * 1.44 = -34.2
         //           affinity -10 * 0.95 * 1.2 = -11.4
-        //           respect   0 * ... = 0
+        //           respect  -10 * 0.95 * 1.2 = -11.4
         //           wariness 25 * 0.95 * 1.2 = 28.5
-        // 결과: trust 15.8 / affinity 28.6 / respect 30 / wariness 33.5
+        // 결과: trust 15.8 / affinity 28.6 / respect 18.6 / wariness 33.5
         let mut r = rel_lin_chong_pre_shanshenmiao();
         let h = hexaco_lin_chong();
         update_axes_from_emotion(&mut r, EmotionType::Anger, 0.95, &h);
@@ -687,8 +687,8 @@ mod tests {
             r.affinity().value()
         );
         assert!(
-            (r.respect().value() - 30.0).abs() < 0.1,
-            "respect = {} (expected ≈ 30)",
+            (r.respect().value() - 18.6).abs() < 0.1,
+            "respect = {} (expected ≈ 18.6)",
             r.respect().value()
         );
         assert!(
@@ -708,7 +708,7 @@ mod tests {
             AxisScore::NEUTRAL,
             WarinessScore::new(2.0),
         );
-        // Gratitude × 1.0 × default = { trust: +20, affinity: +10, ..., wariness: -10 }
+        // Gratitude × 1.0 × default = { trust: +15, affinity: +10, ..., wariness: -10 }
         update_axes_from_emotion(&mut r, EmotionType::Gratitude, 1.0, &HexacoProfile::neutral());
         assert_eq!(r.trust().value(), 100.0); // cap at +100
         assert_eq!(r.wariness().value(), 0.0); // floor at 0

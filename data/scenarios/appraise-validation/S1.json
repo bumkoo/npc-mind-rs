@@ -45,13 +45,13 @@
   },
 
   "_expected_axes_delta": {
-    "trust": "+14.4 (Gratitude 0.6 × +20 × 1.2)",
+    "trust": "+10.8 (Gratitude 0.6 × +15 × 1.2)",
     "affinity": "+6 (Gratitude 0.6 × +10 × 1.0)",
     "respect": "+12 (Admiration 0.6 × +20 × 1.0)",
     "wariness": "-6 raw → clamp 0 (Gratitude 0.6 × -10 × 1.0, WarinessScore [0,100])"
   },
   "_expected_final_axes": {
-    "trust": 64.4,
+    "trust": 60.8,
     "affinity": 46.0,
     "respect": 32.0,
     "wariness": 0.0

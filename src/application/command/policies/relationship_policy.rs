@@ -710,12 +710,12 @@ mod handler_v2_tests {
             .iter()
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
-        // Gratitude × 1.0 × default modifier = { trust: +20, affinity: +10 }
-        // before: trust 20→40, affinity 10→20 (±100 raw — Stage 3 정규화 제거).
+        // Gratitude × 1.0 × default modifier = { trust: +15, affinity: +10 }
+        // before: trust 20→35, affinity 10→20 (±100 raw — Stage 3 정규화 제거).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(
-            (after_trust - 40.0).abs() < 1e-3,
-            "after_trust = {} (expected 40 — trust 20→40)",
+            (after_trust - 35.0).abs() < 1e-3,
+            "after_trust = {} (expected 35 — trust 20→35)",
             after_trust
         );
         assert!(
@@ -797,7 +797,7 @@ mod handler_v2_tests {
             .iter()
             .find(|e| e.kind() == EventKind::RelationshipUpdated)
             .expect("RelationshipUpdated must exist");
-        // Anger × 0.5 × default = { trust: -12.5, affinity: -5, respect: 0, wariness: +12.5 }
+        // Anger × 0.5 × default = { trust: -12.5, affinity: -5, respect: -5, wariness: +12.5 }
         // before: trust 50→37.5, affinity 40→35 (±100 raw).
         let (after_affinity, after_trust) = extract_axes_after(&rel_update.payload);
         assert!(

@@ -209,10 +209,10 @@ async fn s1_lin_chong_admires_lu_zhishen_admiration_gratitude() {
     // - 초기 {trust:50, affinity:40, respect:20, wariness:0}.
     // - HEXACO modifier (lin_chong sincerity 0.6): trust × 1.2, 나머지 × 1.0.
     // - Admiration 0.6 × base{0,0,+20,0} = {0, 0, +12, 0}
-    // - Gratitude  0.6 × base{+20,+10,0,-10} × {1.2,1,1,1} = {+14.4, +6, 0, -6}
-    // - sum delta = {+14.4, +6, +12, -6} → after {64.4, 46, 32, -6}
+    // - Gratitude  0.6 × base{+15,+10,0,-10} × {1.2,1,1,1} = {+10.8, +6, 0, -6}
+    // - sum delta = {+10.8, +6, +12, -6} → after {60.8, 46, 32, -6}
     // - WarinessScore clamps to [0,100] → wariness=0.
-    let expected = (64.4_f32, 46.0_f32, 32.0_f32, 0.0_f32);
+    let expected = (60.8_f32, 46.0_f32, 32.0_f32, 0.0_f32);
     assert_axes_match(actual, expected, "S1");
 }
 
@@ -288,15 +288,15 @@ async fn s2_lin_chong_breaks_with_lu_qian_reproach_hate_anger() {
     // 박제 EXPECTED (S5-D3). 손계산 검증:
     // - 초기 {50, 40, 20, 0}. HEXACO modifier (lin_chong, forgiveness=0.0 not <-0.5):
     //   trust × 1.2, 나머지 × 1.0.
-    // - Reproach 0.8 × {-10,-10,-25,+10} × {1.2,1,1,1} = {-9.6, -8, -20, +8}
-    // - Hate     0.8 × {-10,-25, -5,+15} × {1.2,1,1,1} = {-9.6,-20, -4, +12}
-    // - Anger    0.9 × {-25,-10,  0,+25} × {1.2,1,1,1} = {-27, -9,  0, +22.5}
-    // - sum delta = {-46.2, -37, -24, +42.5}
-    // - after = {3.8, 3, -4, 42.5} (4축 clamp 범위 내).
+    // - Reproach 0.8 × {-10,-10,-25,+15} × {1.2,1,1,1} = {-9.6, -8, -20, +12}
+    // - Hate     0.8 × {-10,-25, -5,+20} × {1.2,1,1,1} = {-9.6,-20, -4, +16}
+    // - Anger    0.9 × {-25,-10,-10,+25} × {1.2,1,1,1} = {-27, -9, -9, +22.5}
+    // - sum delta = {-46.2, -37, -33, +50.5}
+    // - after = {3.8, 3, -13, 50.5} (4축 clamp 범위 내).
     //
-    // mapping.rs L471 base_delta sum: trust:-45/affinity:-45/respect:-30/wariness:+50
+    // mapping.rs L471 base_delta sum: trust:-45/affinity:-45/respect:-40/wariness:+60
     // (intensity=1.0). 본 케이스 intensity는 0.8~0.9 + trust×1.2 → 위 sum 유도.
-    let expected = (3.8_f32, 3.0_f32, -4.0_f32, 42.5_f32);
+    let expected = (3.8_f32, 3.0_f32, -13.0_f32, 50.5_f32);
     assert_axes_match(actual, expected, "S2");
 }
 
@@ -367,12 +367,12 @@ async fn s3_yu_shulien_pities_yu_qiaolong_pity_reproach_anger() {
     //   patience(0.9)>0.5 all×0.7, prudence(0.8)>0.5 all×0.8. forgiveness=0.6 not <-0.5.
     // - per-axis 누적 modifier: trust = 1.2 × 0.7 × 0.8 = 0.672 / others = 0.7 × 0.8 = 0.56.
     // - Pity     0.7 × {0,+10,-5,0} × {0.672,0.56,0.56,0.56} = {0, +3.92, -1.96, 0}
-    // - Reproach 0.7 × {-10,-10,-25,+10} × {…} = {-4.704, -3.92, -9.8, +3.92}
-    // - Anger    0.6 × {-25,-10,0,+25} × {…} = {-10.08, -3.36, 0, +8.4}
+    // - Reproach 0.7 × {-10,-10,-25,+15} × {…} = {-4.704, -3.92, -9.8, +5.88}
+    // - Anger    0.6 × {-25,-10,-10,+25} × {…} = {-10.08, -3.36, -3.36, +8.4}
     //   (Reproach, Anger: forgiveness=0.6 not <-0.5 → A− Forgiveness 룰 미발동.)
-    // - sum delta = {-14.784, -3.36, -11.76, +12.32}
-    // - after = {25.216, 26.64, -1.76, 32.32}.
-    let expected = (25.216_f32, 26.64_f32, -1.76_f32, 32.32_f32);
+    // - sum delta = {-14.784, -3.36, -15.12, +14.28}
+    // - after = {25.216, 26.64, -5.12, 34.28}.
+    let expected = (25.216_f32, 26.64_f32, -5.12_f32, 34.28_f32);
     assert_axes_match(actual, expected, "S3");
 }
 
