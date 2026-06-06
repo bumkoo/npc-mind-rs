@@ -335,8 +335,8 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 
 **포함** (순서 있는 sub-stage — 각 단계 후 개별 회귀 측정):
 
-- **2.4.0 HEXACO 이중 개입 검토** (선행 진단 · 게이트) — HEXACO가 ①intensity 산출(`personality.rs:608 praiseworthiness_weight`)·②4축 변환(`mapping.rs:138 hexaco_modifier`) 양쪽에 곱셈 이중 적용되는지 검증. 검토 only + 필요 시 도메인 규칙 설계 문서. 신규 3 대비군 케이스(동일 상황·성격만 다름, 작가 입력 필요) + 기존 S1~S3 intensity 엔진 도출 재구성. 결론이 2.4.1~3 튜닝 방향 결정. 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md) 말미 [HEXACO 이중 개입].
-- **2.4.1 intensity weight 튜닝** (emotion 도메인) — 정서성 weight 재검토: `desirability_self_weight`·`desirability_prospect_weight`가 부호 분기 밖 `정서성×0.3` 무조건 가산 → Joy·Hope 긍정 정서 과증폭(정서성 facet 정의↔사용처 불일치) 해소. 권장 묶음 1·2(self/prospect, 본문만), 3(confirmation) 보류. 2.4.0이 요구 시 `praiseworthiness_weight` 동반. 출처: [05-hexaco.html](../../emotion/05-hexaco.html).
+- **2.4.0 HEXACO 이중 개입 검토** (선행 진단 · 게이트) — 🟢 **종결 (2026-06-06)**. HEXACO가 ①intensity 산출(`personality.rs:608 praiseworthiness_weight`)·②4축 변환(`mapping.rs:138 hexaco_modifier`) 양쪽에 곱셈 이중 적용되는지 검증. **결론: 이중 적용=의도된 누적(중복 아님), ②변환 누적 확정·`hexaco_modifier` 유지. ① 내부 결함 1건(`praiseworthiness_weight` 성실성평균 경유 prudence가 Reproach 부당 증폭) → 2.4.1 facet 분해 위임.** 실측: MCP `appraise` trace 통제군(상황 고정·prudence 변화), fixture `data/appraise-test/prudence-intensity-fixtures/scenario.json`. 강도 1.0 천장 클러스터링은 별건 → Phase 2.6 deferred. 정본: [phase2.4.0-hexaco-double-application-review.md](phase2.4.0-hexaco-double-application-review.md). 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md) 말미 [HEXACO 이중 개입].
+- **2.4.1 intensity weight 튜닝** (emotion 도메인) — 정서성 weight 재검토: `desirability_self_weight`·`desirability_prospect_weight`가 부호 분기 밖 `정서성×0.3` 무조건 가산 → Joy·Hope 긍정 정서 과증폭(정서성 facet 정의↔사용처 불일치) 해소. 권장 묶음 1·2(self/prospect, 본문만), 3(confirmation) 보류. 출처: [05-hexaco.html](../../emotion/05-hexaco.html). **+ `praiseworthiness_weight` facet 분해 (2026-06-06 2.4.0 결론 — 동반 확정)**: 공통항 `성실성평균(4 facet)×0.3` → `diligence×0.10 + perfectionism×{Pride −0.10 / Shame +0.20 / Admir +0.15 / Reproach +0.20}`. org·prud 제외 (prud는 2.4.0 통제 시뮬서 성실성평균 경유 Reproach를 0.700→0.742로 끌어올림 확인 → 정당 제거 / org는 도덕민감 링크 얇아 제외). modesty/gentleness 분기항 유지. 예산보존(분해 총량 ≈ 원 0.3) → 겸손+완벽주의 인물 Shame 포화 회피(검증: 0.7/0.7 = 1.42 천장 미만). Pride는 perf −0.10 + modesty −로 자긍심 억제, Reproach는 perf +0.20 vs gentleness −로 상쇄(온화한 완벽주의자).
 - **2.4.2 base_delta 4셀 (§4.2)** — [MOD-1·2·3] 일괄 적용: Gratitude.trust 20→15 / Reproach.wariness 10→15 / Hate.wariness 15→20 / Anger.respect 0→−10 (Anger.wariness 25 원복). 전 시나리오 박제값 재측정. 출처: [narrative-review-mod-log.md](narrative-review-mod-log.md).
 - **2.4.3 RelationshipModifiers ①–⑦ 통합 재설계** — affinity·trust 2축 → 4축 기능 분리(trust=대칭 magnitude / affinity·respect·wariness=valence_tilt 렌즈). `intensity_multiplier × trust_modifier` 곱 제거 → `magnitude × valence_tilt` 구조 + 단일 clamp[FLOOR=0.5, CEIL=1.5]. ①(trust 하한)·②(상한)·⑤(매핑 임의)·⑥(이중곱·음수경로)·③(respect 신설)·④(wariness 편입)·⑦(valence 무지) 동시 해소. 가장 침습적 → 마지막. ④ wariness 양의 피드백 안정화(감쇠/히스테리시스) 동반. 출처: [06-relationship.html §5](../../emotion/06-relationship.html).
 - **2.4.4 listener_perspective 축별 sign 분리** — 대사→청자 PAD 변환식(`domain/listener_perspective/converter.rs`)의 약점 3 해소 중 **개선안 A**(sign 1개 → P_sign·D_sign 분리, 시그니처 유지). 반어("허허, 훌륭하시오") 시 D도 반전. **개선안 B(D 상보성)는 08 pad_dot의 D 격차 배율과 이중 적용되므로 보류** — 09는 발화 자체의 D 방향만, NPC 상태와의 격차는 08 소관으로 경계. 청자 PAD 산출 변경 → **PAD 벤치 공유**(2.4 묶음 편입 근거). 출처: [09-utterance-pad.html §7](../../emotion/09-utterance-pad.html).
@@ -381,6 +381,30 @@ Phase 1.5 manual SSE emit이 9개 도메인 사실에 각각 박혀 있음 + `/a
 3. axis_modulation 결정론 검증 (같은 reflection prompt → 안정적 출력)
 
 **산출물 spec**: `task-rel-phase2.5-channel1.md` (Phase 2.3 종결 후 작성).
+
+### Phase 2.6 (deferred · 일괄 조정) — 감정 강도 정규화(soft-saturation) + 표현 밴드 세분화
+
+**신설 (2026-06-06)**: Phase 2.4.0 검토 중 발견된 *강도 천장 클러스터링* 구조 문제. 즉시 구현 안 함 — **PAD·trigger·directive가 안정된 뒤(2.5 이후, 정확 시점 미정) 일괄 조정**. 단발 튜닝이 아니라 정규화 곡선 교체라 하류 동반 재측정 필요 → 한 번에 묶음.
+
+**배경 (실측 확인)**:
+- 강도 = `|상황값| × weight × modifier` — 세 증폭기가 *곱*. 드라마틱 장면(셋 다 높음)이 강도 1.0 천장에 몰림. 예: base 0.9 × 신뢰배신 modifier 1.3 × 격한성격 weight 1.4 = 1.64 → 1.0.
+- 진짜 천장은 weight clamp(1.5)가 아니라 **`Emotion::new`의 `intensity.clamp(0.0, 1.0)`** ([types.rs:289·303](../../../src/domain/emotion/types.rs)). `add_valence`는 무클램프 — 결과를 담는 `Emotion`에서 1.0 정규화. weight 천장을 1.7로 올려도 base_val ≥ 0.68이면 강도는 1.0에 박혀 **무력**.
+- **hard clamp가 천장 위 순서를 소멸** — 1.04·1.12·1.64가 전부 1.0. *변별이 가장 필요한 클라이맥스*에서 극단 인물 구분 불가. directive 밴드 세분화를 해도 알맹이가 없음.
+
+**포함**:
+- `types.rs:289·303` hard clamp → **soft-saturation(점근 압축)** 교체. 1.0 점근하되 순서 보존, [0,1] 유지. knee ~0.8 (→ [0, 0.7]은 거의 항등 → 평범 케이스·잠긴 PAD 벤치 보존, 압축은 0.8 위에서만). 단일 변경점 → 하류는 그대로 [0,1] 수신.
+- directive 밴드 세분화 — 0.9~1.0 극단 구간용 "극도로 격렬" 디렉티브 신설 ([directive.rs](../../../src/domain/emotion/...)).
+- **floor 대칭 재검토** — 감정 마비 인물(사이코패스)이 0.5배 하한도 보수적. 천장 압축 시 바닥(0.3 등)도 함께 검토.
+
+**선행 (진입 시 Stage 0)**: 강도 분포 실측 — 드라마틱 케이스 묶음(강한 상황 × 강한 관계 × 강한 성격 조합) appraise → 1.0 클러스터링 정량화 → soft-sat 필요성·knee 위치 결정.
+
+**의존**: PAD·trigger·directive·locale이 **0~1 정규화를 전제**하므로 그 안정 후. 곡선 교체가 전 구간 강도값을 바꿈 → **PAD 벤치 20케이스 전면 재측정 + 잠금 재확정** 동반(Bekay 승인). trigger 임계(`above 0.5`=절반) 의미·locale 밴드("극도로 강한") 재정의 동반.
+
+**위험**: 큼. 전 구간 강도 곡선 변경 → PAD·trigger·locale 동반 재설계. → deferred 일괄 처리 근거.
+
+**비스코프(현재)**: 강도 상한 자체 확대(0~1.5 등)는 PAD 파이프라인 전면 재정규화라 더 큼 — 본 phase는 *[0,1] 유지 + soft-sat*만. 상한 확대는 별도 검토.
+
+**산출물 spec**: 미작성 — 진입 시.
 
 ### Phase 3a (v0.9) — Channel 2 Temporal
 
@@ -612,3 +636,4 @@ _schema.md           [███▒▒▒▒▒▒▒]   ~30% verified (Phase 1 F
 | v0.6 | 2026-05-13 | **Phase 2 범위 변경 — 얇은 phase 3개로 분할**: Phase 2 (도메인 마이그레이션 only) / Phase 2.3 (appraise 정비 ★ 신설) / Phase 2.5 (Channel 1 + axis_modulation). Phase 2 Stage 0 §3.6 시뮬레이션 검증 (S1~S4)의 *appraise 입력 의존성* 발견이 Phase 2.3 신설 근거. Phase 2 본문 갱신 (power 폐기 / type 흡수 / OCC → 4축 자동 갱신 T1 시점 / B-D6/D12/D13/D14 결정 박힘). Phase 2.5 본문 갱신 (axis_modulation 3지선다). 산출물 spec 파일명 변경 `task-rel-phase2-fouraxis-bondkind.md` → `task-rel-phase2-domain-migration.md`. |
 | v0.7 | 2026-06-04 | **Phase 2.4 (v0.8.4) 신설** — 2.3↔2.5 사이. Phase 2.3 종결 후 발견된 *정량 튜닝 + modifier 구조* 부채를 한 phase로 묶음 (PAD 벤치 재측정 공유 → 회귀 신호 1회 격리). 4 sub-stage: 2.4.0 HEXACO 이중 개입 검토(선행 진단) → 2.4.1 정서성 weight(05-hexaco) → 2.4.2 base_delta 4셀([MOD-1·2·3]) → 2.4.3 RelationshipModifiers ①–⑦ 통합 재설계(magnitude/tilt 렌즈, 06-relationship §5). PerceivedSituation 층("큰 배신" 임계 + praiseworthiness 부호 재해석) 비스코프. §6.5 §4.1~4.4 행 + 미적용 포인터 2건 phase 확정 (base_delta→2.4.2 / 이중개입→2.4.0 / weight→2.4.1 / modifier→2.4.3). |
 | v0.8 | 2026-06-05 | **Phase 2.4.4 신설** — listener_perspective(대사→청자 PAD 변환) 축별 sign 분리(개선안 A). 09-utterance-pad.html §7 "개선 방향" 검토에서 도출: 약점 3(D 부호복사·A 부호고정·sign P전용) 중 ③ 해소, sign 1개→P_sign·D_sign 분리(시그니처 유지). 개선안 B(D 상보성)는 08 pad_dot D 격차 배율과 이중 적용 → 보류(09=발화 D 방향 / 08=NPC 격차 경계). PAD 벤치 공유로 2.4 묶음 편입. §5 Phase 2.4 포함·위험 갱신. (별도 트랙 아님 — emotion 입력 파이프라인이나 벤치 공유로 2.4 sub-stage 편입.) |
+| v0.9 | 2026-06-06 | **Phase 2.6 (deferred · 일괄 조정) 신설** — 감정 강도 정규화(soft-saturation) + 표현 밴드 세분화. Phase 2.4.0 검토 중 발견: 강도 = `|상황값|×weight×modifier` 곱이라 드라마틱 장면이 강도 1.0 천장(`types.rs:289 Emotion::new`의 hard clamp)에 몰리고, hard clamp가 천장 위 순서를 소멸 → 극단 인물 변별 불가. weight clamp(1.5)는 사실상 무력(강도 1.0 정규화가 진짜 천장). 방향: hard clamp → soft-saturation(knee~0.8, [0,0.7] 항등) 단일 변경점, directive 밴드 세분화 + floor 대칭 재검토 동반. PAD·trigger·locale이 0~1 전제라 안정 후 일괄(2.5 이후, 시점 미정) + PAD 벤치 전면 재측정 동반. 강도 상한 확대(0~1.5)는 비스코프. |
