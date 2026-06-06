@@ -10,7 +10,12 @@ pub fn appraise<P: AppraisalWeights>(p: &P, state: &mut EmotionState, event: &Ev
 
     // 1. 전망 확인 (Satisfaction, Disappointment, Relief, FearsConfirmed)
     if let Some(Prospect::Confirmation(result)) = &event.prospect {
-        let w = p.desirability_confirmation_weight(d);
+        // fear축(Relief/FearsConfirmed)은 E, hope축(Satisfaction/Disappointment)은 X가 주도
+        let is_fear_axis = matches!(
+            result,
+            ProspectResult::FearUnrealized | ProspectResult::FearConfirmed
+        );
+        let w = p.desirability_confirmation_weight(is_fear_axis);
         add_confirmation(state, result, d, w, ctx);
 
         // 사건이 발생하지 않은 경우: 확인 감정만 생성

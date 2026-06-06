@@ -558,10 +558,18 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 사건-자기-확인: Satisfaction, Disappointment, Relief, FearsConfirmed
     ///
-    /// E(예민→크게 반응) - Pru(신중→충격 감소, 이미 마음의 준비)
-    fn desirability_confirmation_weight(&self, _desirability: f32) -> f32 {
+    /// fear축(Relief/FearsConfirmed): E(예민→크게 반응) - Pru(신중→충격 감소) — 불변
+    /// hope축(Satisfaction/Disappointment): X(낙관→크게 반응) - Pru
+    fn desirability_confirmation_weight(&self, is_fear_axis: bool) -> f32 {
         let avg = self.dimension_averages();
-        let e = avg.e.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD);
+
+        // fear-lifecycle은 E, hope-lifecycle은 X가 확인 강도를 주도 (Phase 2.4.1)
+        let driver = if is_fear_axis {
+            avg.e.effect(W_STANDARD)
+        } else {
+            avg.x.effect(W_STANDARD)
+        };
+        let e = driver - self.conscientiousness.prudence.effect(W_MILD);
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
