@@ -557,6 +557,9 @@ fn test_score_effect_calculation() {
 
 #[test]
 fn test_appraisal_weights_consistency() {
+    // Phase 2.4.1: Joy는 X 주도(E 제거), Distress는 +E −A −Pru 주도.
+    // → E의 증폭 역할이 Joy가 아니라 Distress 분기로 이동했음을 검증.
+
     // 1. 극단적으로 예민한 성격 (E=1.0)
     let emotional = NpcBuilder::new("e", "e")
         .emotionality(|e| {
@@ -567,10 +570,16 @@ fn test_appraisal_weights_consistency() {
         })
         .build();
 
-    // desirability_self_weight (Joy/Distress)
-    // d > 0: BASE_SELF(1.0) + E_effect(1.0*0.3) + X_effect(0.0*0.3) = 1.3
-    let w = emotional.personality().desirability_self_weight(1.0);
-    assert!((w - 1.3).abs() < f32::EPSILON, "E=1.0 -> weight=1.3 (Joy)");
+    // Joy (d > 0): BASE_SELF(1.0) + X_effect(0.0*0.3) = 1.0 — E는 더 이상 Joy에 가산 안 됨
+    let joy = emotional.personality().desirability_self_weight(1.0);
+    assert!((joy - 1.0).abs() < f32::EPSILON, "E=1.0 -> Joy weight=1.0 (X만)");
+
+    // Distress (d < 0): BASE_SELF(1.0) + E_effect(1.0*0.3) - A(0) - Pru(0) = 1.3 — E가 Distress 증폭
+    let distress = emotional.personality().desirability_self_weight(-1.0);
+    assert!(
+        (distress - 1.3).abs() < f32::EPSILON,
+        "E=1.0 -> Distress weight=1.3 (+E)"
+    );
 
     // 2. 극단적으로 무던한 성격 (E=-1.0)
     let cold = NpcBuilder::new("c", "c")
@@ -582,11 +591,15 @@ fn test_appraisal_weights_consistency() {
         })
         .build();
 
-    // d > 0: BASE_SELF(1.0) + E_effect(-1.0*0.3) + X_effect(0.0*0.3) = 0.7
-    let w2 = cold.personality().desirability_self_weight(1.0);
+    // Joy (d > 0): BASE_SELF(1.0) + X_effect(0.0*0.3) = 1.0 — E 무관
+    let joy2 = cold.personality().desirability_self_weight(1.0);
+    assert!((joy2 - 1.0).abs() < f32::EPSILON, "E=-1.0 -> Joy weight=1.0 (X만)");
+
+    // Distress (d < 0): BASE_SELF(1.0) + E_effect(-1.0*0.3) = 0.7
+    let distress2 = cold.personality().desirability_self_weight(-1.0);
     assert!(
-        (w2 - 0.7).abs() < f32::EPSILON,
-        "E=-1.0 -> weight=0.7 (Joy)"
+        (distress2 - 0.7).abs() < f32::EPSILON,
+        "E=-1.0 -> Distress weight=0.7 (-E)"
     );
 }
 

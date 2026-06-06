@@ -12,7 +12,7 @@ pub trait PersonalityProfile {
 pub trait AppraisalWeights {
     fn desirability_self_weight(&self, desirability: f32) -> f32;
     fn desirability_prospect_weight(&self, desirability: f32) -> f32;
-    fn desirability_confirmation_weight(&self, desirability: f32) -> f32;
+    fn desirability_confirmation_weight(&self, is_fear_axis: bool) -> f32;
     fn empathy_weight(&self, desirability: f32) -> f32;
     fn hostility_weight(&self, desirability: f32) -> f32;
     fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32;

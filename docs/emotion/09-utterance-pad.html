@@ -15,6 +15,7 @@
   </div>
 
   <h1>대사 → PAD 변환</h1>
+  <p style="color:var(--faint);font-size:.85em;margin-top:-.4em">v1.5.0 · 수정 2026-06-05T04:03:03+09:00</p>
   <p class="lead">08의 입력 <code>stimulus</code>가 어디서 오는가. Player 대사 한 줄이
   임베딩 → 화자 PAD → <strong>청자 PAD</strong>로 바뀌어 자극이 된다. 화자가 한 말 ≠ NPC가 받는 자극.</p>
 
@@ -45,25 +46,76 @@
     (<code>default = ["listener_perspective"]</code>). 미적용 빌드에서는 화자 PAD를 그대로 passthrough.
   </div>
 
-  <h2><span class="seal">2</span>핵심 변환식</h2>
+  <h2><span class="seal">2</span>청자 관점 변환식</h2>
   <p class="path">domain/listener_perspective/converter.rs · build_result()</p>
+
+  <h3>2.0 약자 먼저 읽기</h3>
+  <p>식에 나오는 <span class="mono">P_L</span>, <span class="mono">P_S</span> 같은 기호부터 푼다.
+  <strong>대문자는 축</strong>, <strong>아래첨자는 누구의 값인가</strong>를 가리킨다.</p>
+  <table class="tbl">
+    <tr><th>기호</th><th>뜻</th><th>설명</th></tr>
+    <tr><td class="mono">P</td><td>Pleasure</td><td>쾌·불쾌 (기분이 좋은가 나쁜가)</td></tr>
+    <tr><td class="mono">A</td><td>Arousal</td><td>각성 (얼마나 흥분·고조되었나)</td></tr>
+    <tr><td class="mono">D</td><td>Dominance</td><td>지배·통제 (기세가 위에 있나 눌렸나)</td></tr>
+    <tr><td class="mono">_S</td><td>Speaker · 화자</td><td>말을 <em>한</em> 사람 (Player)</td></tr>
+    <tr><td class="mono">_L</td><td>Listener · 청자</td><td>말을 <em>듣는</em> NPC</td></tr>
+  </table>
+  <div class="note">
+    <span class="tag">읽는 법</span>
+    <span class="mono">P_S</span> = 화자의 쾌·불쾌(대사에서 측정한 값) ·
+    <span class="mono">P_L</span> = 그 말을 받은 <strong>청자(NPC)가 느끼는</strong> 쾌·불쾌 — <strong>우리가 구하려는 결과</strong>.
+    <span class="mono">A_S→A_L</span>, <span class="mono">D_S→D_L</span>도 같은 방식.
+  </div>
+
+  <h3>2.1 변환식</h3>
   <div class="formula">
     <span class="lbl">화자 PAD → 청자 PAD</span>
     P_L = <b>sign</b> × coef_p[mag] × P_S<br>
     A_L = coef_a[mag] × A_S<br>
     D_L = coef_d[mag] × D_S
   </div>
+  <p>한 줄로 읽으면 — <strong>"화자가 드러낸 PAD에 방향(sign)과 세기(coef)를 적용해 청자가 받는 PAD로 옮긴다."</strong>
+  P축만 방향을 뒤집을 수 있고, A·D축은 세기만 조절한다.</p>
+
+  <h3>2.2 세 개의 손잡이</h3>
+  <p>변환은 손잡이 세 개로 이뤄진다. 각각이 무슨 일을 하는지가 핵심이다.</p>
   <table class="tbl">
-    <tr><th>요소</th><th>의미</th><th>출처</th></tr>
-    <tr><td class="mono">sign</td><td>P축 부호 유지(+1)/반전(−1)</td><td>SignClassifier (2-way k-NN)</td></tr>
-    <tr><td class="mono">mag</td><td>강도 약/보통/강 → 계수 선택</td><td>MagnitudeClassifier (3-way k-NN)</td></tr>
-    <tr><td class="mono">coef_*[mag]</td><td>P/A/D축별 강도 계수</td><td><code>MagnitudeCoefTable</code> (튜닝)</td></tr>
-    <tr><td class="mono">P_S / A_S / D_S</td><td>화자 PAD 3축</td><td>UtteranceAnalyzer 산출</td></tr>
+    <tr><th>손잡이</th><th>역할</th><th>비유</th><th>적용 축</th></tr>
+    <tr><td class="mono">sign</td><td>방향 그대로(+1) / 뒤집기(−1)</td><td>방향 스위치</td><td>P축만</td></tr>
+    <tr><td class="mono">mag</td><td>약·보통·강 중 하나 선택</td><td>세기 다이얼</td><td>계수표 행 결정</td></tr>
+    <tr><td class="mono">coef_*[mag]</td><td>실제로 곱하는 수</td><td>증폭/감쇠 배율</td><td>P·A·D 각각</td></tr>
   </table>
+  <p>출처 — <span class="mono">sign</span>은 SignClassifier, <span class="mono">mag</span>은 MagnitudeClassifier
+  (둘 다 의미 비교 기반 분류기), <span class="mono">coef</span>는 <code>MagnitudeCoefTable</code>(튜닝 가능한 계수표).
+  <span class="mono">P_S/A_S/D_S</span>는 UtteranceAnalyzer가 대사에서 산출.</p>
+
+  <h3>2.3 sign — SignClassifier가 정하는 법</h3>
+  <p>sign은 한 가지 질문에 답한다 —
+  <strong>"이 말을 들으면 청자 기분은 화자와 <em>같은</em> 방향인가, <em>반대</em> 방향인가?"</strong></p>
+  <table class="tbl">
+    <tr><th>판정</th><th>값</th><th>대표 표현</th><th>흐름</th></tr>
+    <tr><td>Keep</td><td class="mono">+1</td><td>감사·칭찬 "고맙소"</td><td>화자 P+ → 청자 P+ (그대로)</td></tr>
+    <tr><td>Invert</td><td class="mono">−1</td><td>사과·애원 "미안하오"</td><td>화자 P− → 청자 P+ (뒤집힘)</td></tr>
+  </table>
+  <p>판정 방법(개념) — 미리 모아둔 <strong>예문 두 묶음</strong>(Keep 예문: 감사·칭찬 / Invert 예문: 사과·애원)을 준비해두고,
+  입력 대사를 두 묶음과 <strong>의미적으로 비교</strong>해 더 닮은 쪽으로 분류한다. 닮은 정도의 차이(<span class="mono">margin</span>)가
+  크면 확신, 비슷하면 애매한 판정이다.</p>
+  <div class="note">
+    <span class="tag">애매하면 Keep</span>
+    두 묶음 점수가 동점이면 Keep(+1, 안 뒤집음)이 기본값. <strong>잘못 뒤집는 쪽이 안 뒤집는 쪽보다 더 위험</strong>하므로
+    보수적으로 둔다.
+  </div>
+
+  <h3>2.4 왜 A·D축은 방향을 안 건드리나</h3>
   <div class="note gold">
     <span class="tag">P축만 부호 반전</span>
-    A·D축은 강도 계수만 곱한다. <strong>P축(쾌·불쾌)만 sign으로 방향이 뒤집힌다</strong> —
-    "미안해"(화자 P 음수)가 청자에겐 P 양수가 되는 핵심. A(각성)·D(지배)는 화자·청자가 대체로 같은 방향.
+    각성(A)·지배(D)는 화자·청자가 <strong>대체로 같은 방향</strong>이다 — 흥분은 전염되고(A), 기세는 그대로 전달된다(D).
+    그래서 강도 계수만 곱한다. 오직 P(쾌·불쾌)만 <strong>"미안해 문제"</strong>(화자 후회 → 청자 안도) 때문에 방향 반전이 필요하다.
+  </div>
+  <div class="note zhu">
+    <span class="tag">다음 단계 예고</span>
+    이 "A·D는 부호 고정" 가정이 개선 논의의 출발점이다. 반어("허허, 훌륭하시오")는 D도 같이 뒤집혀야 하고,
+    지배는 상보적(화자 D↑ → 청자 위축 또는 반발)이라 단순 복사가 한계를 가진다 — 다음 섹션에서 다룬다.
   </div>
 
   <h2><span class="seal">3</span>2경로 — Prefilter 우선</h2>
@@ -80,6 +132,28 @@ Prefilter 정규식 매칭? <span class="c">(예: "^(허허|아이고)" → 빈�
     "허허", "아이고" 같은 빈정·반어 표현은 임베딩 의미만으로는 부호를 자주 틀린다.
     정규식으로 먼저 잡아 카테고리 고정값을 쓰면 분류기 오류를 우회. Prefilter hit 시
     <code>p_s_default</code>가 화자 P를 대체(빈정은 화자 표면 PAD 신뢰 불가).
+  </div>
+
+  <h3>3.1 hit 시 가져오는 세 값</h3>
+  <p>카테고리에는 분류기 대신 쓸 고정값 3개가 미리 적혀 있다. 정규식이 매칭되면 이 값들을 <strong>즉시</strong> 쓴다(분류기 호출 안 함).</p>
+  <pre>[[category]]
+name = "sarcasm_interjection"
+sign = "invert"        # → −1
+magnitude = "strong"   # → 강 계수 행
+p_s_default = 0.6      # → P_S 대체값
+patterns = ["^(허허|아이고)"]</pre>
+  <table class="tbl">
+    <tr><th>값</th><th>역할</th></tr>
+    <tr><td class="mono">sign</td><td>Keep/Invert를 분류기 대신 카테고리가 지정 (예: invert = −1)</td></tr>
+    <tr><td class="mono">magnitude</td><td>약/보통/강 지정 → coef 테이블 행 선택 (예: strong)</td></tr>
+    <tr><td class="mono">p_s_default</td><td><strong>화자 P를 무시하고 이 값으로 대체</strong> — 반어는 화자 표면 PAD를 신뢰 불가</td></tr>
+  </table>
+  <div class="note gold">
+    <span class="tag">두 경로의 핵심 차이 = P_S</span>
+    분류기 경로는 화자 실제 pleasure(<span class="mono">speaker_pad.pleasure</span>)를 쓰지만,
+    prefilter 경로는 그걸 버리고 <span class="mono">p_s_default</span>로 덮어쓴다. sign·magnitude도 분류기보다 정규식 판정을 우선.<br>
+    <span class="mono">p_s = p_s_override.unwrap_or(speaker_pad.pleasure)</span>
+    — prefilter면 <span class="mono">Some(0.6)</span>, 분류기면 화자 실제값.
   </div>
 
   <h2><span class="seal">4</span>무협 워크드 예시</h2>
@@ -102,7 +176,56 @@ A_L = coef_a[normal] × A_S · D_L = coef_d[normal] × D_S</div>
   변환 실패는 <code>tracing::warn!</code> 남기고 silent failure 방지. DialogueOrchestrator·Mind Studio가
   동일 분기를 갖던 drift를 이 도메인 헬퍼 하나로 통합.</p>
 
-  <h2><span class="seal">6</span>실제 코드</h2>
+  <h2><span class="seal">6</span>그 다음 — 자극 PAD는 08로</h2>
+  <p>2~5에서 만든 <span class="mono">청자 PAD</span>는 곧 <strong>자극 PAD</strong>가 되어 08로 넘어간다.
+  08의 <code>apply_stimulus</code>가 NPC의 활성 감정마다 <span class="mono">pad_dot(감정 PAD, 자극 PAD)</span>로
+  공명을 계산해 강도를 ↑/↓한다 — <strong>공식·D 격차 배율의 상세는 <a href="08-stimulus.html">08 PAD 자극 경로</a> 참조</strong>.</p>
+  <div class="note zhu">
+    <span class="tag">비교 대상이 다르다 (개선 설계 시 주의)</span>
+    09는 <strong>화자 vs 청자</strong>를 본다. 08 pad_dot은 <strong>NPC 현재 감정 vs 자극</strong>을 본다.
+    둘 다 D를 다루지만 대상이 다르므로, D 상보성을 09에 또 넣으면 08의 격차 배율과 <strong>이중 적용</strong>될 수 있다.
+  </div>
+
+  <h2><span class="seal">7</span>개선 방향</h2>
+  <div class="note gold">
+    <span class="tag">Phase 2.4.4 (방향 검토 단계)</span>
+    아래는 현 변환식의 비판적 검토로 도출한 약점과 개선안이다. 코드 작성 전 방향 합의 단계의 명세이며,
+    FROZEN spec(.md)은 방향 확정 후 별도 작성한다. PAD 벤치 공유 → Phase 2.4에 편입(roadmap §5).
+  </div>
+  <h3>7.1 현 변환식의 약점 3</h3>
+  <table class="tbl">
+    <tr><th>#</th><th>약점</th><th>증상</th></tr>
+    <tr><td>①</td><td>D축이 화자 부호를 그대로 복사 (<span class="mono">d_coef × D_S</span>, 항상 +)</td><td>"감히 네가!"(화자 D↑)를 들어도 청자가 똑같이 D↑ — 위축/반발(상보성) 표현 불가</td></tr>
+    <tr><td>②</td><td>A축도 부호 고정</td><td>"진정해…"(화자 저각성)에 청자가 오히려 각성하는 경우 표현 불가</td></tr>
+    <tr><td>③</td><td>sign이 P축 전용</td><td>반어("허허, 훌륭하시오")는 D도 뒤집혀야(표면 복종·실제 조롱) 하나 P만 반전</td></tr>
+  </table>
+  <p>공통 뿌리 — <strong>"P·A·D가 독립이고 각 축은 화자 값을 부호 그대로 스케일만 한다"</strong>는 가정.</p>
+
+  <h3>7.2 개선안 A·B</h3>
+  <table class="tbl">
+    <tr><th></th><th>A · 축별 sign 분리</th><th>B · D축 상보성 도입</th></tr>
+    <tr><td>고치는 약점</td><td>③ (+ ① 일부)</td><td>① (위축/반발)</td></tr>
+    <tr><td>핵심 변경</td><td>sign 1개 → P_sign·D_sign 분리</td><td>D_L 계산에 청자 현재 D 반영</td></tr>
+    <tr><td>시그니처</td><td>유지 (converter 입력 그대로)</td><td>변경 (청자 PAD/성격 주입)</td></tr>
+    <tr><td>기존 테스트</td><td>거의 보존</td><td>다수 수정</td></tr>
+    <tr><td>위험</td><td>낮음</td><td>중간</td></tr>
+  </table>
+
+  <h3>7.3 권장 — A 우선</h3>
+  <div class="note">
+    <span class="tag">A부터, B는 보류</span>
+    A는 시그니처를 안 건드려 prefilter·fallback 구조를 그대로 둔 채 얹을 수 있다.
+    <strong>B의 "청자 현재 D 반영"은 사실 08 pad_dot의 D 격차 배율과 겹친다</strong>(§6 참조) —
+    09에 또 넣으면 <strong>이중 적용</strong>. 그래서 09는 "발화 자체의 D 방향"(반어 등)만 책임지고,
+    "NPC 상태와의 D 격차"는 이미 작동하는 08에 맡기는 분담이 깔끔하다.
+  </div>
+  <div class="note zhu">
+    <span class="tag">경계</span>
+    A 적용 시에도 <span class="mono">D_sign</span>은 <em>발화 의미상의 반전</em>(반어)만 다룬다.
+    청자의 현재 기세와의 격차(위축/반발)는 08 pad_dot 소관 — 09에서 재현하지 않는다.
+  </div>
+
+  <h2><span class="seal">8</span>실제 코드</h2>
   <details class="code">
     <summary><span class="chev">▸</span> ports/analysis.rs — UtteranceAnalyzer trait <span class="src">ports/analysis.rs</span></summary>
 <pre><span class="kw">pub trait</span> TextEmbedder {
@@ -166,6 +289,17 @@ A_L = coef_a[normal] × A_S · D_L = coef_d[normal] × D_S</div>
     }
 }</pre>
   </details>
+
+  <h2><span class="seal">9</span>변경 이력</h2>
+  <table class="tbl">
+    <tr><th>버전</th><th>변경일시 (KST)</th><th>변경 내역</th></tr>
+    <tr><td class="mono">v1.5.0</td><td class="mono">2026-06-05T04:03:03+09:00</td><td>§7 "개선 방향" 신설 — 현 변환식 약점 3(D 부호복사·A 부호고정·sign P전용), 개선안 A(축별 sign 분리)/B(D 상보성) 비교, 권장 A + 08 pad_dot과의 이중 적용 경계. Phase 2.4.4로 roadmap 편입. 기존 §7 실제 코드→§8, §8 변경 이력→§9.</td></tr>
+    <tr><td class="mono">v1.4.0</td><td class="mono">2026-06-05T03:53:11+09:00</td><td>§6 축소 — pad_dot 공식·D 격차·코드 흐름을 08로 이관(중복 제거), 09 §6은 "자극 PAD는 08로" 다리 문단 + 08 링크 + 09/08 비교 대상 차이 주의만 남김. 08과의 역할 경계 명확화(B안).</td></tr>
+    <tr><td class="mono">v1.3.0</td><td class="mono">2026-06-05T03:47:09+09:00</td><td>§3.1 신설 — Prefilter hit 시 가져오는 세 값(sign·magnitude·p_s_default) 카테고리 TOML 예시·역할표 추가. 두 경로 핵심 차이가 P_S(분류기=화자 실제값 / prefilter=p_s_default 덮어쓰기)임을 명시.</td></tr>
+    <tr><td class="mono">v1.2.0</td><td class="mono">2026-06-05T03:33:52+09:00</td><td>§2 제목 "핵심 변환식" → "청자 관점 변환식"으로 변경. §6 신설 — pad_dot(감정 PAD, 자극 PAD) 공명 계산: 호출 시점(09 변환 후·감정 수만큼 반복), 공식, D 격차 배율, 09/08 비교 대상 차이와 이중 적용 주의. 기존 §6 실제 코드→§7, §7 변경 이력→§8.</td></tr>
+    <tr><td class="mono">v1.1.0</td><td class="mono">2026-06-05T03:04:02+09:00</td><td>§2 핵심 변환식 대폭 보강 — 약자 풀이(P/A/D, _S/_L), 세 손잡이(sign·mag·coef) 역할표, SignClassifier 개념 설명(코드 외), A·D 부호 고정 이유와 개선 예고 추가. 문서 버전/변경이력 헤더 신설.</td></tr>
+    <tr><td class="mono">v1.0.0</td><td class="mono">최초</td><td>09 대사→PAD 변환 문서 최초 작성 — 파이프라인, 변환식, 2경로, 워크드 예시, fallback, 코드.</td></tr>
+  </table>
 
   <div class="pager">
     <a href="08-stimulus.html"><span class="dir">◀ PREV</span>08 · PAD 자극 경로</a>

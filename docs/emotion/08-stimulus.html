@@ -15,6 +15,7 @@
   </div>
 
   <h1>PAD 자극 경로</h1>
+  <p style="color:var(--faint);font-size:.85em;margin-top:-.4em">v1.1.0 · 수정 2026-06-05T03:53:11+09:00</p>
   <p class="lead">OCC를 <strong>우회</strong>하는 두 번째 계보. 상황을 재평가하지 않고,
   Player 발화의 PAD 3축으로 <em>기존 감정 강도만</em> 직접 증폭·약화한다. 새 감정은 생성하지 않는다.</p>
 
@@ -142,6 +143,13 @@ Scene 있고 check_trigger(stimulated) 충족?
 }
 <span class="kw">self</span>.<span class="fn">process_simple_stimulus</span>(...)            <span class="cm">// 단순 자극</span></pre>
   </details>
+
+  <h2><span class="seal">6</span>변경 이력</h2>
+  <table class="tbl">
+    <tr><th>버전</th><th>변경일시 (KST)</th><th>변경 내역</th></tr>
+    <tr><td class="mono">v1.1.0</td><td class="mono">2026-06-05T03:53:11+09:00</td><td>문서 버전/변경이력 헤더 신설. pad_dot 상세(공식·D 격차 배율)의 본적을 08로 확정 — 09는 자극 PAD 생성, 08은 자극 먹이기로 역할 경계 명확화(B안). §2 stimulus 출처는 09 참조.</td></tr>
+    <tr><td class="mono">v1.0.0</td><td class="mono">최초</td><td>08 PAD 자극 경로 문서 최초 작성 — 입력 Pad 3축, apply_stimulus 공식, pad_dot 두 인자, StimulusPolicy 분기, 워크드 예시, 코드.</td></tr>
+  </table>
 
   <div class="pager">
     <a href="07-routing-matrix.html"><span class="dir">◀ PREV</span>07 · 기준값 라우팅</a>

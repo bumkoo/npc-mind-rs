@@ -522,16 +522,18 @@ impl crate::ports::PersonalityProfile for HexacoProfile {
 impl crate::ports::AppraisalWeights for HexacoProfile {
     /// 사건-자기-현재: Joy, Distress
     ///
-    /// d > 0 (좋은 일): E(예민→증폭) + X(사교→기쁨증폭)
-    /// d < 0 (나쁜 일): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
+    /// d >= 0 (좋은 일 → Joy): X(사교→기쁨증폭) — 긍정 정서는 외향성 주도
+    /// d < 0 (나쁜 일 → Distress): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
     fn desirability_self_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let mut e = avg.e.effect(W_STANDARD);
 
-        e += if desirability >= 0.0 {
+        // 정서성(E)은 부정 분기(Distress)에만 — 긍정 정서는 X가 주도 (Phase 2.4.1)
+        let e = if desirability >= 0.0 {
             avg.x.effect(W_STANDARD)
         } else {
-            -avg.a.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_STANDARD)
+            avg.e.effect(W_STANDARD)
+                - avg.a.effect(W_STANDARD)
+                - self.conscientiousness.prudence.effect(W_STANDARD)
         };
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
@@ -539,16 +541,16 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 사건-자기-전망: Hope, Fear
     ///
-    /// d > 0 (희망): E(예민→증폭) + X(낙관→증폭)
-    /// d < 0 (공포): E(예민→증폭) + Fear(겁→증폭)
+    /// d >= 0 (희망 → Hope): X(낙관→증폭) - Pru(신중→기대억제) — 기대는 외향성 주도
+    /// d < 0 (공포 → Fear): E(예민→증폭) + Fear(겁→증폭)
     fn desirability_prospect_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let mut e = avg.e.effect(W_STANDARD);
 
-        e += if desirability >= 0.0 {
+        // 정서성(E)은 부정 분기(Fear)에만 — 기대(Hope)는 X가 주도 (Phase 2.4.1)
+        let e = if desirability >= 0.0 {
             avg.x.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD)
         } else {
-            self.emotionality.fearfulness.effect(W_STANDARD)
+            avg.e.effect(W_STANDARD) + self.emotionality.fearfulness.effect(W_STANDARD)
         };
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
@@ -556,10 +558,18 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 사건-자기-확인: Satisfaction, Disappointment, Relief, FearsConfirmed
     ///
-    /// E(예민→크게 반응) - Pru(신중→충격 감소, 이미 마음의 준비)
-    fn desirability_confirmation_weight(&self, _desirability: f32) -> f32 {
+    /// fear축(Relief/FearsConfirmed): E(예민→크게 반응) - Pru(신중→충격 감소) — 불변
+    /// hope축(Satisfaction/Disappointment): X(낙관→크게 반응) - Pru
+    fn desirability_confirmation_weight(&self, is_fear_axis: bool) -> f32 {
         let avg = self.dimension_averages();
-        let e = avg.e.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD);
+
+        // fear-lifecycle은 E, hope-lifecycle은 X가 확인 강도를 주도 (Phase 2.4.1)
+        let driver = if is_fear_axis {
+            avg.e.effect(W_STANDARD)
+        } else {
+            avg.x.effect(W_STANDARD)
+        };
+        let e = driver - self.conscientiousness.prudence.effect(W_MILD);
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
     }
@@ -600,16 +610,35 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 행동 평가: Pride, Shame, Admiration, Reproach
     ///
-    /// 공통: C(성실→기준엄격)
-    /// 자기+칭찬(Pride): -Mod(겸손→자긍심억제)
-    /// 자기+비난(Shame): +Mod(겸손→수치심증폭, 내 탓이오)
-    /// 타인+칭찬(Admiration): +Gen(온화→감탄증폭)
-    /// 타인+비난(Reproach): -Gen(온화→비난억제)
+    /// 성실성 기여 (성실성 평균 경유 prudence 오염 제거 — org·prud 제외, Phase 2.4.1):
+    ///   diligence 균일(0.10) + perfectionism 비대칭
+    ///   (Pride −0.10 / Shame +0.20 / Admiration +0.15 / Reproach +0.20)
+    /// 분기항(기존 유지):
+    ///   자기+칭찬(Pride) -Mod / 자기+비난(Shame) +Mod
+    ///   타인+칭찬(Admiration) +Gen / 타인+비난(Reproach) -Gen
     fn praiseworthiness_weight(&self, is_self: bool, praiseworthiness: f32) -> f32 {
-        let avg = self.dimension_averages();
-        let mut e = avg.c.effect(W_STANDARD);
+        let c = &self.conscientiousness;
 
-        e += if is_self {
+        // 성실성 기여 — diligence 균일(0.10)
+        let dil = c.diligence.effect(0.10);
+
+        // perfectionism 비대칭 — sign은 effect 밖 적용(modesty/gentleness 관례 일치)
+        let perf = if is_self {
+            if praiseworthiness > 0.0 {
+                -c.perfectionism.effect(0.10) // Pride −0.10
+            } else {
+                c.perfectionism.effect(0.20) // Shame +0.20
+            }
+        } else {
+            if praiseworthiness > 0.0 {
+                c.perfectionism.effect(0.15) // Admiration +0.15
+            } else {
+                c.perfectionism.effect(0.20) // Reproach +0.20
+            }
+        };
+
+        // 분기항(기존 유지) — 자기=modesty, 타인=gentleness
+        let branch = if is_self {
             if praiseworthiness > 0.0 {
                 -self.honesty_humility.modesty.effect(W_STANDARD)
             } else {
@@ -623,7 +652,7 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
             }
         };
 
-        finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
+        finalize_weight(BASE_SELF, dil + perf + branch, CLAMP_STANDARD)
     }
 
     /// 대상 호불호: Love, Hate
@@ -717,7 +746,7 @@ mod tests {
 
     #[test]
     fn desirability_self_weight_uses_different_branches_by_sign() {
-        // d>=0: E(+) + X(+) 사용. d<0: E(+) - A(-) - Pru(-) 사용.
+        // d>=0: X(+)만 사용. d<0: E(+) - A(-) - Pru(-) 사용. (Phase 2.4.1: E를 음수 분기로 이동)
         // 같은 프로필에서 분기에 따라 결과가 달라야 함.
         let mut p = HexacoProfile::neutral();
         p.extraversion.social_self_esteem = s(1.0);
