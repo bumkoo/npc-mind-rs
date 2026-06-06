@@ -522,16 +522,18 @@ impl crate::ports::PersonalityProfile for HexacoProfile {
 impl crate::ports::AppraisalWeights for HexacoProfile {
     /// 사건-자기-현재: Joy, Distress
     ///
-    /// d > 0 (좋은 일): E(예민→증폭) + X(사교→기쁨증폭)
-    /// d < 0 (나쁜 일): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
+    /// d >= 0 (좋은 일 → Joy): X(사교→기쁨증폭) — 긍정 정서는 외향성 주도
+    /// d < 0 (나쁜 일 → Distress): E(예민→증폭) - A(원만→억제) - Pru(신중→억제)
     fn desirability_self_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let mut e = avg.e.effect(W_STANDARD);
 
-        e += if desirability >= 0.0 {
+        // 정서성(E)은 부정 분기(Distress)에만 — 긍정 정서는 X가 주도 (Phase 2.4.1)
+        let e = if desirability >= 0.0 {
             avg.x.effect(W_STANDARD)
         } else {
-            -avg.a.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_STANDARD)
+            avg.e.effect(W_STANDARD)
+                - avg.a.effect(W_STANDARD)
+                - self.conscientiousness.prudence.effect(W_STANDARD)
         };
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
@@ -539,16 +541,16 @@ impl crate::ports::AppraisalWeights for HexacoProfile {
 
     /// 사건-자기-전망: Hope, Fear
     ///
-    /// d > 0 (희망): E(예민→증폭) + X(낙관→증폭)
-    /// d < 0 (공포): E(예민→증폭) + Fear(겁→증폭)
+    /// d >= 0 (희망 → Hope): X(낙관→증폭) - Pru(신중→기대억제) — 기대는 외향성 주도
+    /// d < 0 (공포 → Fear): E(예민→증폭) + Fear(겁→증폭)
     fn desirability_prospect_weight(&self, desirability: f32) -> f32 {
         let avg = self.dimension_averages();
-        let mut e = avg.e.effect(W_STANDARD);
 
-        e += if desirability >= 0.0 {
+        // 정서성(E)은 부정 분기(Fear)에만 — 기대(Hope)는 X가 주도 (Phase 2.4.1)
+        let e = if desirability >= 0.0 {
             avg.x.effect(W_STANDARD) - self.conscientiousness.prudence.effect(W_MILD)
         } else {
-            self.emotionality.fearfulness.effect(W_STANDARD)
+            avg.e.effect(W_STANDARD) + self.emotionality.fearfulness.effect(W_STANDARD)
         };
 
         finalize_weight(BASE_SELF, e, CLAMP_STANDARD)
@@ -717,7 +719,7 @@ mod tests {
 
     #[test]
     fn desirability_self_weight_uses_different_branches_by_sign() {
-        // d>=0: E(+) + X(+) 사용. d<0: E(+) - A(-) - Pru(-) 사용.
+        // d>=0: X(+)만 사용. d<0: E(+) - A(-) - Pru(-) 사용. (Phase 2.4.1: E를 음수 분기로 이동)
         // 같은 프로필에서 분기에 따라 결과가 달라야 함.
         let mut p = HexacoProfile::neutral();
         p.extraversion.social_self_esteem = s(1.0);
