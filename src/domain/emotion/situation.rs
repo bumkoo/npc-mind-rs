@@ -33,24 +33,21 @@ use serde::{Deserialize, Serialize};
 /// `Relationship::modifiers()`로 생성한다.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct RelationshipModifiers {
-    /// 감정 반응 배율 — affinity 기반 (가까울수록 감정 반응 강화)
-    pub intensity_multiplier: f32,
-    /// 신뢰도 감정 배율 — trust 기반 (신뢰할수록 감정 증폭)
-    pub trust_modifier: f32,
-    /// 공감 관계 배율 — affinity 기반 (가까울수록 공감 증폭)
-    pub empathy_modifier: f32,
-    /// 적대 관계 배율 — affinity 기반 (적대적일수록 적대감 증폭)
-    pub hostility_modifier: f32,
+    /// 감정 볼륨 배율 — trust 기반 (신뢰할수록 감정 증폭). 타인 행동(Admiration/Reproach)에 공통.
+    pub magnitude: f32,
+    /// 따뜻함 렌즈 — affinity·respect↑ / wariness↓ (Admiration·HappyFor·Pity 증폭)
+    pub tilt_warm: f32,
+    /// 차가움 렌즈 — affinity·respect↓ / wariness↑ (Reproach·Resentment·Gloating 증폭)
+    pub tilt_cold: f32,
 }
 
 impl RelationshipModifiers {
     /// 중립 관계의 modifier (모든 배율 1.0)
     pub fn neutral() -> Self {
         Self {
-            intensity_multiplier: 1.0,
-            trust_modifier: 1.0,
-            empathy_modifier: 1.0,
-            hostility_modifier: 1.0,
+            magnitude: 1.0,
+            tilt_warm: 1.0,
+            tilt_cold: 1.0,
         }
     }
 }

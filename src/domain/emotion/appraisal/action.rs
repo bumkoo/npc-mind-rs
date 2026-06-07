@@ -31,7 +31,9 @@ pub fn appraise<P: AppraisalWeights>(
             // 타인 행동 (Admiration, Reproach)
             let mods = mods.as_ref().unwrap_or(dialogue_modifiers);
             let w = p.praiseworthiness_weight(false, pw);
-            let modifier = mods.intensity_multiplier * mods.trust_modifier;
+            // 칭찬(pw≥0) → 따뜻함 렌즈, 비난(pw<0) → 차가움 렌즈. magnitude(trust 볼륨)는 공통.
+            let tilt = if pw >= 0.0 { mods.tilt_warm } else { mods.tilt_cold };
+            let modifier = mods.magnitude * tilt;
             add_valence(
                 state,
                 EmotionType::Admiration,

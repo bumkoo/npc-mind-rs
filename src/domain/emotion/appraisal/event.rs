@@ -50,9 +50,9 @@ pub fn appraise<P: AppraisalWeights>(p: &P, state: &mut EmotionState, event: &Ev
         let d_other = other.desirability;
         let other_ctx = format!("{} (대상: {})", ctx, other.target_id);
 
-        // 공감 기반 (HappyFor, Pity)
+        // 공감 기반 (HappyFor, Pity) — 따뜻함 렌즈 (magnitude 미적용, B-D2)
         let emp_w = p.empathy_weight(d_other);
-        let emp_mod = other.modifiers.empathy_modifier;
+        let emp_mod = other.modifiers.tilt_warm;
         add_valence(
             state,
             EmotionType::HappyFor,
@@ -63,9 +63,9 @@ pub fn appraise<P: AppraisalWeights>(p: &P, state: &mut EmotionState, event: &Ev
             &other_ctx,
         );
 
-        // 적대 기반 (Resentment, Gloating)
+        // 적대 기반 (Resentment, Gloating) — 차가움 렌즈 (magnitude 미적용, B-D2)
         let hos_w = p.hostility_weight(d_other);
-        let hos_mod = other.modifiers.hostility_modifier;
+        let hos_mod = other.modifiers.tilt_cold;
         add_valence(
             state,
             EmotionType::Resentment,
