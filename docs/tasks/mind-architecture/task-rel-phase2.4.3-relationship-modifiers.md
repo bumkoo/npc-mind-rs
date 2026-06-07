@@ -1,6 +1,6 @@
 # Phase 2.4.3 — RelationshipModifiers 통합 재설계
 
-> 🟢 **FROZEN** (2026-06-07 · check-in ① 승인). Claude Code 핸드오프.
+> 🟢 **종결** (2026-06-07 · check-in ② 검증 통과). 구현 머지 `51ec65a`. `cargo test --lib` 555P/0F. ⑦ 발견 → Phase 2.4.5 분리.
 > 입력 디자인 문서: `docs/emotion/06-relationship.html §5` (v0.8 / 2026-06-05 freeze)
 > 의존: Phase 2.4.2 종결 (commit `ad92932`)
 > Git: Claude 직접 커밋 (staging 의도 파일만, push는 명시 지시 시)
