@@ -153,5 +153,6 @@ pub const REL_MOD_CEIL: f32  = 1.5;                // 신규
 ## §7 비스코프
 
 - **(B) wariness 시간 감쇠 / Scene 경계 1회 적용** → 후속(B-D3, 로드맵 §5 "호출 횟수 비의존" 트랙).
-- **PerceivedSituation 층** (행동 심각도 임계 "큰 배신" + praiseworthiness 부호 재해석) → Phase 2.5 이후 별도.
+- **pw 연속화 + 성격 의존 배신** → **Phase 2.4.5** (신설 2026-06-07). 구현 중 발견: 의형제(magnitude 1.24 × tilt_cold 0.73) 순배율 **0.905 < 1.0** — 봐줌이 배신감 우세. + pw 부호 이진 → 경계 불연속(1.575↔0.905 점프). 둘 다 declarative 무관·소비 로직이라 2.4 묶음 편입.
+- **PerceivedSituation "큰 배신" 심각도 임계** → Phase 2.5 이후 (declarative Channel 1 의존).
 - **O+ Unconv. hexaco_modifier placeholder** → (B) 영역, 무관.
