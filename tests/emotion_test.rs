@@ -293,26 +293,52 @@ fn 감정_significant_필터링() {
 // ===========================================================================
 
 #[test]
-fn 의형제의_배신이_남의_배신보다_분노가_큼() {
+fn 배신_렌즈_분해_신뢰는_배신감_친밀은_봐줌() {
+    // Phase 2.4.3 ⑦ — 배신감/봐줌을 두 채널로 분리:
+    //   trust → magnitude   (배신감↑: 신뢰하던 자의 배신은 더 아프다)
+    //   affinity → tilt_cold (봐줌↓: 가까운 자의 잘못은 관용한다)
+    // 둘 다 높은 "의형제"는 두 신호가 상쇄(초기 weight에선 affinity 우세) → weight 미세조정은
+    // narrative 결과로만 (KICKOFF). 본 테스트는 두 신호가 *각각* 작동함을 격리 검증.
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
     let situation = 배신_상황();
 
-    let brother = RelationshipBuilder::new("gyo_ryong", "brother")
-        .affinity(axis(0.9))
+    let trusting = RelationshipBuilder::new("gyo_ryong", "trusting")
         .trust(axis(0.8))
+        .build();
+    let affectionate = RelationshipBuilder::new("gyo_ryong", "affectionate")
+        .affinity(axis(0.9))
         .build();
     let stranger = Relationship::neutral("gyo_ryong", "stranger");
 
-    let state_brother =
-        AppraisalEngine.appraise(yu.personality(), &situation, &brother.modifiers());
-    let state_stranger =
-        AppraisalEngine.appraise(yu.personality(), &situation, &stranger.modifiers());
+    let anger = |rel: &Relationship| {
+        find_emotion(
+            &AppraisalEngine.appraise(yu.personality(), &situation, &rel.modifiers()),
+            EmotionType::Anger,
+        )
+        .unwrap()
+    };
 
-    let anger_brother = find_emotion(&state_brother, EmotionType::Anger).unwrap();
-    let anger_stranger = find_emotion(&state_stranger, EmotionType::Anger).unwrap();
+    assert!(
+        anger(&trusting) > anger(&stranger),
+        "높은 신뢰의 배신 → 배신감 (magnitude↑)"
+    );
+    assert!(
+        anger(&affectionate) < anger(&stranger),
+        "강한 친밀의 배신 → 봐줌 (tilt_cold↓)"
+    );
 
-    assert!(anger_brother > anger_stranger);
+    // ⑦ 유지 결정 (2026-06-07): 의형제(신뢰+친밀 동시 높음)는 현 weight에서
+    // 봐줌(affinity→tilt_cold)이 배신감(trust→magnitude)을 상쇄 우세 → 배신 분노가 타인 이하.
+    // weight 미세조정(narrative 판단)이 들어오기 전까지 본 거동을 회귀 가드로 고정한다.
+    let sworn_brother = RelationshipBuilder::new("gyo_ryong", "sworn_brother")
+        .trust(axis(0.8))
+        .affinity(axis(0.9))
+        .build();
+    assert!(
+        anger(&sworn_brother) < anger(&stranger),
+        "의형제(신뢰+친밀): 봐줌 우세 — ⑦ 현행 유지 (재조정 시 본 가드가 신호)"
+    );
 }
 
 #[test]
@@ -902,7 +928,9 @@ fn 타인_행동_admiration은_closeness에_증폭() {
 }
 
 #[test]
-fn 타인_행동_reproach는_closeness에_증폭() {
+fn 타인_행동_reproach는_친밀할수록_봐줌으로_억제() {
+    // Phase 2.4.3: 높은 affinity → tilt_cold↓ → Reproach 억제 ("봐줌").
+    // (구 모델은 closeness가 reproach를 증폭했으나, 렌즈 분리로 친밀=관용으로 전환.)
     let ctx = TestContext::new();
     let li = &ctx.mu_baek;
     let close = RelationshipBuilder::new("mu_baek", "close")
@@ -918,7 +946,7 @@ fn 타인_행동_reproach는_closeness에_증폭() {
     let repr_close = find_emotion(&state_close, EmotionType::Reproach).unwrap();
     let repr_distant = find_emotion(&state_distant, EmotionType::Reproach).unwrap();
 
-    assert!(repr_close > repr_distant);
+    assert!(repr_close < repr_distant);
 }
 
 // --- 자기 compound: closeness 변해도 Gratification/Remorse 동일 ---
@@ -1033,7 +1061,9 @@ fn 타인_compound_gratitude는_closeness에_증폭() {
 }
 
 #[test]
-fn 타인_compound_anger는_closeness에_증폭() {
+fn 타인_compound_anger는_친밀할수록_봐줌으로_억제() {
+    // Phase 2.4.3: Anger = compound(Reproach, Distress). Reproach가 친밀(affinity)에
+    // tilt_cold로 억제되므로 compound Anger도 함께 억제된다 ("봐줌").
     let ctx = TestContext::new();
     let yu = &ctx.gyo_ryong;
     let close = RelationshipBuilder::new("gyo_ryong", "close")
@@ -1048,7 +1078,7 @@ fn 타인_compound_anger는_closeness에_증폭() {
     let anger_close = find_emotion(&state_close, EmotionType::Anger).unwrap();
     let anger_distant = find_emotion(&state_distant, EmotionType::Anger).unwrap();
 
-    assert!(anger_close > anger_distant);
+    assert!(anger_close < anger_distant);
 }
 
 // ===========================================================================

@@ -165,17 +165,23 @@ impl Relationship {
 
     /// 감정 평가에 필요한 modifier 값을 사전 계산.
     ///
-    /// **Phase 2.3 §A**: ±100 raw native 동작. tuning profile의 `rel_affinity_*_weight`
-    /// + `rel_trust_emotion_weight`가 1/100 스케일이므로 raw 값과 직접 곱.
+    /// **Phase 2.4.3**: trust 볼륨(`magnitude`) + 두 렌즈(`tilt_warm`/`tilt_cold`)로 통합.
+    /// 4축 모두 ±100 raw native (weight 1/100 스케일 → raw 값과 직접 곱). magnitude·tilt
+    /// 각 그룹을 단일 clamp[FLOOR, CEIL]에 가둔다(B-D4). 소비처(action.rs/event.rs)가
+    /// 가지별로 warm/cold 렌즈를 선택한다.
     pub fn modifiers(&self) -> RelationshipModifiers {
-        let affinity = self.affinity.value(); // ±100 raw
-        let trust = self.trust.value();
+        let trust = self.trust.value(); // ±100 raw
+        let affinity = self.affinity.value();
+        let respect = self.respect.value();
+        let wariness = self.wariness.value();
         let p = profile();
+        let clamp = |x: f32| x.clamp(p.rel_mod_floor, p.rel_mod_ceil);
+        let lens = affinity * p.rel_affinity_tilt_weight + respect * p.rel_respect_tilt_weight
+            - wariness * p.rel_wariness_tilt_weight;
         RelationshipModifiers {
-            intensity_multiplier: (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0),
-            trust_modifier: 1.0 + trust * p.rel_trust_emotion_weight,
-            empathy_modifier: (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0),
-            hostility_modifier: (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0),
+            magnitude: clamp(1.0 + trust * p.rel_trust_emotion_weight),
+            tilt_warm: clamp(1.0 + lens),
+            tilt_cold: clamp(1.0 - lens),
         }
     }
 }
@@ -357,37 +363,63 @@ mod tests {
     }
 
     #[test]
-    fn modifiers_uses_affinity_input_with_preserved_field_names() {
+    fn modifiers_computes_magnitude_and_tilts_from_four_axes() {
+        // 4축 모두 비극단 → clamp 미발동, 공식 직접 검증.
         let r = Relationship::new(
             "a",
             "b",
-            AxisScore::new(50.0),
-            AxisScore::new(80.0),
-            AxisScore::NEUTRAL,
-            WarinessScore::NEUTRAL,
+            AxisScore::new(50.0),  // trust → magnitude
+            AxisScore::new(80.0),  // affinity → tilt
+            AxisScore::new(30.0),  // respect → tilt
+            WarinessScore::new(20.0), // wariness → tilt (warm−/cold+)
         );
         let m = r.modifiers();
         let p = profile();
-        let affinity = 80.0_f32;
-        let trust = 50.0_f32;
-        let expected_intensity = (1.0 + affinity * p.rel_affinity_intensity_weight).max(0.0);
-        let expected_trust = 1.0 + trust * p.rel_trust_emotion_weight;
-        let expected_empathy = (1.0 + affinity * p.rel_affinity_empathy_weight).max(0.0);
-        let expected_hostility = (1.0 - affinity * p.rel_affinity_hostility_weight).max(0.0);
-        assert!((m.intensity_multiplier - expected_intensity).abs() < 1e-6);
-        assert!((m.trust_modifier - expected_trust).abs() < 1e-6);
-        assert!((m.empathy_modifier - expected_empathy).abs() < 1e-6);
-        assert!((m.hostility_modifier - expected_hostility).abs() < 1e-6);
+        let (trust, affinity, respect, wariness) = (50.0_f32, 80.0, 30.0, 20.0);
+        let lens = affinity * p.rel_affinity_tilt_weight + respect * p.rel_respect_tilt_weight
+            - wariness * p.rel_wariness_tilt_weight;
+        let exp_mag = 1.0 + trust * p.rel_trust_emotion_weight;
+        assert!((m.magnitude - exp_mag).abs() < 1e-6);
+        assert!((m.tilt_warm - (1.0 + lens)).abs() < 1e-6);
+        assert!((m.tilt_cold - (1.0 - lens)).abs() < 1e-6);
+        // 친화·존경 우세 관계 → 따뜻함 렌즈 > 1 > 차가움 렌즈.
+        assert!(m.tilt_warm > 1.0 && m.tilt_cold < 1.0);
+        // warm/cold 는 lens 기준 대칭 (합 = 2.0).
+        assert!((m.tilt_warm + m.tilt_cold - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn modifiers_clamp_engages_at_hostile_extreme() {
+        // affinity/respect −100 + wariness +100 → tilt_warm 0.2→FLOOR, tilt_cold 1.8→CEIL (B-D4).
+        let p = profile();
+        let r = Relationship::new(
+            "a",
+            "b",
+            AxisScore::new(-100.0),
+            AxisScore::new(-100.0),
+            AxisScore::new(-100.0),
+            WarinessScore::new(100.0),
+        );
+        let m = r.modifiers();
+        assert!(
+            (m.tilt_warm - p.rel_mod_floor).abs() < 1e-6,
+            "tilt_warm clamped to FLOOR: got {}",
+            m.tilt_warm
+        );
+        assert!(
+            (m.tilt_cold - p.rel_mod_ceil).abs() < 1e-6,
+            "tilt_cold clamped to CEIL: got {}",
+            m.tilt_cold
+        );
     }
 
     #[test]
     fn neutral_modifiers_all_unit() {
         let r = Relationship::neutral("a", "b");
         let m = r.modifiers();
-        assert!((m.intensity_multiplier - 1.0).abs() < 1e-6);
-        assert!((m.trust_modifier - 1.0).abs() < 1e-6);
-        assert!((m.empathy_modifier - 1.0).abs() < 1e-6);
-        assert!((m.hostility_modifier - 1.0).abs() < 1e-6);
+        assert!((m.magnitude - 1.0).abs() < 1e-6);
+        assert!((m.tilt_warm - 1.0).abs() < 1e-6);
+        assert!((m.tilt_cold - 1.0).abs() < 1e-6);
     }
 
     #[test]

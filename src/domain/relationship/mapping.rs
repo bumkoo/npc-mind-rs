@@ -792,13 +792,15 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // 2.5 modifiers() 1 hop 회귀 가드 — Stage W1
-    //   회고 §W1: 4축 → modifiers() 4 필드의 hop 검증
-    //   (스펙 task-rel-phase2-stage2-retrospective-cleanup §4)
+    // 2.5 modifiers() 1 hop 회귀 가드 — Stage W1 → Phase 2.4.3 재작성
+    //   회고 §W1: 4축 → modifiers() hop 검증. Phase 2.4.3에서 modifiers()가
+    //   3 필드(magnitude/tilt_warm/tilt_cold)로 통합되며 respect·wariness가 tilt에 편입.
+    //   여기 3 테스트는 *modifiers() 산출*(Phase 2.4.3 범위)을 검증한다 — mapping 로직
+    //   본체는 무변경. (스펙 task-rel-phase2.4.3-relationship-modifiers.md §4.2)
     // -----------------------------------------------------------------------
 
     #[test]
-    fn beat_rel_modifiers_affinity_channel_after_anger() {
+    fn beat_rel_modifiers_tilt_channels_after_anger() {
         let hexaco = hexaco_lin_chong();
         let rel = rel_lin_chong_pre_shanshenmiao();
         let mut beat_rel = rel.clone();
@@ -808,24 +810,33 @@ mod tests {
         let before = rel.modifiers();
         let after = beat_rel.modifiers();
 
-        // (1) 방향 회귀 — affinity 감소 → 친화 채널 감소·적대 채널 증가
-        assert!(after.intensity_multiplier < before.intensity_multiplier);
-        assert!(after.empathy_modifier < before.empathy_modifier);
-        assert!(after.hostility_modifier > before.hostility_modifier);
+        // (1) 방향 회귀 — 분노 후 affinity·respect↓·wariness↑ → 따뜻함 렌즈↓·차가움 렌즈↑.
+        assert!(after.tilt_warm < before.tilt_warm);
+        assert!(after.tilt_cold > before.tilt_cold);
 
-        // (2) 정량 회귀 — 회고 §S2 affinity 28.6 (±100 native, Phase 2.3 §D 재조정)
+        // (2) 정량 회귀 — 실제 4축에서 lens 직접 산출 (modifiers() 공식 정합).
         let p = profile();
-        let expected = (1.0 + 28.6 * p.rel_affinity_intensity_weight).max(0.0);
+        let lens = beat_rel.affinity().value() * p.rel_affinity_tilt_weight
+            + beat_rel.respect().value() * p.rel_respect_tilt_weight
+            - beat_rel.wariness().value() * p.rel_wariness_tilt_weight;
+        let expected_warm = (1.0 + lens).clamp(p.rel_mod_floor, p.rel_mod_ceil);
         assert!(
-            (after.intensity_multiplier - expected).abs() < 1e-3,
+            (after.tilt_warm - expected_warm).abs() < 1e-3,
             "drift: got {}, expected {}",
-            after.intensity_multiplier,
-            expected
+            after.tilt_warm,
+            expected_warm
+        );
+
+        // (3) mapping drift anchor (회고 §S2) — 분노 후 affinity ≈ 28.6 유지 (mapping 무변경).
+        assert!(
+            (beat_rel.affinity().value() - 28.6).abs() < 0.1,
+            "affinity drift: {}",
+            beat_rel.affinity().value()
         );
     }
 
     #[test]
-    fn beat_rel_modifiers_trust_channel_after_anger() {
+    fn beat_rel_modifiers_magnitude_channel_after_anger() {
         let hexaco = hexaco_lin_chong();
         let rel = rel_lin_chong_pre_shanshenmiao();
         let mut beat_rel = rel.clone();
@@ -835,25 +846,25 @@ mod tests {
         let before = rel.modifiers();
         let after = beat_rel.modifiers();
 
-        assert!(after.trust_modifier < before.trust_modifier);
+        // magnitude = trust 볼륨 (was: trust_modifier). 분노로 trust↓ → magnitude↓.
+        assert!(after.magnitude < before.magnitude);
 
-        // 회고 §S2 trust 15.8 (±100 native, Phase 2.3 §D 재조정)
+        // 회고 §S2 trust 15.8 (±100 native) → magnitude = 1 + 15.8 × w_t (clamp 미발동).
         let p = profile();
         let expected = 1.0 + 15.8 * p.rel_trust_emotion_weight;
         assert!(
-            (after.trust_modifier - expected).abs() < 1e-3,
+            (after.magnitude - expected).abs() < 1e-3,
             "drift: got {}, expected {}",
-            after.trust_modifier,
+            after.magnitude,
             expected
         );
     }
 
     #[test]
-    fn beat_rel_modifiers_admiration_no_leak_until_phase_2_3() {
-        // Admiration base_delta = { trust 0, affinity 0, respect +20, wariness 0 }
-        // → modifier 4 필드 *완전 불변* 이어야 함.
-        // Phase 2.3에서 respect를 modifier에 연결하면 *이 테스트가 깨지는 게 정상* —
-        // "Phase 2.3 시작 시 spec 재확인" 신호.
+    fn beat_rel_modifiers_admiration_respect_leaks_into_tilt() {
+        // Admiration base_delta = { trust 0, affinity 0, respect +20, wariness 0 }.
+        // Phase 2.4.3에서 respect가 tilt에 편입 → 따뜻함↑·차가움↓. magnitude는 trust 의존이라 불변.
+        // (구 테스트 `..._no_leak_until_phase_2_3` 가 예고한 "respect 연결 시 깨짐"의 정상 전이.)
         let hexaco = neutral_hexaco();
         let rel = rel_lin_chong_pre_shanshenmiao();
         let mut beat_rel = rel.clone();
@@ -863,10 +874,11 @@ mod tests {
         let before = rel.modifiers();
         let after = beat_rel.modifiers();
 
-        assert_eq!(after.intensity_multiplier, before.intensity_multiplier);
-        assert_eq!(after.trust_modifier, before.trust_modifier);
-        assert_eq!(after.empathy_modifier, before.empathy_modifier);
-        assert_eq!(after.hostility_modifier, before.hostility_modifier);
+        // trust 미변동 → magnitude 불변.
+        assert!((after.magnitude - before.magnitude).abs() < 1e-6);
+        // respect↑ → 따뜻함 렌즈↑ / 차가움 렌즈↓.
+        assert!(after.tilt_warm > before.tilt_warm);
+        assert!(after.tilt_cold < before.tilt_cold);
     }
 
     // -----------------------------------------------------------------------

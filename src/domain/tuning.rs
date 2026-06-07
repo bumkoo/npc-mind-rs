@@ -67,12 +67,15 @@ mod defaults {
     pub const EMOTION_THRESHOLD: f32 = 0.2;
     pub const TRAIT_THRESHOLD: f32 = 0.3;
 
-    // 관계 변조 — Phase 2.3 §A: ±100 native 전환 (Relationship::modifiers의 ÷100 제거에 동반)
-    // 기존 ±1.0 가정 weight × 1/100. 값 동치: (raw/100) × w_old ≡ raw × (w_old/100).
-    pub const REL_AFFINITY_INTENSITY_WEIGHT: f32 = 0.005;
-    pub const REL_TRUST_EMOTION_WEIGHT: f32 = 0.003;
-    pub const REL_AFFINITY_EMPATHY_WEIGHT: f32 = 0.003;
-    pub const REL_AFFINITY_HOSTILITY_WEIGHT: f32 = 0.003;
+    // 관계 변조 — Phase 2.4.3: magnitude(trust 볼륨) + 두 렌즈(tilt_warm/tilt_cold) 재설계.
+    // ±100 raw native (weight 1/100 스케일이라 raw 값과 직접 곱). 단일축 ±100에서
+    // tilt 합 ≈ ±0.5 → clamp[FLOOR,CEIL] 직전. 최종 곱(magnitude×tilt) ∈ [0.25, 2.25].
+    pub const REL_TRUST_EMOTION_WEIGHT: f32 = 0.003; // magnitude (trust 볼륨)
+    pub const REL_AFFINITY_TILT_WEIGHT: f32 = 0.003; // tilt — affinity 기여 (warm+/cold−)
+    pub const REL_RESPECT_TILT_WEIGHT: f32 = 0.002; // tilt — respect 기여 (warm+/cold−)
+    pub const REL_WARINESS_TILT_WEIGHT: f32 = 0.003; // tilt — wariness 기여 (warm−/cold+)
+    pub const REL_MOD_FLOOR: f32 = 0.5; // magnitude·tilt 공통 clamp 하한
+    pub const REL_MOD_CEIL: f32 = 1.5; // magnitude·tilt 공통 clamp 상한
 
     // Level 임계값 — Phase 2.3 §A: ±100 native (RelationshipSnapshot::from_score 입력 ±100 직통)
     pub const LEVEL_VERY_HIGH_THRESHOLD: f32 = 60.0;
@@ -153,6 +156,10 @@ mod defaults {
 
         assert!(MEMORY_RELATIONSHIP_DELTA_THRESHOLD > 0.0);
         assert!(MEMORY_RETENTION_CUTOFF > 0.0 && MEMORY_RETENTION_CUTOFF < 1.0);
+
+        // 관계 변조 clamp — neutral(1.0)이 clamp 범위 내에 있어야 한다.
+        assert!(REL_MOD_FLOOR > 0.0 && REL_MOD_FLOOR <= 1.0);
+        assert!(REL_MOD_CEIL >= 1.0 && REL_MOD_CEIL > REL_MOD_FLOOR);
         assert!(MEMORY_PUSH_TOP_K > 0);
         assert!(MEMORY_PROMPT_TOKEN_BUDGET > 0);
 
@@ -199,11 +206,13 @@ pub struct TuningProfile {
     pub emotion_threshold: f32,
     pub trait_threshold: f32,
 
-    // === 관계 변조 ===
-    pub rel_affinity_intensity_weight: f32,
+    // === 관계 변조 (Phase 2.4.3 — magnitude + tilt_warm/tilt_cold) ===
     pub rel_trust_emotion_weight: f32,
-    pub rel_affinity_empathy_weight: f32,
-    pub rel_affinity_hostility_weight: f32,
+    pub rel_affinity_tilt_weight: f32,
+    pub rel_respect_tilt_weight: f32,
+    pub rel_wariness_tilt_weight: f32,
+    pub rel_mod_floor: f32,
+    pub rel_mod_ceil: f32,
 
     // === Level 임계값 ===
     pub level_very_high_threshold: f32,
@@ -276,10 +285,12 @@ impl Default for TuningProfile {
             emotion_threshold: EMOTION_THRESHOLD,
             trait_threshold: TRAIT_THRESHOLD,
 
-            rel_affinity_intensity_weight: REL_AFFINITY_INTENSITY_WEIGHT,
             rel_trust_emotion_weight: REL_TRUST_EMOTION_WEIGHT,
-            rel_affinity_empathy_weight: REL_AFFINITY_EMPATHY_WEIGHT,
-            rel_affinity_hostility_weight: REL_AFFINITY_HOSTILITY_WEIGHT,
+            rel_affinity_tilt_weight: REL_AFFINITY_TILT_WEIGHT,
+            rel_respect_tilt_weight: REL_RESPECT_TILT_WEIGHT,
+            rel_wariness_tilt_weight: REL_WARINESS_TILT_WEIGHT,
+            rel_mod_floor: REL_MOD_FLOOR,
+            rel_mod_ceil: REL_MOD_CEIL,
 
             level_very_high_threshold: LEVEL_VERY_HIGH_THRESHOLD,
             level_high_threshold: LEVEL_HIGH_THRESHOLD,
@@ -390,16 +401,23 @@ impl TuningProfile {
             return Err("honesty_restriction_threshold must be in (0, 1)");
         }
 
-        // ── 관계 변조 weight (음수 들어가면 modifier가 0으로 floored되어 무력화) ──
+        // ── 관계 변조 weight (음수면 tilt/magnitude 방향이 반전되어 의미 붕괴) ──
         for w in [
-            self.rel_affinity_intensity_weight,
             self.rel_trust_emotion_weight,
-            self.rel_affinity_empathy_weight,
-            self.rel_affinity_hostility_weight,
+            self.rel_affinity_tilt_weight,
+            self.rel_respect_tilt_weight,
+            self.rel_wariness_tilt_weight,
         ] {
             if !non_negative(w) {
                 return Err("rel_*_weight must all be >= 0");
             }
+        }
+        // clamp 경계: 0 < floor <= 1.0 <= ceil (neutral 1.0이 clamp되지 않도록 보장).
+        if !(self.rel_mod_floor > 0.0 && self.rel_mod_floor <= 1.0) {
+            return Err("rel_mod_floor must be in (0, 1]");
+        }
+        if self.rel_mod_ceil < 1.0 || self.rel_mod_ceil <= self.rel_mod_floor {
+            return Err("rel_mod_ceil must be >= 1.0 and > rel_mod_floor");
         }
 
         // ── Level 임계값: 엄격 내림차순 ──
