@@ -327,6 +327,18 @@ fn 배신_렌즈_분해_신뢰는_배신감_친밀은_봐줌() {
         anger(&affectionate) < anger(&stranger),
         "강한 친밀의 배신 → 봐줌 (tilt_cold↓)"
     );
+
+    // ⑦ 유지 결정 (2026-06-07): 의형제(신뢰+친밀 동시 높음)는 현 weight에서
+    // 봐줌(affinity→tilt_cold)이 배신감(trust→magnitude)을 상쇄 우세 → 배신 분노가 타인 이하.
+    // weight 미세조정(narrative 판단)이 들어오기 전까지 본 거동을 회귀 가드로 고정한다.
+    let sworn_brother = RelationshipBuilder::new("gyo_ryong", "sworn_brother")
+        .trust(axis(0.8))
+        .affinity(axis(0.9))
+        .build();
+    assert!(
+        anger(&sworn_brother) < anger(&stranger),
+        "의형제(신뢰+친밀): 봐줌 우세 — ⑦ 현행 유지 (재조정 시 본 가드가 신호)"
+    );
 }
 
 #[test]
