@@ -261,9 +261,29 @@ lin-chong-shanshenmiao Shanshenmiao false   ✅
 그럼에도 LLM 판정은 `is_chitchat=true` 그대로다.
 
 **따라서 §2-5의 데이터 버그는 실재했고 고칠 값어치도 있었지만, `daily` DRIFT의
-원인은 아니었다.** 원인은 프롬프트/모델 쪽이다 — 현재 프롬프트가 대사 텍스트만
-보고 판단하므로, "사제 간 수련이 관계상 의미 있다"는 판단 근거가 transcript 표면에
-드러나지 않는다. 후속 조사 시 이 지점부터 볼 것. (샘플 1회, LLM 샘플링 편차 있음)
+원인은 아니었다.** 원인은 프롬프트 쪽이다 — 현재 프롬프트가 대사 텍스트만 보고
+판단하므로, "사제 간 수련이 관계상 의미 있다"는 판단 근거가 transcript 표면에
+드러나지 않는다. 후속 조사 시 이 지점부터 볼 것.
+
+**모델 교체 탓도 아니다.** `phase1-checkpoint-report.md` §4.4에 2026-05-11
+gemma-4-E4B-it 실측이 박제돼 있는데 오늘 값과 완전히 동일하다:
+
+| 시나리오 | is_chitchat | significance |
+|---|---|---|
+| chitchat-passerby | true / true | 0.050 / 0.050 |
+| **daily-training** | **true / true (둘 다 DRIFT)** | 0.230 / 0.230 |
+| lin-chong-shanshenmiao | false / false | 0.390 / 0.390 |
+
+(왼쪽 = 2026-05-11 gemma, 오른쪽 = 2026-08-04 Qwen3.5-9B)
+
+즉 **`daily-training`은 도입 이래 한 번도 통과한 적이 없다.** 그리고 모델이
+완전히 바뀌었는데 significance가 소수점까지 같다는 것은 §2-1(LLM 무관 결정론 값)의
+독립 재확인이다.
+
+원 리포트도 이를 인지하고 있었다 — *"모든 시나리오 게이트는 spec §6.4대로 정확
+동작. drift는 significance 분포 strict band 기대에 한정"*. 즉 밴드 기대치가 과하다는
+판단은 이미 있었으나 테스트 코드에 반영되지 않은 채 단언이 남아 있었고, (1)이 그
+간극을 메운 것이다.
 
 `shanshenmiao`는 (1) 적용으로 통과로 바뀌었다 — significance 0.390이 0.7에 못 미쳐
 실패하던 것이 단언 제거로 해소됐다. LLM 판정은 원래부터 맞았다.
