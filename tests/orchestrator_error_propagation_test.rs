@@ -99,7 +99,7 @@ async fn orchestrator_propagates_conversation_timeout() {
         async fn start_session(&self, _: &str, _: &str, _: Option<npc_mind::ports::LlmModelInfo>) -> Result<(), ConversationError> {
             Err(ConversationError::Timeout(std::time::Duration::from_secs(5)))
         }
-        async fn send_message(&self, _: &str, _: &str) -> Result<npc_mind::ports::ChatResponse, ConversationError> { Ok(npc_mind::ports::ChatResponse { text: "".into(), timings: None }) }
+        async fn send_message(&self, _: &str, _: &str) -> Result<npc_mind::ports::ChatResponse, ConversationError> { Ok(npc_mind::ports::ChatResponse { text: "".into() }) }
         fn send_message_stream<'a>(&'a self, _: &'a str, _: &'a str) -> std::pin::Pin<Box<dyn futures::Stream<Item = Result<npc_mind::ports::StreamItem, ConversationError>> + Send + 'a>> { Box::pin(futures::stream::empty()) }
         async fn update_system_prompt(&self, _: &str, _: &str) -> Result<(), ConversationError> { Ok(()) }
         async fn end_session(&self, _: &str) -> Result<Vec<npc_mind::ports::DialogueTurn>, ConversationError> { Ok(vec![]) }

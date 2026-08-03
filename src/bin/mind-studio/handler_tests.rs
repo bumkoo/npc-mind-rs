@@ -62,7 +62,6 @@ impl npc_mind::ports::ConversationPort for SilentChatPort {
     ) -> Result<npc_mind::ports::ChatResponse, npc_mind::ports::ConversationError> {
         Ok(npc_mind::ports::ChatResponse {
             text: "mock NPC response".to_string(),
-            timings: None,
         })
     }
 
@@ -81,7 +80,6 @@ impl npc_mind::ports::ConversationPort for SilentChatPort {
         Box::pin(async_stream::stream! {
             yield Ok(npc_mind::ports::StreamItem::Final(npc_mind::ports::ChatResponse {
                 text: "mock NPC response".to_string(),
-                timings: None,
             }));
         })
     }

@@ -94,7 +94,7 @@ fn setup_with_memory(attach_memory: bool) -> SetupWithMemoryTuple {
     let formatter: Arc<dyn GuideFormatter> =
         Arc::new(LocaleFormatter::from_toml(toml).expect("formatter"));
 
-    let chat = MockConversationPort::new().with_response("mock", None);
+    let chat = MockConversationPort::new().with_response("mock");
     let calls = chat.calls.clone();
 
     let memory_store = Arc::new(common::in_memory_store::InMemoryMemoryStore::new());

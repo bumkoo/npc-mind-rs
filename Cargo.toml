@@ -8,7 +8,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 # Phase 7 Step 5: listener_perspective는 default-on. 회귀 감시 88% baseline 유지.
 default = ["listener_perspective"]
 embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy", "dep:epub"]
-chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest", "dep:bytes"]
+chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
 # Phase 7: Listener-perspective PAD 변환기 (prefilter + sign/magnitude 분류기)
 # 설계 문서: docs/emotion/phase7-converter-integration.md
@@ -33,7 +33,6 @@ rig-core = { version = "0.33", optional = true, default-features = false, featur
 async-trait = { version = "0.1", optional = true }
 async-stream = { version = "0.3", optional = true }
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["json", "stream"] }
-bytes = { version = "1", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 axum = { version = "0.8", optional = true }
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"], optional = true }

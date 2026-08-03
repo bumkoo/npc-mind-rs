@@ -14,10 +14,9 @@
 //! let reply = adapter.send_message("s1", "안녕하시오.").await?;
 //! ```
 
-use crate::adapter::llama_timings::TimingsCapturingClient;
 use crate::ports::{
     ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, InferenceServerMonitor,
-    InferenceSlotInfo, InferenceTimings, LlmInfoProvider, LlmModelInfo, MonitoringError, ServerHealth,
+    InferenceSlotInfo, LlmInfoProvider, LlmModelInfo, MonitoringError, ServerHealth,
     ServerMetrics, StreamItem,
 };
 use futures::{Stream, StreamExt};
@@ -27,16 +26,23 @@ use rig::completion::{Chat, Message};
 use rig::providers::openai;
 use rig::streaming::{StreamedAssistantContent, StreamingChat};
 use std::collections::HashMap;
-use std:: pin::Pin;
-use std::sync::{Arc, Mutex};
+use std::pin::Pin;
+use std::sync::Arc;
 use tokio::sync::RwLock;
+
+/// LLM이 빈 응답을 돌려줬을 때의 에러 메시지.
+///
+/// reasoning이 켜진 모델은 토큰 예산을 사고에 전부 소진하고 본문을 비워 보낼 수
+/// 있다(실측 확인). 빈 대사가 UI까지 조용히 흘러가지 않도록 여기서 에러로 승격한다.
+const EMPTY_RESPONSE_MSG: &str =
+    "LLM이 빈 응답을 반환했습니다 (reasoning이 토큰 예산을 소진했거나 모델이 생성에 실패)";
 
 /// rig-core OpenAI provider를 사용하는 대화 어댑터
 ///
 /// 세션별로 system_prompt + 대화 이력을 관리하며,
 /// Beat 전환 시 system_prompt만 교체하고 이력은 유지한다.
 pub struct RigChatAdapter {
-    client: openai::CompletionsClient<TimingsCapturingClient>,
+    client: openai::CompletionsClient<reqwest::Client>,
     /// 모델명 — Arc로 감싸 spawn된 task로 안전하게 이동
     model_name: Arc<RwLock<String>>,
     /// OpenAI 호환 API URL (예: `http://127.0.0.1:8081/v1`)
@@ -47,8 +53,6 @@ pub struct RigChatAdapter {
     http_client: reqwest::Client,
     /// 세션 맵 — Arc로 감싸 streaming task로 안전하게 이동
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
-    /// TimingsCapturingClient와 공유하는 timings 저장소
-    last_timings: Arc<Mutex<Option<InferenceTimings>>>,
     /// LLM 응답 타임아웃
     timeout: std::time::Duration,
 }
@@ -73,15 +77,14 @@ impl RigChatAdapter {
         // rig 0.33부터 OpenAI provider의 기본 API가 Responses API로 변경됨.
         // llama.cpp 등 OpenAI-compatible 로컬 서버는 Chat Completions API만 지원하므로
         // completions_api()로 명시적 전환이 필요함.
+        // 단일 reqwest 클라이언트를 rig 통신과 직접 호출(/models, /health 등)이
+        // 공유하여 커넥션 풀을 하나로 유지한다.
         let http_client = reqwest::Client::new();
-        let timings_store = Arc::new(Mutex::new(None));
-        let capturing_client =
-            TimingsCapturingClient::with_client(http_client.clone(), timings_store.clone());
 
         let client = openai::Client::builder()
             .api_key("no-key-needed")
             .base_url(base_url)
-            .http_client(capturing_client)
+            .http_client(http_client.clone())
             .build()
             .expect("OpenAI 호환 클라이언트 생성 실패")
             .completions_api();
@@ -93,7 +96,6 @@ impl RigChatAdapter {
             server_url: derive_server_url(base_url),
             http_client,
             sessions: Arc::new(RwLock::new(HashMap::new())),
-            last_timings: timings_store,
             timeout: std::time::Duration::from_secs(60),
         }
     }
@@ -138,11 +140,6 @@ impl RigChatAdapter {
         history: Vec<Message>,
         config: &Option<LlmModelInfo>,
     ) -> Result<ChatResponse, ConversationError> {
-        // 이전 timings 초기화
-        if let Ok(mut guard) = self.last_timings.lock() {
-            *guard = None;
-        }
-
         let model_name = self.model_name.read().await;
         let mut builder = self.client.agent(&*model_name).preamble(system_prompt);
 
@@ -169,13 +166,11 @@ impl RigChatAdapter {
                 ConversationError::InferenceError(e.to_string())
             })?;
 
-        let timings = if let Ok(guard) = self.last_timings.lock() {
-            guard.clone()
-        } else {
-            None
-        };
+        if text.trim().is_empty() {
+            return Err(ConversationError::InferenceError(EMPTY_RESPONSE_MSG.into()));
+        }
 
-        Ok(ChatResponse { text, timings })
+        Ok(ChatResponse { text })
     }
 
 }
@@ -185,10 +180,9 @@ impl RigChatAdapter {
 /// `send_message_stream`이 self에서 추출해 `tokio::spawn`된 future에 넘긴다.
 /// 모든 필드가 Clone(Arc 또는 derive Clone)이므로 spawn lifetime을 만족한다.
 struct StreamingCtx {
-    client: openai::CompletionsClient<TimingsCapturingClient>,
+    client: openai::CompletionsClient<reqwest::Client>,
     sessions: Arc<RwLock<HashMap<String, ChatSession>>>,
     model_name: Arc<RwLock<String>>,
-    last_timings: Arc<Mutex<Option<InferenceTimings>>>,
     timeout: std::time::Duration,
 }
 
@@ -254,7 +248,7 @@ async fn run_streaming_internal(
 
 /// rig Agent를 빌드하고 stream_chat()으로 토큰 스트리밍하는 내부 헬퍼
 ///
-/// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답 + timings를 반환한다.
+/// 토큰을 `token_tx`로 실시간 전송하고, 완성된 전체 응답을 반환한다.
 async fn stream_chat_with_agent(
     ctx: &StreamingCtx,
     system_prompt: &str,
@@ -263,11 +257,6 @@ async fn stream_chat_with_agent(
     token_tx: tokio::sync::mpsc::Sender<String>,
     config: &Option<LlmModelInfo>,
 ) -> Result<ChatResponse, ConversationError> {
-    // 이전 timings 초기화
-    if let Ok(mut guard) = ctx.last_timings.lock() {
-        *guard = None;
-    }
-
     let model_name_read = ctx.model_name.read().await;
     let mut builder = ctx.client.agent(&*model_name_read).preamble(system_prompt);
 
@@ -318,15 +307,12 @@ async fn stream_chat_with_agent(
         Err(_) => return Err(ConversationError::Timeout(timeout_duration)),
     }
 
-    let timings = if let Ok(guard) = ctx.last_timings.lock() {
-        guard.clone()
-    } else {
-        None
-    };
+    if full_response.trim().is_empty() {
+        return Err(ConversationError::InferenceError(EMPTY_RESPONSE_MSG.into()));
+    }
 
     Ok(ChatResponse {
         text: full_response,
-        timings,
     })
 }
 
@@ -416,7 +402,6 @@ impl ConversationPort for RigChatAdapter {
             client: self.client.clone(),
             sessions: Arc::clone(&self.sessions),
             model_name: Arc::clone(&self.model_name),
-            last_timings: Arc::clone(&self.last_timings),
             timeout: self.timeout,
         };
         let session_id = session_id.to_string();
