@@ -8,6 +8,22 @@
 //! P·A는 pad_dot 내적에, D는 격차 스케일러에 사용된다.
 //!
 //! `cargo test --features embed --test embed_test -- --nocapture` 으로 실행.
+//!
+//! ⚠️ Windows: `CFLAGS=/MD CXXFLAGS=/MD` 를 셸에 설정해야 하며, 이전에 다른 CRT로
+//! 빌드된 캐시가 있으면 `cargo clean`이 선행되어야 한다 (LNK2038 RuntimeLibrary 불일치).
+//!
+//! ## TODO — 실 ONNX 기반 significance 측정 추가
+//!
+//! 현재 이 파일은 *대사 → PAD 변환 품질*(커버리지 ①)만 검증한다.
+//! `compute_significance` / `TurnSnapshot` 은 다루지 않는다.
+//!
+//! `phase1_real_llm_test`에서 significance 단언을 걷어냈고(그쪽은 analyzer 미부착이라
+//! 구조적으로 죽은 값이었다), 배선 검증(②)은 mock analyzer 기반
+//! `tests/turn_snapshot_pipeline_test.rs`가 담당하게 됐다.
+//!
+//! 남은 빈 칸은 **실 임베딩으로 ①→②→③을 관통했을 때 significance가 설계 의도대로
+//! 나오는가**이며, 실 ONNX가 필요하므로 이 파일이 제자리다. 다만 위 빌드 비용 때문에
+//! 보류 중이다. 상세: `docs/tasks/mind-architecture/reflection-test-restructure-handoff.md` §4-(4)
 
 #![cfg(feature = "embed")]
 

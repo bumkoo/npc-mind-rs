@@ -362,18 +362,7 @@ async fn monitor_base_url_v1_제거_확인() {
     assert_eq!(health2.status, "ok");
 }
 
-// ---------------------------------------------------------------------------
-// HTTP 클라이언트 공유 검증 (with_client)
-// ---------------------------------------------------------------------------
-
-#[test]
-fn with_client_생성자_동작() {
-    use npc_mind::adapter::llama_timings::TimingsCapturingClient;
-    use std::sync::{Arc, Mutex};
-
-    let shared_client = reqwest::Client::new();
-    let store = Arc::new(Mutex::new(None));
-
-    // with_client로 생성해도 정상 동작
-    let _capturing = TimingsCapturingClient::with_client(shared_client, store);
-}
+// NOTE: `with_client_생성자_동작` 테스트는 timings 제거와 함께 삭제됨.
+// 검증 대상이던 `TimingsCapturingClient`가 사라졌고, 커넥션 풀 공유는 이제
+// `RigChatAdapter::new`가 단일 `reqwest::Client`를 rig와 모니터링에 함께
+// 주입하는 방식으로 구조상 보장된다.

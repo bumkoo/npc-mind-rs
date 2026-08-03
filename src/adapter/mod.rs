@@ -16,8 +16,6 @@ pub mod sqlite_rumor;
 pub mod sqlite_world;
 
 #[cfg(feature = "chat")]
-pub mod llama_timings;
-#[cfg(feature = "chat")]
 pub mod rig_chat;
 #[cfg(feature = "chat")]
 pub mod reflection_via_chat;

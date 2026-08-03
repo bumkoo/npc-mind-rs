@@ -8,7 +8,7 @@ use crate::application::dto::{
     AfterDialogueRequest, AfterDialogueResponse, AppraiseRequest, AppraiseResponse,
     StimulusResponse,
 };
-use crate::ports::{DialogueTurn, InferenceTimings};
+use crate::ports::DialogueTurn;
 use serde::{Deserialize, Serialize};
 
 // ---------------------------------------------------------------------------
@@ -60,9 +60,6 @@ pub struct ChatTurnResponse {
     pub npc_response: String,
     pub stimulus: Option<StimulusResponse>,
     pub beat_changed: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub timings: Option<InferenceTimings>,
 }
 
 /// 대화 세션 종료 요청

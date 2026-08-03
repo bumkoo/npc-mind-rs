@@ -38,7 +38,6 @@ impl ConversationPort for ScriptedStreamingPort {
     ) -> Result<ChatResponse, ConversationError> {
         Ok(ChatResponse {
             text: self.tokens.concat(),
-            timings: None,
         })
     }
 
@@ -56,7 +55,6 @@ impl ConversationPort for ScriptedStreamingPort {
             }
             yield Ok(StreamItem::Final(ChatResponse {
                 text: acc,
-                timings: None,
             }));
         })
     }

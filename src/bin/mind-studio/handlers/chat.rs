@@ -43,14 +43,13 @@ pub async fn chat_message_stream(
         }
         let chat_resp = match chat_resp { Some(r) => r, None => { yield Ok(axum::response::sse::Event::default().event("error").data("스트림이 Final 없이 종료됨")); return; } };
         let npc_response = chat_resp.text;
-        let timings = chat_resp.timings;
 
         let (stimulus, beat_changed) = match StudioService::process_chat_turn_result(&state, &req, npc_response.clone()).await {
             Ok(res) => res,
             Err(e) => { yield Ok(axum::response::sse::Event::default().event("error").data(e.to_string())); return; }
         };
 
-        let final_response = ChatTurnResponse { npc_response, stimulus, beat_changed, timings };
+        let final_response = ChatTurnResponse { npc_response, stimulus, beat_changed };
         yield Ok(axum::response::sse::Event::default().event("done").data(serde_json::to_string(&final_response).unwrap_or_default()));
     };
     axum::response::Sse::new(stream)

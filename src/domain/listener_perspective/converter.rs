@@ -13,7 +13,7 @@
 //!                                                   │
 //!                              P_L = sign × coef_p[magnitude] × P_S
 //!                              A_L = coef_a[magnitude] × A_S
-//!                              D_L = coef_d[magnitude] × D_S
+//!                              D_L = sign × coef_d[magnitude] × D_S
 //! ```
 //!
 //! ## 설계
@@ -250,7 +250,7 @@ impl EmbeddedConverter {
         let listener_pad = Pad::new(
             sign.as_f32() * p_coef * p_s,
             a_coef * speaker_pad.arousal,
-            d_coef * speaker_pad.dominance,
+            sign.as_f32() * d_coef * speaker_pad.dominance,
         );
 
         let meta = ConvertMeta {
@@ -259,7 +259,7 @@ impl EmbeddedConverter {
             magnitude,
             applied_p_coef: sign.as_f32() * p_coef,
             applied_a_coef: a_coef,
-            applied_d_coef: d_coef,
+            applied_d_coef: sign.as_f32() * d_coef,
         };
 
         ConvertResult { listener_pad, meta }
@@ -524,8 +524,8 @@ items = [
         assert!((result.listener_pad.pleasure - (-0.9)).abs() < 1e-5);
         // A_L = 1.3 × 0.2 = 0.26 (화자 A 사용)
         assert!((result.listener_pad.arousal - 0.26).abs() < 1e-5);
-        // D_L = 1.3 × -0.1 = -0.13
-        assert!((result.listener_pad.dominance - (-0.13)).abs() < 1e-5);
+        // D_L = -1 × 1.3 × -0.1 = 0.13 (sign 적용 — 반어 시 D도 반전, Phase 2.4.4)
+        assert!((result.listener_pad.dominance - 0.13).abs() < 1e-5);
     }
 
     #[test]

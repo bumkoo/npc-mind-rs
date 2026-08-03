@@ -17,28 +17,15 @@ pub enum DialogueRole {
     Assistant,
 }
 
-/// LLM 추론 엔진이 반환하는 성능 메트릭 (일반화된 형식)
-#[cfg(feature = "chat")]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct InferenceTimings {
-    pub prompt_n: u32,
-    pub prompt_ms: f64,
-    pub prompt_per_token_ms: f64,
-    pub prompt_per_second: f64,
-    pub predicted_n: u32,
-    pub predicted_ms: f64,
-    pub predicted_per_token_ms: f64,
-    pub predicted_per_second: f64,
-}
-
-/// LLM 응답 + 선택적 성능 메트릭
+/// LLM 응답
+///
+/// 단일 필드지만 구조체를 유지한다 — rig 이관 시 `usage`(토큰 사용량)를
+/// 여기에 실어 절단 감지를 붙일 예정이므로, 지금 `String`으로 접으면
+/// 공개 API가 두 번 깨진다.
 #[cfg(feature = "chat")]
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ChatResponse {
     pub text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[serde(default)]
-    pub timings: Option<InferenceTimings>,
 }
 
 /// 스트리밍 응답의 단일 항목.

@@ -8,8 +8,8 @@
 use async_trait::async_trait;
 use futures::Stream;
 use npc_mind::ports::{
-    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, InferenceTimings,
-    LlmModelInfo, StreamItem,
+    ChatResponse, ConversationError, ConversationPort, DialogueRole, DialogueTurn, LlmModelInfo,
+    StreamItem,
 };
 use std::collections::VecDeque;
 use std::pin::Pin;
@@ -38,7 +38,7 @@ pub enum ChatCall {
 /// 설정 가능한 mock ConversationPort
 ///
 /// - `responses`: `send_message`가 FIFO(선입선출)로 반환할 응답 큐.
-///   비어있으면 기본값("mock response", timings=None)을 반환.
+///   비어있으면 기본값("mock response")을 반환.
 /// - `calls`: 모든 호출 이력.
 pub struct MockConversationPort {
     pub calls: Arc<Mutex<Vec<ChatCall>>>,
@@ -57,10 +57,9 @@ impl MockConversationPort {
     }
 
     /// 응답 큐에 뒤(push_back)로 추가 — `send_message`가 FIFO로 소비한다.
-    pub fn with_response(self, text: &str, timings: Option<InferenceTimings>) -> Self {
+    pub fn with_response(self, text: &str) -> Self {
         self.responses.lock().unwrap().push_back(ChatResponse {
             text: text.to_string(),
-            timings,
         });
         self
     }
@@ -117,7 +116,6 @@ impl ConversationPort for MockConversationPort {
             .pop_front()
             .unwrap_or(ChatResponse {
                 text: "mock response".to_string(),
-                timings: None,
             });
 
         self.history.lock().unwrap().push(DialogueTurn {

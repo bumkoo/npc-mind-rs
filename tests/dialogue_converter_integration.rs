@@ -459,7 +459,7 @@ async fn dialogue_with_real_embedded_converter_prefilter_path() {
     // Prefilter test_invert_strong: sign=invert, magnitude=strong, p_s_default=0.5
     // P_L = -1 × 1.5 × 0.5 = -0.75 (speaker.pleasure 무시, p_s_default 사용)
     // A_L = 1.3 × 0.3 = 0.39 (화자 A 사용)
-    // D_L = 1.3 × 0.1 = 0.13
+    // D_L = -1 × 1.3 × 0.1 = -0.13 (sign 적용 — 반어 시 D도 반전, Phase 2.4.4)
     let pad = first_stimulus_pad(&store).expect("StimulusApplied 이벤트 발행");
     assert!(
         (pad.0 - (-0.75)).abs() < 1e-5,
@@ -472,8 +472,8 @@ async fn dialogue_with_real_embedded_converter_prefilter_path() {
         pad.1
     );
     assert!(
-        (pad.2 - 0.13).abs() < 1e-5,
-        "strong D 계수 1.3 적용 기대=0.13, 실제={}",
+        (pad.2 - (-0.13)).abs() < 1e-5,
+        "반어 시 D 반전 + strong 계수 1.3 적용 기대=-0.13, 실제={}",
         pad.2
     );
 }

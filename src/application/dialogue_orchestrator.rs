@@ -64,7 +64,7 @@ use crate::domain::personality::Npc;
 use crate::domain::reflection::TurnSnapshot;
 use crate::domain::relationship::Relationship;
 use crate::ports::{
-    ChatResponse, ConversationError, ConversationPort, GuideFormatter, InferenceTimings,
+    ChatResponse, ConversationError, ConversationPort, GuideFormatter,
     MemoryFramer, MemoryStore, MindRepository, UtteranceAnalyzer,
 };
 
@@ -84,8 +84,6 @@ pub struct DialogueStartOutcome {
 pub struct DialogueTurnOutcome {
     /// NPC의 LLM 응답 텍스트
     pub npc_response: String,
-    /// llama-server 성능 메트릭 (없으면 None)
-    pub timings: Option<InferenceTimings>,
     /// 자극 적용 결과 (PAD가 있을 때만)
     pub stimulus: Option<StimulusResponse>,
     /// Beat 전환 여부
@@ -440,7 +438,7 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
         };
 
         // ⑤ LLM 호출
-        let ChatResponse { text, timings } = self.chat.send_message(session_id, user_utterance).await?;
+        let ChatResponse { text } = self.chat.send_message(session_id, user_utterance).await?;
 
         // ⑥ assistant 턴 이벤트 발행 (stimulus 이후 갱신된 감정 스냅샷)
         let assistant_snapshot = self.current_emotion_snapshot(&meta.npc_id);
@@ -476,7 +474,6 @@ impl<R: MindRepository + Send + Sync + 'static, C: ConversationPort> DialogueOrc
 
         Ok(DialogueTurnOutcome {
             npc_response: text,
-            timings,
             stimulus: stimulus_resp,
             beat_changed,
         })
