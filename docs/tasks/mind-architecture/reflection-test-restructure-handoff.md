@@ -288,6 +288,42 @@ gemma-4-E4B-it 실측이 박제돼 있는데 오늘 값과 완전히 동일하�
 `shanshenmiao`는 (1) 적용으로 통과로 바뀌었다 — significance 0.390이 0.7에 못 미쳐
 실패하던 것이 단언 제거로 해소됐다. LLM 판정은 원래부터 맞았다.
 
+### 🔴 미결정 — `daily-training` 판정이 흔들린다 (차후 결정 필요)
+
+**고정 transcript로도 판정이 안 잡힌다.** 동일 입력 4회 실행 결과:
+
+| 실행 | chitchat | **daily** | shanshenmiao |
+|---|---|---|---|
+| 1 | true ✅ | **false** | false ✅ |
+| 2 | true ✅ | **true** | false ✅ |
+| 3 | true ✅ | **true** | false ✅ |
+| 4 | true ✅ | **false** | false ✅ |
+
+`daily`만 **2:2**. 양극단 두 케이스는 4/4 안정이므로, 입력 문제가 아니라
+**이 장면이 모델의 결정 경계에 걸쳐 있다**는 뜻이다. 사건성은 없고 관계만 쌓이는
+중간 층위라 프롬프트의 이분법("서사적 사건 vs 지나가는 잡담")으로는 어느 쪽으로도
+읽힌다.
+
+> 세션 중 한때 "고정 transcript로 3/3 통과 → 프롬프트는 문제없다"고 판단했으나
+> n=1 과대해석이었다. 반복 실행으로 반증됨. `is_chitchat`은 LLM이 JSON에 불리언을
+> 직접 쓰는 값이라(점수·임계값 없음) 샘플링에 그대로 노출된다.
+
+**현재 조치**: `reflection_calibration_test`의 `daily-training`은
+`expect_chitchat: None`으로 두어 **어느 쪽이든 통과**시킨다. flaky 테스트를
+커밋하지 않으면서 나머지 두 케이스의 회귀 감시는 유지하기 위함이다.
+
+**차후 결정 필요** (택일 또는 조합):
+
+| | 안 | 비고 |
+|---|---|---|
+| (a) | **reflection 호출 temperature=0** | 분류 작업이므로 같은 입력에 같은 답이 나와야 한다. 게임 로직상으로도 같은 대화를 두 번 끝냈는데 관계 갱신 여부가 갈리는 건 곤란. 현재 `ConversationBackedReflectionPort::analyze`가 `generation_config=None`을 넘겨 서버 기본(창작용) 온도로 돈다 — 원 주석에도 *"향후 reflection 전용 temperature 인하 가능"* 이라 적혀 있다. **가장 먼저 시도할 것.** |
+| (b) | 프롬프트 개선 | 판정 기준을 게이트 의미("관계에 흔적을 남기는가")에 맞추고 관계 맥락(사제 관계·Relationship 4축)을 주입. 현재 프롬프트는 NPC 이름·가치·상대 이름만 주고 둘의 관계조차 알려주지 않는다. |
+| (c) | 중간 층위를 판정에서 배제 | daily 밴드는 significance 축에만 맡기고 `is_chitchat`은 양극단만 판정. |
+
+(a)를 먼저 적용하면 갈린다 — `false`로 안정되면 해결, `true`로 안정되면 그때는
+**진짜 프롬프트 문제**가 드러나므로 (b)의 효과를 측정할 수 있다. 어느 쪽이든
+지금의 "매번 다름"보다 낫다.
+
 ### 미해결
 
 - (3)의 mock analyzer는 Beat 전환까지는 유발하지 못한다 (`FocusTrigger` 조건이 있는
