@@ -24,6 +24,9 @@ cargo test --features "embed listener_perspective"  # Phase 7 Converter 포함 �
 cargo test --features listener_perspective --lib domain::listener_perspective  # 39 도메인 단위
 cargo test --no-default-features --features chat --test dialogue_no_lp_passthrough  # Phase 7 Step 5: LP off 회귀 감시
 
+# ★ 회귀 확인 정본 — 변경 전후 대조는 반드시 이 명령으로
+cargo test --features chat,mind-studio --lib --tests --bins --no-fail-fast
+
 # 개별 테스트는 tests/ 디렉토리 참조
 # PAD 벤치마크(pad_benchmark_test 등)는 --features embed 필요
 
@@ -40,6 +43,20 @@ cd mind-studio-ui && npm run dev        # 개발 서버 (http://localhost:5173, 
 # mind-studio 실행 (빌드된 UI 포함)
 cargo run --features mind-studio,chat,embed --bin npc-mind-studio  # http://127.0.0.1:3000
 ```
+
+### 회귀 확인 명령의 플래그가 전부 필요한 이유
+
+`cargo test --features chat,mind-studio --lib --tests --bins --no-fail-fast`
+
+| 플래그 | 없으면 벌어지는 일 |
+|---|---|
+| `chat,mind-studio` | `#![cfg(all(feature = "chat", feature = "mind-studio"))]` 게이트 테스트가 **컴파일조차 안 됨**. `--features chat` 단독 887개 → 조합 978개(**+91**) |
+| `--lib --tests --bins` | `examples/` 2개(`dump_bloody_night`·`phase5b_eval`)가 깨져 있어 **빌드 단계에서 중단**되고 테스트가 한 개도 안 돎 |
+| `--no-fail-fast` | cargo가 **첫 실패 묶음에서 멈춰** 나머지 바이너리를 건너뜀 (4/67 묶음만 보고 "통과"로 오인 가능) |
+
+실제 사고 2건이 이 스코프 차이에서 나왔다 — Phase 2.4.4(`e121610`)가 `--lib`만 돌려
+`tests/`의 D축 기대값 갱신을 누락했고(`0fda5c2`에서 수정), LLM 정리 1단계도
+`--features chat`만으로는 mind-studio 경로를 검증하지 못했다.
 
 ### 환경변수 (주요)
 
