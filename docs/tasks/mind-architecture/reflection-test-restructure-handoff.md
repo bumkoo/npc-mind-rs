@@ -245,10 +245,34 @@ cargo test --features chat --test phase1_bench_test -- --nocapture
 
 ## 7. 열린 질문
 
-- (2)를 고친 뒤 `daily`가 `is_chitchat=false`로 바뀌는가? 안 바뀐다면 원인은 시나리오
-  데이터가 아니라 프롬프트/모델 쪽이다.
-- (3)의 mock analyzer가 Beat 전환을 실제로 유발하려면 시나리오에 `FocusTrigger`
-  조건이 필요하다. 기존 테스트 시나리오 중 재활용 가능한 것이 있는지 조사 필요.
+### ✅ 해결됨 — (2) 수정으로 `daily` 판정이 바뀌는가? → **안 바뀐다**
+
+`turns[1]`을 제자 시점(`"이렇게 하는 게 맞나요? 호흡이 자꾸 흐트러집니다."`)으로
+고친 뒤 재실행한 결과:
+
+```
+chitchat-passerby      Chitchat     true    ✅
+daily-training         Daily        true    ⚠️ DRIFT   ← 여전히 is_chitchat=true
+lin-chong-shanshenmiao Shanshenmiao false   ✅
+```
+
+생성 대사는 확실히 정상화됐다 — NPC(사부)가 3턴 내내 사부로 일관되게 응답한다
+("손가락이 검날에 너무 매몰되지 말아라", "마음이 열려 있으니 배움도 잘 들어오겠지").
+그럼에도 LLM 판정은 `is_chitchat=true` 그대로다.
+
+**따라서 §2-5의 데이터 버그는 실재했고 고칠 값어치도 있었지만, `daily` DRIFT의
+원인은 아니었다.** 원인은 프롬프트/모델 쪽이다 — 현재 프롬프트가 대사 텍스트만
+보고 판단하므로, "사제 간 수련이 관계상 의미 있다"는 판단 근거가 transcript 표면에
+드러나지 않는다. 후속 조사 시 이 지점부터 볼 것. (샘플 1회, LLM 샘플링 편차 있음)
+
+`shanshenmiao`는 (1) 적용으로 통과로 바뀌었다 — significance 0.390이 0.7에 못 미쳐
+실패하던 것이 단언 제거로 해소됐다. LLM 판정은 원래부터 맞았다.
+
+### 미해결
+
+- (3)의 mock analyzer는 Beat 전환까지는 유발하지 못한다 (`FocusTrigger` 조건이 있는
+  Scene이 필요). 현재는 PAD 변화·감정 축적·스냅샷 축적만 검증하고 `beat_signal`
+  경로는 미검증으로 남겼다. Focus 시나리오를 붙이면 보강 가능.
 - `phase1_real_llm_test`를 E2E 스모크(시나리오 1개, 단언 최소)와 calibration(시나리오
   N개, `is_chitchat`만)으로 완전히 쪼갤지 여부 — 이번 작업 범위에서는 (1)만 하고
   분할은 보류.

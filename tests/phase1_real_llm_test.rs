@@ -16,10 +16,14 @@
 //!
 //! ## 검증 항목
 //!
-//! 3 narrative 시나리오 각각 실제 LLM 호출:
-//! - chitchat (잡담): is_chitchat=true 또는 significance < 0.3 기대
-//! - daily (가르침): is_chitchat=false + 0.3 ≤ significance < 0.7 기대
-//! - shanshenmiao (결단): is_chitchat=false + significance ≥ 0.7 기대
+//! 3 narrative 시나리오 각각 실제 LLM 호출. **`is_chitchat`만 단언**한다:
+//! - chitchat (잡담): is_chitchat=true 기대
+//! - daily (가르침): is_chitchat=false 기대
+//! - shanshenmiao (결단): is_chitchat=false 기대
+//!
+//! `significance_score`는 출력만 하고 단언하지 않는다 — LLM 산출값이 아니고,
+//! 이 테스트 구성(analyzer 미부착)에서는 구조적으로 죽은 값이다. 근거는
+//! `check_band` 주석 참조.
 //!
 //! 출력: stdout + `target/baseline/phase1-real-llm-results.json`
 //!
@@ -72,10 +76,11 @@ struct Scenario {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 기대 밴드 — 판정은 `is_chitchat`만 본다 (`check_band` 주석 참조).
 enum ExpectedBand {
-    Chitchat,    // is_chitchat=true 또는 significance < 0.3
-    Daily,       // is_chitchat=false + 0.3 ≤ significance < 0.7
-    Shanshenmiao, // is_chitchat=false + significance ≥ 0.7
+    Chitchat,     // is_chitchat=true  기대 — 서사적으로 잉여인 대화
+    Daily,        // is_chitchat=false 기대 — 일상이되 의미 있는 장면
+    Shanshenmiao, // is_chitchat=false 기대 — 서사가 꺾이는 결단
 }
 
 fn scenarios() -> Vec<Scenario> {
@@ -105,9 +110,14 @@ fn scenarios() -> Vec<Scenario> {
             partner_name: "춘설병",
             situation: "수련이 제자 춘설병에게 검법 수련을 지도한다. 사제 간 따뜻한 가르침의 시간.",
             event_desirability: 0.5,
+            // `turns`는 *상대(춘설병 = 제자)*의 발화만 담는다. NPC(수련 = 사부)의
+            // 대사는 LLM이 매 턴 생성한다. 이전에는 2번이 사부 대사("잘 따라하는구나.
+            // 이번엔 호흡에 집중해보아라.")로 잘못 들어가 있어 화자 역할이 뒤바뀌었고,
+            // 그 결과 NPC가 제자처럼 응답해("네, 사부님 말씀대로 합니다") transcript가
+            // 부정합해졌다. 그 부정합이 reflection 입력까지 오염시켰다.
             turns: vec![
                 "사부님, 어제 가르쳐주신 검법을 다시 한번 보여주실 수 있나요?",
-                "잘 따라하는구나. 이번엔 호흡에 집중해보아라.",
+                "이렇게 하는 게 맞나요? 호흡이 자꾸 흐트러집니다.",
                 "사부님, 감사합니다. 오늘 많이 배웠어요.",
             ],
             band: ExpectedBand::Daily,
@@ -181,8 +191,9 @@ async fn phase1_real_llm_three_band_calibration() {
     println!("=========================================");
     println!(
         "{:<28} {:<12} {:<7} {:<8} {:<10} {:<8}",
-        "시나리오", "밴드", "chitchat", "score", "elapsed", "pass"
+        "시나리오", "밴드", "chitchat", "score*", "elapsed", "pass"
     );
+    println!("  * score = significance. 참고 출력일 뿐 판정에 쓰지 않는다 (check_band 주석 참조).");
     for r in &results {
         println!(
             "{:<28} {:<12} {:<7} {:<8.3} {:<10} {}",
@@ -332,22 +343,31 @@ async fn run_scenario(chat_url: &str, scenario: &Scenario) -> ScenarioResult {
     }
 }
 
+/// LLM 판정(`is_chitchat`)만 검사한다. `significance_score`는 의도적으로 보지 않는다.
+///
+/// # significance를 단언하지 않는 이유
+///
+/// `significance_score`는 LLM 응답이 아니라 `compute_significance(turns)`가 내는
+/// **결정론적 엔진 계산값**이다. 그리고 이 테스트는 `with_analyzer`를 붙이지 않고
+/// `pad_hint`도 `None`으로 넘기므로, `DialogueOrchestrator`가 매 턴 `Pad::neutral()`로
+/// 폴백해 모든 `TurnSnapshot.pad_after`가 동일해진다. 그 결과:
+///
+/// - `pad_magnitude`(가중치 0.30) = 0 — 턴 사이 delta가 없다
+/// - 자극이 적용되지 않아 감정이 안 흔들리므로 `peak_occ`(0.40)·`diversity`(0.15)도 낮다
+/// - Beat 전환이 트리거되지 않아 `beat_signal`(0.15) = 0
+///
+/// 즉 **네 신호가 연쇄로 죽어 있어 밴드 단언은 처음부터 통과할 수 없다.**
+/// 수식 자체의 회귀는 `phase1_bench_test`가 손수 구성한 `TurnSnapshot`으로 검증하고
+/// (0.000 / 0.461 / 0.980), 그 값과 이 테스트의 출력값은 입력이 달라 **비교 대상이 아니다.**
+///
+/// 실제 대화 흐름에서 PAD·Beat 신호가 살아나는지(= 배선 검증)는 별도 통합 테스트의
+/// 몫이다. 상세: `docs/tasks/mind-architecture/reflection-test-restructure-handoff.md`
 fn check_band(reflection: &ReflectionResult, band: ExpectedBand) -> bool {
-    match band {
-        ExpectedBand::Chitchat => {
-            // 잡담이면 is_chitchat=true 또는 significance < 0.3
-            reflection.is_chitchat || reflection.significance_score < 0.3
-        }
-        ExpectedBand::Daily => {
-            // 일상이면 게이트 통과 (is_chitchat=false 또는 sig ≥ 0.3) + 높음 밴드는 아님
-            (!reflection.is_chitchat || reflection.significance_score >= 0.3)
-                && reflection.significance_score < 0.7
-        }
-        ExpectedBand::Shanshenmiao => {
-            // 결단이면 게이트 통과 + 높음 밴드
-            !reflection.is_chitchat && reflection.significance_score >= 0.7
-        }
-    }
+    let expected_chitchat = match band {
+        ExpectedBand::Chitchat => true,
+        ExpectedBand::Daily | ExpectedBand::Shanshenmiao => false,
+    };
+    reflection.is_chitchat == expected_chitchat
 }
 
 fn serialize_results(results: &[ScenarioResult], chat_url: &str) -> String {
