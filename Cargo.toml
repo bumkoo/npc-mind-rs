@@ -8,7 +8,7 @@ description = "NPC Psychological Engine: HEXACO personality → OCC emotion → 
 # Phase 7 Step 5: listener_perspective는 default-on. 회귀 감시 88% baseline 유지.
 default = ["listener_perspective"]
 embed = ["dep:bge-m3-onnx-rust", "dep:rusqlite", "dep:uuid", "dep:sqlite-vec", "dep:zerocopy", "dep:epub"]
-chat = ["dep:rig-core", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest"]
+chat = ["dep:rig", "dep:rig_agent", "dep:async-trait", "tokio/rt-multi-thread", "tokio/macros", "dep:async-stream", "dep:reqwest"]
 mind-studio = ["dep:axum", "tokio/rt-multi-thread", "tokio/macros", "dep:tower-http", "dep:tracing-subscriber", "dep:rmcp", "dep:futures-util", "dep:uuid", "dep:async-stream"]
 # Phase 7: Listener-perspective PAD 변환기 (prefilter + sign/magnitude 분류기)
 # 설계 문서: docs/emotion/phase7-converter-integration.md
@@ -29,7 +29,13 @@ tokio = { version = "1", default-features = false, features = ["sync"] }
 tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
 futures = { version = "0.3", default-features = false, features = ["std"] }
 bge-m3-onnx-rust = { git = "https://github.com/bumkoo/bge-m3-onnx-rust.git", optional = true }
-rig-core = { version = "0.33", optional = true, default-features = false, features = ["reqwest-native-tls"] }
+# rig 0.41부터 Agent/Prompt/Chat/Tool 계층이 `rig-agent` 크레이트로 분리됐다.
+# 메타 크레이트 `rig`는 rig-fastembed → ort 2.0.0-rc.9를 끌고 와
+# bge-m3-onnx-rust(ort ^2.0.0-rc.12)와 충돌하므로 **쓰지 않는다**.
+# lib 이름이 `rig_core`로 바뀌었으므로 기존 `use rig::…` 경로 유지를 위해 별칭 사용.
+# TLS: 기본 feature의 rustls는 MSVC에서 aws-lc-sys 링크 실패 → native-tls 고정.
+rig = { package = "rig-core", version = "0.41", optional = true, default-features = false, features = ["reqwest", "native-tls"] }
+rig_agent = { package = "rig-agent", version = "0.41", optional = true, default-features = false }
 async-trait = { version = "0.1", optional = true }
 async-stream = { version = "0.3", optional = true }
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["json", "stream"] }
